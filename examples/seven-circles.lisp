@@ -1,6 +1,7 @@
 (defpackage #:lui.example.seven.circles
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.seven.model)
-  (:import-from #:lui.example #:widget #:panel)
+  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.seven.model
+        #:lui.example)
+  (:shadow #:draw)
   (:export #:draw #:*state* #:make-state #:state-model #:modal-p))
 (in-package #:lui.example.seven.circles)
 
