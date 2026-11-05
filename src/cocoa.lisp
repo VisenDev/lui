@@ -215,15 +215,25 @@
              class)))))
     class))
 
-(fn cocoa-key-input ((code integer) (flags integer) (characters string))
+(fn cocoa-key-input ((code integer) (flags integer) (characters string)
+                     &optional text-p (key-name characters))
   (let* ((command (logtest flags #x100000))
          (shift (logtest flags #x20000))
+         (command-key
+          (when (and text-p (not command))
+            (lui.widgets:readline-key
+             (case code
+               (123 "ArrowLeft") (124 "ArrowRight")
+               (51 "Backspace") (otherwise key-name))
+             :control (logtest flags #x40000)
+             :alt (logtest flags #x80000) :shift shift)))
          (key (cdr (assoc code
                           '((123 . :left) (124 . :right)
                             (125 . :down) (126 . :up)
                             (115 . :home) (119 . :end)
                             (51 . :backspace) (117 . :delete))))))
-    (cond ((and command (= code 0))
+    (cond (command-key (make-event :kind :key :key command-key))
+          ((and text-p command (= code 0))
            (make-event :kind :key :key :select-all))
           (command nil)
           ((= code 48) (make-event :kind :tab))
@@ -240,7 +250,7 @@
            (make-event :kind :text :value characters)))))
 
 (fn input-for-window-p ((type integer) window target)
-  (and (member type '(1 2 5 6 10 22))
+  (and (member type '(1 2 5 6 8 9 10 22))
        (not (null-object-p target))
        (same-object-p window target)))
 
@@ -251,6 +261,8 @@
     ;; events. Query location/characters only for events belonging to this view.
     (unless (input-for-window-p type (message object event "window") window)
       (return-from cocoa-event nil))
+    (when (= type 9)
+      (return-from cocoa-event (make-event :kind :move :x -1 :y -1)))
     (when (= type 10)
       (let ((characters (message object event "characters")))
         (return-from cocoa-event
@@ -258,7 +270,12 @@
            (message sb-alien:unsigned-short event "keyCode")
            (message sb-alien:unsigned-long event "modifierFlags")
            (if (null-object-p characters) ""
-               (or (message utf8-string characters "UTF8String") ""))))))
+               (or (message utf8-string characters "UTF8String") ""))
+           (and *app* (lui.widgets:text-field-focused-p
+                       (cocoa-app-context *app*)))
+           (let ((name (message object event "charactersIgnoringModifiers")))
+             (if (null-object-p name) ""
+                 (or (message utf8-string name "UTF8String") "")))))))
     (let* ((location (message point event "locationInWindow"))
            (local (message point view "convertPoint:fromView:"
                            point location object (sb-sys:int-sap 0)))
@@ -292,6 +309,20 @@
                   (message sb-alien:void application "sendEvent:"
                            object event))))
     (nreverse events)))
+
+(fn install-pointer-tracking (view frame)
+  (let ((tracking
+         (require-object
+          (message object
+                   (message object (objc-class "NSTrackingArea") "alloc")
+                   "initWithRect:options:owner:userInfo:"
+                   rect frame sb-alien:unsigned-long #x221
+                   object view object (sb-sys:int-sap 0))
+          "pointer tracking area")))
+    ;; Enter/exit + active-in-key-window + visible-rect tracks resizes natively.
+    (unwind-protect
+         (message sb-alien:void view "addTrackingArea:" object tracking)
+      (message sb-alien:void tracking "release"))))
 
 (fn run-cocoa ((draw function) &key title width height (interactive t))
   (unless (member :darwin *features*)
@@ -346,6 +377,7 @@
                       (message object (message object (view-class) "alloc")
                                "initWithFrame:" rect frame)
                       "drawing view"))
+               (install-pointer-tracking (cocoa-app-view *app*) frame)
                ;; Native AppKit backdrop material; no desktop capture or pixels.
                (let ((backdrop
                       (require-object

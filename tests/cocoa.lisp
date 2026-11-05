@@ -193,17 +193,28 @@
         (null (sb-sys:int-sap 0)))
     (assert (lui.cocoa::input-for-window-p 10 (sb-sys:int-sap 41) target))
     (assert (lui.cocoa::input-for-window-p 22 target target))
+    (assert (lui.cocoa::input-for-window-p 9 target target))
     (assert (null (lui.cocoa::input-for-window-p 1 other target)))
     (assert (null (lui.cocoa::input-for-window-p 15 target target)))
     (assert (null (lui.cocoa::input-for-window-p 10 null null)))))
 
 (fn test-key-input ()
+  (assert (eq :home
+              (event-key (lui.cocoa::cocoa-key-input 0 #x40000 "a" t))))
+  (assert (eq :kill-end
+              (event-key (lui.cocoa::cocoa-key-input 40 #x40000 "k" t))))
+  (assert (eq :word-left
+              (event-key (lui.cocoa::cocoa-key-input 11 #x80000 "b" t))))
+  (assert (null (lui.cocoa::cocoa-key-input
+                 0 #x40000 (string (code-char 1)))))
+  (assert (null (lui.cocoa::cocoa-key-input 0 #x100000 "a")))
+
   (assert (eq :shift-left
               (event-key (lui.cocoa::cocoa-key-input 123 #x20000 ""))))
   (assert (eq :shift-right
               (event-key (lui.cocoa::cocoa-key-input 124 #x20000 ""))))
   (assert (eq :select-all
-              (event-key (lui.cocoa::cocoa-key-input 0 #x100000 "a"))))
+              (event-key (lui.cocoa::cocoa-key-input 0 #x100000 "a" t))))
   (assert (null (lui.cocoa::cocoa-key-input 12 #x100000 "q")))
   (assert (eq :activate (event-kind (lui.cocoa::cocoa-key-input 76 0 ""))))
   (assert (string= "λ日本"

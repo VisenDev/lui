@@ -20,6 +20,25 @@
     (lui.win32::flush-graphics (lui.win32::win-window-graphics window) 1))
   (get-pixel (lui.win32::win-window-dc window) x y))
 
+(lui.fn:fn test-readline-keys ()
+  (dolist (entry '((65 . :home) (69 . :end) (66 . :left) (70 . :right)
+                   (68 . :delete) (72 . :backspace) (75 . :kill-end)
+                   (85 . :kill-start) (87 . :kill-word) (89 . :yank)
+                   (84 . :transpose)))
+    (assert (eq (cdr entry)
+                (event-key (lui.win32::key-input (car entry) t nil nil t)))))
+  (assert (eq :select-all
+              (event-key (lui.win32::key-input 65 t nil t t))))
+  (assert (eq :word-left
+              (event-key (lui.win32::key-input 66 nil t nil t))))
+  (assert (eq :word-right
+              (event-key (lui.win32::key-input 39 t nil nil t))))
+  (assert (null (lui.win32::key-input 65 t nil nil nil)))
+  (assert (null (lui.win32::key-input 13 nil t nil nil)))
+  (assert (null (lui.win32::key-input 66 t t nil t))))
+
+(test-readline-keys)
+
 (let ((window nil) (frames 0)
       (lui.font:*font-path*
         (or lui.font:*font-path*
@@ -36,9 +55,14 @@
               (assert (plusp (post-message handle #x100 9 0)))
               (assert (plusp (post-message handle #x102 #x3bb 0))))
             (lui.win32::pump-messages native)
+            (lui.win32::window-message native #x2a3 0 0)
             (let ((events (lui.win32::win-window-events native)))
               (assert (member :press (mapcar #'event-kind events)))
               (assert (member :release (mapcar #'event-kind events)))
+              (assert (find-if (lambda (event)
+                                 (and (eq :move (event-kind event))
+                                      (= -1 (event-x event))))
+                               events))
               (assert (find "λ" events
                         :key #'event-value :test #'equal))))))
     (let ((context

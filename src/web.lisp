@@ -7,9 +7,12 @@
 (defstruct web-app
   host
   measure-node
+  style-node
+  (tab-focus-p nil :type boolean)
   callback
   context
   (nodes (make-hash-table :test 'equal) :type hash-table)
+  (tablists (make-hash-table :test 'equal) :type hash-table)
   (events nil :type list)
   (pending-p nil :type boolean)
   (alive-p t :type boolean)
@@ -67,6 +70,78 @@
                  (otherwise
                   (jscl/ffi:clstring (jscl/ffi:oget control "value")))))))
 
+(fn reset-native-edit (control)
+  (edit-text (jscl/ffi:clstring (jscl/ffi:oget control "value"))
+             (jscl/ffi:oget control "luiEditState")
+             (list (make-event :kind :move))))
+
+(fn dom-text-index ((text string) (index integer))
+  (jscl/ffi:oget (jscl/ffi:jsstring (subseq text 0 index)) "length"))
+
+(fn native-text-key ((app web-app) control id event)
+  (unless (or (jscl/ffi:clbool (jscl/ffi:oget event "isComposing"))
+              (eql 229 (jscl/ffi:oget event "keyCode"))
+              (jscl/ffi:clbool (jscl/ffi:oget control "luiComposing"))
+              (jscl/ffi:clbool (jscl/ffi:oget event "metaKey"))
+              (and (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
+                   (jscl/ffi:clbool (jscl/ffi:oget event "altKey"))))
+    (let* ((key (jscl/ffi:clstring (jscl/ffi:oget event "key")))
+           (command (readline-key key
+                                  :control (jscl/ffi:clbool
+                                            (jscl/ffi:oget event "ctrlKey"))
+                                  :alt (jscl/ffi:clbool (jscl/ffi:oget event "altKey"))
+                                  :shift (jscl/ffi:clbool
+                                          (jscl/ffi:oget event "shiftKey")))))
+      (if (null command)
+          (unless (member key '("Control" "Alt" "Shift" "Meta" "CapsLock")
+                          :test #'string=)
+            (reset-native-edit control))
+          (let* ((value (jscl/ffi:oget control "value"))
+                 (text (jscl/ffi:clstring value))
+                 (state (jscl/ffi:oget control "luiEditState"))
+                 (start (length
+                         (jscl/ffi:clstring
+                          ((jscl/ffi:oget value "slice") 0
+                           (jscl/ffi:oget control "selectionStart")))))
+                 (end (length
+                       (jscl/ffi:clstring
+                        ((jscl/ffi:oget value "slice") 0
+                         (jscl/ffi:oget control "selectionEnd")))))
+                 (backward
+                  (string= "backward"
+                           (jscl/ffi:clstring
+                            (jscl/ffi:oget control "selectionDirection")))))
+            ((jscl/ffi:oget event "preventDefault"))
+            (setf (edit-state-cursor state) (if backward start end)
+                  (edit-state-anchor state) (if backward end start))
+            (let* ((edited (edit-text text state
+                                      (list (make-event :kind :key
+                                                        :key command))))
+                   (cursor (dom-text-index edited (edit-state-cursor state)))
+                   (anchor (dom-text-index edited (edit-state-anchor state))))
+              (unless (string= text edited)
+                (setf (jscl/ffi:oget control "value")
+                      (jscl/ffi:jsstring edited))
+                (control-change app control :text-field id))
+              ((jscl/ffi:oget control "setSelectionRange")
+               (min cursor anchor) (max cursor anchor)
+               (jscl/ffi:jsstring (if (< cursor anchor)
+                                      "backward" "forward")))))))))
+
+(fn native-tab-key ((app web-app) id event)
+  (unless (or (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
+              (jscl/ffi:clbool (jscl/ffi:oget event "altKey"))
+              (jscl/ffi:clbool (jscl/ffi:oget event "metaKey")))
+    (let ((key (cdr (assoc
+                     (jscl/ffi:clstring (jscl/ffi:oget event "key"))
+                     '(("ArrowLeft" . :left) ("ArrowRight" . :right)
+                       ("Home" . :home) ("End" . :end))
+                     :test #'string=))))
+      (when key
+        ((jscl/ffi:oget event "preventDefault"))
+        (setf (web-app-tab-focus-p app) t)
+        (queue-event app (make-event :kind :key :key key :id id))))))
+
 (fn measure-widget ((app web-app) (widget widget) width)
   (let* ((node (web-app-measure-node app))
          (kind (widget-kind widget))
@@ -96,7 +171,7 @@
     (unless entry
       (let* ((dom (create-node
                    (case kind
-                     (:button "button")
+                     ((:button :tab) "button")
                      ((:slider :text-field) "input")
                      (:checkbox "label")
                      (otherwise "div"))))
@@ -106,8 +181,17 @@
           ((jscl/ffi:oget dom "appendChild") control)
           ((jscl/ffi:oget dom "appendChild") (create-node "span")))
         (case kind
-          (:button
+          ((:button :tab)
            (attribute dom "type" "button")
+           (attribute dom "class" "lui-control")
+           (listen app dom "mousedown"
+                   (lambda (event)
+                     ;; Clicking a button keeps editing focus in the text field.
+                     ((jscl/ffi:oget event "preventDefault"))))
+           (when (eq kind :tab)
+             (attribute dom "role" "tab")
+             (listen app dom "keydown"
+                     (lambda (event) (native-tab-key app id event))))
            (listen app dom "click"
                    (lambda (event)
                      (declare (ignore event))
@@ -125,8 +209,17 @@
                      (unless
                          (jscl/ffi:clbool
                           (jscl/ffi:oget event "isComposing"))
+                       (when (eq kind :text-field)
+                         (reset-native-edit control))
                        (control-change app control kind id))))
            (when (eq kind :text-field)
+             (setf (jscl/ffi:oget control "luiEditState") (make-edit-state))
+             (listen app control "keydown"
+                     (lambda (event) (native-text-key app control id event)))
+             (listen app control "pointerdown"
+                     (lambda (event)
+                       (declare (ignore event))
+                       (reset-native-edit control)))
              (listen app control "compositionstart"
                      (lambda (event)
                        (declare (ignore event))
@@ -137,6 +230,7 @@
                        (declare (ignore event))
                        (setf (jscl/ffi:oget control "luiComposing")
                              #j:false)
+                       (reset-native-edit control)
                        (control-change app control kind id)))))
           (otherwise nil))
         (listen app control "focus"
@@ -169,6 +263,7 @@
     (style dom "font-size" (px (widget-font-size widget)))
     (style dom "color" (widget-foreground widget))
     (style dom "accent-color" (widget-accent widget))
+    (style dom "--lui-accent" (widget-accent widget))
     (style dom "white-space" "pre-wrap")
     (style dom "clip-path"
            (format nil "inset(~A ~A ~A ~A)" (px (- (box-y clip) (box-y box)))
@@ -208,6 +303,15 @@
              (if glass "inset 0 1px 1px #ffffff88, 0 3px 12px #00000044"
                  "none")))
     (case kind
+      (:tab
+       (attribute dom "aria-selected"
+                  (if (widget-value widget) "true" "false"))
+       (attribute dom "tabindex"
+                  (if (and (widget-value widget)
+                           (not (widget-disabled-p widget))) "0" "-1"))
+       (when (widget-value widget)
+         (style dom "box-shadow"
+                (format nil "inset 0 -3px 0 ~A" (widget-accent widget)))))
       (:checkbox
        (style dom "display" "flex")
        (style dom "align-items" "center")
@@ -230,6 +334,40 @@
                (jscl/ffi:jsstring (widget-value widget)))))
       (otherwise nil))
     dom))
+
+(fn update-tablists ((app web-app))
+  (let ((seen (make-hash-table :test 'equal)))
+    (walk-elements
+     (context-root (web-app-context app))
+     (lambda (parent)
+       (let* ((tabs (remove-if-not
+                     (lambda (node)
+                       (let ((widget (element-content node)))
+                         (and (widget-p widget)
+                              (eq (widget-kind widget) :tab))))
+                     (coerce (element-children parent) 'list)))
+              (key (mapcar #'element-id tabs)))
+         (when tabs
+           (let ((group (gethash key (web-app-tablists app))))
+             (unless group
+               (setf group (create-node "div")
+                     (gethash key (web-app-tablists app)) group)
+               (attribute group "role" "tablist")
+               (style group "display" "contents")
+               ((jscl/ffi:oget (web-app-host app) "appendChild") group))
+             (setf (gethash key seen) t)
+             (dolist (tab tabs)
+               (let ((dom (cdr (gethash (element-id tab)
+                                        (web-app-nodes app)))))
+                 (unless (eq group (jscl/ffi:oget dom "parentNode"))
+                   ((jscl/ffi:oget group "appendChild") dom)))))))))
+    (let ((removed nil))
+      (maphash (lambda (key group)
+                 (unless (gethash key seen)
+                   ((jscl/ffi:oget group "remove"))
+                   (push key removed)))
+               (web-app-tablists app))
+      (dolist (key removed) (remhash key (web-app-tablists app))))))
 
 (fn draw-frame ((app web-app))
   (let* ((host (web-app-host app))
@@ -254,6 +392,12 @@
                 (dom (update-node app node key)))
            (style dom "z-index" (princ-to-string (incf index)))
            (setf (gethash key seen) t)))))
+    (update-tablists app)
+    (when (web-app-tab-focus-p app)
+      (setf (web-app-tab-focus-p app) nil)
+      (let ((target (gethash (context-focus context) (web-app-nodes app))))
+        (when (and target (eq (car target) :tab))
+          ((jscl/ffi:oget (cdr target) "focus")))))
     (let ((removed nil))
       (maphash
        (lambda (key entry)
@@ -278,15 +422,20 @@
 (fn mount (host (callback function))
   "Mount in an existing DOM element with explicit dimensions. Returns a handle."
   (let* ((app (make-web-app :host host :callback callback))
-         (measure (create-node "span")))
+         (measure (create-node "span"))
+         (sheet (create-node "style")))
     (style host "position" "relative")
     (style host "overflow" "hidden")
     (style host "font-family" "sans-serif")
     (style measure "position" "absolute")
     (style measure "visibility" "hidden")
     (style measure "pointer-events" "none")
+    (setf (jscl/ffi:oget sheet "textContent")
+          #j".lui-control{cursor:pointer;transition:filter 100ms,transform 100ms}.lui-control:hover:enabled{filter:brightness(1.2)}.lui-control:active:enabled{filter:brightness(.85);transform:translateY(1px)}.lui-control:disabled{opacity:.45;cursor:default}.lui-control:focus-visible{outline:2px solid var(--lui-accent);outline-offset:2px}")
+    ((jscl/ffi:oget host "appendChild") sheet)
     ((jscl/ffi:oget host "appendChild") measure)
-    (setf (web-app-measure-node app) measure
+    (setf (web-app-style-node app) sheet
+          (web-app-measure-node app) measure
           (web-app-context app)
           (make-context :measure
                         (lambda (widget width)
@@ -318,6 +467,20 @@
              (refresh app))))
     ((jscl/ffi:oget (web-app-resize-observer app) "observe") host)
     (listen app host "wheel" (web-app-wheel-handler app))
+    (listen app host "pointermove"
+            (lambda (event)
+              (let ((rect ((jscl/ffi:oget host "getBoundingClientRect"))))
+                (queue-event
+                 app (make-event
+                      :kind :move
+                      :x (- (jscl/ffi:oget event "clientX")
+                            (jscl/ffi:oget rect "left"))
+                      :y (- (jscl/ffi:oget event "clientY")
+                            (jscl/ffi:oget rect "top")))))))
+    (listen app host "pointerleave"
+            (lambda (event)
+              (declare (ignore event))
+              (queue-event app (make-event :kind :move :x -1 :y -1))))
     (refresh app)
     app))
 
@@ -340,7 +503,13 @@
      (declare (ignore key))
      (remove-node app (cdr entry))) (web-app-nodes app))
   ((jscl/ffi:oget (web-app-measure-node app) "remove"))
-  (clrhash (web-app-nodes app)))
+  ((jscl/ffi:oget (web-app-style-node app) "remove"))
+  (clrhash (web-app-nodes app))
+  (maphash (lambda (key group)
+             (declare (ignore key))
+             ((jscl/ffi:oget group "remove")))
+           (web-app-tablists app))
+  (clrhash (web-app-tablists app)))
 
 (fn run-web ((draw function) &key title width height (interactive t))
   (declare (ignore interactive))

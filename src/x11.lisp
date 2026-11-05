@@ -257,6 +257,7 @@
   (convolution-p nil :type boolean)
   format
   mask-format
+  context
   (depth 0 :type integer)
   (width 640 :type integer)
   (height 480 :type integer)
@@ -418,21 +419,39 @@
             (max 0 (floor (box-height box)))))
     (set-clip (x-window-display window) (x-window-back window) 0 0 rect 1)))
 
-(fn key-input (event)
+(fn key-input (event &optional context)
   (cffi:with-foreign-objects ((buffer :char 64) (symbol :ulong))
-    (let* ((length
-            (lookup-string event buffer 64 symbol (cffi:null-pointer)))
+    (let* ((length (lookup-string event buffer 64 symbol (cffi:null-pointer)))
            (code (cffi:mem-ref symbol :ulong))
-           (key
-            (cdr
-             (assoc code
-                    '((#xff51 . :left) (#xff53 . :right) (#xff52 . :up)
-                      (#xff54 . :down) (#xff50 . :home) (#xff57 . :end)
-                      (#xff08 . :backspace) (#xffff . :delete))))))
-      (cond ((= code #xff09) (make-event :kind :tab))
+           (state (cffi:foreign-slot-value event '(:struct key-event) 'state))
+           (control (logtest state 4))
+           (alt (logtest state 8))
+           (shift (logtest state 1))
+           (text-p (and context (lui.widgets:text-field-focused-p context)))
+           (key (cdr (assoc code
+                            '((#xff51 . :left) (#xff53 . :right)
+                              (#xff52 . :up) (#xff54 . :down)
+                              (#xff50 . :home) (#xff57 . :end)
+                              (#xff08 . :backspace) (#xffff . :delete)))))
+           (name (case code
+                   (#xff51 "ArrowLeft") (#xff53 "ArrowRight")
+                   (#xff08 "Backspace")
+                   (otherwise (if (<= 32 code 126)
+                                  (string (code-char code)) ""))))
+           (command (when text-p
+                      (lui.widgets:readline-key name :control control
+                                                :alt alt :shift shift))))
+      (cond (command (make-event :kind :key :key command))
+            ((= code #xff09) (make-event :kind :tab :value shift))
             ((= code #xff0d) (make-event :kind :activate))
-            (key (make-event :kind :key :key key))
-            ((plusp length)
+            (key (make-event :kind :key
+                             :key (if (and text-p shift)
+                                      (case key
+                                        (:left :shift-left)
+                                        (:right :shift-right)
+                                        (otherwise key))
+                                      key)))
+            ((and (plusp length) (not control) (not alt))
              (make-event :kind :text :value
                          (cffi:foreign-string-to-lisp
                           buffer :count length :encoding :iso-8859-1)))))))
@@ -445,8 +464,9 @@
       (loop :while (plusp (pending display))
             :do (next-event display event)
             (case (cffi:mem-ref event :int)
+              (8 (push (make-event :kind :move :x -1 :y -1) events))
               (2
-               (let ((input (key-input event)))
+               (let ((input (key-input event (x-window-context window))))
                  (when input (push input events))))
               ((4 5 6)
                (cffi:with-foreign-slots
@@ -535,7 +555,7 @@
                  font (open-font))
            (store-name display (x-window-window window) title)
            (select-input display (x-window-window window)
-                         (logior 1 4 8 64 #x8000 #x20000))
+                         (logior 1 4 8 32 64 #x8000 #x20000))
            (cffi:with-foreign-object (atom :ulong)
              (setf (cffi:mem-ref atom :ulong) delete)
              (set-protocols display (x-window-window window) atom 1))
@@ -558,6 +578,7 @@
                    (make-context
                     :measure (lambda (widget width)
                                (measure-widget renderer widget width)))))
+             (setf (x-window-context window) context)
              (draw-window window renderer context draw interactive delete)))
       (when font (close-font font))
       (maphash

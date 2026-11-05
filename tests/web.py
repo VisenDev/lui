@@ -96,9 +96,9 @@ class WebTests(unittest.TestCase):
         expect(page.locator("canvas")).to_have_count(0)
         expect(page.get_by_role("textbox")).to_have_value("Common Lisp")
         page.get_by_role("button", name="Say hello").click()
-        expect(page.locator("main > div").filter(has_text="Hello Common Lisp (1)")).to_be_visible()
+        expect(page.get_by_text("Hello Common Lisp (1)", exact=True).filter(visible=True)).to_be_visible()
         page.get_by_role("textbox").fill("Ada")
-        expect(page.locator("main > div").filter(has_text="Hello Ada (1)")).to_be_visible()
+        expect(page.get_by_text("Hello Ada (1)", exact=True).filter(visible=True)).to_be_visible()
         checkbox = page.get_by_role("checkbox", name="Enabled")
         checkbox.uncheck()
         expect(checkbox).not_to_be_checked()
@@ -109,7 +109,33 @@ class WebTests(unittest.TestCase):
         slider.press("Home")
         expect(slider).to_have_value("0")
         page.get_by_role("button", name="Reset", exact=True).click()
-        expect(page.locator("main > div").filter(has_text="Hello Ada (0)")).to_be_visible()
+        expect(page.get_by_text("Hello Ada (0)", exact=True).filter(visible=True)).to_be_visible()
+
+    def test_gallery_pages_persist_inputs_and_switch_collection(self):
+        tabs = self.page.get_by_role("tab")
+        expect(tabs).to_have_count(5)
+        expect(self.page.get_by_role("tab", name="Controls")).to_have_attribute(
+            "aria-selected", "true")
+        self.page.get_by_role("textbox").fill("Persistent name")
+        self.page.get_by_role("tab", name="Editing", exact=True).click()
+        expect(self.page.get_by_role("textbox")).to_have_value(
+            "The quick brown fox jumps over the lazy dog.")
+        self.page.get_by_role("textbox").fill("Persistent editor")
+        for name in ("Layout", "Scroll", "Styles"):
+            self.page.get_by_role("tab", name=name, exact=True).click()
+            expect(self.page.get_by_role("tab", name=name, exact=True)).to_have_attribute(
+                "aria-selected", "true")
+        self.page.get_by_role("tab", name="Controls", exact=True).click()
+        expect(self.page.get_by_role("textbox")).to_have_value("Persistent name")
+        self.assertTrue(self.page.locator("main button").evaluate_all(
+            "nodes => nodes.every(n => getComputedStyle(n).borderTopLeftRadius !== '0px')"))
+        self.page.get_by_role("button", name="Glass", exact=True).click()
+        expect(self.page.get_by_role("button", name="Motif", exact=True)).to_be_visible()
+        self.assertTrue(self.page.locator("main button").evaluate_all(
+            "nodes => nodes.every(n => getComputedStyle(n).borderTopLeftRadius === '0px')"))
+        self.page.get_by_role("tab", name="Editing", exact=True).click()
+        expect(self.page.get_by_role("textbox")).to_have_value("Persistent editor")
+        expect(self.page.locator("canvas")).to_have_count(0)
 
     def test_identity_selection_composition_and_host_resize(self):
         self.fixture()
@@ -138,6 +164,129 @@ class WebTests(unittest.TestCase):
         self.assertLess(control.bounding_box()["width"], before)
         self.assertTrue(control.evaluate("node => node === window.originalControl"))
 
+    def test_readline_native_text_selection_unicode_and_composition(self):
+        self.fixture()
+        control = self.page.locator("#test-host input")
+        control.fill("one two three")
+        control.press("Control+a")
+        self.assertEqual(control.evaluate("n => n.selectionStart"), 0)
+        expect(control).to_have_value("one two three")
+        control.press("Control+e")
+        self.assertEqual(control.evaluate("n => n.selectionStart"), 13)
+        control.press("Control+w")
+        expect(control).to_have_value("one two ")
+        control.press("Control+y")
+        expect(control).to_have_value("one two three")
+        control.press("Control+a")
+        control.press("Alt+f")
+        self.assertEqual(control.evaluate("n => n.selectionStart"), 3)
+        control.press("Control+f")
+        control.press("Control+k")
+        expect(control).to_have_value("one ")
+        control.press("Control+y")
+        expect(control).to_have_value("one two three")
+        control.press("Control+e")
+        control.press("Control+u")
+        expect(control).to_have_value("")
+        control.press("Control+y")
+        expect(control).to_have_value("one two three")
+        control.press("Control+Shift+a")
+        self.assertEqual(control.evaluate("n => [n.selectionStart,n.selectionEnd]"),
+                         [0, 13])
+        control.fill("ab")
+        control.press("Control+t")
+        expect(control).to_have_value("ba")
+        control.fill("A😀B")
+        control.press("Control+b")
+        self.assertEqual(control.evaluate("n => n.selectionStart"), 3)
+        control.press("Control+b")
+        self.assertEqual(control.evaluate("n => n.selectionStart"), 1)
+        control.press("Control+d")
+        expect(control).to_have_value("AB")
+        control.fill("abcde")
+        control.evaluate("n => n.setSelectionRange(1,4,'backward')")
+        control.press("Control+Shift+f")
+        self.assertEqual(control.evaluate(
+            "n => [n.selectionStart,n.selectionEnd,n.selectionDirection]"),
+            [2, 4, "backward"])
+        control.fill("alpha beta gamma")
+        control.press("Control+w")
+        control.press("Control+w")
+        control.press("Control+y")
+        expect(control).to_have_value("alpha beta gamma")
+        control.press("Control+w")
+        self.page.keyboard.insert_text("z")
+        control.press("Control+w")
+        control.press("Control+y")
+        expect(control).to_have_value("alpha beta z")
+        for modifiers in ({"ctrlKey": True, "key": "c"},
+                          {"metaKey": True, "key": "a"},
+                          {"ctrlKey": True, "key": "a", "isComposing": True}):
+            self.assertTrue(control.evaluate("""(n, options) =>
+                n.dispatchEvent(new KeyboardEvent('keydown',
+                    {...options, bubbles:true, cancelable:true}))""", modifiers))
+        control.evaluate("""n => n.dispatchEvent(new CompositionEvent(
+            'compositionstart', {bubbles:true}))""")
+        self.assertTrue(control.evaluate("""n => n.dispatchEvent(
+            new KeyboardEvent('keydown', {key:'a', ctrlKey:true,
+                bubbles:true, cancelable:true}))"""))
+        control.evaluate("""n => n.dispatchEvent(new CompositionEvent(
+            'compositionend', {bubbles:true}))""")
+        self.frames()
+        expect(control).to_have_value("alpha beta z")
+
+    def test_native_tabs_hover_pressed_and_keyboard_focus(self):
+        self.lisp('''(defvar *tab-test-page* :first)
+          (defvar *tab-test-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *tab-test-host* "id") #j"tab-host"
+                (jscl/ffi:oget *tab-test-host* "style" "width") #j"500px"
+                (jscl/ffi:oget *tab-test-host* "style" "height") #j"150px")
+          (#j:document:body:appendChild *tab-test-host*)
+          (defvar *tab-test-app*
+            (lui.web:mount *tab-test-host*
+              (lambda ()
+                (lui.frame:row (:gap 8)
+                  (when (lui.glass:tab :first "First"
+                          :selected-p (eq *tab-test-page* :first))
+                    (setf *tab-test-page* :first))
+                  (lui.glass:tab :disabled "Disabled" :disabled-p t)
+                  (when (lui.glass:tab :second "Second"
+                          :selected-p (eq *tab-test-page* :second))
+                    (setf *tab-test-page* :second))))))''')
+        first = self.page.get_by_role("tab", name="First", exact=True)
+        second = self.page.get_by_role("tab", name="Second", exact=True)
+        disabled = self.page.get_by_role("tab", name="Disabled", exact=True)
+        expect(self.page.locator("#tab-host [role=tablist]")).to_have_count(1)
+        expect(first).to_have_attribute("aria-selected", "true")
+        expect(second).to_have_attribute("tabindex", "-1")
+        first.hover()
+        self.page.wait_for_function("""() => getComputedStyle(
+            document.querySelector('#tab-host button')).filter.includes('1.2')""")
+        self.page.mouse.down()
+        self.page.wait_for_function("""() => getComputedStyle(
+            document.querySelector('#tab-host button')).transform !== 'none'""")
+        self.page.mouse.up()
+        self.frames()
+        self.assertFalse(first.evaluate("n => n.matches(':focus-visible')"))
+        first.focus()
+        first.press("ArrowRight")
+        expect(second).to_be_focused()
+        expect(second).to_have_attribute("aria-selected", "true")
+        expect(first).to_have_attribute("aria-selected", "false")
+        self.assertTrue(second.evaluate("n => n.matches(':focus-visible')"))
+        second.press("Home")
+        expect(first).to_be_focused()
+        first.press("End")
+        expect(second).to_be_focused()
+        expect(disabled).to_be_disabled()
+        disabled.hover(force=True)
+        self.assertEqual(disabled.evaluate("n => getComputedStyle(n).filter"), "none")
+        self.page.locator("#tab-host").dispatch_event("pointerleave")
+        self.frames()
+        self.assertEqual(self.number(
+            '(if (lui.frame:context-hover (lui.web::web-app-context *tab-test-app*)) 1 0)'), 0)
+        self.lisp('(lui.web:unmount *tab-test-app*)')
+
     def test_removed_replaced_and_unmounted_controls_release_listeners(self):
         self.fixture()
         baseline = self.number('(length (lui.web::web-app-listeners *web-test-app*))')
@@ -145,7 +294,7 @@ class WebTests(unittest.TestCase):
         self.lisp('(setf *web-test-show* nil) (lui.web:refresh *web-test-app*)')
         self.frames()
         expect(self.page.locator("#test-host input")).to_have_count(0)
-        self.assertEqual(self.number('(length (lui.web::web-app-listeners *web-test-app*))'), 1)
+        self.assertEqual(self.number('(length (lui.web::web-app-listeners *web-test-app*))'), 3)
         draws = self.number('*web-test-draws*')
         self.page.evaluate("window.detachedControl.dispatchEvent(new Event('input'))")
         self.frames()
@@ -157,7 +306,7 @@ class WebTests(unittest.TestCase):
         self.frames()
         expect(self.page.get_by_role("button", name="Replacement")).to_be_visible()
         expect(self.page.locator("#test-host input")).to_have_count(0)
-        self.assertEqual(self.number('(length (lui.web::web-app-listeners *web-test-app*))'), 3)
+        self.assertEqual(self.number('(length (lui.web::web-app-listeners *web-test-app*))'), 6)
         self.lisp('(lui.web:refresh *web-test-app*) (lui.web:unmount *web-test-app*)')
         self.frames()
         expect(self.page.locator("#test-host > *")).to_have_count(0)

@@ -153,11 +153,11 @@ class X11:
                 return found
         return None
 
-    def send(self, window, kind, x=0, y=0, code=0):
+    def send(self, window, kind, x=0, y=0, code=0, state=0):
         event = Event()
         event.key = KeyEvent(type=kind, display=self.display, window=window,
-                             root=self.root, x=x, y=y, code=code, same_screen=1)
-        mask = {2: 1, 4: 4, 5: 8}[kind]
+                             root=self.root, x=x, y=y, code=code, state=state, same_screen=1)
+        mask = {2: 1, 4: 4, 5: 8, 8: 32}[kind]
         assert self.lib.XSendEvent(self.display, window, 0, mask, C.byref(event))
         self.lib.XFlush(self.display)
 
@@ -167,10 +167,10 @@ class X11:
             self.send(window, kind, round(x + width * fraction),
                       round(y + height / 2), 1)
 
-    def key(self, window, name):
+    def key(self, window, name, state=0):
         symbol = self.lib.XStringToKeysym(name.encode())
         code = self.lib.XKeysymToKeycode(self.display, symbol)
-        self.send(window, 2, code=code)
+        self.send(window, 2, code=code, state=state)
 
     def activate(self, window):
         # A desktop may hide background windows. Keep only this test window
@@ -291,11 +291,13 @@ class X11Tests(unittest.TestCase):
    (when (lui.frame:previous-box :hello)
      (with-open-file (stream STATE_PATH :direction :output
                              :if-exists :supersede)
-       (format stream "{~S:~S,~S:~D,~S:~A,~S:~F,~S:~D,~S:{"
+       (format stream "{~S:~S,~S:~D,~S:~A,~S:~F,~S:~D,~S:~A,~S:{"
                "name" lui.example::*name* "count" lui.example::*count*
                "enabled" (if lui.example::*enabled* "true" "false")
                "volume" lui.example::*volume*
                "width" (round (lui.frame:context-width lui.frame:*context*))
+               "hover" (if (lui.frame:context-hover lui.frame:*context*)
+                           "true" "false")
                "bounds")
        (loop :for id :in '(:name :volume :enabled :hello :reset)
              :for first := t :then nil
@@ -331,10 +333,20 @@ class X11Tests(unittest.TestCase):
             self.x.key(window, "End")
             self.x.key(window, "a")
             state = self.state(path, lambda s: s["name"] == "Common Lispa")
+            self.x.key(window, "a", state=4)
+            self.x.key(window, "d", state=4)
+            state = self.state(path, lambda s: s["name"] == "ommon Lispa")
+            self.x.key(window, "e", state=4)
+            self.x.key(window, "w", state=4)
+            state = self.state(path, lambda s: s["name"] == "ommon ")
+            self.x.key(window, "y", state=4)
+            state = self.state(path, lambda s: s["name"] == "ommon Lispa")
             self.x.click(window, state["bounds"]["volume"], 0.75)
             state = self.state(path, lambda s: s["volume"] > 0.6)
             self.x.click(window, state["bounds"]["reset"])
-            self.state(path, lambda s: s["count"] == 0)
+            self.state(path, lambda s: s["count"] == 0 and s["hover"])
+            self.x.send(window, 8)
+            self.state(path, lambda s: not s["hover"])
             self.x.lib.XResizeWindow(self.x.display, window, 560, 420)
             self.x.lib.XFlush(self.x.display)
             self.state(path, lambda s: s["width"] == 560)
