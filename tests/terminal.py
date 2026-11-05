@@ -175,7 +175,14 @@ def exercise(lisp, path):
         assert match, terminal.output
         x, y = (int(value) for value in match.groups())
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        # Shift-Tab from the first field reaches the last tab; Space opens it.
+        terminal.send(b"\x1b[Z ")
+        terminal.until(b"Customize the active collection")
+        terminal.send(b"\x1b[H\r")
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
         terminal.send(b"\x01\x0bTerminal")
+        # Space in a text field inserts a character, then Ctrl-H removes it.
+        terminal.send(b" \x08")
         # UTF-8 and CSI input may arrive in separate reads.
         terminal.send("界".encode("utf-8")[:1])
         terminal.send("界".encode("utf-8")[1:])
@@ -188,6 +195,16 @@ def exercise(lisp, path):
         terminal.send(b"\x17\x19\x14\x14")
         terminal.send(b"\t\x1b[C\t \t\r")
         terminal.until(b"(1)")
+        checkpoint = len(terminal.output)
+        terminal.send(b"\x1b[Z\r")
+        assert b"[x] Enabled" in terminal.output[checkpoint:]
+        checkpoint = len(terminal.output)
+        terminal.send(b" ")
+        assert b"[ ] Enabled" in terminal.output[checkpoint:]
+        terminal.send(b"\t ")
+        terminal.until(b"(2)")
+        terminal.send(b"\r")
+        terminal.until(b"(3)")
         # Hit the shared demo's actual Reset geometry, including panel padding.
         match = re.search(rb"@@RESET=(\d+),(\d+)", terminal.output)
         assert match, terminal.output

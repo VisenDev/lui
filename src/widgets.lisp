@@ -11,7 +11,7 @@
            #:widget-disabled-p
            #:widget-painter #:edit-state #:edit-state-cursor
            #:edit-state-anchor #:make-edit-state #:edit-text #:readline-key
-           #:text-field-focused-p))
+           #:text-field-focused-p #:activation-focused-p #:cursor-at))
 
 (in-package #:lui.widgets)
 
@@ -34,10 +34,21 @@
   (radius 12 :type real)
   (frost 12 :type real))
 
+(fn tab-arrow-p ((event event))
+  (and (eq (event-kind event) :key)
+       (member (event-key event) '(:left :right :home :end))))
+
 (fn navigate-tabs ()
-  (when (context-previous-root *context*)
+  (when (and (context-previous-root *context*)
+             (let ((pending nil))
+               (maphash (lambda (id events)
+                          (declare (ignore id))
+                          (when (some #'tab-arrow-p events) (setf pending t)))
+                        (context-events *context*))
+               pending))
     (walk-elements
-     (context-previous-root *context*)
+     ;; Only tab navigation consumes this previous tree; process a batch once.
+     (shiftf (context-previous-root *context*) nil)
      (lambda (parent)
        (let ((tabs (remove-if-not
                     (lambda (node)
@@ -48,12 +59,7 @@
          (dolist (tab tabs)
            (let* ((id (element-id tab))
                   (events (gethash id (context-events *context*)))
-                  (arrows (remove-if-not
-                           (lambda (event)
-                             (and (eq (event-kind event) :key)
-                                  (member (event-key event)
-                                          '(:left :right :home :end))))
-                           (reverse events))))
+                  (arrows (remove-if-not #'tab-arrow-p (reverse events))))
              (dolist (event arrows)
                (let* ((index (or (position (context-focus *context*) tabs
                                            :key #'element-id
@@ -116,18 +122,47 @@
   (kill "" :type string)
   (last-command nil :type symbol))
 
-(fn (text-field-focused-p boolean) ((context context))
+(fn focused-widget ((context context))
   (let ((found nil))
     (when (context-root context)
       (walk-elements
        (context-root context)
        (lambda (node)
-         (let ((widget (element-content node)))
-           (when (and (equal (element-id node) (context-focus context))
-                      (widget-p widget) (eq (widget-kind widget) :text-field)
-                      (not (widget-disabled-p widget)))
-             (setf found t))))))
+         (when (equal (element-id node) (context-focus context))
+           (setf found (element-content node))))))
     found))
+
+(fn (text-field-focused-p boolean) ((context context))
+  (let ((widget (focused-widget context)))
+    (and (widget-p widget) (eq (widget-kind widget) :text-field)
+         (not (widget-disabled-p widget)))))
+
+(fn (activation-focused-p boolean) ((context context))
+  (let ((widget (focused-widget context)))
+    (and (widget-p widget) (not (widget-disabled-p widget))
+         (not (null (member (widget-kind widget)
+                            '(:button :checkbox :tab)))))))
+
+(fn (cursor-at symbol) ((context context) (x real) (y real))
+  (let ((cursor :default))
+    (when (context-root context)
+      (walk-elements
+       (context-root context)
+       (lambda (node)
+         (let ((widget (element-content node))
+               (clip (element-clip node)))
+           (when (and (widget-p widget)
+                      (<= (box-x clip) x)
+                      (< x (+ (box-x clip) (box-width clip)))
+                      (<= (box-y clip) y)
+                      (< y (+ (box-y clip) (box-height clip))))
+             (setf cursor
+                   (cond ((widget-disabled-p widget) :not-allowed)
+                         ((eq (widget-kind widget) :text-field) :text)
+                         ((member (widget-kind widget)
+                                  '(:button :checkbox :tab :slider)) :pointer)
+                         (t :default))))))))
+    cursor))
 
 (fn readline-key ((key string) &key control alt shift)
   "Translate modified keys to shared editor commands; NIL leaves native handling."

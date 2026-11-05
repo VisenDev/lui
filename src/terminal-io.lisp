@@ -86,9 +86,11 @@
     (dolist (event (reverse (input-events input)))
       (case (event-kind event)
         (:tab
-         (let ((next (or (second (member focus nodes :key #'element-id
-                                                    :test #'equal))
-                         (first nodes))))
+         (let* ((order (if (eq (event-key event) :backward)
+                           (reverse nodes) nodes))
+                (next (or (second (member focus order :key #'element-id
+                                                     :test #'equal))
+                          (first order))))
            (setf focus (and next (element-id next)))))
         (:press
          (dolist (node nodes)
@@ -132,7 +134,9 @@
             (input-events input)))))
 
 (fn escape-event ((input input) (sequence string))
-  (cond ((and (plusp (length sequence))
+  (cond ((string= sequence "Z")
+         (push (make-event :kind :tab :key :backward) (input-events input)))
+        ((and (plusp (length sequence))
               (char= (char sequence 0) #\<))
          (mouse-event input (subseq sequence 1)))
         (t

@@ -10,7 +10,8 @@
            #:element-interactive-p #:append-child #:solve #:walk-elements
            #:element-clip #:element-clip-p #:element-scroll-p
            #:element-scroll-x
-           #:element-scroll-y #:element-floating-p #:element-offset-x
+           #:element-scroll-y #:element-scroll-limit-y
+           #:element-floating-p #:element-offset-x
            #:element-offset-y #:intersect-boxes #:visible-elements))
 
 (in-package #:lui.layout)
@@ -65,6 +66,7 @@
   (scroll-p nil :type boolean)
   (scroll-x 0 :type real)
   (scroll-y 0 :type real)
+  (scroll-limit-y 0 :type real)
   (floating-p nil :type boolean)
   (offset-x 0 :type real)
   (offset-y 0 :type real))
@@ -290,12 +292,14 @@
                         (max bottom (- (+ (box-y (element-box child))
                                           (box-height (element-box child)))
                                        dy))))
-        (setf (element-scroll-x node)
+        (setf (element-scroll-limit-y node)
+              (- bottom (+ (box-y box) (box-height box)))
+              (element-scroll-x node)
               (min (max 0 (element-scroll-x node))
                    (- right (+ (box-x box) (box-width box))))
               (element-scroll-y node)
               (min (max 0 (element-scroll-y node))
-                   (- bottom (+ (box-y box) (box-height box)))))))
+                   (element-scroll-limit-y node)))))
     (loop :for child :across (element-children node)
           :do (clip-elements
                child

@@ -62,17 +62,36 @@
                          (setf found (element-id node))))))
     found))
 
-(fn focus-next ((context context))
+(fn focus-next ((context context) &optional backward)
   (let ((ids nil))
     (when (context-root context)
       (walk-elements (context-root context)
                      (lambda (node)
                        (when (element-interactive-p node)
                          (push (element-id node) ids)))))
-    (setf ids (nreverse ids)
+    (setf ids (if backward ids (nreverse ids))
           (context-focus context)
           (or (second (member (context-focus context) ids :test #'equal))
               (first ids)))))
+
+(fn scroll-at ((context context) (x real) (y real) (amount real))
+  ;; Follow the painted hit path, then bubble unused wheel motion outward.
+  (let ((scrollers nil))
+    (labels ((visit (node parents)
+               (when (contains-p (element-clip node) x y)
+                 (let ((path (if (element-scroll-p node)
+                                 (cons node parents) parents)))
+                   (setf scrollers path)
+                   (map nil (lambda (child) (visit child path))
+                        (element-children node))))))
+      (when (context-root context) (visit (context-root context) nil)))
+    (dolist (node scrollers)
+      (let* ((old (element-scroll-y node))
+             (new (min (element-scroll-limit-y node) (max 0 (+ old amount)))))
+        (decf amount (- new old))
+        (setf (element-scroll-y node) new
+              (gethash (element-id node) (context-scroll context))
+              (cons (element-scroll-x node) new))))))
 
 (fn begin-frame ((context context) (width real) (height real) (events list))
   (assert (not (context-building-p context)))
@@ -91,21 +110,9 @@
           (setf (context-hover context) target))
         (case (event-kind event)
           (:scroll
-           (let ((scroller nil))
-             (when (context-root context)
-               (walk-elements
-                (context-root context)
-                (lambda (node)
-                  (when (and (element-scroll-p node)
-                             (element-id node)
-                             (contains-p (element-clip node)
-                                         (event-x event) (event-y event)))
-                    (setf scroller node)))))
-             (when scroller
-               (incf (element-scroll-y scroller) (event-value event))
-               (setf (gethash (element-id scroller) (context-scroll context))
-                     (cons (element-scroll-x scroller)
-                           (element-scroll-y scroller))))))
+           (unless resized
+             (scroll-at context (event-x event) (event-y event)
+                        (event-value event))))
           (:press
            (setf (context-active context) target
                  (context-focus-visible-p context) nil)
@@ -118,7 +125,7 @@
            (setf (context-active context) nil))
           (:tab
            (setf (context-focus-visible-p context) t)
-           (focus-next context))
+           (focus-next context (eq (event-key event) :backward)))
           (:key (setf (context-focus-visible-p context) t))
           (:activate
            (let ((id (or (event-id event) (context-focus context))))
