@@ -5,6 +5,13 @@
 (in-package #:lui.cocoa)
 
 (sb-alien:define-alien-type object sb-alien:system-area-pointer)
+;; Objective-C BOOL is signed char on x86-64 and bool on arm64. Both occupy
+;; one byte; use numeric 0/1 rather than SBCL's word-sized BOOLEAN alien type.
+(sb-alien:define-alien-type utf8-string
+  (sb-alien:c-string :external-format :utf-8))
+(sb-alien:define-alien-type objc-bool
+  #+arm64 sb-alien:unsigned-char
+  #-arm64 sb-alien:char)
 (sb-alien:define-alien-type point
   (sb-alien:struct point
     (x sb-alien:double)
@@ -30,19 +37,34 @@
      (function object sb-alien:c-string))
    name))
 
+(defmacro with-cocoa-float-mode (&body body)
+  (let ((modes (gensym "FLOAT-MODES")))
+    `(let ((,modes (sb-int:get-floating-point-modes)))
+       (unwind-protect
+            (sb-int:with-float-traps-masked
+                (:invalid :divide-by-zero :overflow :underflow :inexact)
+              ,@body)
+         ;; Native code may also alter rounding or exception flags. Restore
+         ;; the caller's complete mode on errors and nonlocal exits as well.
+         (apply #'sb-int:set-floating-point-modes ,modes)))))
+
 (defmacro message (result receiver selector &rest arguments)
+  (assert (evenp (length arguments)) ()
+          "MESSAGE requires alternating foreign types and values.")
   (let ((function
-          (if (and (eq result 'rect) (member :x86-64 *features*))
-              "objc_msgSend_stret"
-              "objc_msgSend")))
+         (if (and (eq result 'rect) (member :x86-64 *features*))
+             "objc_msgSend_stret"
+             "objc_msgSend"))
+        (types (loop :for (type value) :on arguments :by #'cddr
+                     :collect type))
+        (values (loop :for (type value) :on arguments :by #'cddr
+                      :collect value)))
+    ;; SBCL supplies the hidden result pointer for a 32-byte return value.
+    ;; Only x86-64's Objective-C dispatch needs the separate stret entry point.
     `(sb-alien:alien-funcall
       (sb-alien:extern-alien ,function
-        (function ,result object object
-                  ,@(loop :for (type value) :on arguments :by #'cddr
-                          :collect type)))
-      ,receiver (selector ,selector)
-      ,@(loop :for (type value) :on arguments :by #'cddr
-              :collect value))))
+        (function ,result object object ,@types))
+      ,receiver (selector ,selector) ,@values)))
 
 (defmacro with-rect ((name x y width height) &body body)
   `(sb-alien:with-alien ((,name rect))
@@ -57,11 +79,22 @@
      ,@body))
 
 (defstruct cocoa-app window view renderer context error)
-(defvar *app*)
+(defvar *app* nil)
+
+(fn null-object-p (object)
+  (zerop (sb-sys:sap-int object)))
+
+(fn same-object-p (left right)
+  (= (sb-sys:sap-int left) (sb-sys:sap-int right)))
+
+(fn require-object (object (description string))
+  (when (null-object-p object)
+    (error "Cannot create Cocoa ~A." description))
+  object)
 
 (fn ns-string ((text string))
   (message object (objc-class "NSString") "stringWithUTF8String:"
-           sb-alien:c-string text))
+           utf8-string text))
 
 (fn make-path ((contours list))
   (let ((path (message object (objc-class "NSBezierPath") "bezierPath")))
@@ -81,12 +114,12 @@
   (destructuring-bind (red green blue opacity)
       (color-components color alpha)
     (let ((native-color
-            (message object (objc-class "NSColor")
-                     "colorWithCalibratedRed:green:blue:alpha:"
-                     sb-alien:double (float red 1.0d0)
-                     sb-alien:double (float green 1.0d0)
-                     sb-alien:double (float blue 1.0d0)
-                     sb-alien:double (float opacity 1.0d0))))
+           (message object (objc-class "NSColor")
+                    "colorWithCalibratedRed:green:blue:alpha:"
+                    sb-alien:double (float red 1.0d0)
+                    sb-alien:double (float green 1.0d0)
+                    sb-alien:double (float blue 1.0d0)
+                    sb-alien:double (float opacity 1.0d0))))
       (message sb-alien:void native-color "setFill")
       (message sb-alien:void (make-path contours) "fill"))))
 
@@ -97,211 +130,301 @@
     (message sb-alien:void
              (make-path (list (rounded-polygon box 0))) "addClip")))
 
-(sb-alien:define-alien-callable flipped sb-alien:char
-    ((view object) (selector object))
-  (when view selector)
+(fn callback-true (view selector)
+  (declare (ignore view selector))
   1)
 
+(sb-alien:define-alien-callable flipped objc-bool
+  ((view object) (selector object))
+  (with-cocoa-float-mode
+    (callback-true view selector)))
+
+(fn draw-cocoa-view (view selector dirty)
+  (declare (ignore selector dirty))
+  ;; AppKit may draw before a Lisp frame exists or after the app is disposed.
+  ;; Both errors and nonlocal exits must stop inside the native callback.
+  (let ((completed nil))
+    (unwind-protect
+         (prog1
+             (handler-case
+                 (when (and *app* (cocoa-app-view *app*)
+                            (same-object-p view (cocoa-app-view *app*))
+                            (context-root (cocoa-app-context *app*)))
+                   (let ((graphics (objc-class "NSGraphicsContext")))
+                     (message sb-alien:void graphics "saveGraphicsState")
+                     (unwind-protect
+                          (paint-frame (cocoa-app-renderer *app*)
+                                       (cocoa-app-context *app*))
+                       (message sb-alien:void graphics
+                                "restoreGraphicsState"))))
+               (error (condition)
+                 (when *app* (setf (cocoa-app-error *app*) condition))))
+           (setf completed t))
+      (unless completed
+        (when *app*
+          (setf (cocoa-app-error *app*)
+                (make-condition 'simple-error
+                                :format-control
+                                "Nonlocal exit from a Cocoa draw callback.")))
+        (return-from draw-cocoa-view nil)))))
+
 (sb-alien:define-alien-callable draw-view sb-alien:void
-    ((view object) (selector object) (dirty rect))
-  (when view selector dirty)
-  ;; Never unwind a Lisp error through an Objective-C callback.
-  (handler-case
-      (let ((graphics (objc-class "NSGraphicsContext")))
-        (message sb-alien:void graphics "saveGraphicsState")
-        (unwind-protect
-             (paint-frame (cocoa-app-renderer *app*)
-                          (cocoa-app-context *app*))
-          (message sb-alien:void graphics "restoreGraphicsState")))
-    (error (condition) (setf (cocoa-app-error *app*) condition))))
+  ((view object) (selector object) (dirty rect))
+  (with-cocoa-float-mode
+    (draw-cocoa-view view selector dirty)))
 
 (fn install-method (class (name string) (function symbol) (signature string))
-  (sb-alien:alien-funcall
-   (sb-alien:extern-alien "class_addMethod"
-     (function sb-alien:char object object object sb-alien:c-string))
-   class (selector name)
-   (sb-alien:alien-sap (sb-alien:alien-callable-function function))
-   signature))
+  (when (zerop
+         (sb-alien:alien-funcall
+          (sb-alien:extern-alien "class_addMethod"
+            (function objc-bool object object object sb-alien:c-string))
+          class (selector name)
+          (sb-alien:alien-sap (sb-alien:alien-callable-function function))
+          signature))
+    (error "Cannot install Cocoa method ~A." name)))
 
 (fn view-class ()
   (let ((class (objc-class "LuiDrawingView")))
-    (when (zerop (sb-sys:sap-int class))
+    (when (null-object-p class)
       (setf class
+            (require-object
+             (sb-alien:alien-funcall
+              (sb-alien:extern-alien "objc_allocateClassPair"
+                (function object object sb-alien:c-string
+                          sb-alien:unsigned-long))
+              (objc-class "NSView") "LuiDrawingView" 0)
+             "view class"))
+      (let ((registered nil)
+            (bool-signature (if (member :arm64 *features*) "B@:" "c@:")))
+        (unwind-protect
+             (progn
+               (install-method class "isFlipped" 'flipped bool-signature)
+               (install-method class "acceptsFirstResponder" 'flipped
+                               bool-signature)
+               (install-method class "drawRect:" 'draw-view
+                               "v@:{CGRect={CGPoint=dd}{CGSize=dd}}")
+               (sb-alien:alien-funcall
+                (sb-alien:extern-alien "objc_registerClassPair"
+                  (function sb-alien:void object))
+                class)
+               (setf registered t))
+          (unless registered
             (sb-alien:alien-funcall
-             (sb-alien:extern-alien "objc_allocateClassPair"
-               (function object object sb-alien:c-string
-                         sb-alien:unsigned-long))
-             (objc-class "NSView") "LuiDrawingView" 0))
-      (install-method class "isFlipped" 'flipped "c@:")
-      (install-method class "acceptsFirstResponder" 'flipped "c@:")
-      (install-method class "drawRect:" 'draw-view
-                  "v@:{CGRect={CGPoint=dd}{CGSize=dd}}")
-      (sb-alien:alien-funcall
-       (sb-alien:extern-alien "objc_registerClassPair"
-         (function sb-alien:void object))
-       class))
+             (sb-alien:extern-alien "objc_disposeClassPair"
+               (function sb-alien:void object))
+             class)))))
     class))
 
+(fn cocoa-key-input ((code integer) (flags integer) (characters string))
+  (let* ((command (logtest flags #x100000))
+         (shift (logtest flags #x20000))
+         (key (cdr (assoc code
+                          '((123 . :left) (124 . :right)
+                            (125 . :down) (126 . :up)
+                            (115 . :home) (119 . :end)
+                            (51 . :backspace) (117 . :delete))))))
+    (cond ((and command (= code 0))
+           (make-event :kind :key :key :select-all))
+          (command nil)
+          ((= code 48) (make-event :kind :tab))
+          ((member code '(36 76)) (make-event :kind :activate))
+          (key (make-event :kind :key
+                           :key (if shift
+                                    (case key
+                                      (:left :shift-left)
+                                      (:right :shift-right)
+                                      (otherwise key))
+                                    key)))
+          ((and (plusp (length characters))
+                (every (lambda (char) (>= (char-code char) 32)) characters))
+           (make-event :kind :text :value characters)))))
+
+(fn input-for-window-p ((type integer) window target)
+  (and (member type '(1 2 5 6 10 22))
+       (not (null-object-p target))
+       (same-object-p window target)))
+
 (fn cocoa-event (event view)
-  (let* ((type (message sb-alien:unsigned-long event "type"))
-         (location (message point event "locationInWindow"))
-         (local (message point view "convertPoint:fromView:"
-                         point location object (sb-sys:int-sap 0)))
-         (x (sb-alien:slot local 'x))
-         (y (sb-alien:slot local 'y)))
-    (case type
-      ((1 2 5 6)
-       (make-event :kind (case type (1 :press) (2 :release)
-                                   (otherwise :move))
-                   :x x :y y))
-      (22
-       (make-event :kind :scroll :x x :y y
-                   :value (- (message sb-alien:double event
-                                      "scrollingDeltaY"))))
-      (10
-       (let* ((code (message sb-alien:unsigned-short event "keyCode"))
-              (flags (message sb-alien:unsigned-long event "modifierFlags"))
-              (key (cdr (assoc code
-                               '((123 . :left) (124 . :right)
-                                 (125 . :down) (126 . :up)
-                                 (115 . :home) (119 . :end)
-                                 (51 . :backspace) (117 . :delete)))))
-              (characters (message object event "characters")))
-         (cond ((= code 48) (make-event :kind :tab))
-               ((= code 36) (make-event :kind :activate))
-               ((and (= code 0) (logtest flags #x100000))
-                (make-event :kind :key :key :select-all))
-               (key (make-event :kind :key :key key))
-               ((not (logtest flags #x100000))
-                (make-event :kind :text
-                            :value (message sb-alien:c-string characters
-                                            "UTF8String"))))))
-      (otherwise nil))))
+  (let ((type (message sb-alien:unsigned-long event "type"))
+        (window (message object view "window")))
+    ;; NSApplication's queue also contains menu, application, and other-window
+    ;; events. Query location/characters only for events belonging to this view.
+    (unless (input-for-window-p type (message object event "window") window)
+      (return-from cocoa-event nil))
+    (when (= type 10)
+      (let ((characters (message object event "characters")))
+        (return-from cocoa-event
+          (cocoa-key-input
+           (message sb-alien:unsigned-short event "keyCode")
+           (message sb-alien:unsigned-long event "modifierFlags")
+           (if (null-object-p characters) ""
+               (or (message utf8-string characters "UTF8String") ""))))))
+    (let* ((location (message point event "locationInWindow"))
+           (local (message point view "convertPoint:fromView:"
+                           point location object (sb-sys:int-sap 0)))
+           (x (sb-alien:slot local 'x))
+           (y (sb-alien:slot local 'y)))
+      (if (= type 22)
+          (make-event :kind :scroll :x x :y y
+                      :value (- (message sb-alien:double event
+                                         "scrollingDeltaY")))
+          (make-event :kind (case type (1 :press) (2 :release)
+                                  (otherwise :move))
+                      :x x :y y)))))
+
+(fn poll-cocoa-events (application view)
+  (let ((events nil))
+    (loop :for event :=
+          (message object application
+                   "nextEventMatchingMask:untilDate:inMode:dequeue:"
+                   sb-alien:unsigned-long #xffffffffffffffff
+                   object (message object (objc-class "NSDate") "distantPast")
+                   object
+                   (sb-alien:extern-alien "NSDefaultRunLoopMode" object)
+                   objc-bool 1)
+          :until (null-object-p event)
+          :do (let ((input (cocoa-event event view)))
+                (when input (push input events))
+                ;; Preserve unhandled application shortcuts and native chrome.
+                (unless (and input
+                             (= 10 (message sb-alien:unsigned-long
+                                            event "type")))
+                  (message sb-alien:void application "sendEvent:"
+                           object event))))
+    (nreverse events)))
 
 (fn run-cocoa ((draw function) &key title width height (interactive t))
   (unless (member :darwin *features*)
     (error "The Cocoa backend requires macOS and SBCL."))
   (unless (sb-thread:main-thread-p)
     (error "Run Cocoa on the main thread."))
-  (sb-alien:load-shared-object
-   "/System/Library/Frameworks/AppKit.framework/AppKit")
-  (let* ((pool (message object
-                        (message object (objc-class "NSAutoreleasePool")
-                                 "alloc")
-                        "init"))
-         (application (message object (objc-class "NSApplication")
-                               "sharedApplication"))
-         (font (open-font))
-         (renderer (make-renderer :font font :polygons #'cocoa-polygons
-                                  :clip #'cocoa-clip))
-         (context (make-context
-                   :measure (lambda (widget width)
-                              (measure-widget renderer widget width))))
-         (*app* (make-cocoa-app :renderer renderer :context context))
-         (*unit* 8))
-    (unwind-protect
-         (progn
-           (message sb-alien:char application "setActivationPolicy:"
-                    sb-alien:long 0)
-           (with-rect (frame 0 0 (or width 720) (or height 520))
-             (setf (cocoa-app-window *app*)
-                   (message object
-                            (message object (objc-class "NSWindow") "alloc")
-                            "initWithContentRect:styleMask:backing:defer:"
-                            rect frame sb-alien:unsigned-long 15
-                            sb-alien:unsigned-long 2 sb-alien:char 0)
-                   (cocoa-app-view *app*)
-                   (message object (message object (view-class) "alloc")
-                            "initWithFrame:" rect frame))
-             ;; Native AppKit backdrop material; no desktop capture or pixels.
-             (let ((backdrop
-                     (message object
-                              (message object
-                                       (objc-class "NSVisualEffectView")
-                                       "alloc")
-                              "initWithFrame:" rect frame)))
-               (message sb-alien:void backdrop "setMaterial:"
-                        sb-alien:long 13)
-               (message sb-alien:void backdrop "setBlendingMode:"
-                        sb-alien:long 0)
-               (message sb-alien:void backdrop "setState:"
-                        sb-alien:long 1)
-               (message sb-alien:void (cocoa-app-view *app*)
-                        "setAutoresizingMask:" sb-alien:unsigned-long 18)
-               (message sb-alien:void backdrop "addSubview:"
-                        object (cocoa-app-view *app*))
+  (with-cocoa-float-mode
+    (sb-alien:load-shared-object
+     "/System/Library/Frameworks/AppKit.framework/AppKit")
+    (let* ((pool (message object
+                          (message object (objc-class "NSAutoreleasePool")
+                                   "alloc")
+                          "init"))
+           (application nil)
+           (font nil)
+           (renderer nil)
+           (context nil)
+           (*app* (make-cocoa-app))
+           (*unit* 8))
+      (unwind-protect
+           (progn
+             (setf application (message object (objc-class "NSApplication")
+                                        "sharedApplication")
+                   font (open-font)
+                   renderer (make-renderer :font font
+                                           :polygons #'cocoa-polygons
+                                           :clip #'cocoa-clip)
+                   context (make-context
+                            :measure
+                            (lambda (widget width)
+                              (measure-widget renderer widget width)))
+                   (cocoa-app-renderer *app*) renderer
+                   (cocoa-app-context *app*) context)
+             (message objc-bool application "setActivationPolicy:"
+                      sb-alien:long 0)
+             (with-rect (frame 0 0 (or width 720) (or height 520))
+               (setf (cocoa-app-window *app*)
+                     (require-object
+                      (message object
+                               (message object (objc-class "NSWindow")
+                                        "alloc")
+                               "initWithContentRect:styleMask:backing:defer:"
+                               rect frame sb-alien:unsigned-long 15
+                               sb-alien:unsigned-long 2 objc-bool 0)
+                      "window"))
+               ;; CLOSE must never release our owning reference, including when
+               ;; later view initialization fails and cleanup closes the window.
                (message sb-alien:void (cocoa-app-window *app*)
-                        "setContentView:" object backdrop)
-               (message sb-alien:void backdrop "release")))
-           (let ((window (cocoa-app-window *app*)))
-             (message sb-alien:void window "setReleasedWhenClosed:"
-                      sb-alien:char 0)
-             (message sb-alien:void window "setTitle:"
-                      object (ns-string title))
-             (message sb-alien:void window "setAcceptsMouseMovedEvents:"
-                      sb-alien:char 1)
-             (message sb-alien:void window "center")
-             (message sb-alien:void window "makeKeyAndOrderFront:"
-                      object (sb-sys:int-sap 0))
-             (message sb-alien:char window "makeFirstResponder:"
-                      object (cocoa-app-view *app*)))
-           (message sb-alien:void application "finishLaunching")
-           (message sb-alien:void application "activateIgnoringOtherApps:"
-                    sb-alien:char 1)
-           (loop :while
-                 (plusp (message sb-alien:char
-                                 (cocoa-app-window *app*) "isVisible"))
-                 :do
-                 (let ((events nil)
-                       (view (cocoa-app-view *app*))
-                       (frame-pool
-                         (message object
-                                  (message object
-                                           (objc-class "NSAutoreleasePool")
-                                           "alloc")
-                                  "init")))
-                   (unwind-protect
-                        (progn
-                          (loop :for event :=
-                                (message object application
-                                         "nextEventMatchingMask:untilDate:inMode:dequeue:"
-                                         sb-alien:unsigned-long
-                                         #xffffffffffffffff
-                                         object
-                                         (message object (objc-class "NSDate")
-                                                  "distantPast")
-                                         object (ns-string "kCFRunLoopDefaultMode")
-                                         sb-alien:char 1)
-                                :until (zerop (sb-sys:sap-int event))
-                                :do
-                                (let ((input (cocoa-event event view)))
-                                  (when input (push input events))
-                                  (unless (= 10 (message sb-alien:unsigned-long
-                                                         event "type"))
-                                    (message sb-alien:void application
-                                             "sendEvent:" object event))))
-                          (let* ((bounds (message rect view "bounds"))
-                                 (size (sb-alien:slot bounds 'size)))
-                            (with-frame
-                                (context (sb-alien:slot size 'width)
-                                 (sb-alien:slot size 'height)
-                                 :events (nreverse events))
-                              (funcall draw)))
-                          (message sb-alien:void view "setNeedsDisplay:"
-                                   sb-alien:char 1)
-                          (message sb-alien:void view "displayIfNeeded")
-                          (when (cocoa-app-error *app*)
-                            (error (cocoa-app-error *app*))))
-                     (message sb-alien:void frame-pool "drain")))
-                 :unless interactive :do (return context)
-                 :do (sleep 0.016)))
-      (when (cocoa-app-window *app*)
-        (message sb-alien:void (cocoa-app-window *app*) "close")
-        (message sb-alien:void (cocoa-app-window *app*) "release"))
-      (when (cocoa-app-view *app*)
-        (message sb-alien:void (cocoa-app-view *app*) "release"))
-      (close-font font)
-      (message sb-alien:void pool "drain"))))
+                        "setReleasedWhenClosed:" objc-bool 0)
+               (setf (cocoa-app-view *app*)
+                     (require-object
+                      (message object (message object (view-class) "alloc")
+                               "initWithFrame:" rect frame)
+                      "drawing view"))
+               ;; Native AppKit backdrop material; no desktop capture or pixels.
+               (let ((backdrop
+                      (require-object
+                       (message object
+                                (message object
+                                         (objc-class "NSVisualEffectView")
+                                         "alloc")
+                                "initWithFrame:" rect frame)
+                       "backdrop view")))
+                 (unwind-protect
+                      (progn
+                        (message sb-alien:void backdrop "setMaterial:"
+                                 sb-alien:long 13)
+                        (message sb-alien:void backdrop "setBlendingMode:"
+                                 sb-alien:long 0)
+                        (message sb-alien:void backdrop "setState:"
+                                 sb-alien:long 1)
+                        (message sb-alien:void (cocoa-app-view *app*)
+                                 "setAutoresizingMask:"
+                                 sb-alien:unsigned-long 18)
+                        (message sb-alien:void backdrop "addSubview:"
+                                 object (cocoa-app-view *app*))
+                        (message sb-alien:void (cocoa-app-window *app*)
+                                 "setContentView:" object backdrop))
+                   (message sb-alien:void backdrop "release"))))
+             (let ((window (cocoa-app-window *app*)))
+               (message sb-alien:void window "setTitle:"
+                        object (ns-string title))
+               (message sb-alien:void window "setAcceptsMouseMovedEvents:"
+                        objc-bool 1)
+               (message sb-alien:void window "center")
+               (message sb-alien:void window "makeKeyAndOrderFront:"
+                        object (sb-sys:int-sap 0))
+               (message objc-bool window "makeFirstResponder:"
+                        object (cocoa-app-view *app*)))
+             (message sb-alien:void application "finishLaunching")
+             (message sb-alien:void application "activateIgnoringOtherApps:"
+                      objc-bool 1)
+             (loop :while (not (zerop
+                                (message objc-bool (cocoa-app-window *app*)
+                                         "isVisible")))
+                   :do
+                   (let* ((view (cocoa-app-view *app*))
+                          (frame-pool
+                           (message object
+                                    (message object
+                                             (objc-class "NSAutoreleasePool")
+                                             "alloc")
+                                    "init")))
+                     (unwind-protect
+                          (let ((events (poll-cocoa-events application view)))
+                            (when (zerop (message objc-bool
+                                                  (cocoa-app-window *app*)
+                                                  "isVisible"))
+                              (return context))
+                            (let* ((bounds (message rect view "bounds"))
+                                   (size (sb-alien:slot bounds 'size)))
+                              (with-frame
+                                  (context (sb-alien:slot size 'width)
+                                           (sb-alien:slot size 'height)
+                                           :events events)
+                                (funcall draw)))
+                            (message sb-alien:void application
+                                     "updateWindows")
+                            (message sb-alien:void view "setNeedsDisplay:"
+                                     objc-bool 1)
+                            (message sb-alien:void view "displayIfNeeded")
+                            (when (cocoa-app-error *app*)
+                              (error (cocoa-app-error *app*))))
+                       (message sb-alien:void frame-pool "drain")))
+                   :unless interactive :do (return context)
+                   :do (sleep 0.016)))
+        (when (cocoa-app-window *app*)
+          (message sb-alien:void (cocoa-app-window *app*) "close")
+          (message sb-alien:void (cocoa-app-window *app*) "release"))
+        (when (cocoa-app-view *app*)
+          (message sb-alien:void (cocoa-app-view *app*) "release"))
+        (when font (close-font font))
+        (message sb-alien:void pool "drain")))))
 
 #+darwin
 (register-backend :cocoa #'run-cocoa)
