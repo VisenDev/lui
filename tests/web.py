@@ -383,6 +383,44 @@ class WebTests(unittest.TestCase):
         self.lisp('(lui.web:unmount *web-test-app*)')
 
 
+    def test_filtered_rows_restore_native_tab_order(self):
+        self.lisp('''
+          (defvar *order-show* t)
+          (defvar *order-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *order-host* "id") #j"order-host"
+                (jscl/ffi:oget *order-host* "style" "width") #j"500px"
+                (jscl/ffi:oget *order-host* "style" "height") #j"200px")
+          (#j:document:body:appendChild *order-host*)
+          (defvar *order-app*
+            (lui.web:mount *order-host*
+              (lambda ()
+                (lui.frame:column ()
+                  (when *order-show* (lui.glass:button :one "Row one"))
+                  (lui.glass:button :two "Row two")
+                  (when *order-show* (lui.glass:button :three "Row three"))
+                  (lui.glass:text-field :tail "Retained"))))))
+        ''')
+        host = self.page.locator("#order-host")
+        tail = host.get_by_role("textbox")
+        expect(tail).to_be_visible()
+        tail.focus()
+        tail.evaluate("n => n.setSelectionRange(1,4)")
+        self.lisp('(setf *order-show* nil) (lui.web:refresh *order-app*)')
+        expect(host.get_by_role("button")).to_have_count(1)
+        self.lisp('(setf *order-show* t) (lui.web:refresh *order-app*)')
+        expect(host.get_by_role("button")).to_have_count(3)
+        expect(tail).to_be_focused()
+        self.assertEqual(tail.evaluate("n => [n.selectionStart,n.selectionEnd]"), [1,4])
+        tail.press("Shift+Tab")
+        expect(host.get_by_role("button", name="Row three")).to_be_focused()
+        self.page.keyboard.press("Shift+Tab")
+        expect(host.get_by_role("button", name="Row two")).to_be_focused()
+        self.page.keyboard.press("Shift+Tab")
+        expect(host.get_by_role("button", name="Row one")).to_be_focused()
+        self.page.keyboard.press("Tab")
+        expect(host.get_by_role("button", name="Row two")).to_be_focused()
+        self.lisp('(lui.web:unmount *order-app*)')
+
     def test_rejected_native_changes_restore_model(self):
         self.lisp('''
           (defvar *reject-host* (#j:document:createElement #j"section"))

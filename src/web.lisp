@@ -9,6 +9,7 @@
   measure-node
   style-node
   (tab-focus-p nil :type boolean)
+  (order-dirty-p t :type boolean)
   callback
   context
   (nodes (make-hash-table :test 'equal) :type hash-table)
@@ -303,6 +304,7 @@
                   (declare (ignore event))
                   (setf (context-focus (web-app-context app)) id)))
         ((jscl/ffi:oget (web-app-host app) "appendChild") dom)
+        (setf (web-app-order-dirty-p app) t)
         (setf entry (cons kind dom) (gethash key (web-app-nodes app))
               entry)))
     (cdr entry)))
@@ -520,6 +522,33 @@
                (web-app-tablists app))
       (dolist (key removed) (remhash key (web-app-tablists app))))))
 
+(fn reconcile-dom-order ((app web-app))
+  (when (web-app-order-dirty-p app)
+    (setf (web-app-order-dirty-p app) nil)
+    (let ((nodes nil) (index 0) (seen (make-hash-table :test 'eq))
+          (host (web-app-host app))
+          (active #j:document:activeElement)
+          (reference #j:null))
+      (walk-elements
+       (context-root (web-app-context app))
+       (lambda (node)
+         (when (widget-p (element-content node))
+           (let* ((key (or (element-id node)
+                           (list :anonymous (incf index))))
+                  (dom (cdr (gethash key (web-app-nodes app)))))
+             (incf index)
+             (when dom (push dom nodes))))))
+      (dolist (dom nodes)
+        (let* ((owner (jscl/ffi:oget dom "parentNode"))
+               (child (if (eq owner host) dom owner)))
+          (unless (gethash child seen)
+            (setf (gethash child seen) t)
+            (unless (eq (jscl/ffi:oget child "nextSibling") reference)
+              ((jscl/ffi:oget host "insertBefore") child reference))
+            (setf reference child))))
+      (unless (eq active #j:document:activeElement)
+        ((jscl/ffi:oget active "focus"))))))
+
 (fn draw-frame ((app web-app))
   (let* ((host (web-app-host app))
          (context (web-app-context app))
@@ -558,9 +587,11 @@
        (lambda (key entry)
          (unless (gethash key seen)
            (remove-node app (cdr entry))
+           (setf (web-app-order-dirty-p app) t)
            (push key removed)))
        (web-app-nodes app))
-      (dolist (key removed) (remhash key (web-app-nodes app))))))
+      (dolist (key removed) (remhash key (web-app-nodes app))))
+    (reconcile-dom-order app)))
 
 (fn refresh ((app web-app))
   (when (and (web-app-alive-p app) (not (web-app-pending-p app)))
