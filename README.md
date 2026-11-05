@@ -162,8 +162,12 @@ Additional checks:
   offscreen EGL/OpenGL smoke test. Ensure `build/` exists.
 - With a Wayland compositor, load `lui/wayland`, the shared demo, and
   `tests/wayland.lisp` to exercise multiple frames and native pointer callbacks.
-- `tests/cocoa.lisp` is a macOS SBCL runtime smoke test; load it after
-  `lui/cocoa` and the shared demo. It has not been executed on macOS here.
+- After loading `lui/cocoa`, load `tests/cocoa.lisp` for portable SBCL ABI,
+  UTF-8, event-routing, callback-safety, and floating-point-boundary checks.
+  On macOS it additionally runs AppKit selector and shared-demo smoke tests;
+  that branch has not been executed here. Cocoa masks floating-point traps
+  during native initialization, event processing, cleanup, and callbacks,
+  then restores the caller's complete floating-point settings on exit.
 
 | Area | Verified evidence |
 | --- | --- |
@@ -174,7 +178,7 @@ Additional checks:
 | EGL/OpenGL | Offscreen shared-demo rendering, glass shader, pixel readback, and GL error checks |
 | Wayland | Shared-demo compositor smoke test spanning 11 frames |
 | Win32 | Windows SBCL under Wine: outline holes, alpha, clipping, input, resizing, and filtered blur |
-| Cocoa | Compile checks only; no macOS runtime evidence |
+| Cocoa | Source/test compilation and seven ABI/callback/input/FP test groups passed on Linux SBCL; AppKit runtime unverified |
 
 The portable core and CFFI backends target Common Lisp implementations generally;
 Cocoa deliberately uses SBCL. The verified combinations above are narrower than
