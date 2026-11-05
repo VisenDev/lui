@@ -25,11 +25,17 @@
     (origin point)
     (size size)))
 
+(defvar *selectors* nil)
+
 (fn selector ((name string))
-  (sb-alien:alien-funcall
-   (sb-alien:extern-alien "sel_registerName"
-     (function object sb-alien:c-string))
-   name))
+  (or (and *selectors* (gethash name *selectors*))
+      (let ((value
+              (sb-alien:alien-funcall
+               (sb-alien:extern-alien "sel_registerName"
+                 (function object sb-alien:c-string))
+               name)))
+        (when *selectors* (setf (gethash name *selectors*) value))
+        value)))
 
 (fn objc-class ((name string))
   (sb-alien:alien-funcall
@@ -80,6 +86,7 @@
 
 (defstruct cocoa-app
   window view renderer context error
+  (text-paths (make-hash-table :test 'equal) :type hash-table)
   (pointer-x -1 :type real) (pointer-y -1 :type real))
 (defvar *app* nil)
 
@@ -112,7 +119,7 @@
       (message sb-alien:void path "closePath"))
     path))
 
-(fn cocoa-polygons ((contours list) (color string) (alpha real))
+(fn cocoa-color ((color string) (alpha real))
   (destructuring-bind (red green blue opacity)
       (color-components color alpha)
     (let ((native-color
@@ -122,8 +129,49 @@
                     sb-alien:double (float green 1.0d0)
                     sb-alien:double (float blue 1.0d0)
                     sb-alien:double (float opacity 1.0d0))))
-      (message sb-alien:void native-color "setFill")
-      (message sb-alien:void (make-path contours) "fill"))))
+      (message sb-alien:void native-color "setFill"))))
+
+(fn cocoa-polygons ((contours list) (color string) (alpha real))
+  (cocoa-color color alpha)
+  (message sb-alien:void (make-path contours) "fill"))
+
+(fn clear-text-paths ()
+  (maphash (lambda (key path)
+             (declare (ignore key))
+             (message sb-alien:void path "release"))
+           (cocoa-app-text-paths *app*))
+  (clrhash (cocoa-app-text-paths *app*)))
+
+(fn cocoa-text ((font font) (text string) (x real) (y real) (color string))
+  (let* ((cache (cocoa-app-text-paths *app*))
+         (key (list font (font-size font) text))
+         (path (gethash key cache))
+         (graphics (objc-class "NSGraphicsContext")))
+    (unless path
+      (when (>= (hash-table-count cache) 256) (clear-text-paths))
+      (let ((contours nil))
+        ;; Reuse the font parser, kerning and geometry of the common renderer.
+        (paint-text
+         (make-renderer :font font
+                       :polygons (lambda (paths ink alpha)
+                                   (declare (ignore ink alpha))
+                                   (setf contours (nconc contours paths))))
+         text 0 0 color)
+        (setf path (message object (make-path contours) "retain")
+              (gethash (list font (font-size font) (copy-seq text)) cache)
+              path)))
+    (message sb-alien:void graphics "saveGraphicsState")
+    (unwind-protect
+         (let ((transform
+                 (message object (objc-class "NSAffineTransform")
+                          "transform")))
+           (message sb-alien:void transform "translateXBy:yBy:"
+                    sb-alien:double (float x 1d0)
+                    sb-alien:double (float y 1d0))
+           (message sb-alien:void transform "concat")
+           (cocoa-color color 1)
+           (message sb-alien:void path "fill"))
+      (message sb-alien:void graphics "restoreGraphicsState"))))
 
 (fn cocoa-clip ((box box))
   (let ((graphics (objc-class "NSGraphicsContext")))
@@ -432,6 +480,10 @@
              (message sb-alien:void placeholder "release")))
       (message sb-alien:void pool "drain"))))
 
+(fn frame-delay ((started real) (now real)
+                 &optional ((ticks real) internal-time-units-per-second))
+  (max 0 (- (/ 1d0 60) (/ (- now started) ticks))))
+
 (fn run-cocoa-window ((draw function) &key title width height (interactive t))
   (with-cocoa-float-mode
     (let* ((pool (message object
@@ -451,6 +503,7 @@
                    font (open-font)
                    renderer (make-renderer :font font
                                            :polygons #'cocoa-polygons
+                                           :text #'cocoa-text
                                            :clip #'cocoa-clip)
                    context (make-context :copy #'copy-text
                             :measure
@@ -521,6 +574,7 @@
              (loop :while (not (zerop
                                 (message objc-bool (cocoa-app-window *app*)
                                          "isVisible")))
+                   :for started := (get-internal-real-time)
                    :do
                    (let* ((view (cocoa-app-view *app*))
                           (frame-pool
@@ -553,12 +607,16 @@
                               (error (cocoa-app-error *app*))))
                        (message sb-alien:void frame-pool "drain")))
                    :unless interactive :do (return context)
-                   :do (sleep 0.016)))
+                   :do (let ((remaining
+                               (frame-delay
+                                started (get-internal-real-time))))
+                         (when (plusp remaining) (sleep remaining)))))
         (when (cocoa-app-window *app*)
           (message sb-alien:void (cocoa-app-window *app*) "close")
           (message sb-alien:void (cocoa-app-window *app*) "release"))
         (when (cocoa-app-view *app*)
           (message sb-alien:void (cocoa-app-view *app*) "release"))
+        (clear-text-paths)
         (when font (close-font font))
         (message sb-alien:void pool "drain")))))
 
@@ -570,8 +628,9 @@
   (with-cocoa-float-mode
     (sb-alien:load-shared-object
      "/System/Library/Frameworks/AppKit.framework/AppKit")
-    (call-with-stacktrace-guard
-     (lambda () (apply #'run-cocoa-window draw options)))))
+    (let ((*selectors* (make-hash-table :test 'equal)))
+      (call-with-stacktrace-guard
+       (lambda () (apply #'run-cocoa-window draw options))))))
 
 #+darwin
 (register-backend :cocoa #'run-cocoa)

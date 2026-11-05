@@ -402,8 +402,15 @@ cc's RGFW test runner. It substitutes one diagnostic entry only when
 restores the original method when the runner exits. Menu-bar auto-hide can stay
 enabled; LUI does not change system preferences. Floating-point traps are also
 masked at Cocoa boundaries. Run `make test-macos` to verify the native runtime;
-the log includes macOS and Lisp versions. The guard still needs confirmation
-on the affected macOS machine.
+the log includes macOS and Lisp versions. The affected machine's user confirmed
+that the demo now runs with auto-hide enabled (November 5, 2026); no new log was
+provided. The initial reported speed was about 20 FPS.
+
+Cocoa now retains a bounded cache of text paths, reusing their parsed font
+geometry across frames, positions, and colors. Frame pacing sleeps only for the
+unused part of a 60 Hz frame. The performance change requires a fresh Mac
+measurement; run `make benchmark PLATFORM=cocoa BENCH_FRAMES=720 WARMUP=144`.
+This writes timing results to `build/logs/` without manually capturing output.
 
 An earlier `Component "zpb-ttf" not found` error means the font dependency is not
 installed or visible to ASDF; install/register it before building. A compiled
