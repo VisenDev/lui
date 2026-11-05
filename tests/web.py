@@ -160,7 +160,11 @@ class WebTests(unittest.TestCase):
         name.press("Shift+Tab")
         expect(self.page.get_by_role("tab", name="Controls", exact=True)).to_be_focused()
         self.page.keyboard.press("Shift+Tab")
+        expect(self.page.get_by_role("button", name="Debug", exact=True)).to_be_focused()
+        self.page.keyboard.press("Shift+Tab")
         expect(self.page.get_by_role("button", name="Glass", exact=True)).to_be_focused()
+        self.page.keyboard.press("Tab")
+        expect(self.page.get_by_role("button", name="Debug", exact=True)).to_be_focused()
         self.page.keyboard.press("Tab")
         expect(self.page.get_by_role("tab", name="Controls", exact=True)).to_be_focused()
         self.page.keyboard.press("Tab")
@@ -392,6 +396,134 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.number('*web-test-draws*'), draws)
         self.lisp('(lui.web:unmount *web-test-app*)')
 
+
+    def test_debugger_tree_select_collapse_highlight_and_close(self):
+        page = self.page
+        page.get_by_role("button", name="Debug", exact=True).click()
+        expect(page.get_by_text("Layout inspector", exact=True).filter(visible=True)).to_be_visible()
+        options = page.get_by_role("option")
+        expect(options.first).to_be_visible()
+        self.assertGreater(options.count(), 1)
+        options.first.hover()
+        expect(page.locator(".lui-highlight")).to_have_count(1)
+        expect(page.locator(".lui-highlight")).to_have_css("pointer-events", "none")
+        options.first.click()
+        expect(options.first).to_have_attribute("aria-selected", "true")
+        expect(page.get_by_text("Bounds:", exact=False).filter(visible=True)).to_be_visible()
+        expect(page.get_by_role("option", name="Layout inspector", exact=True)).to_have_count(0)
+        page.get_by_role("button", name="-", exact=True).first.click()
+        expect(options).to_have_count(1)
+        page.get_by_role("button", name="+", exact=True).click()
+        self.page.wait_for_function("document.querySelectorAll('[role=option]').length > 1")
+        page.get_by_role("tab", name="Controls", exact=True).focus()
+        page.keyboard.press("ArrowRight")
+        expect(page.get_by_role("tab", name="Editing", exact=True)).to_have_attribute("aria-selected", "true")
+        expect(page.get_by_text("Layout inspector", exact=True).filter(visible=True)).to_be_visible()
+        page.get_by_role("button", name="Close", exact=True).click()
+        expect(page.get_by_text("Layout inspector", exact=True).filter(visible=True)).to_have_count(0)
+        expect(page.locator(".lui-highlight")).to_have_count(0)
+        page.get_by_role("tab", name="Controls", exact=True).click()
+        page.get_by_role("button", name="Say hello", exact=True).click()
+        expect(page.get_by_text("Hello Common Lisp (1)", exact=True).filter(visible=True)).to_be_visible()
+
+    def test_debugger_narrow_style_close_and_disclosures(self):
+        page = self.page
+        page.set_viewport_size({"width": 320, "height": 480})
+        previous = None
+        for toolkit in ("Glass", "Motif", "Garnet"):
+            if previous:
+                page.get_by_role("button", name=previous, exact=True).click()
+                expect(page.get_by_role("button", name=toolkit, exact=True)).to_be_visible()
+            page.get_by_role("button", name="Debug", exact=True).click()
+            close = page.get_by_role("button", name="Close", exact=True)
+            expect(close).to_be_visible()
+            box = close.bounding_box()
+            self.assertGreaterEqual(box["x"], 0)
+            self.assertGreaterEqual(box["y"], 0)
+            self.assertLessEqual(box["x"] + box["width"], 320)
+            self.assertLessEqual(box["y"] + box["height"], 480)
+            minus = page.get_by_role("button", name="-", exact=True).first
+            label_inside = """node => {
+                const range = document.createRange();
+                range.selectNodeContents(node);
+                const text = range.getBoundingClientRect();
+                const box = node.getBoundingClientRect();
+                return text.left >= box.left && text.right <= box.right;
+            }"""
+            self.assertTrue(minus.evaluate(label_inside))
+            minus.click()
+            expect(page.get_by_role("option")).to_have_count(1)
+            plus = page.get_by_role("button", name="+", exact=True)
+            expect(plus).to_be_visible()
+            self.assertGreaterEqual(plus.bounding_box()["width"], 32)
+            self.assertTrue(plus.evaluate(label_inside))
+            plus.click()
+            close.click()
+            expect(page.get_by_role("option")).to_have_count(0)
+            previous = toolkit
+
+    def test_highlight_overlay_preserves_pointer_and_text_selection(self):
+        self.lisp('''
+          (defvar *highlight-style* :glass)
+          (defvar *highlight-opacity* 0.18)
+          (defvar *highlight-clicks* 0)
+          (defvar *highlight-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *highlight-host* "id") #j"highlight-host"
+                (jscl/ffi:oget *highlight-host* "style" "width") #j"500px"
+                (jscl/ffi:oget *highlight-host* "style" "height") #j"150px")
+          (#j:document:body:appendChild *highlight-host*)
+          (defvar *highlight-app*
+            (lui.web:mount *highlight-host*
+              (lambda ()
+                (lui.frame:column (:gap 8)
+                  (when (lui.glass:button :underlay "Under the overlay")
+                    (incf *highlight-clicks*))
+                  (lui.glass:label "Selectable beneath highlight")
+                  (lui.frame:emit
+                    (lui.layout:make-element :id :highlight
+                      :floating-p t :interactive-p nil
+                      :width (lui.layout:fixed 500)
+                      :height (lui.layout:fixed 150)
+                      :content (lui.widgets:make-widget :kind :highlight
+                        :style *highlight-style* :background "#ffb347"
+                        :accent "#ff8c00" :opacity *highlight-opacity*))))))))
+        ''')
+        host = self.page.locator("#highlight-host")
+        overlay = host.locator(".lui-highlight")
+        button = host.get_by_role("button", name="Under the overlay")
+        expect(overlay).to_have_attribute("aria-hidden", "true")
+        self.assertIsNone(overlay.get_attribute("tabindex"))
+        for toolkit in ("glass", "motif", "garnet"):
+            self.lisp(f'''(setf *highlight-style* :{toolkit})
+                (lui.web:refresh *highlight-app*)''')
+            expect(overlay).to_have_attribute("data-lui-style", toolkit)
+            expect(overlay).to_have_css("pointer-events", "none")
+            expect(overlay).to_have_css("border-top-width", "1px")
+            expect(overlay).to_have_css("border-top-color", "rgb(255, 140, 0)")
+            expect(overlay).to_have_css("border-radius", "0px")
+            expect(overlay).to_have_css("box-shadow", "none")
+            expect(overlay).to_have_css("background-image", "none")
+            button.click()
+        self.page.wait_for_function("jscl.evaluateString('*highlight-clicks*') === 3")
+        button.focus()
+        overlay.evaluate("node => node.focus()")
+        expect(button).to_be_focused()
+        label = host.get_by_text("Selectable beneath highlight", exact=True).filter(visible=True)
+        label.scroll_into_view_if_needed()
+        box = label.bounding_box()
+        self.page.mouse.move(box["x"] + 1, box["y"] + box["height"] / 2)
+        self.page.mouse.down()
+        self.page.mouse.move(box["x"] + box["width"] - 1,
+                             box["y"] + box["height"] / 2, steps=8)
+        self.page.mouse.up()
+        self.assertIn("Selectable beneath", self.page.evaluate("getSelection().toString()"))
+        self.lisp('''(setf *highlight-opacity* 0)
+          (lui.web:refresh *highlight-app*)''')
+        self.page.wait_for_function("""() => getComputedStyle(document.querySelector(
+            '#highlight-host .lui-highlight')).backgroundColor.endsWith('/ 0)')""")
+        expect(overlay).to_have_css("border-top-color", "rgb(255, 140, 0)")
+        self.lisp('(lui.web:unmount *highlight-app*)')
+        expect(host.locator(".lui-highlight")).to_have_count(0)
 
     def test_crud_options_selection_keyboard_and_fields(self):
         self.page.get_by_role("tab", name="7GUIs", exact=True).click()

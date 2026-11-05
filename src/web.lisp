@@ -418,10 +418,11 @@
                        (reset-native-edit control)
                        (control-change app control kind id)))))
           (otherwise nil))
-        (listen app control "focus"
-                (lambda (event)
-                  (declare (ignore event))
-                  (setf (context-focus (web-app-context app)) id)))
+        (unless (eq kind :highlight)
+          (listen app control "focus"
+                  (lambda (event)
+                    (declare (ignore event))
+                    (setf (context-focus (web-app-context app)) id))))
         ((jscl/ffi:oget (web-app-host app) "appendChild") dom)
         (setf (web-app-order-dirty-p app) t)
         (setf entry (cons kind dom) (gethash key (web-app-nodes app))
@@ -522,6 +523,20 @@
                          (- (+ (box-y box) (box-height box))
                             (+ (box-y clip) (box-height clip)))))
                    (px (- (box-x clip) (box-x box)))))
+    (when (eq kind :highlight)
+      (attribute dom "class" "lui-highlight")
+      (attribute dom "aria-hidden" "true")
+      (style dom "pointer-events" "none")
+      (style dom "user-select" "none")
+      (style dom "padding" "0")
+      (style dom "border-radius" "0")
+      (style dom "border"
+             (concatenate 'string "1px solid " (widget-accent widget)))
+      (style dom "background"
+             (format nil "color-mix(in srgb, ~A ~D%, transparent)"
+                     (widget-background widget)
+                     (round (* 100 (widget-opacity widget)))))
+      (return-from update-node dom))
     (unless (member kind '(:text-field :slider :checkbox :canvas :gauge))
       (node-text dom (widget-text widget)))
     (unless (eq kind :label)
