@@ -260,13 +260,31 @@ make benchmark PLATFORM=web BENCH_FRAMES=240 WARMUP=30
 The matched profiled Wayland runs show about a 21× throughput improvement;
 the unprofiled result confirms the post-optimization timing. Wayland includes
 compositor pacing, while offscreen GL has no screen presentation limit.
-These numbers do not rank the backends against one another. The previous
-Chromium 60 FPS figure measured idle animation callbacks and has been withdrawn;
-the browser benchmark now measures active application redraws.
+These numbers do not rank the backends against one another.
+
+Browser timings measure completed application redraws plus a browser layout
+flush, excluding GPU rasterization. The original idle-callback measurement is
+not used. At 900×700, the same Glass gallery changed as follows (10 baseline
+samples and 24 updated samples per page):
+
+| Browser page | Before mean | After mean | After 95th percentile |
+| --- | ---: | ---: | ---: |
+| Controls | 79.180 ms | 4.679 ms | 6.000 ms |
+| Scroll, 60 rows | 280.950 ms | 10.558 ms | 11.200 ms |
+
+The 240-frame run across both toolkits and all five pages completed at
+59.65–60.45 FPS, with means of 3.97–10.56 ms. The benchmark also verifies that
+wheel input over a row moves the content. Improvements come from cached text
+measurements and unchanged DOM styles, lazy terminal strings, and direct layout
+traversal. JSCL's generated generic slot checks are omitted for trusted internal
+structures; native Lisp type declarations remain intact. Direct child traversal
+also avoids JSCL's exception-based jumps in general LOOP expansions.
 
 Recorded local evidence is in generated logs under `build/`:
 `profile-wayland-before.log`, `profile-wayland-after.log`,
-`benchmark-wayland-after.log` and `benchmark-gl-after.log`. Logs include the workload and timing settings;
+`benchmark-wayland-after.log`, `benchmark-gl-after.log`,
+`web-raw-before.log`, and `web-final-benchmark.log`. Logs include the workload
+and timing settings;
 new `make benchmark` runs also record the current cloc source report.
 
 ## Frame contract
