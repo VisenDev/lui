@@ -176,7 +176,8 @@
                       :selected-p (eq *page* (first page)))
           (setf *page* (first page)))))
     (panel (:id (list :body *page*) :width (grow) :height (grow)
-            :scroll-p (not (eq *page* :scroll)) :padding (units 1) :gap (units 1))
+            :scroll-p (not (eq *page* :scroll))
+            :padding (units 1) :gap (units 1))
       (case *page*
         (:controls (controls-page))
         (:editing (editing-page))

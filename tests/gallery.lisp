@@ -9,6 +9,7 @@
         (lui.example::*name* "Persistent value")
         (lui.example::*page* :controls)
         (lui.example::*preview* "Ocean")
+        (lui.example::*preview-color* "#335d91")
         (lui.example::*preview-count* 0)
         (lui.example::*toolkit* :glass))
     (flet ((frame (&optional events)
@@ -62,7 +63,8 @@
                                  :x (+ 1 (box-x box)) :y (box-y box)
                                  :value 6)))
         (assert (plusp (element-scroll-y
-                        (gethash :results (lui.frame::context-ids context))))))
+                        (gethash :results
+                                 (lui.frame::context-ids context))))))
       (setf lui.example::*page* :controls)
       (frame)
       (assert (equal lui.example::*name* "Persistent value"))

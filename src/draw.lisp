@@ -212,7 +212,8 @@
                             :height (line-height font))
                            0 (widget-accent widget) 0.35f0))))
               (paint-text renderer line x (+ top (baseline font))
-                          (widget-foreground widget))
+                          (if (widget-disabled-p widget) "#777777"
+                              (widget-foreground widget)))
               (when (and cursor (<= start cursor end))
                 (shape renderer
                        (make-box :x (+ x (text-width
@@ -282,11 +283,12 @@
                          :width (max 0 (- (box-width box) 16)) :height 4)))
             (shape renderer track 2 "#777777" 1)
             (setf (box-width track) (* fraction (box-width track)))
-            (shape renderer track 2 (widget-accent widget) 1)
+            (shape renderer track 2
+                   (if disabled "#999999" (widget-accent widget)) 1)
             (shape renderer
                    (make-box :x (+ (box-x track) (box-width track) -7)
                              :y (- (box-y track) 5) :width 14 :height 14)
-                   (if glass 7 0) "#ffffff" 1)))
+                   (if glass 7 0) (if disabled "#a0a0a0" "#ffffff") 1)))
          (:checkbox
           (let ((indicator (make-box :x x :y y :width 16 :height 16)))
             (shape renderer indicator (if glass 4 0)
