@@ -637,6 +637,25 @@
       (assert (member '("3" "#202430") texts :test #'equal))
       (assert (find "#e7effa" paths :key #'second :test #'equal)))))
 
+(defun test-debug-highlight (font)
+  (dolist (style '(:glass :motif :garnet))
+    (let* ((paints nil)
+           (renderer (make-renderer
+                      :font font :clip (constantly nil)
+                      :polygons (lambda (paths color alpha)
+                                  (declare (ignore paths))
+                                  (push (list color alpha) paints))))
+           (context (make-context)))
+      (with-frame (context 80 40)
+        (emit (make-element
+               :width (fixed 40) :height (fixed 20)
+               :content (make-widget :kind :highlight :style style
+                                     :accent "#ff8c00" :opacity 0.18))))
+      (paint-frame renderer context)
+      (assert (find '("#ff8c00" 0.18) paints :test #'equal))
+      (assert (find '("#ff8c00" 1) paints :test #'equal))
+      (assert (null (lui.frame::hit context 5 5))))))
+
 (defun run-tests ()
   (let ((font (open-font)))
     (unwind-protect
@@ -655,7 +674,8 @@
            (test-selection-regressions font)
            (test-long-selection-index font)
            (test-selection-clipping font)
-           (test-flat-cells font))
+           (test-flat-cells font)
+           (test-debug-highlight font))
       (close-font font)))
   (format t "Native geometry, fonts, wrapping, focus, selection, and caret passed.~%")
   t)

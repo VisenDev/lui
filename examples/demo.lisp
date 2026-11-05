@@ -1,8 +1,10 @@
 (defpackage #:lui.example
-  (:use #:cl #:lui #:lui.layout #:lui.frame)
+  (:use #:cl #:lui #:lui.layout #:lui.frame #:lui.debug)
+  (:shadow #:draw)
   (:export #:main #:draw #:widget #:panel))
 (in-package #:lui.example)
 
+(defvar *debug-state* (make-state))
 (defvar *page* :controls)
 (defvar *toolkit* :glass)
 (defparameter *toolkits* '(:glass :motif :garnet))
@@ -202,11 +204,7 @@
     (and package
          (funcall (symbol-function (find-symbol "MODAL-P" package))))))
 
-(defun draw ()
-  (update-fps)
-  (when (and (not (modal-p)) (activated-p :toolkit))
-    (setf *toolkit* (or (second (member *toolkit* *toolkits*))
-                        (first *toolkits*))))
+(defun draw-gallery ()
   (panel (:id :window :width (grow) :height (grow)
           :background (ecase *toolkit*
                         (:glass "#202430") (:motif "#b8b8b8")
@@ -218,7 +216,11 @@
       (widget :button :toolkit
               (ecase *toolkit*
                 (:glass "Glass") (:motif "Motif") (:garnet "Garnet"))
-              :disabled-p (modal-p)))
+              :disabled-p (modal-p))
+      (when (widget :button :debugger-toggle "Debug" :disabled-p (modal-p))
+        (setf (state-open-p *debug-state*)
+              (not (state-open-p *debug-state*)))
+        (request-frame)))
     (widget :label (if (= *unit* 1) "Terminal: event-driven rendering"
                        (format nil "~,1F FPS · ~,2F ms/frame"
                                *fps* *frame-ms*)))
@@ -240,6 +242,13 @@
         (:seven
          (funcall (symbol-function
                    (find-symbol "DRAW-CONTENT" "LUI.EXAMPLE.SEVEN"))))))))
+
+(defun draw ()
+  (update-fps)
+  (when (and (not (modal-p)) (activated-p :toolkit))
+    (setf *toolkit* (or (second (member *toolkit* *toolkits*))
+                        (first *toolkits*))))
+  (lui.debug:draw #'draw-gallery :state *debug-state* :toolkit *toolkit*))
 
 (defun main ()
   (run #'draw :title "LUI feature gallery"))

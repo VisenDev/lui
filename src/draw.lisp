@@ -430,6 +430,10 @@
     (cond
       ((widget-painter widget)
        (funcall (widget-painter widget) renderer node))
+      ((eq kind :highlight)
+       (shape renderer box 0 (widget-accent widget)
+              (widget-opacity widget))
+       (outline renderer box 0 (widget-accent widget) 1 1))
       ((eq kind :cell)
        (shape renderer box 0
               (if (widget-value widget) "#e7effa"

@@ -234,7 +234,8 @@
              (box (element-box node))
              (clip (element-clip node)))
          (when (widget-p widget)
-           (let* ((label-p (eq (widget-kind widget) :label))
+           (let* ((highlight-p (eq (widget-kind widget) :highlight))
+                  (label-p (eq (widget-kind widget) :label))
                   (left (max 0 (cell-edge (box-x clip))))
                   (top (max 0 (cell-edge (box-y clip))))
                   (background (when (and (member (widget-kind widget)
@@ -251,9 +252,10 @@
                   (bottom (cell-edge (+ (box-y box) (box-height box)
                                         (- padding))))
                   (w (max 0 (- right x)))
-                  (text (if (eq (widget-kind widget) :slider)
-                            (slider-line widget w)
-                            (widget-terminal-text widget))))
+                  (text (cond (highlight-p "")
+                              ((eq (widget-kind widget) :slider)
+                               (slider-line widget w))
+                              (t (widget-terminal-text widget)))))
              ;; Parent borders remain intact even with zero child padding.
              (loop :for row :from (max 0 (cell-edge (box-y clip)))
                    :below (min height (cell-edge (+ (box-y clip)
@@ -262,9 +264,19 @@
                              :from (max 0 (cell-edge (box-x clip)))
                              :below (min width (cell-edge (+ (box-x clip)
                                                            (box-width clip))))
-                             :unless (or label-p (aref borders row column))
-                               :do (setf (aref cells row column) " "
-                                         (aref colors row column) style)))
+                             :do (cond
+                                   (highlight-p
+                                    (when (or (plusp (widget-opacity widget))
+                                              (= row y) (= row (1- bottom))
+                                              (= column x)
+                                              (= column (1- right)))
+                                      (setf (aref colors row column)
+                                            (list "#000000"
+                                                  (widget-accent widget) t))))
+                                   ((not (or label-p
+                                             (aref borders row column)))
+                                    (setf (aref cells row column) " "
+                                          (aref colors row column) style)))))
              (when (eq (widget-kind widget) :panel)
                (paint-panel cells colors borders style node widget))
              (when (eq (widget-kind widget) :canvas)

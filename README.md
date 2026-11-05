@@ -259,6 +259,17 @@ physical glass model.
 
 ## Local performance evidence
 
+A November 5 full run covered all 36 collection/page/task combinations with
+720 measured frames and 144 warmup frames per backend. Core layout/terminal
+rendering averaged 0.266 ms; offscreen GL with `glFinish` averaged 2.569 ms
+(389 FPS); the paced Wayland window averaged 6.029 ms (166 FPS, p95 5.946 ms).
+The browser averaged 9.452 ms of Lisp/DOM/layout work. Most browser cases reached
+60 active FPS, but Cells reached 30–33 FPS and Glass Styles reached 43 FPS.
+Browser per-case p95 values are reported; no pooled browser p95 was measured.
+Cells click-to-visible latency improved from about 725 ms cold / 670–692 ms warm
+to 152 ms cold / 112–125 ms warm. Native and browser timing paths measure
+different work and should not be compared as equivalent FPS scores.
+
 Short isolated Wayland runs used a 170 Hz monitor at 150% scale and a requested
 720×520 window. Offscreen GL used 720×520; headless Chromium used a 900×700
 viewport. These are machine-specific results, not performance guarantees.
@@ -306,6 +317,29 @@ Recorded local evidence is in generated logs under `build/`:
 `web-raw-before.log`, and `web-final-benchmark.log`. Logs include the workload
 and timing settings;
 new `make benchmark` runs also record the current cloc source report.
+
+## Layout debugger
+
+The gallery's **Debug** button opens a Clay-style inspector in the current
+widget collection. Expand or collapse the element tree, hover a row to highlight
+its bounds and clipping rectangle, and select it for sizing, alignment, spacing,
+scrolling, and widget details. Tree rows are virtualized. The highlight preserves
+pointer input and terminal text; the inspector is excluded from its own tree.
+
+Applications can opt in without changing their drawing code:
+
+```lisp
+(asdf:load-system "lui/debug")
+(let ((debug (lui.debug:make-state :open-p t)))
+  (lui:run (lui.debug:wrap #'draw :state debug :toolkit :glass)))
+```
+
+The inspector reads the previous completed frame. Stable IDs preserve selection;
+anonymous elements use paths below the closest ID, so reordered identical
+anonymous siblings have positional identity. Removed selections are cleared.
+Clipping/offscreen badges describe geometry, not errors. Duplicate IDs still
+raise the core layout error and cannot be inspected as a completed frame.
+Closing the inspector stops tree collection and formatting.
 
 ## Frame contract
 

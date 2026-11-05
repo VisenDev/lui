@@ -264,7 +264,7 @@
                  (assert (equal (rect-values bounds)
                                 '(1.25d0 2.5d0 30d0 40d0))))))
         (lui.cocoa::message sb-alien:void pool "drain"))))
-  (load "examples/demo.lisp")
+  (asdf:load-system "lui/demo")
   (let ((frames 0))
     (let ((context
            (run (lambda ()
