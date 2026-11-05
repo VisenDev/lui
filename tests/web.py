@@ -142,6 +142,16 @@ class WebTests(unittest.TestCase):
             "nodes => nodes.every(n => getComputedStyle(n).borderTopLeftRadius === '0px')"))
         self.page.get_by_role("tab", name="Editing", exact=True).click()
         expect(self.page.get_by_role("textbox")).to_have_value("Persistent editor")
+        self.page.get_by_role("button", name="Motif", exact=True).click()
+        expect(self.page.get_by_role("button", name="Garnet", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("textbox")).to_have_value("Persistent editor")
+        self.assertEqual(self.page.locator("main").evaluate(
+            "n => getComputedStyle(n).backgroundColor"), "rgb(255, 255, 255)")
+        self.assertTrue(self.page.locator("main button").evaluate_all(
+            "nodes => nodes.every(n => n.dataset.luiStyle === 'garnet' && getComputedStyle(n).fontWeight === '700')"))
+        self.page.get_by_role("button", name="Garnet", exact=True).click()
+        expect(self.page.get_by_role("button", name="Glass", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("textbox")).to_have_value("Persistent editor")
         expect(self.page.locator("canvas")).to_have_count(0)
 
     def test_native_shift_tab_order_and_stable_label_measurement(self):
@@ -382,6 +392,88 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.number('*web-test-draws*'), draws)
         self.lisp('(lui.web:unmount *web-test-app*)')
 
+
+    def test_garnet_monochrome_controls_and_stipple(self):
+        self.lisp('''
+          (defvar *garnet-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *garnet-host* "id") #j"garnet-host"
+                (jscl/ffi:oget *garnet-host* "style" "width") #j"550px"
+                (jscl/ffi:oget *garnet-host* "style" "height") #j"300px")
+          (#j:document:body:appendChild *garnet-host*)
+          (defvar *garnet-app*
+            (lui.web:mount *garnet-host*
+              (lambda ()
+                (flet ((g (kind id text &rest options)
+                         (apply #'lui.widgets:declare-widget
+                           kind :garnet id text
+                           (append options '(:foreground "#000000"
+                             :background "#ffffff" :accent "#000000"
+                             :opacity 1 :radius 0 :frost 0
+                             :font-family :monospace :font-weight :bold)))))
+                  (lui.frame:column (:gap 8)
+                    (g :button :push "Garnet button")
+                    (g :checkbox :accept "Accept" :value t)
+                    (g :slider :level "Level" :value 0.5)
+                    (g :text-field :input "Input" :value "Type here")
+                    (g :tab :tab "Selected" :value t)))))))
+        ''')
+        host = self.page.locator("#garnet-host")
+        button = host.get_by_role("button", name="Garnet button")
+        expect(button).to_be_visible()
+        expect(button).to_have_css("font-weight", "700")
+        expect(button).to_have_css("border-radius", "0px")
+        self.assertIn("repeating-conic-gradient", button.evaluate(
+            "n => getComputedStyle(n).backgroundImage"))
+        self.assertIn("4px 4px", button.evaluate(
+            "n => getComputedStyle(n).boxShadow"))
+        button.hover()
+        self.page.mouse.down()
+        self.page.wait_for_function("""() => getComputedStyle(
+          document.querySelector('#garnet-host button')).transform ===
+          'matrix(1, 0, 0, 1, 4, 4)'""")
+        self.page.mouse.up()
+        check = host.get_by_role("checkbox", name="Accept")
+        expect(check).to_be_checked()
+        expect(check).to_have_css("width", "20px")
+        expect(check).to_have_css("appearance", "none")
+        expect(check.locator("..")).to_have_css("flex-direction", "row-reverse")
+        self.assertIn("linear-gradient", check.evaluate(
+            "n => getComputedStyle(n,'::after').backgroundImage"))
+        expect(host.get_by_role("tab", name="Selected")).to_have_css(
+            "background-color", "rgb(0, 0, 0)")
+        expect(host.get_by_role("textbox")).to_have_css(
+            "border-top-width", "1px")
+        self.lisp('(lui.web:unmount *garnet-app*)')
+
+    def test_widget_fonts_affect_measurement_and_refresh(self):
+        self.lisp('''
+          (defvar *font-family* :sans-serif)
+          (defvar *font-weight* :normal)
+          (defvar *font-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *font-host* "id") #j"font-host"
+                (jscl/ffi:oget *font-host* "style" "width") #j"500px"
+                (jscl/ffi:oget *font-host* "style" "height") #j"100px")
+          (#j:document:body:appendChild *font-host*)
+          (defvar *font-app*
+            (lui.web:mount *font-host*
+              (lambda ()
+                (lui.widgets:declare-widget :label :glass :font "iiiiiiii"
+                  :font-family *font-family* :font-weight *font-weight*)))))
+        ''')
+        label = self.page.locator("#font-host > div")
+        expect(label).to_have_text("iiiiiiii")
+        original_width = label.bounding_box()["width"]
+        self.lisp('''(setf *font-family* :monospace *font-weight* :bold)
+          (lui.web:refresh *font-app*)''')
+        expect(label).to_have_css("font-weight", "700")
+        self.assertIn("DejaVu Sans Mono", label.evaluate(
+            "n => getComputedStyle(n).fontFamily"))
+        self.assertGreater(label.bounding_box()["width"], original_width * 1.5)
+        self.lisp('''(setf *font-family* :sans-serif *font-weight* :normal)
+          (lui.web:refresh *font-app*)''')
+        expect(label).to_have_css("font-weight", "400")
+        self.assertEqual(label.bounding_box()["width"], original_width)
+        self.lisp('(lui.web:unmount *font-app*)')
 
     def test_filtered_rows_restore_native_tab_order(self):
         self.lisp('''

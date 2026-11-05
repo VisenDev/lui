@@ -9,10 +9,13 @@ import statistics
 from web import WebTests
 from playwright.sync_api import expect
 
+toolkits = tuple(os.environ.get("BENCH_TOOLKITS", "Glass,Motif,Garnet").split(","))
+pages = ("Controls", "Editing", "Layout", "Scroll", "Styles")
+case_count = len(toolkits) * len(pages)
 frames = int(os.environ.get("BENCH_FRAMES", "240"))
 warmup = int(os.environ.get("WARMUP", "30"))
-if frames < 10 or warmup < 0:
-    raise ValueError("BENCH_FRAMES must be >=10 and WARMUP >=0")
+if frames < case_count or warmup < 0:
+    raise ValueError(f"BENCH_FRAMES must be >={case_count} and WARMUP >=0")
 
 RAW_PROFILE = r"""({count, warmup}) => new Promise(resolve => {
     const original = jscl.evaluateString("(symbol-function 'lui.web::draw-frame)");
@@ -121,18 +124,22 @@ try:
           "Raw timing: only draw entry/exit and one browser layout flush")
     print("toolkit page frames draw_mean_ms flush_mean_ms work_mean_ms "
           "work_p50_ms work_p95_ms work_max_ms active_fps scroll_delta_px")
+    current_toolkit = "Glass"
     for case, (toolkit, name) in enumerate(
-        (toolkit, name) for toolkit in ("Glass", "Motif")
-        for name in ("Controls", "Editing", "Layout", "Scroll", "Styles")
+        (toolkit, name) for toolkit in toolkits for name in pages
     ):
-        if case == 5:
-            page.get_by_role("button", name="Glass", exact=True).click()
+        while current_toolkit != toolkit:
+            page.get_by_role("button", name=current_toolkit, exact=True).click()
+            current_toolkit = {"Glass": "Motif", "Motif": "Garnet",
+                               "Garnet": "Glass"}[current_toolkit]
+            expect(page.get_by_role("button", name=current_toolkit,
+                                    exact=True)).to_be_visible()
         tab = page.get_by_role("tab", name=name, exact=True)
         tab.click()
         expect(tab).to_have_attribute("aria-selected", "true")
         samples = page.evaluate(PROFILE if detail else RAW_PROFILE, {
-            "count": frames // 10 + (case < frames % 10),
-            "warmup": warmup // 10 + (case < warmup % 10),
+            "count": frames // case_count + (case < frames % case_count),
+            "warmup": warmup // case_count + (case < warmup % case_count),
         })
         work = sorted(sample["work_ms"] for sample in samples)
         active_fps = (1000 * (len(samples) - 1) /
