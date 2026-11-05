@@ -28,7 +28,7 @@ SUFFIX := $(if $(filter win32,$(PLATFORM)),.exe,)
 DEMO := build/bin/demo-$(PLATFORM)$(SUFFIX)
 
 .PHONY: help check-platform build demo test test-platform \
-	test-core test-native test-executables web-build web-demo loc benchmark benchmark-platform
+	test-core test-native test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform
 help:
 	@echo 'make demo                 Build and run the tabbed demo executable'
 	@echo 'make build                Save the demo executable in build/bin/'
@@ -36,6 +36,7 @@ help:
 	@echo 'make benchmark            Measure throughput and frame times'
 	@echo 'make loc                  Report source line counts with cloc'
 	@echo 'make web-demo             Build and serve the browser demo at /'
+	@echo 'make terminal-demo        Build and run the terminal demo'
 	@echo 'make web-build            Build the JSCL browser demo'
 	@echo 'PLATFORM=terminal|x11|wayland|win32|cocoa|web (auto-detected by default)'
 	@echo 'Test-only platforms: core native gl. Options: SBCL, SBCL_FLAGS, JSCL, PYTHON'
@@ -56,6 +57,9 @@ endif
 $(DEMO): $(SOURCES) examples/demo.lisp | check-platform
 	@mkdir -p build/bin
 	LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build.lisp
+
+terminal-demo:
+	$(MAKE) --no-print-directory demo PLATFORM=terminal
 
 web-build:
 	@mkdir -p build

@@ -1,6 +1,6 @@
 The protocol metadata in src/wayland-protocol.lisp is derived from the
 system wayland-protocols xdg-shell.xml, xdg-decoration-unstable-v1.xml,
-viewporter.xml, and fractional-scale-v1.xml:
+viewporter.xml, fractional-scale-v1.xml, and cursor-shape-v1.xml:
 
 Copyright © 2008-2013 Kristian Høgsberg
     Copyright © 2013      Rafael Antognolli
@@ -11,6 +11,8 @@ Copyright © 2008-2013 Kristian Høgsberg
     Copyright © 2018 Simon Ser
     Copyright © 2013-2016 Collabora, Ltd.
     Copyright © 2022 Kenny Levinsen
+    Copyright 2018 The Chromium Authors
+    Copyright 2023 Simon Ser
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),

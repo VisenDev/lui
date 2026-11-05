@@ -268,6 +268,37 @@
       (paint)
       (assert (member '("#ff5500" 1 2) calls :test #'equal)))))
 
+(defun test-motif-states (font)
+  (let* ((calls nil)
+         (renderer
+           (make-renderer
+            :font font
+            :clip (lambda (box) (declare (ignore box)))
+            :polygons (lambda (contours color alpha)
+                        (push (list contours color alpha) calls))))
+         (context (make-context
+                   :measure (lambda (widget width)
+                              (measure-widget renderer widget width)))))
+    (with-frame (context 240 120)
+      (lui.motif:button :disabled "Disabled" :disabled-p t))
+    (paint-frame renderer context)
+    (assert (find "#777777" calls :key #'second :test #'equal))
+    (assert (find "#989898" calls :key #'second :test #'equal))
+    (with-frame (context 240 120)
+      (lui.motif:checkbox :toggle nil "Enabled"))
+    (setf (context-hover context) :toggle calls nil)
+    (paint-frame renderer context)
+    (assert (find-if (lambda (call)
+                       (and (equal "#ffffff" (second call))
+                            (= 0.14f0 (third call)))) calls))
+    (let ((unchecked (length calls)))
+      (setf (widget-value
+             (element-content
+              (aref (element-children (context-root context)) 0))) t
+            calls nil)
+      (paint-frame renderer context)
+      (assert (= (1+ unchecked) (length calls))))))
+
 (defun run-tests ()
   (let ((font (open-font)))
     (unwind-protect
@@ -278,7 +309,8 @@
            (test-measurement font)
            (test-edit-painting font)
            (test-panel-painting font)
-           (test-button-feedback font))
+           (test-button-feedback font)
+           (test-motif-states font))
       (close-font font)))
   (format t "Native geometry, fonts, wrapping, focus, selection, and caret passed.~%")
   t)

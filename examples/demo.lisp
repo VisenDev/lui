@@ -17,6 +17,9 @@
 (defvar *opacity* 0.6)
 (defvar *frost* 12)
 (defvar *radius* 12)
+(defvar *preview* "Ocean")
+(defvar *preview-color* "#335d91")
+(defvar *preview-count* 0)
 (defvar *fps* 0.0)
 (defvar *frame-ms* 0.0)
 (defvar *frame-count* 0)
@@ -134,20 +137,36 @@
           :do (panel (:width (grow) :padding (units 2) :gap (units 1)
                       :background color :opacity *opacity*
                       :frost *frost* :radius *radius*)
-                (widget :label title)
-                (widget :button (list :sample title) "Preview"
-                        :background color :opacity *opacity*
-                        :frost *frost* :radius *radius*))))
-  (widget :label "The collection selector changes every widget on the page."))
+                (widget :label title :foreground "#ffffff")
+                (when (widget :button (list :sample title) "Preview"
+                              :background color :foreground "#ffffff"
+                              :opacity *opacity* :frost *frost*
+                              :radius *radius*)
+                  (setf *preview* title *preview-color* color)))))
+  (panel (:width (grow) :padding (units 1) :gap (units 1)
+          :background *preview-color* :opacity *opacity*
+          :frost *frost* :radius *radius*)
+    (widget :label (format nil "Preview: ~A" *preview*)
+            :foreground "#ffffff")
+    (when (widget :button :preview-action "Try this style"
+                  :background *preview-color* :foreground "#ffffff"
+                  :opacity *opacity* :radius *radius* :frost *frost*)
+      (incf *preview-count*))
+    (widget :label (format nil "Activated ~D times" *preview-count*)
+            :foreground "#ffffff")))
 
 (defun draw ()
   (update-fps)
-  (column (:width (grow) :height (grow) :padding (units 1) :gap (units 1))
+  (when (activated-p :toolkit)
+    (setf *toolkit* (if (eq *toolkit* :glass) :motif :glass)))
+  (panel (:id :window :width (grow) :height (grow)
+          :background (if (eq *toolkit* :glass) "#202430" "#b8b8b8")
+          :opacity 1 :radius 0 :frost 0
+          :padding (units 1) :gap (units 1))
     (row (:width (grow) :gap (units 1) :cross-align :center)
       (widget :label "LUI feature gallery" :width (grow))
-      (when (widget :button :toolkit
-                    (if (eq *toolkit* :glass) "Glass" "Motif"))
-        (setf *toolkit* (if (eq *toolkit* :glass) :motif :glass))))
+      (widget :button :toolkit
+              (if (eq *toolkit* :glass) "Glass" "Motif")))
     (widget :label (if (= *unit* 1) "Terminal: event-driven rendering"
                        (format nil "~,1F FPS · ~,2F ms/frame"
                                *fps* *frame-ms*)))
@@ -157,7 +176,7 @@
                       :selected-p (eq *page* (first page)))
           (setf *page* (first page)))))
     (panel (:id (list :body *page*) :width (grow) :height (grow)
-            :scroll-p t :padding (units 1) :gap (units 1))
+            :scroll-p (not (eq *page* :scroll)) :padding (units 1) :gap (units 1))
       (case *page*
         (:controls (controls-page))
         (:editing (editing-page))

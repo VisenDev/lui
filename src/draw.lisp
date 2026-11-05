@@ -152,7 +152,8 @@
                                            (max 0 (- radius thickness)))))
            color alpha))
 
-(fn motif-bevel ((renderer renderer) (box box))
+(fn motif-bevel ((renderer renderer) (box box)
+                 &optional pressed disabled)
   (let* ((x (box-x box))
          (y (box-y box))
          (right (+ x (box-width box)))
@@ -164,13 +165,15 @@
                          (cons (+ x edge) (+ y edge))
                          (cons (+ x edge) (- bottom edge))
                          (cons x bottom)))
-             "#ffffff" 0.8f0)
+             (cond (disabled "#d0d0d0") (pressed "#505050")
+                   (t "#ffffff")) 1)
     (funcall (renderer-polygons renderer)
              (list (list (cons x bottom) (cons right bottom)
                          (cons right y) (cons (- right edge) (+ y edge))
                          (cons (- right edge) (- bottom edge))
                          (cons (+ x edge) (- bottom edge))))
-             "#505050" 1)))
+             (cond (disabled "#989898") (pressed "#ffffff")
+                   (t "#505050")) 1)))
 
 (fn (focused-p boolean) ((node element))
   (and (element-interactive-p node)
@@ -224,6 +227,11 @@
          (box (element-box node))
          (kind (widget-kind widget))
          (glass (eq (widget-style widget) :glass))
+         (disabled (widget-disabled-p widget))
+         (pressed (and (not disabled) (hovered-p (element-id node))
+                       (equal (element-id node)
+                              (context-active *context*))))
+         (foreground (if disabled "#777777" (widget-foreground widget)))
          (radius (if glass (widget-radius widget) 0))
          (font (renderer-font renderer))
          (inset (if (eq kind :label) 0 12))
@@ -236,15 +244,18 @@
        (funcall (widget-painter widget) renderer node))
       (t
        (unless (eq kind :label)
-         (when (and glass (renderer-glass renderer))
+         (when (and glass (< (widget-opacity widget) 1)
+                    (renderer-glass renderer))
            (funcall (renderer-glass renderer)
                     box radius (widget-frost widget)))
          (shape renderer box radius (widget-background widget)
                 (if glass (widget-opacity widget) 1))
          (if glass
-             (outline renderer box radius "#ffffff" 0.4f0 1)
-             (motif-bevel renderer box)))
-       (when (and (member kind '(:button :tab))
+             (outline renderer box radius "#ffffff"
+                      (if disabled 0.15f0 0.4f0) 1)
+             (unless (eq kind :checkbox)
+               (motif-bevel renderer box pressed disabled))))
+       (when (and (member kind '(:button :tab :checkbox))
                   (not (widget-disabled-p widget)))
          (cond
            ((and (hovered-p (element-id node))
@@ -277,21 +288,31 @@
                              :y (- (box-y track) 5) :width 14 :height 14)
                    (if glass 7 0) "#ffffff" 1)))
          (:checkbox
-          (shape renderer (make-box :x x :y y :width 16 :height 16)
-                 (if glass 4 0)
-                 (if (widget-value widget)
-                     (widget-accent widget)
-                     "#777777")
-                 1)
-          (when (widget-value widget)
-            (paint-text renderer "x" (+ x 3) (+ y 13) "#ffffff"))
+          (let ((indicator (make-box :x x :y y :width 16 :height 16)))
+            (shape renderer indicator (if glass 4 0)
+                   (if glass
+                       (if (widget-value widget)
+                           (widget-accent widget) "#777777")
+                       (widget-background widget))
+                   1)
+            (unless glass
+              (motif-bevel renderer indicator
+                           (or pressed (widget-value widget)) disabled))
+            (when (widget-value widget)
+              (funcall
+               (renderer-polygons renderer)
+               (list (mapcar (lambda (point)
+                               (cons (+ x (car point)) (+ y (cdr point))))
+                             '((3 . 7) (6 . 10) (12 . 3) (14 . 5)
+                               (6 . 13) (2 . 9))))
+               (if glass "#ffffff" foreground) 1)))
           (loop :for line :in (wrap-text
                               font (widget-text widget)
                               (max 0 (- (box-width box) 48)))
                 :for baseline :from (+ y (baseline font))
                   :by (line-height font)
                 :do (paint-text renderer line (+ x 24) baseline
-                                (widget-foreground widget))))
+                                foreground)))
          (:text-field
           (paint-text-field renderer node x y
                             (max 0 (- (box-width box) (* 2 inset)))))
@@ -302,7 +323,7 @@
                 :for baseline :from (+ y (baseline font))
                   :by (line-height font)
                 :do (paint-text renderer line x baseline
-                                (widget-foreground widget)))))))
+                                foreground))))))
     (when (and (focused-p node) (context-focus-visible-p *context*))
       (outline renderer (inset-box box 2) (max 0 (- radius 2))
                (widget-accent widget) 1 2))))

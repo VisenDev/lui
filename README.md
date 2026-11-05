@@ -32,7 +32,9 @@ widgets also support a custom painter callback.
 
 There is one [demo gallery](examples/demo.lisp), with Controls, Editing, Layout,
 Scroll, and Styles pages. Its Glass/Motif selector changes the collection for
-the whole gallery, so each page uses one toolkit consistently. The gallery also
+the whole gallery, so each page uses one toolkit consistently. Style Preview
+buttons select an interactive sample. Motif uses an opaque matching background,
+beveled checkboxes, and visually distinct disabled buttons. The gallery also
 displays FPS and average frame time on graphical backends; these include backend
 pacing. The terminal labels its event-driven rendering instead.
 
@@ -46,6 +48,7 @@ the test/benchmark targets. Run from the repository directory:
 ```sh
 make build                   # Save the native demo executable
 make demo                    # Build and run the same executable
+make terminal-demo           # Build and run in the terminal
 make demo RUN_ARGS=--smoke-test
 make test                    # Platform checks, executable smoke test, and log
 make loc                     # cloc src, by file
@@ -87,7 +90,8 @@ include per-toolkit/page FPS, mean, median, 95th-percentile, and maximum frame
 time, plus timer/settings information.
 
 Windowed native results include event-loop, window-system, and presentation
-pacing; browser results measure paced requestAnimationFrame intervals. The
+pacing; browser results actively redraw the application and measure completed
+frames plus application/layout/DOM work, rather than idle animation ticks. The
 `core`/`terminal` benchmark measures layout and terminal string rendering; `gl`
 measures an offscreen pipeline with `glFinish`. These paths should not be
 compared as equivalent screen FPS. Compare logged platform/settings and matching
@@ -198,8 +202,9 @@ lines where supported; there is no command-history model. Browsers retain native
 DOM inputs and composition behavior. Modifier reporting differs between terminal
 emulators, so Ctrl-Shift-A requires a distinguishable terminal key sequence.
 
-For a real POSIX terminal, load `lui/terminal` and select `:terminal`. Tab changes
-focus; Enter activates; Space activates buttons/tabs or toggles checkboxes.
+Run `make terminal-demo` for a real POSIX terminal, or load `lui/terminal` and
+select `:terminal`. Tab and Shift-Tab move focus forward and backward. Enter and
+Space activate buttons/tabs or toggle checkboxes; Space inserts text in editors.
 Arrows adjust sliders, navigate tabs, or move the text cursor. SGR mouse clicks,
 dragging, wheel scrolling, and terminal resizing are supported. Ctrl-Q or Ctrl-C
 exits; Ctrl-D deletes text. Terminal attributes, mouse modes, cursor visibility,
@@ -251,18 +256,17 @@ make benchmark PLATFORM=web BENCH_FRAMES=240 WARMUP=30
 | Wayland after optimization, unprofiled | 170.22 | 5.875 ms | 5.978 ms |
 | Wayland after optimization, profiled | 170.19 | 5.876 ms | 5.970 ms |
 | Offscreen GL after optimization, `glFinish` | 397.94 | 2.513 ms | 6.510 ms |
-| Headless Chromium, per toolkit/page | 60.00–60.02 | 16.662–16.667 ms | 16.7–16.8 ms |
 
 The matched profiled Wayland runs show about a 21× throughput improvement;
 the unprofiled result confirms the post-optimization timing. Wayland includes
-compositor pacing. Chromium's requestAnimationFrame intervals are paced at
-60 Hz in this setup, while offscreen GL has no screen presentation limit.
-These numbers do not rank the backends against one another.
+compositor pacing, while offscreen GL has no screen presentation limit.
+These numbers do not rank the backends against one another. The previous
+Chromium 60 FPS figure measured idle animation callbacks and has been withdrawn;
+the browser benchmark now measures active application redraws.
 
 Recorded local evidence is in generated logs under `build/`:
 `profile-wayland-before.log`, `profile-wayland-after.log`,
-`benchmark-wayland-after.log`, `benchmark-gl-after.log`, and
-`benchmark-web-baseline.log`. Logs include the workload and timing settings;
+`benchmark-wayland-after.log` and `benchmark-gl-after.log`. Logs include the workload and timing settings;
 new `make benchmark` runs also record the current cloc source report.
 
 ## Frame contract
