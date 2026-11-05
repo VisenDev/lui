@@ -132,6 +132,14 @@ def script(error=False):
          (format t "~&@@NAME=~D,~D~%"
                  (1+ (floor (lui.layout:box-x box)))
                  (1+ (floor (lui.layout:box-y box))))))
+     (when (member (lui.layout:element-id node)
+                   '((:page :controls) (:page :editing) (:page :layout))
+                   :test #'equal)
+       (let ((box (lui.layout:element-box node)))
+         (format t "~&@@TAB-~A=~D,~D~%"
+                 (second (lui.layout:element-id node))
+                 (1+ (lui.terminal:cell-edge (lui.layout:box-x box)))
+                 (1+ (lui.terminal:cell-edge (lui.layout:box-y box))))))
      (when (eq (lui.layout:element-id node) :reset)
        (let ((box (lui.layout:element-box node)))
          (format t "~&@@RESET=~D,~D~%"
@@ -210,7 +218,8 @@ class Terminal:
         self.pump()
         assert self.process.returncode == 0, self.output.decode("utf-8", "replace")
         assert termios.tcgetattr(self.slave) == self.before, "termios not restored"
-        for sequence in (b"\x1b[?1049l", b"\x1b[?25h", b"\x1b[?1006l"):
+        for sequence in (b"\x1b[?1049l", b"\x1b[?25h", b"\x1b[?1006l",
+                         b"\x1b[?1003l"):
             assert sequence in self.output, f"Missing cleanup: {sequence!r}"
 
     def close(self):
@@ -219,6 +228,36 @@ class Terminal:
             self.process.wait()
         os.close(self.master)
         os.close(self.slave)
+
+
+def last_frame(output):
+    return output.rsplit(b"\x1b[?25l\x1b[H", 1)[-1]
+
+
+def text_style(frame, text):
+    end = frame.rfind(text)
+    assert end >= 0, frame.decode("utf-8", "replace")
+    foreground = background = None
+    underline = False
+    for match in re.finditer(rb"\x1b\[([0-9;]*)m", frame[:end]):
+        codes = [int(code) for code in match[1].split(b";") if code]
+        index = 0
+        while index < len(codes):
+            code = codes[index]
+            if code == 0:
+                foreground = background = None
+                underline = False
+            elif code in (4, 24):
+                underline = code == 4
+            elif code in (38, 48) and codes[index + 1:index + 2] == [2]:
+                color = tuple(codes[index + 2:index + 5])
+                if code == 38:
+                    foreground = color
+                else:
+                    background = color
+                index += 4
+            index += 1
+    return foreground, background, underline
 
 
 def exercise(lisp, path):
@@ -233,6 +272,31 @@ def exercise(lisp, path):
         checkpoint = len(terminal.output)
         terminal.pump(0.25)
         assert len(terminal.output) == checkpoint, "Idle frames are repainting"
+        assert b"\x1b[?1003h" in terminal.output
+        tabs = {}
+        for name, x, y in re.findall(rb"@@TAB-(\w+)=(\d+),(\d+)",
+                                      terminal.output):
+            tabs[name] = (int(x), int(y))
+        x, y = tabs[b"LAYOUT"]
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        frame = last_frame(terminal.output)
+        assert b"[ Layout ]" in frame and b"[ Controls ]" not in frame
+        assert text_style(frame, b"[ Layout ]")[1] == (37, 139, 255)
+        # Hover is underline/accent text, distinct from the selected tab fill.
+        x, y = tabs[b"EDITING"]
+        terminal.send(f"\x1b[<35;{x};{y}M".encode())
+        frame = last_frame(terminal.output)
+        assert text_style(frame, b"  Editing  ") == (
+            (37, 139, 255), (48, 48, 64), True)
+        assert text_style(frame, b"[ Layout ]")[1] == (37, 139, 255)
+        terminal.send(b"\x1b[<35;1;1M")
+        frame = last_frame(terminal.output)
+        assert text_style(frame, b"  Editing  ") == (
+            (255, 255, 255), (48, 48, 64), False)
+        # Labels inherit the window color instead of painting shaded rectangles.
+        assert text_style(frame, b"LUI feature gallery")[1] == (32, 36, 48)
+        x, y = tabs[b"CONTROLS"]
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
         match = re.search(rb"@@NAME=(\d+),(\d+)", terminal.output)
         assert match, terminal.output
         x, y = (int(value) for value in match.groups())

@@ -358,15 +358,27 @@
                  (with-output-to-string (stream)
                    (control stream "[?1049h")
                    (control stream "[?7l")
-                   (control stream "[?1002h")
+                   (control stream "[?1003h")
                    (control stream "[?1006h")
                    (control stream "[2J")))
                 (loop
                   (multiple-value-bind (columns rows) (terminal-size)
-                    (with-frame (context (or width columns) (or height rows)
-                                         :events
-                                         (nreverse (input-events input)))
-                      (funcall draw)))
+                    (let ((events (nreverse (input-events input))))
+                      (with-frame (context (or width columns) (or height rows)
+                                           :events events)
+                        (funcall draw))
+                      ;; Input can change state after earlier widgets declared
+                      ;; their values. Settle once before displaying the frame.
+                      (when events
+                        (let ((deadline (context-next-frame context)))
+                          (with-frame (context (or width columns)
+                                               (or height rows))
+                            (funcall draw))
+                          (when deadline
+                            (setf (context-next-frame context)
+                                  (min deadline
+                                       (or (context-next-frame context)
+                                           deadline))))))))
                   (setf (input-events input) nil)
                   (display-frame context)
                   (wait-frame input context width height)
@@ -377,7 +389,7 @@
                  (with-output-to-string (stream)
                    (control stream "[0m")
                    (control stream "[?1006l")
-                   (control stream "[?1002l")
+                   (control stream "[?1003l")
                    (control stream "[?7h")
                    (control stream "[?25h")
                    (control stream "[?1049l")))
