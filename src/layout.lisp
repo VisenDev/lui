@@ -8,6 +8,7 @@
            #:element-direction #:element-gap #:element-align
            #:element-cross-align #:element-pointer-focus-p
            #:element-interactive-p #:append-child #:solve #:walk-elements
+           #:do-children
            #:element-clip #:element-clip-p #:element-scroll-p
            #:element-scroll-x
            #:element-scroll-y #:element-scroll-limit-y
@@ -75,10 +76,16 @@
   (vector-push-extend child (element-children parent))
   child)
 
+(defmacro do-children ((child node &optional result) &body body)
+  (let ((children (gensym "CHILDREN")) (index (gensym "INDEX")))
+    `(let ((,children (element-children ,node)))
+       (dotimes (,index (length ,children) ,result)
+         (let ((,child (aref ,children ,index))) ,@body)))))
+
 (fn walk-elements ((root element) (function function))
   (funcall function root)
-  (map nil (lambda (child) (walk-elements child function))
-       (element-children root)))
+  (do-children (child root)
+    (walk-elements child function)))
 
 (fn (axis-size real) ((node element) (axis symbol))
   (if (eq axis :x)
@@ -100,18 +107,24 @@
   (max (sizing-minimum rule) (min (or (sizing-maximum rule) value) value)))
 
 (fn (flow-children list) ((node element))
-  (remove-if #'element-floating-p (coerce (element-children node) 'list)))
+  (let ((children nil))
+    (do-children (child node (nreverse children))
+      (unless (element-floating-p child) (push child children)))))
 
 (fn (gaps real) ((node element))
-  (* (element-gap node) (max 0 (1- (length (flow-children node))))))
+  (let ((count 0))
+    (do-children (child node)
+      (unless (element-floating-p child) (incf count)))
+    (* (element-gap node) (max 0 (1- count)))))
 
 (fn intrinsic ((node element) (axis symbol))
   (assert (and (>= (element-gap node) 0) (>= (element-padding node) 0)))
-  (assert (not (and (element-measure node)
-                    (plusp (length (flow-children node))))))
-  (map nil (lambda (child) (intrinsic child axis)) (element-children node))
+  (assert (or (zerop (length (element-children node)))
+              (not (and (element-measure node) (flow-children node)))))
+  (do-children (child node)
+    (intrinsic child axis))
   (let* ((rule (axis-rule node axis))
-         (children (flow-children node))
+         (children (unless (element-measure node) (flow-children node)))
          (content
            (if (element-measure node)
                (multiple-value-bind (width height)
@@ -173,6 +186,8 @@
                      children)))))
 
 (fn resolve-axis ((node element) (axis symbol))
+  (when (zerop (length (element-children node)))
+    (return-from resolve-axis nil))
   (let* ((children (flow-children node))
          (along (along-p node axis))
          (available (max 0 (- (axis-size node axis)
@@ -202,22 +217,24 @@
                                (if growing '(:grow) '(:fit :grow))))
                      children)
                     axis remaining growing)))
-    (loop :for child :across (element-children node)
-          :do (when (element-floating-p child)
-                (let ((rule (axis-rule child axis)))
-                  (case (sizing-kind rule)
-                    (:percent
-                     (set-axis-size child axis
-                                    (* available (sizing-value rule))))
-                    (:grow
-                     (set-axis-size child axis (bounded rule available)))
-                    (otherwise nil))))
-              (resolve-axis child axis))))
+    (do-children (child node)
+      (when (element-floating-p child)
+        (let ((rule (axis-rule child axis)))
+          (case (sizing-kind rule)
+            (:percent
+             (set-axis-size child axis
+                            (* available (sizing-value rule))))
+            (:grow
+             (set-axis-size child axis (bounded rule available)))
+            (otherwise nil))))
+      (resolve-axis child axis))))
 
 (fn (alignment-offset real) ((alignment symbol) (space real))
   (* (max 0 space) (ecase alignment (:start 0) (:center 0.5) (:end 1))))
 
 (fn position-elements ((node element))
+  (when (zerop (length (element-children node)))
+    (return-from position-elements nil))
   (let* ((bounds (element-box node))
          (row (eq (element-direction node) :row))
          (axis (if row :x :y))
@@ -229,26 +246,26 @@
                         :sum (axis-size child axis))))
          (cursor (+ padding
                     (alignment-offset (element-align node) (- inner used)))))
-    (loop :for child :across (element-children node)
-          :do (let ((box (element-box child))
-                    (offset (+ padding
-                               (alignment-offset
-                                (element-cross-align node)
-                                (- (axis-size node cross) (* 2 padding)
-                                   (axis-size child cross))))))
-                (setf (box-x box)
-                      (+ (box-x bounds) (element-offset-x child)
-                         (if (element-floating-p child)
-                             padding
-                             (if row cursor offset)))
-                      (box-y box)
-                      (+ (box-y bounds) (element-offset-y child)
-                         (if (element-floating-p child)
-                             padding
-                             (if row offset cursor))))
-                (unless (element-floating-p child)
-                  (incf cursor (+ (axis-size child axis) (element-gap node))))
-                (position-elements child)))))
+    (do-children (child node)
+      (let ((box (element-box child))
+            (offset (+ padding
+                       (alignment-offset
+                        (element-cross-align node)
+                        (- (axis-size node cross) (* 2 padding)
+                           (axis-size child cross))))))
+        (setf (box-x box)
+              (+ (box-x bounds) (element-offset-x child)
+                 (if (element-floating-p child)
+                     padding
+                     (if row cursor offset)))
+              (box-y box)
+              (+ (box-y bounds) (element-offset-y child)
+                 (if (element-floating-p child)
+                     padding
+                     (if row offset cursor))))
+        (unless (element-floating-p child)
+          (incf cursor (+ (axis-size child axis) (element-gap node))))
+        (position-elements child)))))
 
 (fn (solve element) ((root element) (width real) (height real))
   (assert (and (>= width 0) (>= height 0)))
@@ -283,15 +300,15 @@
     (when (element-scroll-p node)
       (let ((right (+ (box-x box) (box-width box)))
             (bottom (+ (box-y box) (box-height box))))
-        (loop :for child :across (element-children node)
-              :do (setf right
-                        (max right (- (+ (box-x (element-box child))
-                                         (box-width (element-box child)))
-                                      dx))
-                        bottom
-                        (max bottom (- (+ (box-y (element-box child))
-                                          (box-height (element-box child)))
-                                       dy))))
+        (do-children (child node)
+          (setf right
+                (max right (- (+ (box-x (element-box child))
+                                 (box-width (element-box child)))
+                              dx))
+                bottom
+                (max bottom (- (+ (box-y (element-box child))
+                                  (box-height (element-box child)))
+                               dy))))
         (setf (element-scroll-limit-y node)
               (- bottom (+ (box-y box) (box-height box)))
               (element-scroll-x node)
@@ -300,14 +317,14 @@
               (element-scroll-y node)
               (min (max 0 (element-scroll-y node))
                    (element-scroll-limit-y node)))))
-    (loop :for child :across (element-children node)
-          :do (clip-elements
-               child
-               (if (or (element-scroll-p node) (element-clip-p node))
-                   (element-clip node)
-                   clip)
-               (+ dx (element-scroll-x node))
-               (+ dy (element-scroll-y node))))))
+    (do-children (child node)
+      (clip-elements
+       child
+       (if (or (element-scroll-p node) (element-clip-p node))
+           (element-clip node)
+           clip)
+       (+ dx (element-scroll-x node))
+       (+ dy (element-scroll-y node))))))
 
 (fn visible-elements ((root element) (function function))
   (walk-elements root

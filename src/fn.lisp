@@ -129,16 +129,19 @@
          (the ,return-type (progn ,@body))))))
 
 (defmacro defstruct* (name &rest slots)
-  "Typed native structures without JSCL's repeated generic slot type parsing."
-  `(defstruct ,name
-     ,@(mapcar
-        (lambda (slot)
-          #-jscl slot
-          #+jscl
-          (if (consp slot)
-              (list* (first slot) (second slot)
-                     (loop :for (key value) :on (cddr slot) :by #'cddr
-                           :unless (eq key :type)
-                             :append (list key value)))
-              slot))
-        slots)))
+  "Keep typed structures; elide JSCL's generic generated slot checks."
+  #-jscl `(defstruct ,name ,@slots)
+  #+jscl
+  (labels ((without-slot-checks (form)
+             (cond ((atom form) form)
+                   ((eq (car form) 'quote) form)
+                   ((eq (car form) 'defun)
+                    (append (subseq form 0 3)
+                            (mapcar #'without-slot-checks
+                                    (remove-if
+                                     (lambda (body)
+                                       (and (consp body)
+                                            (eq (car body) 'check-type)))
+                                     (cdddr form)))))
+                   (t (mapcar #'without-slot-checks form)))))
+    (without-slot-checks (macroexpand `(defstruct ,name ,@slots)))))

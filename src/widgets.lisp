@@ -50,8 +50,8 @@
                 (:text-field (format nil "[~A]" value))
                 (:tab (format nil (if value "[ ~A ]" "  ~A  ") text))
                 (otherwise
-                 (format nil (if (eq (widget-style widget) :glass)
-                                 "( ~A )" "[ ~A ]") text)))))))
+                 (format nil (if (eq (widget-style widget) :motif)
+                                 "[ ~A ]" "( ~A )") text)))))))
 
 (fn tab-arrow-p ((event event))
   (and (eq (event-kind event) :key)

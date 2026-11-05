@@ -28,6 +28,23 @@
   '((:controls "Controls") (:editing "Editing") (:layout "Layout")
     (:scroll "Scroll") (:styles "Styles")))
 
+(defparameter *items*
+  (coerce (loop :for i :from 1 :to 60
+                :collect (format nil "Item ~2,'0D — selectable row" i))
+          'vector))
+
+(defvar *filtered-items* nil)
+(defvar *last-filter* nil)
+
+(defun filtered-items ()
+  (unless (equal *filter* *last-filter*)
+    (setf *last-filter* (copy-seq *filter*)
+          *filtered-items*
+          (loop :for title :across *items* :for i :from 1
+                :when (search *filter* title :test #'char-equal)
+                  :collect i)))
+  *filtered-items*)
+
 (defun toolkit-package ()
   (if (eq *toolkit* :glass) "LUI.GLASS" "LUI.MOTIF"))
 
@@ -113,12 +130,11 @@
   (widget :label (format nil "Selected item: ~D" *selection*))
   (panel (:id :results :width (grow) :height (grow) :scroll-p t
           :padding (units 1) :gap (units 1))
-    (loop :for i :from 1 :to 60
-          :for title := (format nil "Item ~2,'0D — selectable row" i)
-          :when (search *filter* title :test #'char-equal)
-            :do (when (widget :button (list :item i) title :width (grow)
-                              :opacity (if (= i *selection*) 0.85 0.3))
-                  (setf *selection* i)))))
+    (loop :for i :in (filtered-items)
+          :for title := (aref *items* (1- i))
+          :do (when (widget :button (list :item i) title :width (grow)
+                            :opacity (if (= i *selection*) 0.85 0.3))
+                (setf *selection* i)))))
 
 (defun styles-page ()
   (widget :label "Customize the active collection without mixing toolkits.")
