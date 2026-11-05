@@ -28,11 +28,30 @@
   (disabled-p nil :type boolean)
   (painter nil :type (or null function))
   (text "" :type string)
-  (terminal-text "" :type string)
+  (terminal-cache nil :type (or null string))
   (foreground "#ffffff" :type string)
   (background "#303040" :type string)
   (radius 12 :type real)
   (frost 12 :type real))
+
+(fn (widget-terminal-text string) ((widget widget))
+  (or (widget-terminal-cache widget)
+      (setf (widget-terminal-cache widget)
+            (let ((text (widget-text widget)) (value (widget-value widget)))
+              (case (widget-kind widget)
+                (:label text)
+                (:panel "")
+                (:checkbox (format nil "[~A] ~A" (if value "x" " ") text))
+                (:slider
+                 (format nil "~A [~D%]" text
+                         (round (* 100 (/ (- value (widget-minimum widget))
+                                           (- (widget-maximum widget)
+                                              (widget-minimum widget)))))))
+                (:text-field (format nil "[~A]" value))
+                (:tab (format nil (if value "[ ~A ]" "  ~A  ") text))
+                (otherwise
+                 (format nil (if (eq (widget-style widget) :glass)
+                                 "( ~A )" "[ ~A ]") text)))))))
 
 (fn tab-arrow-p ((event event))
   (and (eq (event-kind event) :key)
@@ -96,19 +115,7 @@
            :background background :radius radius :frost frost :value value
            :minimum minimum :maximum maximum :step step :font-size font-size
            :opacity opacity :accent accent
-           :disabled-p (not (null disabled-p)) :painter painter
-           :terminal-text
-           (case kind
-             (:label text)
-             (:checkbox (format nil "[~A] ~A" (if value "x" " ") text))
-             (:slider
-              (format nil "~A [~D%]" text
-                      (round (* 100 (/ (- value minimum)
-                                        (- maximum minimum))))))
-             (:text-field (format nil "[~A]" value))
-             (:tab (format nil (if value "[ ~A ]" "  ~A  ") text))
-             (otherwise
-              (format nil (if (eq style :motif) "[ ~A ]" "( ~A )") text))))))
+           :disabled-p (not (null disabled-p)) :painter painter)))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding
            :interactive-p (and (not disabled-p) (not (eq kind :label)))
