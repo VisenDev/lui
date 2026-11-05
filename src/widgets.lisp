@@ -42,7 +42,7 @@
       (setf (widget-terminal-cache widget)
             (let ((text (widget-text widget)) (value (widget-value widget)))
               (case (widget-kind widget)
-                (:label text)
+                ((:label :list-item) text)
                 ((:panel :canvas) "")
                 (:gauge
                  (let ((filled (round (* 10 (min 1 (max 0 value))))))
@@ -133,7 +133,7 @@
            :interactive-p (and (not disabled-p) (not (member kind '(:label :gauge))))
            :pointer-focus-p (eq kind :text-field)
            :measure (lambda (available) (funcall measure widget available))))
-    (and (not disabled-p) (member kind '(:button :tab)) (activated-p id))))
+    (and (not disabled-p) (member kind '(:button :tab :list-item)) (activated-p id))))
 
 (defstruct* edit-state
   (cursor 0 :type integer)
@@ -160,7 +160,7 @@
   (let ((widget (focused-widget context)))
     (and (widget-p widget) (not (widget-disabled-p widget))
          (not (null (member (widget-kind widget)
-                            '(:button :checkbox :tab)))))))
+                            '(:button :checkbox :tab :list-item)))))))
 
 (fn (cursor-at symbol) ((context context) (x real) (y real))
   (let ((cursor :default))
@@ -177,7 +177,7 @@
                       (< y (+ (box-y clip) (box-height clip))))
              (setf cursor
                    (cond ((widget-disabled-p widget) :not-allowed)
-                         ((eq (widget-kind widget) :text-field) :text)
+                         ((member (widget-kind widget) '(:label :text-field)) :text)
                          ((member (widget-kind widget)
                                   '(:button :checkbox :tab :slider)) :pointer)
                          (t :default))))))))
@@ -191,6 +191,7 @@
                       ((member name '("right" "arrowright") :test #'string=)
                        :word-right))))
     (cond
+      ((and control (string= name "c")) :copy)
       ((and control shift (string= name "a")) :select-all)
       ((and (or control alt) arrow)
        (if shift

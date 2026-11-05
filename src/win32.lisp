@@ -18,6 +18,38 @@
 (defmacro api (name result &rest args)
   `(cffi:defcfun (,@name :convention :stdcall) ,result ,@args))
 
+(api ("OpenClipboard" open-clipboard) :int (window :pointer))
+(api ("CloseClipboard" close-clipboard) :int)
+(api ("EmptyClipboard" empty-clipboard) :int)
+(api ("SetClipboardData" set-clipboard-data) :pointer
+  (format :uint) (memory :pointer))
+(api ("GlobalAlloc" global-alloc) :pointer (flags :uint) (bytes :size))
+(api ("GlobalLock" global-lock) :pointer (memory :pointer))
+(api ("GlobalUnlock" global-unlock) :int (memory :pointer))
+(api ("GlobalFree" global-free) :pointer (memory :pointer))
+
+(fn copy-text (window (text string))
+  (let* ((bytes (* 2 (1+ (loop :for char :across text
+                              :sum (if (> (char-code char) #xffff) 2 1)))))
+         (memory (global-alloc #x42 bytes)))
+    (unless (cffi:null-pointer-p memory)
+      (unwind-protect
+           (let ((pointer (global-lock memory)))
+             (unless (cffi:null-pointer-p pointer)
+               (unwind-protect
+                    (cffi:lisp-string-to-foreign text pointer bytes
+                                                 :encoding :utf-16le)
+                 (global-unlock memory))
+               (unless (zerop (open-clipboard window))
+                 (unwind-protect
+                      (progn
+                        (empty-clipboard)
+                        (unless (cffi:null-pointer-p
+                                 (set-clipboard-data 13 memory))
+                          (setf memory (cffi:null-pointer))))
+                   (close-clipboard)))))
+        (unless (cffi:null-pointer-p memory) (global-free memory))))))
+
 (api ("GetModuleHandleW" module-handle) :pointer (name :pointer))
 (api ("RegisterClassW" register-class) :ushort (class :pointer))
 (api ("UnregisterClassW" unregister-class) :int
@@ -173,7 +205,7 @@
   (let* ((key (cdr (assoc code
                           '((37 . :left) (38 . :up) (39 . :right)
                             (40 . :down) (36 . :home) (35 . :end)
-                            (8 . :backspace) (46 . :delete)))))
+                            (8 . :backspace) (46 . :delete) (27 . :escape)))))
          (name (case code
                  (37 "ArrowLeft") (39 "ArrowRight") (8 "Backspace")
                  (otherwise (if (<= 32 code 126)
@@ -181,7 +213,9 @@
          (command (when (and text-p (not (and control alt)))
                     (lui.widgets:readline-key name :control control
                                              :alt alt :shift shift))))
-    (cond (command (make-event :kind :key :key command))
+    (cond ((and control (not alt) (= code 67))
+           (make-event :kind :key :key :copy))
+          (command (make-event :kind :key :key command))
           ((and (not alt) (= code 9))
            (make-event :kind :tab :key (when shift :backward)))
           ((and (= code 32) activation-p (not control) (not alt))
@@ -574,7 +608,10 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
                      :glass (lambda (box radius blur)
                               (blur-backdrop window box radius blur))))
                  (context
-                   (make-context :measure
+                   (make-context :copy
+                     (lambda (text)
+                       (copy-text (win-window-handle window) text))
+                     :measure
                      (lambda (widget width)
                        (measure-widget renderer widget width)))))
             (setf (win-window-context window) context)

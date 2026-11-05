@@ -217,6 +217,14 @@
              class)))))
     class))
 
+(fn copy-text ((text string))
+  (let ((pasteboard (message object (objc-class "NSPasteboard")
+                             "generalPasteboard")))
+    (message sb-alien:long pasteboard "clearContents")
+    (message objc-bool pasteboard "setString:forType:"
+             object (ns-string text)
+             object (ns-string "public.utf8-plain-text"))))
+
 (fn cocoa-key-input ((code integer) (flags integer) (characters string)
                      &optional text-p (key-name characters) activation-p)
   (let* ((command (logtest flags #x100000))
@@ -233,8 +241,10 @@
                           '((123 . :left) (124 . :right)
                             (125 . :down) (126 . :up)
                             (115 . :home) (119 . :end)
-                            (51 . :backspace) (117 . :delete))))))
-    (cond (command-key (make-event :kind :key :key command-key))
+                            (51 . :backspace) (117 . :delete) (53 . :escape))))))
+    (cond ((and command (= code 8))
+           (make-event :kind :key :key :copy))
+          (command-key (make-event :kind :key :key command-key))
           ((and text-p command (= code 0))
            (make-event :kind :key :key :select-all))
           (command nil)
@@ -380,7 +390,7 @@
                    renderer (make-renderer :font font
                                            :polygons #'cocoa-polygons
                                            :clip #'cocoa-clip)
-                   context (make-context
+                   context (make-context :copy #'copy-text
                             :measure
                             (lambda (widget width)
                               (measure-widget renderer widget width)))

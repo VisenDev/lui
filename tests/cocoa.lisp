@@ -228,7 +228,10 @@
   (assert (eq :activate (event-kind (lui.cocoa::cocoa-key-input 76 0 ""))))
   (assert (string= "λ日本"
                    (event-value (lui.cocoa::cocoa-key-input 0 0 "λ日本"))))
-  (assert (null (lui.cocoa::cocoa-key-input 53 0 (string #\Escape)))))
+  (assert (eq :escape
+              (event-key (lui.cocoa::cocoa-key-input 53 0 ""))))
+  (assert (eq :copy
+              (event-key (lui.cocoa::cocoa-key-input 8 #x100000 "c")))))
 
 #+darwin
 (fn test-macos-runtime ()

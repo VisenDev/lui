@@ -37,6 +37,24 @@
   (assert (null (lui.win32::key-input 13 nil t nil nil)))
   (assert (null (lui.win32::key-input 66 t t nil t))))
 
+(defun test-copy (window)
+  (let ((text "Selected Unicode: lambda λ and face 🙂"))
+    (funcall (context-copy (lui.win32::win-window-context window)) text)
+    (assert (plusp (lui.win32::open-clipboard
+                    (lui.win32::win-window-handle window))))
+    (unwind-protect
+         (let* ((memory (cffi:foreign-funcall
+                         ("GetClipboardData" :convention :stdcall)
+                         :uint 13 :pointer))
+                (pointer (lui.win32::global-lock memory)))
+           (assert (not (cffi:null-pointer-p pointer)))
+           (unwind-protect
+                (assert (equal text (cffi:foreign-string-to-lisp
+                                     pointer :encoding :utf-16le)))
+             (lui.win32::global-unlock memory)))
+      (lui.win32::close-clipboard))))
+
+
 (lui.fn:fn test-navigation-and-cursors ()
   (assert (eq :backward
               (event-key (lui.win32::key-input 9 nil nil t nil))))
@@ -90,6 +108,7 @@
             (run
               (lambda ()
                 (incf frames)
+                (test-copy window)
                 (lui.example:draw)
                 (let ((graphics (lui.win32::win-window-graphics window)))
                   (lui.win32::checked

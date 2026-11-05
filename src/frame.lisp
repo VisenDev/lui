@@ -12,7 +12,8 @@
            #:make-event #:begin-frame #:end-frame #:context-hover #:hovered-p
            #:context-previous-root #:context-activated
            #:context-focus-visible-p #:frame-time #:request-frame
-           #:context-next-frame #:scroll-position #:scroll-to))
+           #:context-next-frame #:scroll-position #:scroll-to
+           #:context-copy #:context-input-handler #:context-selection))
 
 (in-package #:lui.frame)
 
@@ -34,6 +35,9 @@
   (previous-root nil :type (or null element))
   (width 0 :type real)
   (height 0 :type real)
+  (copy nil :type (or null function))
+  (input-handler nil :type (or null function))
+  selection
   last-click
   (time 0 :type real)
   (next-frame nil :type (or null real))
@@ -120,6 +124,11 @@
   (setf (context-time context)
         (/ (get-internal-real-time) internal-time-units-per-second)
         (context-next-frame context) nil)
+  (when (context-input-handler context)
+    (if (and (= width (context-width context))
+             (= height (context-height context)))
+        (funcall (context-input-handler context) context events)
+        (setf (context-selection context) nil)))
   (clrhash (context-activated context))
   (clrhash (context-events context))
   ;; Old hit regions are invalid after resizing. Establish new geometry first.
