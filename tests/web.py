@@ -5,6 +5,7 @@ Run: python tests/web.py (requires Playwright and Chromium).
 
 import functools
 import http.server
+import re
 from pathlib import Path
 import shutil
 import threading
@@ -397,11 +398,64 @@ class WebTests(unittest.TestCase):
         self.lisp('(lui.web:unmount *web-test-app*)')
 
 
+    def test_debugger_splitter_drag_keyboard_persistence_and_clamp(self):
+        page = self.page
+        page.get_by_role("button", name="Debug", exact=True).click()
+        rail = page.get_by_role("separator", name="Inspector width")
+        expect(rail).to_have_attribute("aria-orientation", "vertical")
+        expect(rail).to_have_attribute("tabindex", "0")
+        expect(rail).to_have_css("cursor", "ew-resize")
+        before = float(rail.get_attribute("aria-valuenow"))
+        rail.focus()
+        rail.press("ArrowLeft")
+        page.wait_for_function("""before => Number(document.querySelector(
+            '[role=separator]').getAttribute('aria-valuenow')) > before""", arg=before)
+        rail.press("ArrowRight")
+        self.frames()
+        self.assertAlmostEqual(float(rail.get_attribute("aria-valuenow")), before)
+        rail.press("Home")
+        page.wait_for_function("""() => Math.abs(Number(document.querySelector(
+            '[role=separator]').getAttribute('aria-valuenow')) - 200/900) < .001""")
+        rail.press("End")
+        page.wait_for_function("""() => Math.abs(Number(document.querySelector(
+            '[role=separator]').getAttribute('aria-valuenow')) - 804/900) < .001""")
+        box = rail.bounding_box()
+        page.mouse.move(box["x"] + box["width"] / 2, 100)
+        page.mouse.down()
+        self.frames()
+        self.assertAlmostEqual(float(rail.get_attribute("aria-valuenow")), 804/900)
+        page.mouse.move(400, 100, steps=8)
+        page.wait_for_function("""() => Number(document.querySelector(
+            '[role=separator]').getAttribute('aria-valuenow')) < .7""")
+        # Continue the captured drag onto an app button, then release there.
+        app_button = page.get_by_role("button", name="Say hello", exact=True).bounding_box()
+        page.mouse.move(app_button["x"] + app_button["width"] / 2,
+                        app_button["y"] + app_button["height"] / 2, steps=8)
+        page.mouse.up()
+        self.frames()
+        expect(rail).to_be_focused()
+        expect(page.get_by_text("Hello Common Lisp (0)", exact=True).filter(visible=True)).to_be_visible()
+        width = float(rail.get_attribute("aria-valuenow"))
+        page.get_by_role("button", name="Close", exact=True).click()
+        expect(rail).to_have_count(0)
+        page.get_by_role("button", name="Debug", exact=True).click()
+        expect(rail).to_be_visible()
+        self.assertAlmostEqual(float(rail.get_attribute("aria-valuenow")), width)
+        page.set_viewport_size({"width": 320, "height": 480})
+        page.wait_for_function("""() => Math.abs(Number(document.querySelector(
+            '[role=separator]').getAttribute('aria-valuenow')) - .7) < .001""")
+        close = page.get_by_role("button", name="Close", exact=True)
+        expect(close).to_be_visible()
+        box = close.bounding_box()
+        self.assertLessEqual(box["x"] + box["width"], 320)
+        close.click()
+        expect(rail).to_have_count(0)
+
     def test_debugger_tree_select_collapse_highlight_and_close(self):
         page = self.page
         page.get_by_role("button", name="Debug", exact=True).click()
         expect(page.get_by_text("Layout inspector", exact=True).filter(visible=True)).to_be_visible()
-        options = page.get_by_role("option")
+        options = page.get_by_role("option").filter(has_not_text=re.compile(r"^[+-]$"))
         expect(options.first).to_be_visible()
         self.assertGreater(options.count(), 1)
         options.first.hover()
@@ -411,10 +465,10 @@ class WebTests(unittest.TestCase):
         expect(options.first).to_have_attribute("aria-selected", "true")
         expect(page.get_by_text("Bounds:", exact=False).filter(visible=True)).to_be_visible()
         expect(page.get_by_role("option", name="Layout inspector", exact=True)).to_have_count(0)
-        page.get_by_role("button", name="-", exact=True).first.click()
+        page.get_by_role("option", name="-", exact=True).first.click()
         expect(options).to_have_count(1)
-        page.get_by_role("button", name="+", exact=True).click()
-        self.page.wait_for_function("document.querySelectorAll('[role=option]').length > 1")
+        page.get_by_role("option", name="+", exact=True).click()
+        expect(options).not_to_have_count(1)
         page.get_by_role("tab", name="Controls", exact=True).focus()
         page.keyboard.press("ArrowRight")
         expect(page.get_by_role("tab", name="Editing", exact=True)).to_have_attribute("aria-selected", "true")
@@ -442,7 +496,7 @@ class WebTests(unittest.TestCase):
             self.assertGreaterEqual(box["y"], 0)
             self.assertLessEqual(box["x"] + box["width"], 320)
             self.assertLessEqual(box["y"] + box["height"], 480)
-            minus = page.get_by_role("button", name="-", exact=True).first
+            minus = page.get_by_role("option", name="-", exact=True).first
             label_inside = """node => {
                 const range = document.createRange();
                 range.selectNodeContents(node);
@@ -452,10 +506,10 @@ class WebTests(unittest.TestCase):
             }"""
             self.assertTrue(minus.evaluate(label_inside))
             minus.click()
-            expect(page.get_by_role("option")).to_have_count(1)
-            plus = page.get_by_role("button", name="+", exact=True)
+            expect(page.get_by_role("option").filter(has_not_text=re.compile(r"^[+-]$"))).to_have_count(1)
+            plus = page.get_by_role("option", name="+", exact=True)
             expect(plus).to_be_visible()
-            self.assertGreaterEqual(plus.bounding_box()["width"], 32)
+            self.assertGreaterEqual(plus.bounding_box()["width"], 20)
             self.assertTrue(plus.evaluate(label_inside))
             plus.click()
             close.click()

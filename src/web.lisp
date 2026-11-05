@@ -205,7 +205,8 @@
                                       "backward" "forward")))))))))
 
 (fn native-tab-key ((app web-app) id event)
-  (unless (or (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
+  (unless (or (jscl/ffi:clbool (jscl/ffi:oget event "isComposing"))
+              (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
               (jscl/ffi:clbool (jscl/ffi:oget event "altKey"))
               (jscl/ffi:clbool (jscl/ffi:oget event "metaKey")))
     (let ((key (cdr (assoc
@@ -313,12 +314,16 @@
         (when (eq kind :checkbox)
           ((jscl/ffi:oget dom "appendChild") control)
           ((jscl/ffi:oget dom "appendChild") (create-node "span")))
-        (when (eq kind :canvas)
-          (attribute dom "role" "img")
+        (when (member kind '(:canvas :splitter))
+          (setf (jscl/ffi:oget dom "luiContinuousMove") #j:true)
+          (attribute dom "role" (if (eq kind :canvas) "img" "separator"))
           (attribute dom "tabindex" "0")
           (style dom "touch-action" "none")
           (listen app dom "keydown"
-                  (lambda (event) (native-application-key app id event)))
+                  (lambda (event)
+                    (if (eq kind :canvas)
+                        (native-application-key app id event)
+                        (native-tab-key app id event))))
           (listen app dom "contextmenu"
                   (lambda (event)
                     ((jscl/ffi:oget event "preventDefault"))))
@@ -523,6 +528,22 @@
                          (- (+ (box-y box) (box-height box))
                             (+ (box-y clip) (box-height clip)))))
                    (px (- (box-x clip) (box-x box)))))
+    (when (eq kind :splitter)
+      (attribute dom "class" "lui-splitter")
+      (attribute dom "aria-orientation" "vertical")
+      (attribute dom "aria-label"
+                 (if (plusp (length (widget-text widget)))
+                     (widget-text widget) "Panel width"))
+      (attribute dom "aria-valuemin" "0")
+      (attribute dom "aria-valuemax" "1")
+      (attribute dom "aria-valuenow"
+                 (jscl/ffi:clstring (#j:String (widget-value widget))))
+      (style dom "cursor" "ew-resize")
+      (style dom "user-select" "none")
+      (style dom "background"
+             (format nil "linear-gradient(90deg, transparent calc(50% - 1px), ~A calc(50% - 1px), ~A calc(50% + 1px), transparent calc(50% + 1px))"
+                     (widget-accent widget) (widget-accent widget)))
+      (return-from update-node dom))
     (when (eq kind :highlight)
       (attribute dom "class" "lui-highlight")
       (attribute dom "aria-hidden" "true")
@@ -695,8 +716,10 @@
     (when (eq kind :list-item)
       (attribute dom "aria-selected"
                  (if (widget-value widget) "true" "false"))
-      (style dom "padding" "5px 11px")
-      (style dom "text-align" "left")
+      (let ((inset (min 11 (max 0 (/ (- (box-width box)
+                                         (widget-font-size widget)) 2)))))
+        (style dom "padding" (concatenate 'string "5px " (px inset)))
+        (style dom "text-align" (if (< inset 11) "center" "left")))
       (style dom "border" "none")
       (style dom "border-radius" "0")
       (style dom "box-shadow" "none")
@@ -953,6 +976,10 @@
           (#j:String:prototype:concat:call
            (jscl/ffi:oget sheet "textContent")
            #j".lui-cell:focus-visible{outline:2px solid var(--lui-accent);outline-offset:-2px}"))
+    (setf (jscl/ffi:oget sheet "textContent")
+          (#j:String:prototype:concat:call
+           (jscl/ffi:oget sheet "textContent")
+           #j".lui-splitter{opacity:.5}.lui-splitter:hover,.lui-splitter:active,.lui-splitter:focus-visible{opacity:1}.lui-splitter:focus-visible{outline:1px solid var(--lui-accent);outline-offset:-2px}"))
     ((jscl/ffi:oget host "appendChild") sheet)
     ((jscl/ffi:oget host "appendChild") measure)
     (setf (web-app-style-node app) sheet
@@ -996,9 +1023,8 @@
                            (jscl/ffi:oget target "luiId"))))
                 (when (or (not (equal id (web-app-hover-id app)))
                           (and (not (eq target #j:null))
-                               (string= "svg" (jscl/ffi:clstring
-                                               (jscl/ffi:oget target
-                                                              "localName")))))
+                               (jscl/ffi:clbool
+                                (jscl/ffi:oget target "luiContinuousMove"))))
                   (setf (web-app-hover-id app) id)
                   (let ((rect ((jscl/ffi:oget host "getBoundingClientRect"))))
                     (queue-event
