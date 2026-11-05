@@ -134,6 +134,26 @@
       (cffi:foreign-funcall "xkb_context_unref" :pointer context :void)))
   (format t "Wayland keyboard repeat timing, modifiers, and cancellation passed.~%"))
 
+(defun test-themed-cursor (window)
+  (when (lui.wayland::wl-window-shm window)
+    (let ((image (lui.wayland::cursor-image-for window :not-allowed))
+          (serial (lui.wayland::wl-window-cursor-serial window)))
+      (assert image)
+      (assert (plusp (cffi:foreign-slot-value
+                      image '(:struct lui.wayland::cursor-image)
+                      'lui.wayland::width)))
+      (when (lui.wayland::wl-window-pointer window)
+        ;; Serial 0 cannot change the real pointer. Still exercise native
+        ;; theme-buffer attachment/commit and check server protocol errors.
+        (unwind-protect
+             (progn
+               (setf (lui.wayland::wl-window-cursor-serial window) 0)
+               (assert (lui.wayland::set-themed-cursor :not-allowed)))
+          (setf (lui.wayland::wl-window-cursor-serial window) serial))
+        (assert (not (minusp
+                      (lui.wayland-protocol:roundtrip
+                       (lui.wayland::wl-window-display window)))))))))
+
 (defun test-pointer-cursor-state ()
   (let ((lui.wayland::*window* (lui.wayland::make-wl-window))
         (null (cffi:null-pointer)))
@@ -277,6 +297,7 @@
        (incf frames)
        (when (= frames 1)
          (setf native lui.wayland::*window*)
+         (test-themed-cursor native)
          (let ((gpu (lui.wayland::wl-window-gpu native)))
            (assert (= (context-width *context*)
                       (lui.wayland::wl-window-width native)))
@@ -342,6 +363,8 @@
   (assert (= frames 5))
   (assert (null (lui.wayland::wl-window-decoration native)))
   (assert (null (lui.wayland::wl-window-decoration-manager native)))
+  (assert (null (lui.wayland::wl-window-cursor-theme native)))
+  (assert (null (lui.wayland::wl-window-cursor-surface native)))
   (assert (null (lui.wayland::wl-window-cursor-device native)))
   (assert (null (lui.wayland::wl-window-cursor-manager native)))
   (assert (null (lui.wayland::wl-window-viewport native)))

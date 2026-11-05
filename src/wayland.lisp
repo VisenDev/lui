@@ -11,11 +11,20 @@
 (cffi:use-foreign-library wayland-egl)
 (cffi:use-foreign-library xkbcommon)
 
+(cffi:define-foreign-library wayland-cursor
+  (:unix (:or "libwayland-cursor.so.0" "libwayland-cursor.so")))
+(cffi:defcstruct themed-cursor
+  (count :uint) (images :pointer) (name :pointer))
+(cffi:defcstruct cursor-image
+  (width :uint) (height :uint) (hotspot-x :uint) (hotspot-y :uint)
+  (delay :uint))
+
 (defstruct wl-window
   display registry compositor shell seat surface xdg toplevel
   decoration-manager decoration decoration-mode pending-decoration-mode
   viewporter viewport fractional-manager fractional-object
   cursor-manager cursor-device cursor-serial cursor-kind
+  shm cursor-theme cursor-theme-attempted-p cursor-surface
   (compositor-version 1 :type integer)
   (scale120 120 :type integer) (buffer-scale 1 :type integer)
   applied-buffer-scale
@@ -47,18 +56,80 @@
 (fn cursor-shape ((kind symbol))
   (case kind (:not-allowed 15) (:pointer 4) (:text 9) (otherwise 1)))
 
+(fn cursor-image-for ((window wl-window) (kind symbol))
+  (when (and (wl-window-shm window)
+             (not (wl-window-cursor-theme-attempted-p window)))
+    (setf (wl-window-cursor-theme-attempted-p window) t)
+    (ignore-errors
+      (cffi:use-foreign-library wayland-cursor)
+      (let ((theme (cffi:foreign-funcall
+                    "wl_cursor_theme_load" :pointer (cffi:null-pointer)
+                    :int 24 :pointer (wl-window-shm window) :pointer)))
+        (unless (cffi:null-pointer-p theme)
+          (setf (wl-window-cursor-theme window) theme)))))
+  (when (wl-window-cursor-theme window)
+    (loop :for name :in (case kind
+                         (:not-allowed '("not-allowed" "crossed_circle"))
+                         (:pointer '("pointer" "hand2"))
+                         (:text '("text" "xterm"))
+                         (otherwise '("default" "left_ptr")))
+          :for cursor :=
+          (cffi:foreign-funcall "wl_cursor_theme_get_cursor"
+                                :pointer (wl-window-cursor-theme window)
+                                :string name :pointer)
+          :unless (cffi:null-pointer-p cursor)
+            :do (return
+                  (cffi:mem-ref
+                   (cffi:foreign-slot-value
+                    cursor '(:struct themed-cursor) 'images) :pointer)))))
+
+(fn set-themed-cursor ((kind symbol))
+  (let ((image (cursor-image-for *window* kind)))
+    (when image
+      (unless (wl-window-cursor-surface *window*)
+        (setf (wl-window-cursor-surface *window*)
+              (request (wl-window-compositor *window*) 0 "wl_surface"
+                       (list (cons :pointer (cffi:null-pointer)))))
+        (attach-listener
+         (wl-window-cursor-surface *window*)
+         (list (cffi:callback surface-enter) (cffi:callback surface-leave)
+               (cffi:callback preferred-buffer-scale)
+               (cffi:callback preferred-buffer-transform))))
+      (cffi:with-foreign-slots
+          ((width height hotspot-x hotspot-y) image (:struct cursor-image))
+        (request (wl-window-pointer *window*) 0 nil
+                 (list (cons :uint32 (wl-window-cursor-serial *window*))
+                       (cons :pointer (wl-window-cursor-surface *window*))
+                       (cons :int32 hotspot-x) (cons :int32 hotspot-y)))
+        (request (wl-window-cursor-surface *window*) 1 nil
+                 (list (cons :pointer
+                             (cffi:foreign-funcall
+                              "wl_cursor_image_get_buffer"
+                              :pointer image :pointer))
+                       (cons :int32 0) (cons :int32 0)))
+        (request (wl-window-cursor-surface *window*) 2 nil
+                 (list (cons :int32 0) (cons :int32 0)
+                       (cons :int32 width) (cons :int32 height)))
+        (request (wl-window-cursor-surface *window*) 6 nil nil))
+      t)))
+
 (fn update-cursor ()
-  (when (and (wl-window-cursor-device *window*)
+  (when (and (wl-window-pointer *window*)
              (wl-window-cursor-serial *window*))
     (let ((kind (if (boundp '*context*)
                     (lui.widgets:cursor-at
                      *context* (wl-window-x *window*) (wl-window-y *window*))
                     :default)))
       (unless (eq kind (wl-window-cursor-kind *window*))
-        (request (wl-window-cursor-device *window*) 1 nil
-                 (list (cons :uint32 (wl-window-cursor-serial *window*))
-                       (cons :uint32 (cursor-shape kind))))
-        (setf (wl-window-cursor-kind *window*) kind)))))
+        (when (if (wl-window-cursor-device *window*)
+                  (progn
+                    (request
+                     (wl-window-cursor-device *window*) 1 nil
+                     (list (cons :uint32 (wl-window-cursor-serial *window*))
+                           (cons :uint32 (cursor-shape kind))))
+                    t)
+                  (set-themed-cursor kind))
+          (setf (wl-window-cursor-kind *window*) kind))))))
 
 (fn create-cursor-device ()
   (when (and (wl-window-cursor-manager *window*)
@@ -330,7 +401,7 @@
 (callback registry-global
     ((name :uint32) (interface-name :string) (version :uint32))
   (when (member interface-name
-                '("wl_compositor" "xdg_wm_base" "wl_seat"
+                '("wl_compositor" "xdg_wm_base" "wl_seat" "wl_shm"
                   "zxdg_decoration_manager_v1" "wp_viewporter"
                   "wp_fractional_scale_manager_v1"
                   "wp_cursor_shape_manager_v1")
@@ -350,6 +421,8 @@
       (cond ((string= interface-name "wl_compositor")
              (setf (wl-window-compositor *window*) object
                    (wl-window-compositor-version *window*) version))
+            ((string= interface-name "wl_shm")
+             (setf (wl-window-shm *window*) object))
             ((string= interface-name "wp_cursor_shape_manager_v1")
              (setf (wl-window-cursor-manager *window*) object)
              (create-cursor-device))
@@ -379,7 +452,10 @@
   (declare (ignore output)))
 
 (callback preferred-buffer-scale ((scale :int32))
-  (when (plusp scale) (setf (wl-window-buffer-scale *window*) scale)))
+  (when (and (plusp scale)
+             (or (null (wl-window-surface *window*))
+                 (cffi:pointer-eq proxy (wl-window-surface *window*))))
+    (setf (wl-window-buffer-scale *window*) scale)))
 
 (callback preferred-buffer-transform ((transform :uint32))
   ;; Upright buffers remain valid; the compositor handles output transforms.
@@ -478,12 +554,18 @@
 
 (fn release-extensions ((window wl-window))
   ;; Children disappear before their xdg_toplevel/wl_surface and managers.
-  (dolist (proxy (list (wl-window-cursor-device window)
+  (dolist (proxy (list (wl-window-cursor-surface window)
+                      (wl-window-cursor-device window)
                       (wl-window-decoration window)
                       (wl-window-viewport window)
                       (wl-window-fractional-object window)))
     (destroy-extension proxy))
-  (setf (wl-window-cursor-device window) nil
+  (when (wl-window-cursor-theme window)
+    (cffi:foreign-funcall "wl_cursor_theme_destroy"
+                          :pointer (wl-window-cursor-theme window) :void))
+  (setf (wl-window-cursor-surface window) nil
+        (wl-window-cursor-theme window) nil
+        (wl-window-cursor-device window) nil
         (wl-window-decoration window) nil
         (wl-window-viewport window) nil
         (wl-window-fractional-object window) nil)
@@ -606,6 +688,7 @@
       (dolist (proxy (list (wl-window-keyboard *window*)
                           (wl-window-pointer *window*)
                           (wl-window-seat *window*)
+                          (wl-window-shm *window*)
                           (wl-window-toplevel *window*)
                           (wl-window-xdg *window*)
                           (wl-window-surface *window*)
