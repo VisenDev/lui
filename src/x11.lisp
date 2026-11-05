@@ -604,7 +604,13 @@
                      (x-window-pointer-y window) -1)
                (push (make-event :kind :move :x -1 :y -1) events))
               (2
-               (let ((input (key-input event (x-window-context window))))
+               (let* ((context (x-window-context window))
+                      (predicted
+                        (when context
+                          (pending-input-context
+                           context events (x-window-width window)
+                           (x-window-height window))))
+                      (input (key-input event predicted)))
                  (when input (push input events))))
               ((4 5 6 7)
                (cffi:with-foreign-slots

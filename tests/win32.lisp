@@ -37,6 +37,30 @@
   (assert (null (lui.win32::key-input 13 nil t nil nil)))
   (assert (null (lui.win32::key-input 66 t t nil t))))
 
+(lui.fn:fn test-batched-focus ()
+  (let ((context (make-context
+                  :measure (lambda (widget width)
+                             (declare (ignore widget width))
+                             (values 160 30)))))
+    (with-frame (context 400 200)
+      (lui.glass:text-field :edit "value"))
+    (let* ((box (element-box
+                 (gethash :edit (lui.frame::context-ids context))))
+           (events (list (make-event :kind :press :x (+ 1 (box-x box))
+                                     :y (+ 1 (box-y box)))))
+           (predicted (pending-input-context context events 400 200)))
+      (assert (null (context-focus context)))
+      (assert (eq :edit (context-focus predicted)))
+      (assert (eq :select-all
+                  (event-key
+                   (lui.win32::key-input
+                    65 t nil t
+                    (lui.widgets:text-field-focused-p predicted)))))
+      ;; Resizing invalidates pointer regions before the next solved frame.
+      (assert (eq context (pending-input-context context events 500 200))))))
+
+(test-batched-focus)
+
 (defun test-copy (window)
   (let ((text "Selected Unicode: lambda λ and face 🙂"))
     (funcall (context-copy (lui.win32::win-window-context window)) text)

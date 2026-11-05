@@ -13,6 +13,7 @@
            #:context-previous-root #:context-activated
            #:context-focus-visible-p #:frame-time #:request-frame
            #:context-next-frame #:scroll-position #:scroll-to
+           #:pending-input-context
            #:context-copy #:context-input-handler #:context-selection))
 
 (in-package #:lui.frame)
@@ -66,7 +67,11 @@
 (fn request-frame (&optional ((delay real) 0))
   "Request another frame after DELAY seconds; earliest request wins."
   (assert (>= delay 0))
-  (let ((deadline (+ (frame-time) delay)))
+  ;; Some implementations return epoch-sized clocks. Single-float addition
+  ;; would discard sub-minute delays there, so compute deadlines in doubles.
+  (let ((deadline #+jscl (+ (frame-time) delay)
+                  #-jscl (+ (coerce (frame-time) 'double-float)
+                            (coerce delay 'double-float))))
     (setf (context-next-frame *context*)
           (if (context-next-frame *context*)
               (min deadline (context-next-frame *context*))
@@ -98,6 +103,28 @@
           (context-focus context)
           (or (second (member (context-focus context) ids :test #'equal))
               (first ids)))))
+
+(fn (pending-input-context context)
+    ((context context) (events list)
+     &optional ((width (or null real)) nil) ((height (or null real)) nil))
+  ;; Translate keys against earlier pointer/Tab events in the same input batch.
+  ;; The completed frame remains untouched until BEGIN-FRAME consumes them.
+  (if (and (or (null width) (= width (context-width context)))
+           (or (null height) (= height (context-height context)))
+           (some (lambda (event)
+                   (member (event-kind event) '(:press :tab))) events))
+      (let ((predicted (copy-context context)))
+        (dolist (event (reverse events))
+          (case (event-kind event)
+            (:tab (focus-next
+                   predicted (eq (event-key event) :backward)))
+            (:press
+             (let* ((id (hit predicted (event-x event) (event-y event)))
+                    (node (gethash id (context-ids predicted))))
+               (when (and node (element-pointer-focus-p node))
+                 (setf (context-focus predicted) id))))))
+        predicted)
+      context))
 
 (fn scroll-at ((context context) (x real) (y real) (amount real))
   ;; Follow the painted hit path, then bubble unused wheel motion outward.

@@ -351,9 +351,8 @@
           "xkb_state_mod_name_is_active" :pointer state
           :string name :uint 8 :int)))
 
-(fn editor-command (state (symbol integer))
-  (when (and (boundp '*context*)
-             (lui.widgets:text-field-focused-p *context*))
+(fn editor-command (state (symbol integer) context)
+  (when (and context (lui.widgets:text-field-focused-p context))
     (cffi:with-foreign-object (name :char 64)
       (let ((length (cffi:foreign-funcall
                      "xkb_keysym_get_name" :uint symbol
@@ -367,11 +366,16 @@
 
 (fn emit-key-input ((code integer))
   (when (wl-window-key-state *window*)
-    (let* ((state (wl-window-key-state *window*))
+    (let* ((context
+             (when (and (boundp '*context*) *context*)
+               (pending-input-context
+                *context* (wl-window-events *window*)
+                (wl-window-width *window*) (wl-window-height *window*))))
+           (state (wl-window-key-state *window*))
            (key (+ code 8))
            (symbol (cffi:foreign-funcall "xkb_state_key_get_one_sym"
                                          :pointer state :uint key :uint))
-           (editor (editor-command state symbol))
+           (editor (editor-command state symbol context))
            (command
              (cdr (assoc symbol
                          '((#xff51 . :left) (#xff53 . :right)
@@ -389,8 +393,8 @@
                           (when (or (= symbol #xfe20)
                                     (modifier-active-p state "Shift"))
                             :backward)))
-            ((and (= symbol 32) (boundp '*context*)
-                  (lui.widgets:activation-focused-p *context*))
+            ((and (= symbol 32) context
+                  (lui.widgets:activation-focused-p context))
              (queue-input :activate))
             ((= symbol #xff0d) (queue-input :activate))
             (command (queue-input :key :key command))

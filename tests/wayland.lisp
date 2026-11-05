@@ -342,6 +342,53 @@
       (lui.wayland::release-keymap lui.wayland::*window*)
       (cffi:foreign-funcall "xkb_context_unref" :pointer xkb :void))))
 
+(defun test-batched-focus ()
+  (let* ((xkb (cffi:foreign-funcall "xkb_context_new" :uint 0 :pointer))
+         (lui.wayland::*window*
+           (lui.wayland::make-wl-window :xkb-context xkb
+                                       :width 400 :height 200))
+         (context (make-context
+                   :measure (lambda (widget width)
+                              (declare (ignore widget width))
+                              (values 160 30))))
+         (*context* context)
+         (null (cffi:null-pointer)))
+    (unwind-protect
+         (progn
+           (install-us-keymap lui.wayland::*window*)
+           (with-frame (context 400 200)
+             (lui.glass:text-field :edit "value"))
+           (let ((box (element-box
+                       (gethash :edit (lui.frame::context-ids context)))))
+             (setf (lui.wayland::wl-window-x lui.wayland::*window*)
+                   (+ 1 (box-x box))
+                   (lui.wayland::wl-window-y lui.wayland::*window*)
+                   (+ 1 (box-y box)))
+             (dolist (pressed '(1 0))
+               (cffi:foreign-funcall-pointer
+                (cffi:callback lui.wayland::pointer-button) ()
+                :pointer null :pointer null :uint32 42 :uint32 0
+                :uint32 #x110 :uint32 pressed :void)))
+           (cffi:foreign-funcall-pointer
+            (cffi:callback lui.wayland::keyboard-modifiers) ()
+            :pointer null :pointer null :uint32 0 :uint32 5
+            :uint32 0 :uint32 0 :uint32 0 :void)
+           (keyboard-key 30 1)
+           (assert (null (context-focus context)))
+           (let ((events (take-input)))
+             (assert (eq :select-all (event-key (car (last events)))))
+             (with-frame (context 400 200 :events events)
+               (lui.glass:text-field :edit "value")))
+           (assert (eq :edit (context-focus context)))
+           (let ((state (gethash :edit (context-state context))))
+             (assert (= 0 (lui.widgets:edit-state-anchor state)))
+             (assert (= 5 (lui.widgets:edit-state-cursor state)))))
+      (lui.wayland::release-keymap lui.wayland::*window*)
+      (cffi:foreign-funcall "xkb_context_unref" :pointer xkb :void)))
+  (format t "Wayland batched pointer/Readline focus passed.~%"))
+
+(test-batched-focus)
+
 (defun test-decoration-configure ()
   (let ((lui.wayland::*window* (lui.wayland::make-wl-window))
         (null (cffi:null-pointer)))

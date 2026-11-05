@@ -177,24 +177,25 @@ class X11:
                 return found
         return None
 
-    def send(self, window, kind, x=0, y=0, code=0, state=0):
+    def send(self, window, kind, x=0, y=0, code=0, state=0, flush=True):
         event = Event()
         event.key = KeyEvent(type=kind, display=self.display, window=window,
                              root=self.root, x=x, y=y, code=code, state=state, same_screen=1)
         mask = {2: 1, 4: 4, 5: 8, 8: 32}[kind]
         assert self.lib.XSendEvent(self.display, window, 0, mask, C.byref(event))
-        self.lib.XFlush(self.display)
+        if flush:
+            self.lib.XFlush(self.display)
 
-    def click(self, window, bounds, fraction=0.5):
+    def click(self, window, bounds, fraction=0.5, flush=True):
         x, y, width, height = bounds
         for kind in [4, 5]:
             self.send(window, kind, round(x + width * fraction),
-                      round(y + height / 2), 1)
+                      round(y + height / 2), 1, flush=flush)
 
-    def key(self, window, name, state=0):
+    def key(self, window, name, state=0, flush=True):
         symbol = self.lib.XStringToKeysym(name.encode())
         code = self.lib.XKeysymToKeycode(self.display, symbol)
-        self.send(window, 2, code=code, state=state)
+        self.send(window, 2, code=code, state=state, flush=flush)
 
     def activate(self, window):
         # A desktop may hide background windows. Keep only this test window
@@ -356,10 +357,11 @@ class X11Tests(unittest.TestCase):
 '''
         with self.application("clipboard", source) as (window, path):
             state = self.state(path)
-            self.x.click(window, state["bounds"])
-            self.state(path, lambda state: state["focused"])
-            self.x.key(window, "a", state=5)
-            self.x.key(window, "c", state=4)
+            self.x.click(window, state["bounds"], flush=False)
+            # Flush all input in one X request batch, before a shared frame.
+            self.x.key(window, "a", state=5, flush=False)
+            self.x.key(window, "c", state=4, flush=False)
+            self.x.lib.XFlush(self.x.display)
             clipboard = self.x.lib.XInternAtom(self.x.display, b"CLIPBOARD", 0)
             wait_for(lambda: self.x.lib.XGetSelectionOwner(
                 self.x.display, clipboard) == window)

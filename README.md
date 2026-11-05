@@ -157,9 +157,8 @@ Start a Common Lisp implementation in the repository directory:
 ```lisp
 (require :asdf)
 (asdf:load-asd (truename "lui.asd"))
-(asdf:load-system "lui")
+(asdf:load-system "lui/demo")
 (asdf:test-system "lui")
-(load "examples/demo.lisp")
 (lui:run #'lui.example:draw :backend :terminal :interactive nil)
 ```
 
@@ -344,13 +343,18 @@ Additional checks:
 - `python3 tests/web.py` requires the browser build, Playwright, and Chromium.
 - On Windows SBCL, run `sbcl --script scripts/test-win32.lisp` with dependencies
   registered in ASDF. The launcher also works with Windows SBCL under Wine.
-- After loading `lui/gl` and `examples/demo.lisp`, load `tests/gl.lisp` for the
+- After loading `lui/gl` and `lui/demo`, load `tests/gl.lisp` for the
   offscreen EGL/OpenGL smoke test. Ensure `build/` exists.
-- With a Wayland compositor, load `lui/wayland`, the shared demo, and
+- With a Wayland compositor, load `lui/wayland`, `lui/demo`, and
   `tests/wayland.lisp` to exercise native pointer callbacks, keyboard repeat,
   modifier changes, cancellation, and delivery through the shared frame loop.
 - After loading `lui/cocoa`, load `tests/cocoa.lisp` for portable SBCL ABI,
   UTF-8, event-routing, callback-safety, and floating-point-boundary checks.
+  On Linux, this also compiles a test-only Objective-C ABI double with `cc`
+  (override with `CC`) and tests the empty-stacktrace guard in an isolated
+  subprocess. The fixture checks null/empty/nonempty traces, restoration after
+  errors/nonlocal exits, ownership cleanup, and native callback FP settings.
+  It is never linked into applications or loaded into the AppKit test process.
   On macOS it additionally runs AppKit selector and shared-demo smoke tests;
   that branch has not been executed here. Cocoa masks floating-point traps
   during native initialization, event processing, cleanup, and callbacks,
@@ -365,7 +369,7 @@ Additional checks:
 | EGL/OpenGL | Offscreen shared-demo rendering, glass shader, pixel readback, and GL error checks |
 | Wayland | SBCL, CLISP, ECL: shared-demo compositor frames, pointer callbacks, repeat timing/modifiers/cancellation |
 | Win32 | Windows SBCL under Wine: outline holes, alpha, clipping, input, resizing, and filtered blur |
-| Cocoa | Source/test compilation and seven ABI/callback/input/FP test groups passed on Linux SBCL; AppKit runtime unverified |
+| Cocoa | ABI/callback/input/FP and isolated empty-stacktrace guard tests passed on Linux SBCL; AppKit runtime unverified |
 
 The portable core and CFFI backends target Common Lisp implementations generally;
 Cocoa deliberately uses SBCL. The verified combinations above are narrower than

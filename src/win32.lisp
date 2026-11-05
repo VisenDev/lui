@@ -296,15 +296,19 @@
               :y (cffi:mem-aref point :int 1)
               :value (* -32 (/ (signed-word (ash wparam -16)) 120))))))
       ((#x100 #x104)
-       (let ((input (key-input
-                     wparam (minusp (key-state 17))
-                     (minusp (key-state 18)) (minusp (key-state 16))
-                     (and (win-window-context window)
-                          (lui.widgets:text-field-focused-p
-                           (win-window-context window)))
-                     (and (win-window-context window)
-                          (lui.widgets:activation-focused-p
-                           (win-window-context window))))))
+       (let* ((context (win-window-context window))
+              (predicted
+                (when context
+                  (pending-input-context
+                   context (win-window-events window)
+                   (win-window-width window) (win-window-height window))))
+              (input (key-input
+                      wparam (minusp (key-state 17))
+                      (minusp (key-state 18)) (minusp (key-state 16))
+                      (and predicted
+                           (lui.widgets:text-field-focused-p predicted))
+                      (and predicted
+                           (lui.widgets:activation-focused-p predicted)))))
          (when input
            (queue-input window input)
            (when (and (= wparam 32) (eq (event-kind input) :activate))

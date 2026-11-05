@@ -35,6 +35,27 @@
          (setf (lui.widgets:widget-kind widget) :text-field)
          (assert (equal " "
                         (event-value (translated-key display 32 0 context))))
+         (setf (context-focus context) nil
+               (context-measure context)
+               (lambda (widget width)
+                 (declare (ignore widget width)) (values 160 30)))
+         (with-frame (context 400 200)
+           (lui.glass:text-field :edit "value"))
+         (let* ((box (element-box
+                      (gethash :edit (lui.frame::context-ids context))))
+                (press (make-event :kind :press
+                                   :x (+ (box-x box) 1)
+                                   :y (+ (box-y box) 1)))
+                (predicted (pending-input-context context (list press))))
+           (assert (null (context-focus context)))
+           (assert (eq :edit (context-focus predicted)))
+           (assert (eq :select-all
+                       (event-key (translated-key display #x41 5 predicted))))
+           ;; A queued Tab follows the same focus order without mutating it.
+           (assert (eq :edit
+                       (context-focus
+                        (pending-input-context
+                         context (list (make-event :kind :tab)))))))
          (dolist (kind '(:default :pointer :text :not-allowed))
            (assert (plusp (lui.x11::cursor-for window kind))))
          (format t "X11 reverse Tab, Space, and native cursor checks passed.~%"))
