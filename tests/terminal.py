@@ -27,6 +27,7 @@ def script(error=False):
   (handler-case
       (lui:run (lambda ()
                  (lui.example:draw)
+                 (lui.frame:request-frame 0.03)
                  (when (> (incf frames) 1) (error "test draw failure")))
                :backend :terminal)
     (error () (format t "~&@@DRAW-ERROR~%"))))""" if error else """
@@ -66,6 +67,31 @@ def script(error=False):
       (lui.glass:label "X")))
   (assert (string= (lui.terminal:render-terminal context)
                    (format nil "╭──╮    ~%│X │    ~%╰──╯    ~%"))))
+;; Fractional cell boundaries must agree for painting and clipping.
+(let ((context (lui.terminal:make-terminal-context)))
+  (lui.frame:with-frame (context 10 4)
+    (lui.frame:row (:width (lui.layout:grow) :height (lui.layout:grow))
+      (lui.motif:panel (:width (lui.layout:fixed 2.4)
+                        :height (lui.layout:grow)))
+      (lui.motif:panel (:width (lui.layout:grow) :height (lui.layout:grow)
+                        :padding 1)
+        (lui.motif:label "X"))))
+  (let ((lines (lui.terminal:text-lines
+                (lui.terminal:render-terminal context) nil)))
+    (assert (char= (char (first lines) 2) #\\+))
+    (assert (char= (char (second lines) 2) #\\|))
+    (assert (char= (char (fourth lines) 2) #\\+))))
+;; A zero-padding child cannot overwrite its enclosing panel's borders.
+(let ((context (lui.terminal:make-terminal-context)))
+  (lui.frame:with-frame (context 5 3)
+    (lui.garnet:panel (:width (lui.layout:grow) :height (lui.layout:grow))
+      (lui.garnet:label "XXXXX")))
+  (let ((plain (lui.terminal:render-terminal context))
+        (colored (lui.terminal:render-terminal context :ansi t)))
+    (assert (string= plain (format nil "+---+~%|   |~%+---+~%")))
+    (assert (not (find #\\Escape plain)))
+    (assert (search "[38;2;0;0;0m" colored))
+    (assert (search "[48;2;255;255;255m" colored))))
 (let ((context (lui:run #'lui.example:draw :backend :terminal
                         :width 90 :height 35 :interactive nil)))
   (lui.layout:walk-elements
@@ -170,7 +196,13 @@ def exercise(lisp, path):
     try:
         terminal.until(b"\x1b[?1049h", timeout=180)
         terminal.until(b"Common Lisp")
+        assert b"\x1b[38;2;" in terminal.output
+        assert b"\x1b[48;2;" in terminal.output
         assert not termios.tcgetattr(terminal.slave)[3] & termios.ICANON
+        terminal.pump(0.2)
+        checkpoint = len(terminal.output)
+        terminal.pump(0.25)
+        assert len(terminal.output) == checkpoint, "Idle frames are repainting"
         match = re.search(rb"@@NAME=(\d+),(\d+)", terminal.output)
         assert match, terminal.output
         x, y = (int(value) for value in match.groups())

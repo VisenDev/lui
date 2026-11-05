@@ -45,13 +45,13 @@
                 (max 1 (cffi:mem-aref size :unsigned-short 0)))
         (values 80 24))))
 
-(fn read-input ((input input))
+(fn read-input ((input input) &optional ((timeout integer) 100))
   (cffi:with-foreign-object (descriptor '(:struct pollfd))
     (setf (cffi:foreign-slot-value descriptor '(:struct pollfd) 'fd) 0
           (cffi:foreign-slot-value descriptor '(:struct pollfd) 'events) 1
           (cffi:foreign-slot-value descriptor '(:struct pollfd) 'revents) 0)
     (let ((ready (cffi:foreign-funcall "poll" :pointer descriptor
-                                     :unsigned-long 1 :int 100 :int)))
+                                     :unsigned-long 1 :int timeout :int)))
       (when (plusp ready)
         (cffi:with-foreign-object (buffer :unsigned-char 4096)
           (let ((count (cffi:foreign-funcall "read" :int 0 :pointer buffer
@@ -257,13 +257,14 @@
                    (eq (widget-kind widget) :text-field)))
       (let* ((box (element-box node))
              (clip (element-clip node))
-             (padding (floor (element-padding node)))
-             (origin (+ (floor (box-x box)) padding))
-             (x (max 0 origin (ceiling (box-x clip))))
-             (y (+ (floor (box-y box)) padding))
+             (padding (element-padding node))
+             (origin (cell-edge (+ (box-x box) padding)))
+             (x (max 0 origin (cell-edge (box-x clip))))
+             (y (cell-edge (+ (box-y box) padding)))
              (right (min (context-width context)
-                         (floor (+ (box-x clip) (box-width clip)))
-                         (- (floor (+ (box-x box) (box-width box))) padding)))
+                         (cell-edge (+ (box-x clip) (box-width clip)))
+                         (cell-edge (+ (box-x box) (box-width box)
+                                       (- padding)))))
              (width (max 0 (- right x)))
              (state (gethash (element-id node) (context-state context)))
              (field-p (eq (widget-kind widget) :text-field))
@@ -276,8 +277,8 @@
              (offset (max 0 (- cursor (max 1 (1- width)))))
              (text (widget-terminal-text widget)))
         (when (and (plusp width) (<= 0 y) (< y (context-height context))
-                   (<= (box-y clip) y)
-                   (< y (+ (box-y clip) (box-height clip))))
+                   (<= (cell-edge (box-y clip)) y)
+                   (< y (cell-edge (+ (box-y clip) (box-height clip)))))
           (control stream "[~D;~DH" (1+ y) (1+ x))
           (control stream "[7m")
           (write-string (slice-cells text (+ offset (- x origin)) width)
@@ -295,7 +296,7 @@
      (control stream "[?25l")
      (control stream "[H")
      ;; Explicit positioning avoids ONLCR changes and last-column autowrap.
-     (let* ((frame (render-terminal context))
+     (let* ((frame (render-terminal context :ansi t))
             (start 0)
             (row 1))
        (loop :for end := (position #\Newline frame :start start)
@@ -305,6 +306,23 @@
                  (setf start (1+ end))
                  (incf row)))
      (draw-focus stream context))))
+
+(fn wait-frame ((input input) (context context) width height)
+  ;; Poll for resize without repainting idle frames; timers shorten the wait.
+  (loop
+    (let* ((deadline (context-next-frame context))
+           (remaining (when deadline
+                        (- deadline (/ (get-internal-real-time)
+                                       internal-time-units-per-second)))))
+      (when (and remaining (<= remaining 0)) (return))
+      (read-input input (if remaining (min 100 (ceiling (* remaining 1000)))
+                            100)))
+    (decode-input input context)
+    (when (or (input-events input) (input-quit-p input)) (return))
+    (multiple-value-bind (columns rows) (terminal-size)
+      (when (or (/= (or width columns) (context-width context))
+                (/= (or height rows) (context-height context)))
+        (return)))))
 
 (fn run-raw-terminal
     ((draw function) &key title width height (interactive t))
@@ -349,8 +367,7 @@
                       (funcall draw)))
                   (setf (input-events input) nil)
                   (display-frame context)
-                  (read-input input)
-                  (decode-input input context)
+                  (wait-frame input context width height)
                   (when (input-quit-p input) (return context))))
            ;; Restore termios even if output fails, or DRAW signals an error.
            (unwind-protect
