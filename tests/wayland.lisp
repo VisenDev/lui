@@ -9,19 +9,17 @@
 (defun install-us-keymap (window)
   (lui.wayland::release-keymap window)
   (cffi:with-foreign-object (names '(:struct keymap-names))
-    (cffi:with-foreign-string (layout "us")
+    (cffi:with-foreign-string (layout-name "us")
       (cffi:with-foreign-slots
           ((rules model layout variant options) names (:struct keymap-names))
         (setf rules (cffi:null-pointer) model (cffi:null-pointer)
-              layout (cffi:foreign-string-alloc "us")
-              variant (cffi:null-pointer) options (cffi:null-pointer))
-        (unwind-protect
-             (setf (lui.wayland::wl-window-keymap window)
-                   (cffi:foreign-funcall
-                    "xkb_keymap_new_from_names"
-                    :pointer (lui.wayland::wl-window-xkb-context window)
-                    :pointer names :uint 0 :pointer))
-          (cffi:foreign-string-free layout)))))
+              layout layout-name variant (cffi:null-pointer)
+              options (cffi:null-pointer)))
+      (setf (lui.wayland::wl-window-keymap window)
+            (cffi:foreign-funcall
+             "xkb_keymap_new_from_names"
+             :pointer (lui.wayland::wl-window-xkb-context window)
+             :pointer names :uint 0 :pointer))))
   (assert (not (cffi:null-pointer-p
                 (lui.wayland::wl-window-keymap window))))
   (setf (lui.wayland::wl-window-key-state window)
@@ -136,6 +134,73 @@
       (cffi:foreign-funcall "xkb_context_unref" :pointer context :void)))
   (format t "Wayland keyboard repeat timing, modifiers, and cancellation passed.~%"))
 
+(defun test-surface-scaling ()
+  (let ((lui.wayland::*window*
+          (lui.wayland::make-wl-window :width 101 :height 55))
+        (null (cffi:null-pointer)))
+    (cffi:foreign-funcall-pointer
+     (cffi:callback lui.wayland::preferred-buffer-scale) ()
+     :pointer null :pointer null :int32 2 :void)
+    (assert (equal '(202 110)
+                   (multiple-value-list
+                    (lui.wayland::framebuffer-size lui.wayland::*window*))))
+    ;; Fractional scaling overrides the integer fallback without rounding
+    ;; logical input/layout coordinates or truncating physical coverage.
+    (setf (lui.wayland::wl-window-fractional-object lui.wayland::*window*)
+          (cffi:make-pointer 1))
+    (cffi:foreign-funcall-pointer
+     (cffi:callback lui.wayland::fractional-preferred-scale) ()
+     :pointer null :pointer null :uint32 150 :void)
+    (assert (equal '(127 69)
+                   (multiple-value-list
+                    (lui.wayland::framebuffer-size lui.wayland::*window*))))
+    (assert (= 101 (lui.wayland::wl-window-width lui.wayland::*window*)))
+    (assert (= 55 (lui.wayland::wl-window-height lui.wayland::*window*)))))
+
+(defun test-readline-translation ()
+  (let* ((xkb (cffi:foreign-funcall "xkb_context_new" :uint 0 :pointer))
+         (lui.wayland::*window*
+           (lui.wayland::make-wl-window :xkb-context xkb))
+         (context (make-context :focus :edit))
+         (*context* context)
+         (null (cffi:null-pointer)))
+    (setf (context-root context)
+          (make-element :id :edit
+                        :content (lui.widgets:make-widget :kind :text-field)))
+    (unwind-protect
+         (progn
+           (install-us-keymap lui.wayland::*window*)
+           (flet ((modifiers (mask)
+                    (cffi:foreign-funcall-pointer
+                     (cffi:callback lui.wayland::keyboard-modifiers) ()
+                     :pointer null :pointer null :uint32 0 :uint32 mask
+                     :uint32 0 :uint32 0 :uint32 0 :void))
+                  (expect (code command)
+                    (keyboard-key code 1)
+                    (let ((events (take-input)))
+                      (assert (= 1 (length events)))
+                      (assert (eq :key (event-kind (first events))))
+                      (assert (eq command (event-key (first events)))))))
+             (modifiers 4)
+             (loop :for (code command)
+                     :in '((30 :home) (18 :end) (48 :left) (33 :right)
+                           (32 :delete) (35 :backspace) (37 :kill-end)
+                           (22 :kill-start) (17 :kill-word) (21 :yank)
+                           (20 :transpose))
+                   :do (expect code command))
+             (modifiers 5)
+             (expect 30 :select-all)
+             (modifiers 8)
+             (expect 48 :word-left)
+             (expect 33 :word-right)
+             (expect 32 :kill-word-forward)
+             (modifiers 4)
+             (setf (context-focus context) :another-widget)
+             (keyboard-key 30 1)
+             (assert (not (find :home (take-input) :key #'event-key)))))
+      (lui.wayland::release-keymap lui.wayland::*window*)
+      (cffi:foreign-funcall "xkb_context_unref" :pointer xkb :void))))
+
 (defun test-decoration-configure ()
   (let ((lui.wayland::*window* (lui.wayland::make-wl-window))
         (null (cffi:null-pointer)))
@@ -158,6 +223,8 @@
                          lui.wayland::*window*)))))))
 
 (test-decoration-configure)
+(test-surface-scaling)
+(test-readline-translation)
 
 (test-key-repeat)
 
@@ -169,6 +236,25 @@
        (incf frames)
        (when (= frames 1)
          (setf native lui.wayland::*window*)
+         (let ((gpu (lui.wayland::wl-window-gpu native)))
+           (assert (= (context-width *context*)
+                      (lui.wayland::wl-window-width native)))
+           (assert (= (lui.gl:gpu-logical-width gpu)
+                      (lui.wayland::wl-window-width native)))
+           (assert (equal
+                    (list (lui.gl:gpu-width gpu) (lui.gl:gpu-height gpu))
+                    (multiple-value-list
+                     (lui.wayland::framebuffer-size native))))
+           (when (lui.wayland::wl-window-viewport native)
+             (assert (= 1 (lui.wayland::wl-window-applied-buffer-scale
+                           native)))
+             (assert (= (lui.wayland::wl-window-viewport-width native)
+                        (lui.wayland::wl-window-width native))))
+           (format t "Wayland logical ~Dx~D, framebuffer ~Dx~D, scale ~A.~%"
+                   (lui.gl:gpu-logical-width gpu)
+                   (lui.gl:gpu-logical-height gpu)
+                   (lui.gl:gpu-width gpu) (lui.gl:gpu-height gpu)
+                   (lui.wayland::surface-scale native)))
          (if (lui.wayland::wl-window-decoration-manager native)
              (progn
                (assert (lui.wayland::wl-window-decoration native))
@@ -212,4 +298,6 @@
   (assert (= frames 5))
   (assert (null (lui.wayland::wl-window-decoration native)))
   (assert (null (lui.wayland::wl-window-decoration-manager native)))
+  (assert (null (lui.wayland::wl-window-viewport native)))
+  (assert (null (lui.wayland::wl-window-fractional-object native)))
   (format t "Wayland compositor, pointer callbacks, and cleanup passed.~%"))

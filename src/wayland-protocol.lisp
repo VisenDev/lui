@@ -173,7 +173,7 @@
                                       :pointer display :int))
       (error "Wayland dispatch failed."))))
 
-;; XDG shell and decoration v1 metadata. See NOTICE for protocol licenses.
+;; XDG shell and optional desktop extensions. See NOTICE for licenses.
 (defparameter *xdg-interfaces*
  '(("xdg_wm_base"
     (("destroy" "" ())
@@ -228,7 +228,23 @@
     (("destroy" "" ())
      ("set_mode" "u" (nil))
      ("unset_mode" "" ()))
-    (("configure" "u" (nil))))))
+    (("configure" "u" (nil))))
+   ("wp_viewporter"
+    (("destroy" "" ())
+     ("get_viewport" "no" ("wp_viewport" "wl_surface")))
+    ())
+   ("wp_viewport"
+    (("destroy" "" ())
+     ("set_source" "ffff" (nil nil nil nil))
+     ("set_destination" "ii" (nil nil)))
+    ())
+   ("wp_fractional_scale_manager_v1"
+    (("destroy" "" ())
+     ("get_fractional_scale" "no" ("wp_fractional_scale_v1" "wl_surface")))
+    ())
+   ("wp_fractional_scale_v1"
+    (("destroy" "" ()))
+    (("preferred_scale" "u" (nil))))))
 
 (fn call-with-interfaces ((function function))
   (let ((*interfaces* (make-hash-table :test 'equal))

@@ -14,6 +14,11 @@
 (defstruct wl-window
   display registry compositor shell seat surface xdg toplevel
   decoration-manager decoration decoration-mode pending-decoration-mode
+  viewporter viewport fractional-manager fractional-object
+  (compositor-version 1 :type integer)
+  (scale120 120 :type integer) (buffer-scale 1 :type integer)
+  applied-buffer-scale
+  (viewport-width 0 :type integer) (viewport-height 0 :type integer)
   pointer keyboard native gpu font xkb-context keymap key-state
   (seat-version 1 :type integer)
   ;; Older keyboards have no repeat_info; use conventional client defaults.
@@ -133,19 +138,40 @@
   (declare (ignore serial surface))
   (stop-key-repeat *window*))
 
+(fn modifier-active-p (state (name string))
+  (plusp (cffi:foreign-funcall
+          "xkb_state_mod_name_is_active" :pointer state
+          :string name :uint 8 :int)))
+
+(fn editor-command (state (symbol integer))
+  (when (and (boundp '*context*)
+             (lui.widgets:text-field-focused-p *context*))
+    (cffi:with-foreign-object (name :char 64)
+      (let ((length (cffi:foreign-funcall
+                     "xkb_keysym_get_name" :uint symbol
+                     :pointer name :size 64 :int)))
+        (when (< 0 length 64)
+          (lui.widgets:readline-key
+           (cffi:foreign-string-to-lisp name :count length)
+           :control (modifier-active-p state "Control")
+           :alt (modifier-active-p state "Mod1")
+           :shift (modifier-active-p state "Shift")))))))
+
 (fn emit-key-input ((code integer))
   (when (wl-window-key-state *window*)
     (let* ((state (wl-window-key-state *window*))
            (key (+ code 8))
            (symbol (cffi:foreign-funcall "xkb_state_key_get_one_sym"
                                          :pointer state :uint key :uint))
+           (editor (editor-command state symbol))
            (command
              (cdr (assoc symbol
                          '((#xff51 . :left) (#xff53 . :right)
                            (#xff52 . :up) (#xff54 . :down)
                            (#xff50 . :home) (#xff57 . :end)
                            (#xff08 . :backspace) (#xffff . :delete))))))
-      (cond ((= symbol #xff09) (queue-input :tab))
+      (cond (editor (queue-input :key :key editor))
+            ((= symbol #xff09) (queue-input :tab))
             ((= symbol #xff0d) (queue-input :activate))
             (command (queue-input :key :key command))
             (t
@@ -248,13 +274,14 @@
     ((name :uint32) (interface-name :string) (version :uint32))
   (when (member interface-name
                 '("wl_compositor" "xdg_wm_base" "wl_seat"
-                  "zxdg_decoration_manager_v1")
+                  "zxdg_decoration_manager_v1" "wp_viewporter"
+                  "wp_fractional_scale_manager_v1")
                 :test #'string=)
-    (let* ((version (min version
-                         (if (member interface-name
-                                     '("wl_compositor" "wl_seat")
-                                     :test #'string=)
-                             4 1)))
+    (let* ((version
+             (min version
+                  (cond ((string= interface-name "wl_compositor") 6)
+                        ((string= interface-name "wl_seat") 4)
+                        (t 1))))
            (object
              (request proxy 0 interface-name
                       (list (cons :uint32 name)
@@ -263,7 +290,12 @@
                             (cons :pointer (cffi:null-pointer)))
                       version)))
       (cond ((string= interface-name "wl_compositor")
-             (setf (wl-window-compositor *window*) object))
+             (setf (wl-window-compositor *window*) object
+                   (wl-window-compositor-version *window*) version))
+            ((string= interface-name "wp_viewporter")
+             (setf (wl-window-viewporter *window*) object))
+            ((string= interface-name "wp_fractional_scale_manager_v1")
+             (setf (wl-window-fractional-manager *window*) object))
             ((string= interface-name "zxdg_decoration_manager_v1")
              (setf (wl-window-decoration-manager *window*) object))
             ((string= interface-name "xdg_wm_base")
@@ -278,6 +310,80 @@
 
 (callback registry-remove ((name :uint32))
   (declare (ignore name)))
+
+(callback surface-enter ((output :pointer))
+  (declare (ignore output)))
+
+(callback surface-leave ((output :pointer))
+  (declare (ignore output)))
+
+(callback preferred-buffer-scale ((scale :int32))
+  (when (plusp scale) (setf (wl-window-buffer-scale *window*) scale)))
+
+(callback preferred-buffer-transform ((transform :uint32))
+  ;; Upright buffers remain valid; the compositor handles output transforms.
+  (declare (ignore transform)))
+
+(callback fractional-preferred-scale ((scale :uint32))
+  (when (plusp scale) (setf (wl-window-scale120 *window*) scale)))
+
+(fn create-scaling ((window wl-window))
+  (attach-listener
+   (wl-window-surface window)
+   (list (cffi:callback surface-enter) (cffi:callback surface-leave)
+         (cffi:callback preferred-buffer-scale)
+         (cffi:callback preferred-buffer-transform)))
+  (when (and (wl-window-viewporter window)
+             (wl-window-fractional-manager window))
+    (setf (wl-window-viewport window)
+          (request (wl-window-viewporter window) 1 "wp_viewport"
+                   (list (cons :pointer (cffi:null-pointer))
+                         (cons :pointer (wl-window-surface window))))
+          (wl-window-fractional-object window)
+          (request (wl-window-fractional-manager window) 1
+                   "wp_fractional_scale_v1"
+                   (list (cons :pointer (cffi:null-pointer))
+                         (cons :pointer (wl-window-surface window)))))
+    (attach-listener (wl-window-fractional-object window)
+                     (list (cffi:callback fractional-preferred-scale)))))
+
+(fn (surface-scale real) ((window wl-window))
+  (if (wl-window-fractional-object window)
+      (/ (wl-window-scale120 window) 120)
+      (wl-window-buffer-scale window)))
+
+(fn framebuffer-size ((window wl-window))
+  (let ((scale (surface-scale window)))
+    (values (max 1 (ceiling (* (wl-window-width window) scale)))
+            (max 1 (ceiling (* (wl-window-height window) scale))))))
+
+(fn sync-window-size ((window wl-window))
+  (let ((gpu (wl-window-gpu window))
+        (width (wl-window-width window))
+        (height (wl-window-height window))
+        (buffer-scale (if (wl-window-viewport window)
+                          1 (wl-window-buffer-scale window))))
+    (when (and (>= (wl-window-compositor-version window) 3)
+               (not (eql buffer-scale
+                         (wl-window-applied-buffer-scale window))))
+      (request (wl-window-surface window) 8 nil
+               (list (cons :int32 buffer-scale)))
+      (setf (wl-window-applied-buffer-scale window) buffer-scale))
+    (when (and (wl-window-viewport window)
+               (or (/= width (wl-window-viewport-width window))
+                   (/= height (wl-window-viewport-height window))))
+      (request (wl-window-viewport window) 2 nil
+               (list (cons :int32 width) (cons :int32 height)))
+      (setf (wl-window-viewport-width window) width
+            (wl-window-viewport-height window) height))
+    (setf (gpu-logical-width gpu) width (gpu-logical-height gpu) height)
+    (multiple-value-bind (pixel-width pixel-height) (framebuffer-size window)
+      (unless (and (= pixel-width (gpu-width gpu))
+                   (= pixel-height (gpu-height gpu)))
+        (setf (gpu-width gpu) pixel-width (gpu-height gpu) pixel-height)
+        (cffi:foreign-funcall
+         "wl_egl_window_resize" :pointer (wl-window-native window)
+         :int pixel-width :int pixel-height :int 0 :int 0 :void)))))
 
 (callback decoration-configure ((mode :uint32))
   ;; This pending state belongs to the next xdg_surface.configure sequence.
@@ -310,11 +416,21 @@
   (when proxy (request proxy 0 nil nil nil t)))
 
 (fn release-extensions ((window wl-window))
-  ;; The decoration must disappear before the associated xdg_toplevel.
-  (destroy-extension (wl-window-decoration window))
-  (setf (wl-window-decoration window) nil)
-  (destroy-extension (wl-window-decoration-manager window))
-  (setf (wl-window-decoration-manager window) nil))
+  ;; Children disappear before their xdg_toplevel/wl_surface and managers.
+  (dolist (proxy (list (wl-window-decoration window)
+                      (wl-window-viewport window)
+                      (wl-window-fractional-object window)))
+    (destroy-extension proxy))
+  (setf (wl-window-decoration window) nil
+        (wl-window-viewport window) nil
+        (wl-window-fractional-object window) nil)
+  (dolist (proxy (list (wl-window-decoration-manager window)
+                      (wl-window-viewporter window)
+                      (wl-window-fractional-manager window)))
+    (destroy-extension proxy))
+  (setf (wl-window-decoration-manager window) nil
+        (wl-window-viewporter window) nil
+        (wl-window-fractional-manager window) nil))
 
 (callback toplevel-configure
     ((width :int32) (height :int32) (states :pointer))
@@ -365,6 +481,7 @@
                             (list (cffi:callback toplevel-configure)
                                   (cffi:callback toplevel-close)))
            (create-decoration *window*)
+           (create-scaling *window*)
            (request (wl-window-toplevel *window*) 2 nil
                     (list (cons :string title)))
            (request (wl-window-toplevel *window*) 3 nil
@@ -373,40 +490,32 @@
            (loop :until (wl-window-configured-p *window*)
                  :do (when (minusp (dispatch-display display))
                        (error "Wayland initial configure failed.")))
-           (setf (wl-window-native *window*)
-                 (cffi:foreign-funcall
-                  "wl_egl_window_create"
-                  :pointer (wl-window-surface *window*)
-                  :int (wl-window-width *window*)
-                  :int (wl-window-height *window*) :pointer)
-                 (wl-window-font *window*) (open-font)
-                 (wl-window-gpu *window*)
-                 (open-gpu display (wl-window-native *window*)
-                           (wl-window-font *window*)
-                           (wl-window-width *window*)
-                           (wl-window-height *window*)))
+           (multiple-value-bind (pixel-width pixel-height)
+               (framebuffer-size *window*)
+             (setf (wl-window-native *window*)
+                   (cffi:foreign-funcall
+                    "wl_egl_window_create"
+                    :pointer (wl-window-surface *window*)
+                    :int pixel-width :int pixel-height :pointer)
+                   (wl-window-font *window*) (open-font)
+                   (wl-window-gpu *window*)
+                   (open-gpu display (wl-window-native *window*)
+                             (wl-window-font *window*)
+                             pixel-width pixel-height)))
            (let* ((gpu (wl-window-gpu *window*))
                   (renderer (gpu-renderer gpu))
                   (context
                     (make-context
                      :measure (lambda (widget width)
-                                (measure-widget renderer widget width)))))
+                                (measure-widget renderer widget width))))
+                  (*context* context))
              (loop :until (wl-window-quit-p *window*)
                    :do
-                   (unless (and (= (gpu-width gpu)
-                                   (wl-window-width *window*))
-                                (= (gpu-height gpu)
-                                   (wl-window-height *window*)))
-                     (setf (gpu-width gpu) (wl-window-width *window*)
-                           (gpu-height gpu) (wl-window-height *window*))
-                     (cffi:foreign-funcall
-                      "wl_egl_window_resize"
-                      :pointer (wl-window-native *window*)
-                      :int (gpu-width gpu) :int (gpu-height gpu)
-                      :int 0 :int 0 :void))
+                   (sync-window-size *window*)
                    (repeat-input)
                    (with-frame
-                       (context (gpu-width gpu) (gpu-height gpu)
+                       (context (wl-window-width *window*)
+                                (wl-window-height *window*)
                         :events (nreverse (wl-window-events *window*)))
                      (setf (wl-window-events *window*) nil)
                      (funcall draw))
