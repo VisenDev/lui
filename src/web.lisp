@@ -263,6 +263,21 @@
                      (web-app-measurements app)) cached))
     (values (first cached) (second cached))))
 
+(fn native-option-key ((app web-app) id event)
+  (unless (or (native-application-key app id event)
+              (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
+              (jscl/ffi:clbool (jscl/ffi:oget event "metaKey"))
+              (jscl/ffi:clbool (jscl/ffi:oget event "altKey")))
+    (let ((key (cdr (assoc
+                     (jscl/ffi:clstring (jscl/ffi:oget event "key"))
+                     '(("ArrowUp" . :up) ("ArrowDown" . :down)
+                       ("Home" . :home) ("End" . :end))
+                     :test #'string=))))
+      (when key
+        ((jscl/ffi:oget event "preventDefault"))
+        (setf (web-app-tab-focus-p app) t)
+        (queue-event app (make-event :kind :key :key key :id id))))))
+
 (fn widget-node ((app web-app) (node element) key)
   (let* ((widget (element-content node))
          (kind (widget-kind widget))
@@ -275,7 +290,7 @@
                       (create-svg-node "svg")
                       (create-node
                        (case kind
-                         ((:button :tab) "button")
+                         ((:button :tab :list-item) "button")
                          ((:slider :text-field) "input")
                          (:checkbox "label")
                          (otherwise "div")))))
@@ -309,13 +324,19 @@
                                ((jscl/ffi:oget dom "hasPointerCapture") id))
                           ((jscl/ffi:oget dom "releasePointerCapture") id)))))))
         (case kind
-          ((:button :tab)
+          ((:button :tab :list-item)
            (attribute dom "type" "button")
            (attribute dom "class" "lui-control")
            (listen app dom "mousedown"
                    (lambda (event)
-                     ;; Clicking a button keeps editing focus in the text field.
-                     ((jscl/ffi:oget event "preventDefault"))))
+                     ;; Buttons keep editing focus; list options take focus.
+                     (unless (eq kind :list-item)
+                       ((jscl/ffi:oget event "preventDefault")))))
+           (when (eq kind :list-item)
+             (attribute dom "role" "option")
+             (attribute dom "class" "lui-control lui-option")
+             (listen app dom "keydown"
+                     (lambda (event) (native-option-key app id event))))
            (when (eq kind :tab)
              (attribute dom "role" "tab")
              (listen app dom "keydown"
@@ -629,6 +650,19 @@
         (style dom "justify-content" "flex-end")
         (style control "width" "20px")
         (style control "height" "20px")))
+    (when (eq kind :list-item)
+      (attribute dom "aria-selected"
+                 (if (widget-value widget) "true" "false"))
+      (style dom "padding" "5px 11px")
+      (style dom "text-align" "left")
+      (style dom "border" "none")
+      (style dom "border-radius" "0")
+      (style dom "box-shadow" "none")
+      (style dom "backdrop-filter" "none")
+      (style dom "background"
+             (if (widget-value widget) (widget-accent widget) "transparent"))
+      (when (and (widget-value widget) (not (widget-disabled-p widget)))
+        (style dom "color" "#ffffff")))
     (unless (eq (widget-style widget) :garnet)
       (style dom "flex-direction" "row")
       (style dom "justify-content" "normal"))
@@ -667,32 +701,35 @@
     (walk-elements
      (context-root (web-app-context app))
      (lambda (parent)
-       (let ((tabs nil) (key nil))
+       (let ((tabs nil) (items nil))
          (do-children (node parent)
            (let ((widget (element-content node)))
-             (when (and (widget-p widget) (eq (widget-kind widget) :tab))
-               (push node tabs)
-               (push (element-id node) key))))
-         (when tabs
-           (setf tabs (nreverse tabs) key (nreverse key))
-           (let* ((key key)
-                  (group (gethash key (web-app-tablists app))))
-             (unless group
-               (setf group (create-node "div")
-                     (gethash key (web-app-tablists app)) group)
-               (attribute group "role" "tablist")
-               (style group "display" "contents")
-               (let* ((first (cdr (gethash (element-id (first tabs))
-                                           (web-app-nodes app))))
-                      (owner (jscl/ffi:oget first "parentNode")))
-                 ((jscl/ffi:oget (web-app-host app) "insertBefore")
-                  group (if (eq owner (web-app-host app)) first owner))))
-             (setf (gethash key seen) t)
-             (dolist (tab tabs)
-               (let ((dom (cdr (gethash (element-id tab)
-                                        (web-app-nodes app)))))
-                 (unless (eq group (jscl/ffi:oget dom "parentNode"))
-                   ((jscl/ffi:oget group "appendChild") dom)))))))))
+             (when (widget-p widget)
+               (case (widget-kind widget)
+                 (:tab (push node tabs))
+                 (:list-item (push node items))))))
+         (dolist (nodes (list (nreverse tabs) (nreverse items)))
+           (when nodes
+             (let* ((kind (widget-kind (element-content (first nodes))))
+                    (key (cons kind (mapcar #'element-id nodes)))
+                    (group (gethash key (web-app-tablists app))))
+               (unless group
+                 (setf group (create-node "div")
+                       (gethash key (web-app-tablists app)) group)
+                 (attribute group "role"
+                            (if (eq kind :tab) "tablist" "listbox"))
+                 (style group "display" "contents")
+                 (let* ((first (cdr (gethash (element-id (first nodes))
+                                            (web-app-nodes app))))
+                        (owner (jscl/ffi:oget first "parentNode")))
+                   ((jscl/ffi:oget (web-app-host app) "insertBefore")
+                    group (if (eq owner (web-app-host app)) first owner))))
+               (setf (gethash key seen) t)
+               (dolist (node nodes)
+                 (let ((dom (cdr (gethash (element-id node)
+                                         (web-app-nodes app)))))
+                   (unless (eq group (jscl/ffi:oget dom "parentNode"))
+                     ((jscl/ffi:oget group "appendChild") dom))))))))))
     (let ((removed nil))
       (maphash (lambda (key group)
                  (unless (gethash key seen)
@@ -779,7 +816,7 @@
     (when (web-app-tab-focus-p app)
       (setf (web-app-tab-focus-p app) nil)
       (let ((target (gethash (context-focus context) (web-app-nodes app))))
-        (when (and target (eq (car target) :tab))
+        (when (and target (member (car target) '(:tab :list-item)))
           ((jscl/ffi:oget (cdr target) "focus")))))
     (let ((removed nil))
       (maphash
@@ -823,6 +860,10 @@
           (#j:String:prototype:concat:call
            (jscl/ffi:oget sheet "textContent")
            #j"[data-lui-style=garnet].lui-control:hover:enabled{filter:none;background:#eee!important}[data-lui-style=garnet].lui-control:active:enabled{filter:none;transform:translate(4px,4px);box-shadow:inset 0 0 0 1px #000!important}.lui-garnet-check input{appearance:none;background:linear-gradient(#fff,#fff) 3px 3px / calc(100% - 6px) calc(100% - 6px) no-repeat,repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px;border:1px solid #000;border-radius:0;box-shadow:4px 4px 0 #000;display:grid;place-content:center}.lui-garnet-check input:checked::after{content:\"\";width:10px;height:10px;background:linear-gradient(45deg,transparent 44%,currentColor 44%,currentColor 56%,transparent 56%),linear-gradient(-45deg,transparent 44%,currentColor 44%,currentColor 56%,transparent 56%)}[data-lui-style=garnet].lui-range::-webkit-slider-runnable-track{height:12px;border:1px solid #000;border-radius:0;background:repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px}[data-lui-style=garnet].lui-range::-webkit-slider-thumb{width:18px;height:18px;margin-top:-4px;border:1px solid #000;border-radius:0;background:#fff;box-shadow:3px 3px 0 #000}[data-lui-style=garnet].lui-range::-moz-range-track{height:12px;border:1px solid #000;border-radius:0;background:repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px}[data-lui-style=garnet].lui-range::-moz-range-progress{background:transparent}[data-lui-style=garnet].lui-range::-moz-range-thumb{width:18px;height:18px;border:1px solid #000;border-radius:0;background:#fff;box-shadow:3px 3px 0 #000}"))
+    (setf (jscl/ffi:oget sheet "textContent")
+          (#j:String:prototype:concat:call
+           (jscl/ffi:oget sheet "textContent")
+           #j".lui-option:active:enabled{transform:none;filter:none}.lui-option[aria-selected=false]:hover:enabled{filter:none;background:color-mix(in srgb,var(--lui-accent) 14%,transparent)!important}.lui-option[aria-selected=true]:hover:enabled{filter:none;background:var(--lui-accent)!important}"))
     ((jscl/ffi:oget host "appendChild") sheet)
     ((jscl/ffi:oget host "appendChild") measure)
     (setf (web-app-style-node app) sheet

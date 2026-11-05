@@ -393,6 +393,29 @@ class WebTests(unittest.TestCase):
         self.lisp('(lui.web:unmount *web-test-app*)')
 
 
+    def test_crud_options_selection_keyboard_and_fields(self):
+        self.page.get_by_role("tab", name="7GUIs", exact=True).click()
+        self.page.get_by_role("tab", name="CRUD", exact=True).click()
+        expect(self.page.get_by_role("listbox")).to_have_count(1)
+        options = self.page.get_by_role("option")
+        expect(options).to_have_count(3)
+        options.first.click()
+        expect(options.first).to_have_attribute("aria-selected", "true")
+        expect(self.page.locator('[role=option][aria-selected=true]')).to_have_count(1)
+        expect(self.page.get_by_role("textbox").nth(1)).to_have_value("Hans")
+        expect(self.page.get_by_role("textbox").nth(2)).to_have_value("Emil")
+        expect(options.first).to_be_focused()
+        options.first.press("ArrowDown")
+        expect(options.nth(1)).to_have_attribute("aria-selected", "true")
+        expect(self.page.locator('[role=option][aria-selected=true]')).to_have_count(1)
+        expect(self.page.get_by_role("textbox").nth(1)).to_have_value("Max")
+        expect(self.page.get_by_role("textbox").nth(2)).to_have_value("Mustermann")
+        expect(options.nth(1)).to_be_focused()
+        options.nth(1).press("End")
+        expect(options.last).to_have_attribute("aria-selected", "true")
+        expect(self.page.get_by_role("textbox").nth(1)).to_have_value("Roman")
+        expect(options.last).to_have_css("border-top-style", "none")
+
     def test_editor_enter_escape_and_native_clipboard(self):
         self.fixture()
         self.lisp('''
