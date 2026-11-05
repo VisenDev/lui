@@ -84,6 +84,29 @@
   (height :float) (mode :int))
 (api ("GdipFlush" flush-graphics) :int (graphics :pointer) (intent :int))
 
+(api ("GdipGetDC" graphics-dc) :int
+  (graphics :pointer) (dc :pointer))
+(api ("GdipReleaseDC" release-graphics-dc) :int
+  (graphics :pointer) (dc :pointer))
+(api ("GdipCreateBitmapFromScan0" create-image) :int
+  (width :int) (height :int) (stride :int) (format :int)
+  (pixels :pointer) (image :pointer))
+(api ("GdipGetImageGraphicsContext" image-graphics) :int
+  (image :pointer) (graphics :pointer))
+(api ("GdipDisposeImage" dispose-image) :int (image :pointer))
+(api ("GdipSetInterpolationMode" interpolation-mode) :int
+  (graphics :pointer) (mode :int))
+(api ("GdipDrawImageRectRectI" draw-image) :int
+  (graphics :pointer) (image :pointer) (dx :int) (dy :int)
+  (dw :int) (dh :int) (sx :int) (sy :int) (sw :int) (sh :int)
+  (unit :int) (attributes :pointer) (callback :pointer) (data :pointer))
+(api ("GdipSaveGraphics" save-graphics) :int
+  (graphics :pointer) (state :pointer))
+(api ("GdipRestoreGraphics" restore-graphics) :int
+  (graphics :pointer) (state :uint32))
+(api ("GdipSetClipPath" clip-path) :int
+  (graphics :pointer) (path :pointer) (mode :int))
+
 (cffi:defcstruct window-class
   (style :uint32) (procedure :pointer) (class-extra :int)
   (window-extra :int) (instance :pointer) (icon :pointer)
@@ -241,9 +264,9 @@
               (cffi:with-foreign-object (data :float (* 2 (length points)))
                 (loop :for point :in points :for i :from 0 :by 2 :do
                   (setf (cffi:mem-aref data :float i)
-                    (float (car point) 1.0)
+                    (float (car point) 1.0f0)
                     (cffi:mem-aref data :float (1+ i))
-                    (float (cdr point) 1.0)))
+                    (float (cdr point) 1.0f0)))
                 (checked (add-polygon path data (length points))))))
           (checked (solid-fill (argb color alpha) brush-out))
           (setf brush (cffi:mem-ref brush-out :pointer))
@@ -255,9 +278,106 @@
   (checked (reset-clip (win-window-graphics window)))
   (checked
     (set-clip (win-window-graphics window)
-      (float (box-x box) 1.0) (float (box-y box) 1.0)
-      (float (max 0 (box-width box)) 1.0)
-      (float (max 0 (box-height box)) 1.0) 0)))
+      (float (box-x box) 1.0f0) (float (box-y box) 1.0f0)
+      (float (max 0 (box-width box)) 1.0f0)
+      (float (max 0 (box-height box)) 1.0f0) 0)))
+
+(fn blit-image
+  (graphics image (x integer) (y integer) (width integer) (height integer)
+    (sx integer) (sy integer) (sw integer) (sh integer))
+  (checked
+    (draw-image graphics image x y width height sx sy sw sh 2
+      (cffi:null-pointer) (cffi:null-pointer) (cffi:null-pointer))))
+
+(fn capture-backdrop
+  ((window win-window) (x integer) (y integer)
+    (width integer) (height integer))
+  (let ((image nil) (target nil) (source-dc nil) (target-dc nil)
+        (complete nil) (source (win-window-graphics window)))
+    (cffi:with-foreign-object (out :pointer)
+      (unwind-protect
+        (progn
+          ;; Native RGB storage avoids undefined alpha from GDI BitBlt.
+          (checked
+            (create-image width height 0 #x21808 (cffi:null-pointer) out))
+          (setf image (cffi:mem-ref out :pointer))
+          (checked (image-graphics image out))
+          (setf target (cffi:mem-ref out :pointer))
+          (checked (graphics-dc target out))
+          (setf target-dc (cffi:mem-ref out :pointer))
+          (checked (graphics-dc source out))
+          (setf source-dc (cffi:mem-ref out :pointer))
+          (unless (plusp
+                    (bit-blt target-dc 0 0 width height
+                      source-dc x y #x00cc0020))
+            (error "Native backdrop capture failed."))
+          (setf complete t)
+          image)
+        (when source-dc (release-graphics-dc source source-dc))
+        (when target-dc (release-graphics-dc target target-dc))
+        (when target (delete-graphics target))
+        (when (and image (not complete)) (dispose-image image))))))
+
+(fn blur-backdrop
+  ((window win-window) (box box) (radius real) (blur real))
+  "Approximate backdrop blur with native filtered downsampling and upsampling.
+GDI+ owns all image storage, filtering, clipping, and rasterization. This is a
+compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
+  (when (<= blur 0) (return-from blur-backdrop nil))
+  (let* ((graphics (win-window-graphics window))
+         (left (max 0 (floor (- (box-x box) (* 2 blur)))))
+         (top (max 0 (floor (- (box-y box) (* 2 blur)))))
+         (right (min (win-window-width window)
+                  (ceiling (+ (box-x box) (box-width box) (* 2 blur)))))
+         (bottom (min (win-window-height window)
+                   (ceiling (+ (box-y box) (box-height box) (* 2 blur)))))
+         (width (- right left)) (height (- bottom top))
+         (factor (max 1 (ceiling blur 2)))
+         (small-width (max 1 (ceiling width factor)))
+         (small-height (max 1 (ceiling height factor)))
+         (snapshot nil) (small nil) (small-graphics nil) (path nil)
+         (saved nil))
+    (unless (and (plusp width) (plusp height))
+      (return-from blur-backdrop nil))
+    (cffi:with-foreign-objects ((out :pointer) (state :uint32))
+      (unwind-protect
+        (progn
+          (checked (flush-graphics graphics 1))
+          (setf snapshot (capture-backdrop window left top width height))
+          ;; NULL asks GDI+ to allocate storage; Lisp never supplies pixels.
+          (checked
+            (create-image small-width small-height 0 #x26200a
+              (cffi:null-pointer) out))
+          (setf small (cffi:mem-ref out :pointer))
+          (checked (image-graphics small out))
+          (setf small-graphics (cffi:mem-ref out :pointer))
+          (checked (interpolation-mode small-graphics 7))
+          (blit-image small-graphics snapshot 0 0 small-width small-height
+            0 0 width height)
+          (checked (delete-graphics small-graphics))
+          (setf small-graphics nil)
+          (checked (create-path 1 out))
+          (setf path (cffi:mem-ref out :pointer))
+          (let ((points (rounded-polygon box radius)))
+            (cffi:with-foreign-object (data :float (* 2 (length points)))
+              (loop :for point :in points :for i :from 0 :by 2 :do
+                (setf (cffi:mem-aref data :float i)
+                  (float (car point) 1.0f0)
+                  (cffi:mem-aref data :float (1+ i))
+                  (float (cdr point) 1.0f0)))
+              (checked (add-polygon path data (length points)))))
+          (checked (save-graphics graphics state))
+          (setf saved (cffi:mem-ref state :uint32))
+          ;; Intersect with the current widget/ancestor clip.
+          (checked (clip-path graphics path 1))
+          (checked (interpolation-mode graphics 7))
+          (blit-image graphics small left top width height
+            0 0 small-width small-height))
+        (when saved (restore-graphics graphics saved))
+        (when path (delete-path path))
+        (when small-graphics (delete-graphics small-graphics))
+        (when small (dispose-image small))
+        (when snapshot (dispose-image snapshot))))))
 
 (fn pump-messages ((window win-window))
   (cffi:with-foreign-object (message '(:struct message))
@@ -357,7 +477,9 @@
                    (make-renderer :font font :polygons
                      (lambda (polygons color alpha)
                        (draw-polygons window polygons color alpha))
-                     :clip (lambda (box) (clip-window window box))))
+                     :clip (lambda (box) (clip-window window box))
+                     :glass (lambda (box radius blur)
+                              (blur-backdrop window box radius blur))))
                  (context
                    (make-context :measure
                      (lambda (widget width)
@@ -368,7 +490,7 @@
               (when (win-window-quit window) (return context))
               (render-frame window renderer context draw)
               (unless interactive (return context))
-              (sleep 0.016))))
+              (sleep 0.016f0))))
         (when font (close-font font))
         (free-buffer window)
         (unless (cffi:null-pointer-p (win-window-handle window))

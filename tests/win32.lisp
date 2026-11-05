@@ -60,7 +60,21 @@
                     (list (rectangle 0 0 100 100)) "#ff0000" 0.5)
                   (assert (= #xffffff (pixel window 40 20)))
                   (assert (<= 126 (logand #xff (pixel window 5 5)) 129))
-                  (lui.win32::checked (lui.win32::reset-clip graphics))))
+                  (lui.win32::checked (lui.win32::reset-clip graphics))
+                  ;; A sharp edge must become intermediate gray inside glass.
+                  (lui.win32::checked
+                    (lui.win32::clear-graphics graphics #xff000000))
+                  (lui.win32::draw-polygons window
+                    (list (rectangle 50 0 50 100)) "#ffffff" 1)
+                  (lui.win32::blur-backdrop window
+                    (make-box :x 20 :y 20 :width 60 :height 60) 16 12)
+                  (assert (< 5 (logand #xff (pixel window 48 50)) 250))
+                  (assert (= 0 (pixel window 20 20)))
+                  (assert (= #xffffff (pixel window 60 10)))
+                  ;; The glass operation must restore the previous clip.
+                  (lui.win32::draw-polygons window
+                    (list (rectangle 0 0 10 10)) "#ff0000" 1)
+                  (assert (= #xff (pixel window 5 5)))))
               :backend :win32 :width 720 :height 520 :interactive nil)))
       (assert (= 720 (box-width (element-box (context-root context)))))
       (assert (= 1 frames))))
@@ -86,4 +100,4 @@
       :backend :win32 :width 720 :height 520))
   (assert (= frames 2))
   (assert (zerop (hash-table-count lui.win32::*windows*)))
-  (format t "Win32 native paths, holes, alpha, clip, input, resize, demo, and disposal passed.~%"))
+  (format t "Win32 native paths, holes, alpha, clip, glass blur, input, resize, demo, and disposal passed.~%"))
