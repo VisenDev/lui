@@ -1,7 +1,8 @@
 (defpackage #:lui.gl
-  (:use #:cl #:lui.fn #:lui.layout #:lui.draw)
+  (:use #:cl #:lui.fn #:lui.layout #:lui.draw #:lui.font)
   (:export #:gpu #:open-gpu #:close-gpu #:gpu-renderer #:gpu-width
-           #:gpu-height #:begin-gpu-frame #:present-gpu))
+           #:gpu-height #:gpu-logical-width #:gpu-logical-height
+           #:begin-gpu-frame #:present-gpu))
 (in-package #:lui.gl)
 
 (cffi:define-foreign-library egl
@@ -16,10 +17,14 @@
 
 (defstruct gpu
   display surface context renderer
+  (geometry (make-hash-table :test 'equal) :type hash-table)
+  (geometry-builds 0 :type integer)
   (program 0 :type integer)
   (texture 0 :type integer)
   (width 1 :type integer)
-  (height 1 :type integer))
+  (height 1 :type integer)
+  (logical-width 1 :type real)
+  (logical-height 1 :type real))
 
 (defparameter *vertex-source*
   "#version 120
@@ -31,6 +36,7 @@ uniform sampler2D backdrop;
 uniform vec2 resolution;
 uniform vec4 bounds;
 uniform float frost;
+uniform float pixelScale;
 void main() {
   vec2 p = gl_FragCoord.xy;
   vec2 lo = bounds.xy;
@@ -39,7 +45,8 @@ void main() {
   float edge = min(min(p.x-lo.x, hi.x-p.x),
                    min(p.y-lo.y, hi.y-p.y));
   vec2 bend = normalize(p-center+vec2(0.001))
-              * 3.0 * (1.0-smoothstep(0.0,12.0,edge));
+              * (3.0*pixelScale)
+              * (1.0-smoothstep(0.0,12.0*pixelScale,edge));
   vec3 color = vec3(0.0);
   for (int x=-2; x<=2; ++x)
     for (int y=-2; y<=2; ++y)
@@ -91,29 +98,85 @@ void main() {
       (when (plusp fragment)
         (call-gl "glDeleteShader" :uint fragment :void)))))
 
-(fn gl-polygons ((contours list) (color string) (alpha real))
+(fn clear-geometry ((gpu gpu))
+  (maphash (lambda (key display-list)
+             (declare (ignore key))
+             (call-gl "glDeleteLists" :uint display-list :int 1 :void))
+           (gpu-geometry gpu))
+  (clrhash (gpu-geometry gpu)))
+
+(fn gl-polygons ((gpu gpu) (contours list) (color string) (alpha real))
   (destructuring-bind (red green blue opacity)
       (color-components color alpha)
     (call-gl "glColor4f" :float (float red 1.0)
              :float (float green 1.0) :float (float blue 1.0)
              :float (float opacity 1.0) :void))
-  (call-gl "glBegin" :uint 4 :void)
-  (unwind-protect
-       (trapezoids
-        contours
-        (lambda (quad)
-          (dolist (index '(0 1 2 0 2 3))
-            (let ((point (nth index quad)))
-              (call-gl "glVertex2f" :float (float (car point) 1.0)
-                       :float (float (cdr point) 1.0) :void)))))
-    (call-gl "glEnd" :void)))
+  (let ((display-list (gethash contours (gpu-geometry gpu))))
+    (unless display-list
+      ;; Keep resize/animation variants bounded; glyphs use font-unit contours.
+      (when (>= (hash-table-count (gpu-geometry gpu)) 512)
+        (clear-geometry gpu))
+      (setf display-list (call-gl "glGenLists" :int 1 :uint))
+      (when (zerop display-list) (error "Cannot allocate GL geometry."))
+      (call-gl "glNewList" :uint display-list :uint #x1300 :void)
+      (unwind-protect
+           (progn
+             (call-gl "glBegin" :uint 4 :void)
+             (unwind-protect
+                  (trapezoids
+                   contours
+                   (lambda (quad)
+                     (dolist (index '(0 1 2 0 2 3))
+                       (let ((point (nth index quad)))
+                         (call-gl "glVertex2f"
+                                  :float (float (car point) 1.0)
+                                  :float (float (cdr point) 1.0) :void)))))
+               (call-gl "glEnd" :void)))
+        (call-gl "glEndList" :void))
+      (incf (gpu-geometry-builds gpu))
+      (setf (gethash contours (gpu-geometry gpu)) display-list))
+    (call-gl "glCallList" :uint display-list :void)))
+
+(fn gl-text ((gpu gpu) (font font) (text string)
+            (x real) (y real) (color string))
+  (let ((scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
+        (cursor x)
+        (previous nil))
+    (loop :for char :across text
+          :do (when previous
+                (incf cursor (* scale (zpb-ttf:kerning-offset
+                                      previous char (font-loader font)))))
+              (call-gl "glPushMatrix" :void)
+              (unwind-protect
+                   (progn
+                     (call-gl "glTranslatef" :float (float cursor 1.0)
+                              :float (float y 1.0) :float 0.0 :void)
+                     (call-gl "glScalef" :float (float scale 1.0)
+                              :float (float (- scale) 1.0) :float 1.0 :void)
+                     (gl-polygons gpu (glyph-polygons font char) color 1))
+                (call-gl "glPopMatrix" :void))
+              (incf cursor
+                    (* scale (zpb-ttf:advance-width
+                              (zpb-ttf:find-glyph char (font-loader font)))))
+              (setf previous char))))
+
+(fn pixel-box ((gpu gpu) (box box))
+  (let ((sx (/ (gpu-width gpu) (gpu-logical-width gpu)))
+        (sy (/ (gpu-height gpu) (gpu-logical-height gpu))))
+    (make-box :x (* sx (box-x box)) :y (* sy (box-y box))
+              :width (* sx (box-width box))
+              :height (* sy (box-height box)))))
 
 (fn gl-clip ((gpu gpu) (box box))
-  (call-gl "glScissor" :int (floor (box-x box))
-           :int (max 0 (- (gpu-height gpu)
-                          (ceiling (+ (box-y box) (box-height box)))))
-           :int (max 0 (ceiling (box-width box)))
-           :int (max 0 (ceiling (box-height box))) :void))
+  (let* ((pixels (pixel-box gpu box))
+         (left (floor (box-x pixels)))
+         (top (floor (box-y pixels)))
+         (right (ceiling (+ (box-x pixels) (box-width pixels))))
+         (bottom (ceiling (+ (box-y pixels) (box-height pixels)))))
+    (call-gl "glScissor" :int left
+             :int (max 0 (- (gpu-height gpu) bottom))
+             :int (max 0 (- right left))
+             :int (max 0 (- bottom top)) :void)))
 
 (fn uniform ((gpu gpu) (name string))
   (call-gl "glGetUniformLocation" :uint (gpu-program gpu)
@@ -132,15 +195,19 @@ void main() {
          (call-gl "glUniform2f" :int (uniform gpu "resolution")
                   :float (float (gpu-width gpu) 1.0)
                   :float (float (gpu-height gpu) 1.0) :void)
-         (call-gl "glUniform1f" :int (uniform gpu "frost")
-                  :float (float frost 1.0) :void)
-         (call-gl "glUniform4f" :int (uniform gpu "bounds")
+         (let ((scale (/ (gpu-width gpu) (gpu-logical-width gpu))))
+           (call-gl "glUniform1f" :int (uniform gpu "pixelScale")
+                    :float (float scale 1.0) :void)
+           (call-gl "glUniform1f" :int (uniform gpu "frost")
+                    :float (float (* frost scale) 1.0) :void))
+         (let ((box (pixel-box gpu box)))
+           (call-gl "glUniform4f" :int (uniform gpu "bounds")
                   :float (float (box-x box) 1.0)
                   :float (float (- (gpu-height gpu) (box-y box)
                                    (box-height box)) 1.0)
                   :float (float (box-width box) 1.0)
-                  :float (float (box-height box) 1.0) :void)
-         (gl-polygons (list (rounded-polygon box radius)) "#ffffff" 1))
+                  :float (float (box-height box) 1.0) :void))
+         (gl-polygons gpu (list (rounded-polygon box radius)) "#ffffff" 1))
     (call-gl "glUseProgram" :uint 0 :void)))
 
 (fn egl-check (result (operation string))
@@ -159,7 +226,8 @@ void main() {
                (call-gl "eglGetPlatformDisplay" :uint #x31dd
                         :pointer (cffi:null-pointer)
                         :pointer (cffi:null-pointer) :pointer)))
-         (gpu (make-gpu :display display :width width :height height))
+         (gpu (make-gpu :display display :width width :height height
+                        :logical-width width :logical-height height))
          (complete nil))
     (unwind-protect
          (progn
@@ -237,7 +305,11 @@ void main() {
                       :uint parameter :int #x812f :void))
            (setf (gpu-renderer gpu)
                  (make-renderer
-                  :font font :polygons #'gl-polygons
+                  :font font
+                  :polygons (lambda (contours color alpha)
+                              (gl-polygons gpu contours color alpha))
+                  :text (lambda (font text x y color)
+                          (gl-text gpu font text x y color))
                   :clip (lambda (box) (gl-clip gpu box))
                   :glass (lambda (box radius frost)
                            (gl-glass gpu box radius frost)))
@@ -258,8 +330,8 @@ void main() {
   (call-gl "glMatrixMode" :uint #x1701 :void)
   (call-gl "glLoadIdentity" :void)
   (call-gl "glOrtho" :double 0.0d0
-           :double (float (gpu-width gpu) 1.0d0)
-           :double (float (gpu-height gpu) 1.0d0)
+           :double (float (gpu-logical-width gpu) 1.0d0)
+           :double (float (gpu-logical-height gpu) 1.0d0)
            :double 0.0d0 :double -1.0d0 :double 1.0d0 :void)
   (call-gl "glMatrixMode" :uint #x1700 :void)
   (call-gl "glLoadIdentity" :void))
@@ -271,6 +343,7 @@ void main() {
    "eglSwapBuffers"))
 
 (fn close-gpu ((gpu gpu))
+  (clear-geometry gpu)
   (when (plusp (gpu-program gpu))
     (call-gl "glDeleteProgram" :uint (gpu-program gpu) :void))
   (when (plusp (gpu-texture gpu))

@@ -1,7 +1,7 @@
 (defpackage #:lui.draw
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui.font)
   (:export #:renderer #:make-renderer #:renderer-font #:renderer-polygons
-           #:renderer-clip #:renderer-glass #:paint-frame #:measure-widget
+           #:renderer-clip #:renderer-glass #:renderer-text #:paint-frame #:measure-widget
            #:rounded-polygon #:color-components #:trapezoids #:paint-text))
 
 (in-package #:lui.draw)
@@ -12,7 +12,9 @@
   (polygons nil :type (or null function))
   (clip nil :type (or null function))
   ;; Optional backdrop effect: bounds, corner radius, blur radius.
-  (glass nil :type (or null function)))
+  (glass nil :type (or null function))
+  ;; Optional native glyph cache: font, text, baseline x/y, and color.
+  (text nil :type (or null function)))
 
 (fn (color-components list) ((color string) &optional ((alpha real) 1))
   (assert (and (= (length color) 7) (char= (char color 0) #\#)))
@@ -102,6 +104,10 @@
 
 (fn paint-text
     ((renderer renderer) (text string) (x real) (y real) (color string))
+  (when (renderer-text renderer)
+    (return-from paint-text
+      (funcall (renderer-text renderer) (renderer-font renderer)
+               text x y color)))
   (let* ((font (renderer-font renderer))
          (scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
          (cursor x)
@@ -237,6 +243,20 @@
          (if glass
              (outline renderer box radius "#ffffff" 0.4f0 1)
              (motif-bevel renderer box)))
+       (when (and (member kind '(:button :tab))
+                  (not (widget-disabled-p widget)))
+         (cond
+           ((and (hovered-p (element-id node))
+                 (equal (element-id node) (context-active *context*)))
+            (shape renderer box radius "#000000" 0.2f0))
+           ((hovered-p (element-id node))
+            (shape renderer box radius "#ffffff" 0.14f0)))
+         (when (and (eq kind :tab) (widget-value widget))
+           (shape renderer
+                  (make-box :x (+ (box-x box) 3)
+                            :y (+ (box-y box) (box-height box) -3)
+                            :width (max 0 (- (box-width box) 6)) :height 3)
+                  0 (widget-accent widget) 1)))
        (case kind
          (:panel nil)
          (:slider
@@ -282,7 +302,7 @@
                   :by (line-height font)
                 :do (paint-text renderer line x baseline
                                 (widget-foreground widget)))))))
-    (when (focused-p node)
+    (when (and (focused-p node) (context-focus-visible-p *context*))
       (outline renderer (inset-box box 2) (max 0 (- radius 2))
                (widget-accent widget) 1 2))))
 

@@ -157,6 +157,7 @@
     (let* ((node (aref (element-children (context-root context)) 0))
            (state (gethash :name (context-state context))))
       (setf (context-focus context) :name
+            (context-focus-visible-p context) t
             (edit-state-anchor state) 0
             (edit-state-cursor state) 2)
       (paint-frame renderer context)
@@ -239,6 +240,34 @@
     (paint-frame renderer context)
     (assert saw-context)))
 
+(defun test-button-feedback (font)
+  (let* ((calls nil)
+         (renderer
+           (make-renderer
+            :font font
+            :clip (lambda (box) (declare (ignore box)))
+            :polygons (lambda (contours color alpha)
+                        (push (list color alpha (length contours)) calls))))
+         (context (make-context
+                   :measure (lambda (widget width)
+                              (measure-widget renderer widget width)))))
+    (with-frame (context 240 120)
+      (lui.glass:button :action "Action" :accent "#ff5500"))
+    (flet ((paint ()
+             (setf calls nil)
+             (paint-frame renderer context)))
+      (setf (context-focus context) :action
+            (context-hover context) :action)
+      (paint)
+      (assert (member '("#ffffff" 0.14f0 1) calls :test #'equal))
+      (assert (not (member '("#ff5500" 1 2) calls :test #'equal)))
+      (setf (context-active context) :action)
+      (paint)
+      (assert (member '("#000000" 0.2f0 1) calls :test #'equal))
+      (setf (context-focus-visible-p context) t)
+      (paint)
+      (assert (member '("#ff5500" 1 2) calls :test #'equal)))))
+
 (defun run-tests ()
   (let ((font (open-font)))
     (unwind-protect
@@ -248,7 +277,8 @@
            (test-font-metrics font)
            (test-measurement font)
            (test-edit-painting font)
-           (test-panel-painting font))
+           (test-panel-painting font)
+           (test-button-feedback font))
       (close-font font)))
   (format t "Native geometry, fonts, wrapping, focus, selection, and caret passed.~%")
   t)

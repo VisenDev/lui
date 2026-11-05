@@ -50,7 +50,8 @@
         (wl-window-y *window*) (/ y 256.0)))
 
 (callback pointer-leave ((serial :uint32) (surface :pointer))
-  (declare (ignore serial surface)))
+  (declare (ignore serial surface))
+  (queue-input :move :x -1 :y -1))
 
 (callback pointer-motion ((time :uint32) (x :int32) (y :int32))
   (declare (ignore time))
