@@ -1,0 +1,228 @@
+(defpackage #:lui.example.seven
+  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.example
+        #:lui.seven.model)
+  (:shadow #:draw #:main)
+  (:export #:draw #:draw-content #:main #:*state* #:make-state #:state-task))
+(in-package #:lui.example.seven)
+
+(fn initial-records ()
+  (let ((model (make-crud)))
+    (crud-create model "Hans" "Emil")
+    (crud-create model "Max" "Mustermann")
+    (crud-create model "Roman" "Tisch")
+    model))
+
+(defstruct* state
+  (task :counter :type symbol) (toolkit :glass :type symbol)
+  (count 0 :type integer)
+  (celsius "0" :type string) (fahrenheit "32" :type string)
+  (return-p nil :type boolean)
+  (departure "27.03.2014" :type string) (return "27.03.2014" :type string)
+  booking
+  (timer (make-timer) :type timer)
+  (crud (initial-records) :type crud)
+  (filter "" :type string) (name "" :type string) (surname "" :type string))
+
+(defvar *state* (make-state))
+(defparameter *tasks*
+  '((:counter "Counter") (:temperature "Temperature") (:flight "Flight")
+    (:timer "Timer") (:crud "CRUD") (:circles "Circles") (:cells "Cells")))
+
+(fn number-text ((number real))
+  (string-right-trim "." (string-right-trim "0" (format nil "~,2F" number))))
+
+(fn edit-field (id (text string) &key invalid-p disabled-p)
+  (let ((next (apply #'widget :text-field id text :width (grow)
+                     :disabled-p disabled-p
+                     (when invalid-p '(:background "#a83232")))))
+    (unless (equal text next) (request-frame))
+    next))
+
+(fn counter-page ()
+  (row (:gap (units 1) :width (grow) :cross-align :center)
+    (widget :label (format nil "~D" (state-count *state*)) :width (grow))
+    (when (widget :button :seven-count "Count")
+      (incf (state-count *state*))
+      (request-frame))))
+
+(fn temperature-page ()
+  (row (:gap (units 1) :width (grow))
+    (column (:width (grow) :gap (units 1))
+      (widget :label "Celsius")
+      (let ((text (edit-field
+                   :seven-celsius (state-celsius *state*)
+                   :invalid-p
+                   (not (temperature (state-celsius *state*) :celsius)))))
+        (unless (equal text (state-celsius *state*))
+          (setf (state-celsius *state*) text)
+          (let ((converted (temperature text :celsius)))
+            (when converted
+              (setf (state-fahrenheit *state*) (number-text converted)))))))
+    (column (:width (grow) :gap (units 1))
+      (widget :label "Fahrenheit")
+      (let ((text (edit-field
+                   :seven-fahrenheit (state-fahrenheit *state*)
+                   :invalid-p
+                   (not (temperature (state-fahrenheit *state*)
+                                     :fahrenheit)))))
+        (unless (equal text (state-fahrenheit *state*))
+          (setf (state-fahrenheit *state*) text)
+          (let ((converted (temperature text :fahrenheit)))
+            (when converted
+              (setf (state-celsius *state*) (number-text converted))))))))
+  (unless (and (temperature (state-celsius *state*) :celsius)
+               (temperature (state-fahrenheit *state*) :fahrenheit))
+    (widget :label "Enter a valid number to convert the other field.")))
+
+(fn flight-page ()
+  (row (:gap (units 1) :width (grow))
+    (when (widget :tab :seven-one-way "One-way flight"
+                  :selected-p (not (state-return-p *state*)))
+      (setf (state-return-p *state*) nil)
+      (request-frame))
+    (when (widget :tab :seven-return-flight "Return flight"
+                  :selected-p (state-return-p *state*))
+      (setf (state-return-p *state*) t)
+      (request-frame)))
+  (widget :label "Departure (DD.MM.YYYY)")
+  (setf (state-departure *state*)
+        (edit-field :seven-departure (state-departure *state*)
+                    :invalid-p (not (parse-date (state-departure *state*)))))
+  (unless (parse-date (state-departure *state*))
+    (widget :label "Enter a valid departure date."))
+  (widget :label "Return (DD.MM.YYYY)")
+  (setf (state-return *state*)
+        (edit-field :seven-return (state-return *state*)
+                    :disabled-p (not (state-return-p *state*))
+                    :invalid-p (and (state-return-p *state*)
+                                    (not (parse-date
+                                          (state-return *state*))))))
+  (when (and (state-return-p *state*)
+             (not (parse-date (state-return *state*))))
+    (widget :label "Enter a valid return date."))
+  (when (and (state-return-p *state*)
+             (parse-date (state-departure *state*))
+             (parse-date (state-return *state*))
+             (not (flight-valid-p (state-departure *state*)
+                                  (state-return *state*) t)))
+    (widget :label "The return date must be on or after departure."))
+  (when (widget :button :seven-book "Book"
+                :disabled-p
+                (not (flight-valid-p (state-departure *state*)
+                                      (state-return *state*)
+                                      (state-return-p *state*))))
+    (setf (state-booking *state*)
+          (if (state-return-p *state*)
+              (format nil "Booked return flight: ~A to ~A."
+                      (state-departure *state*) (state-return *state*))
+              (format nil "Booked one-way flight on ~A."
+                      (state-departure *state*)))))
+  (when (state-booking *state*) (widget :label (state-booking *state*))))
+
+(fn timer-page ()
+  (let* ((timer (state-timer *state*))
+         (duration
+           (progn
+             (widget :label "Duration (seconds)")
+             (widget :slider :seven-duration (timer-duration timer)
+                     :minimum 0 :maximum 30 :step 0.1 :width (grow)))))
+    (advance-timer timer (frame-time) :duration duration
+                   :reset (activated-p :seven-reset))
+    (row (:gap (units 1) :width (grow) :cross-align :center)
+      (widget :label "Elapsed time:")
+      (widget :gauge :seven-elapsed (timer-fraction timer) :width (grow)))
+    (widget :label (format nil "~,1F s / ~,1F s"
+                          (timer-elapsed timer) (timer-duration timer)))
+    (widget :button :seven-reset "Reset")
+    (when (< (timer-elapsed timer) (timer-duration timer))
+      (request-frame (/ 1 60)))))
+
+(fn select-person (id)
+  (let ((person (crud-select (state-crud *state*) id)))
+    (when person
+      (setf (state-name *state*) (person-name person)
+            (state-surname *state*) (person-surname person))
+      (request-frame))))
+
+(fn crud-page ()
+  (let ((model (state-crud *state*)))
+    (widget :label "Filter prefix:")
+    (setf (state-filter *state*)
+          (edit-field :seven-filter (state-filter *state*)))
+    (let ((people (crud-filter model (state-filter *state*))))
+      (unless (find (crud-selected model) people :key #'person-id)
+        (crud-select model nil))
+      (panel (:id :seven-people :width (grow) :height (fixed (units 8))
+              :scroll-p t :gap (units 0.5))
+        (dolist (person people)
+          (when (widget :tab (list :seven-person (person-id person))
+                        (format nil "~A, ~A" (person-surname person)
+                                (person-name person))
+                        :width (grow)
+                        :selected-p (eql (person-id person)
+                                         (crud-selected model)))
+            (select-person (person-id person))))))
+    (widget :label "Name:")
+    (setf (state-name *state*)
+          (edit-field :seven-name (state-name *state*)))
+    (widget :label "Surname:")
+    (setf (state-surname *state*)
+          (edit-field :seven-surname (state-surname *state*)))
+    (row (:gap (units 1) :width (grow))
+      (when (widget :button :seven-create "Create")
+        (crud-create model (state-name *state*) (state-surname *state*))
+        (request-frame))
+      (when (widget :button :seven-update "Update"
+                    :disabled-p (null (crud-selected model)))
+        (crud-update model (crud-selected model)
+                     (state-name *state*) (state-surname *state*))
+        (request-frame))
+      (when (widget :button :seven-delete "Delete"
+                    :disabled-p (null (crud-selected model)))
+        (crud-delete model (crud-selected model))
+        (request-frame)))))
+
+(fn circles-page ()
+  (widget :label "Circle Drawer is being implemented."))
+
+(fn cells-page ()
+  (widget :label "Cells is being implemented."))
+
+(fn draw-content ()
+  (dolist (tasks (list (subseq *tasks* 0 4) (subseq *tasks* 4)))
+    (row (:width (grow) :gap (units 0.5))
+      (dolist (task tasks)
+        (when (widget :tab (list :seven-task (first task)) (second task)
+                      :selected-p (eq (state-task *state*) (first task)))
+          (setf (state-task *state*) (first task))
+          (request-frame)))))
+  (panel (:id (list :seven-body (state-task *state*))
+          :width (grow) :height (grow)
+          :scroll-p (not (member (state-task *state*) '(:cells :circles)))
+          :gap (units 1) :padding (units 1))
+    (ecase (state-task *state*)
+      (:counter (counter-page)) (:temperature (temperature-page))
+      (:flight (flight-page)) (:timer (timer-page)) (:crud (crud-page))
+      (:circles (circles-page)) (:cells (cells-page)))))
+
+(fn draw ()
+  (let ((lui.example::*toolkit* (state-toolkit *state*)))
+    (panel (:id :seven-window :width (grow) :height (grow)
+            :background (ecase (state-toolkit *state*)
+                          (:glass "#202430") (:motif "#b8b8b8")
+                          (:garnet "#ffffff"))
+            :opacity 1 :radius 0 :frost 0
+            :padding (units 1) :gap (units 1))
+      (row (:width (grow) :gap (units 1) :cross-align :center)
+        (widget :label "7GUIs" :width (grow))
+        (when (widget :button :seven-toolkit
+                      (ecase (state-toolkit *state*)
+                        (:glass "Glass") (:motif "Motif") (:garnet "Garnet")))
+          (setf (state-toolkit *state*)
+                (case (state-toolkit *state*)
+                  (:glass :motif) (:motif :garnet) (otherwise :glass)))
+          (request-frame)))
+      (draw-content))))
+
+(fn main ()
+  (run #'draw :title "7GUIs"))

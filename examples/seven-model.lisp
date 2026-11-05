@@ -86,9 +86,13 @@
 (fn temperature ((text string) (from symbol))
   (let ((number (parse-number text)))
     (when number
-      (ecase from
-        (:celsius (+ (/ (* number 9) 5) 32))
-        (:fahrenheit (/ (* (- number 32) 5) 9))))))
+      (handler-case
+          (let ((converted
+                  (ecase from
+                    (:celsius (+ (* (/ number 5) 9) 32))
+                    (:fahrenheit (* (/ (- number 32) 9) 5)))))
+            (when (finite-number-p converted) converted))
+        (arithmetic-error () nil)))))
 
 (fn flight-valid-p ((start string) (end string) &optional return-p)
   (let ((departure (parse-date start)) (arrival (parse-date end)))

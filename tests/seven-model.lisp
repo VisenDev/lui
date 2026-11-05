@@ -21,6 +21,8 @@
   (assert (near 32 (temperature "0" :celsius)))
   (assert (near 100 (temperature "212" :fahrenheit)))
   (assert (null (temperature "invalid" :celsius)))
+  (assert (null (temperature "1e308" :celsius)))
+  (assert (> (temperature "1e308" :fahrenheit) 1.0d307))
   (assert (= 20000229 (parse-date "29.02.2000")))
   (assert (= 20240229 (parse-date "29.02.2024")))
   (dolist (text '("29.02.1900" "31.04.2024" "01.13.2024" "01.01.0000"
