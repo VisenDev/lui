@@ -48,6 +48,8 @@ def script(error=False):
 (asdf:load-system "lui/terminal")
 (load "examples/seven-model.lisp")
 (load "examples/demo.lisp")
+(load "examples/seven-circles.lisp")
+(load "examples/seven-cells.lisp")
 (load "examples/seven.lisp")
 (load "examples/seven-circles.lisp")
 (load "examples/seven-cells.lisp")

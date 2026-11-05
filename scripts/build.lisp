@@ -10,7 +10,7 @@
                 :test #'string=)
   (error "Cannot save a native executable for platform ~S." *backend*))
 (asdf:load-system (concatenate 'string "lui/" *backend*))
-(load "examples/demo.lisp")
+(asdf:load-system "lui/demo")
 
 (defun main ()
   (let ((package "LUI.EXAMPLE"))

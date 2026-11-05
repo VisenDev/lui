@@ -77,6 +77,36 @@
   (assert (= 255 (fourth (pixel-color 600 450))))
   (format t "Opaque window alpha survives Motif hover and Glass tint.~%"))
 
+(defun test-backdrop-frost (gpu renderer context)
+  (labels ((contrast (frost opacity)
+             (with-frame (context 720 520)
+               (column (:width (grow) :height (grow))
+                 (lui.glass:panel (:floating-p t :offset-x 40 :offset-y 40
+                                   :width (fixed 200) :height (fixed 120)
+                                   :background "#606060" :opacity opacity
+                                   :frost frost :radius 0))))
+             (begin-gpu-frame gpu)
+             (funcall (renderer-clip renderer)
+                      (make-box :width 720 :height 520))
+             (dotimes (stripe 90)
+               (let ((x (* stripe 8)))
+                 (funcall (renderer-polygons renderer)
+                          (list (list (cons x 0) (cons (+ x 8) 0)
+                                      (cons (+ x 8) 520) (cons x 520)))
+                          (if (evenp stripe) "#000000" "#ffffff") 1)))
+             (paint-frame renderer context)
+             (let ((samples (loop :for x :from 80 :below 144
+                                  :collect (first (pixel-color x 100)))))
+               (assert (= 255 (fourth (pixel-color 100 100))))
+               (- (reduce #'max samples) (reduce #'min samples)))))
+    (let ((sharp (contrast 0 0.2))
+          (frosted (contrast 24 0.2))
+          (opaque (contrast 0 0.85)))
+      (assert (> sharp 150))
+      (assert (< frosted (* sharp 0.7)))
+      (assert (< opaque (* sharp 0.3)))
+      (format t "Glass frost smooths backdrop pixels; opacity controls tint.~%"))))
+
 (defun test-fractional-resolution (gpu renderer)
   (setf (gpu-logical-width gpu) 480
         (gpu-logical-height gpu) (/ 1040 3))
@@ -113,6 +143,7 @@
        (progn
          (test-opaque-compositing gpu renderer context)
          (test-fractional-resolution gpu renderer)
+         (test-backdrop-frost gpu renderer context)
          (with-frame (context 720 520) (lui.example:draw))
          (begin-gpu-frame gpu)
          (paint-frame renderer context)

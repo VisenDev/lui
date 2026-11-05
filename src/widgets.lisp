@@ -130,10 +130,12 @@
            :disabled-p (not (null disabled-p)) :painter painter)))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding
-           :interactive-p (and (not disabled-p) (not (member kind '(:label :gauge))))
+           :interactive-p (and (not disabled-p)
+                               (not (member kind '(:label :gauge))))
            :pointer-focus-p (eq kind :text-field)
            :measure (lambda (available) (funcall measure widget available))))
-    (and (not disabled-p) (member kind '(:button :tab :list-item)) (activated-p id))))
+    (and (not disabled-p) (member kind '(:button :tab :list-item))
+         (activated-p id))))
 
 (defstruct* edit-state
   (cursor 0 :type integer)
@@ -177,7 +179,8 @@
                       (< y (+ (box-y clip) (box-height clip))))
              (setf cursor
                    (cond ((widget-disabled-p widget) :not-allowed)
-                         ((member (widget-kind widget) '(:label :text-field)) :text)
+                         ((member (widget-kind widget) '(:label :text-field))
+                          :text)
                          ((member (widget-kind widget)
                                   '(:button :checkbox :tab :slider)) :pointer)
                          (t :default))))))))

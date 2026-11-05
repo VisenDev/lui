@@ -17,20 +17,38 @@
                              (:file "terminal"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
 
-(defsystem "lui/tests"
+(defsystem "lui/demo"
   :depends-on ("lui")
   :serial t
   :components ((:module "examples"
-                :components ((:file "demo")))
-               (:module "tests"
+                :serial t
+                :components ((:file "seven-model")
+                             (:file "demo")
+                             (:file "seven-circles")
+                             (:file "seven-cells")
+                             (:file "seven")))))
+
+(defsystem "lui/tests"
+  :depends-on ("lui/demo")
+  :serial t
+  :components ((:module "tests"
+                :serial t
                 :components ((:file "core")
                              (:file "widgets")
-                             (:file "gallery"))))
+                             (:file "gallery")
+                             (:file "seven-model")
+                             (:file "seven-circles")
+                             (:file "seven-cells")
+                             (:file "seven"))))
   :perform (test-op (operation component)
              (declare (ignore operation component))
              (uiop:symbol-call :lui.tests :run-tests)
              (uiop:symbol-call :lui.tests.widgets :run-tests)
-             (uiop:symbol-call :lui.tests.gallery :run-tests)))
+             (uiop:symbol-call :lui.tests.gallery :run-tests)
+             (uiop:symbol-call :lui.tests.seven.model :run-tests)
+             (uiop:symbol-call :lui.tests.seven :run-tests)
+             (uiop:symbol-call :lui.tests.seven.circles :run-tests)
+             (uiop:symbol-call :lui.tests.seven.cells :run-tests)))
 
 (defsystem "lui/native"
   :depends-on ("lui" "cffi" "zpb-ttf")

@@ -10,6 +10,6 @@
     ((string= test "native") (asdf:test-system "lui/native/tests"))
     ((member test '("wayland" "win32" "cocoa" "gl") :test #'string=)
      (asdf:load-system (concatenate 'string "lui/" test))
-     (load "examples/demo.lisp")
+     (asdf:load-system "lui/demo")
      (load (format nil "tests/~A.lisp" test)))
     (t (error "Unknown test platform ~S." test))))

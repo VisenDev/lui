@@ -17,6 +17,20 @@
 
 (lui.tests.widgets:run-tests)
 
+(load "examples/seven-model.lisp")
 (load "examples/demo.lisp")
+(load "examples/seven-circles.lisp")
+(load "examples/seven-cells.lisp")
+(load "examples/seven.lisp")
 (load "tests/gallery.lisp")
 (lui.tests.gallery:run-tests)
+
+(load "tests/seven-model.lisp")
+(lui.tests.seven.model:run-tests)
+(load "tests/seven.lisp")
+(lui.tests.seven:run-tests)
+
+(load "tests/seven-circles.lisp")
+(lui.tests.seven.circles:run-tests)
+(load "tests/seven-cells.lisp")
+(lui.tests.seven.cells:run-tests)

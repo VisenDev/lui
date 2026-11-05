@@ -7,5 +7,7 @@
  '("src/fn.lisp" "src/layout.lisp" "src/frame.lisp" "src/widgets.lisp"
    "src/glass.lisp" "src/motif.lisp" "src/garnet.lisp"
    "src/app.lisp" "src/web.lisp"
-   "examples/demo.lisp" "scripts/start-demo.lisp")
+   "examples/seven-model.lisp" "examples/demo.lisp"
+   "examples/seven-circles.lisp" "examples/seven-cells.lisp"
+   "examples/seven.lisp" "scripts/start-demo.lisp")
  "build/lui-web.js")

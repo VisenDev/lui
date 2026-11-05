@@ -23,7 +23,8 @@ export ASDF_OUTPUT_TRANSLATIONS
 
 NATIVE_PLATFORMS := terminal x11 wayland win32 cocoa
 TEST_PLATFORMS := $(NATIVE_PLATFORMS) web core native gl
-SOURCES := $(wildcard src/*.lisp) lui.asd scripts/setup.lisp scripts/build.lisp
+SOURCES := $(wildcard src/*.lisp examples/*.lisp) lui.asd \
+	scripts/setup.lisp scripts/build.lisp
 SUFFIX := $(if $(filter win32,$(PLATFORM)),.exe,)
 DEMO := build/bin/demo-$(PLATFORM)$(SUFFIX)
 
@@ -54,7 +55,7 @@ demo: $(DEMO)
 	$(RUNNER) "$(DEMO)" $(RUN_ARGS)
 endif
 
-$(DEMO): $(SOURCES) examples/demo.lisp | check-platform
+$(DEMO): $(SOURCES) | check-platform
 	@mkdir -p build/bin
 	LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build.lisp
 

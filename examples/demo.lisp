@@ -27,7 +27,7 @@
 (defvar *frame-start* nil)
 (defparameter *pages*
   '((:controls "Controls") (:editing "Editing") (:layout "Layout")
-    (:scroll "Scroll") (:styles "Styles")))
+    (:scroll "Scroll") (:styles "Styles") (:seven "7GUIs")))
 
 (defparameter *items*
   (coerce (loop :for i :from 1 :to 60
@@ -154,30 +154,57 @@
   (row (:width (grow) :gap (units 1))
     (loop :for color :in '("#335d91" "#81456d" "#286e63")
           :for title :in '("Ocean" "Orchid" "Forest")
-          :do (panel (:width (grow) :padding (units 2) :gap (units 1)
-                      :background color :opacity *opacity*
-                      :frost *frost* :radius *radius*)
-                (widget :label title :foreground "#ffffff")
-                (when (widget :button (list :sample title) "Preview"
-                              :background color :foreground "#ffffff"
-                              :opacity *opacity* :frost *frost*
-                              :radius *radius*)
-                  (setf *preview* title *preview-color* color)))))
-  (panel (:width (grow) :padding (units 1) :gap (units 1)
-          :background *preview-color* :opacity *opacity*
-          :frost *frost* :radius *radius*)
-    (widget :label (format nil "Preview: ~A" *preview*)
-            :foreground "#ffffff")
-    (when (widget :button :preview-action "Try this style"
-                  :background *preview-color* :foreground "#ffffff"
-                  :opacity *opacity* :radius *radius* :frost *frost*)
-      (incf *preview-count*))
-    (widget :label (format nil "Activated ~D times" *preview-count*)
-            :foreground "#ffffff")))
+          :do (if (eq *toolkit* :glass)
+                  (when (widget :button (list :sample title) title
+                                :width (grow) :background color
+                                :foreground "#ffffff" :opacity *opacity*
+                                :frost *frost* :radius *radius*)
+                    (setf *preview* title *preview-color* color))
+                  (panel (:width (grow) :padding (units 2) :gap (units 1)
+                          :background color :opacity *opacity*
+                          :frost *frost* :radius *radius*)
+                    (widget :label title :foreground "#ffffff")
+                    (when (widget :button (list :sample title) "Preview"
+                                  :background color :foreground "#ffffff"
+                                  :opacity *opacity* :frost *frost*
+                                  :radius *radius*)
+                      (setf *preview* title *preview-color* color))))))
+  (flet ((preview ()
+           (panel (:id :style-preview :width (grow)
+                   :padding (units 1) :gap (units 1)
+                   :background *preview-color* :opacity *opacity*
+                   :frost *frost* :radius *radius*)
+             (widget :label (format nil "Preview: ~A" *preview*)
+                     :foreground "#ffffff")
+             (when (widget :button :preview-action "Try this style"
+                           :background *preview-color* :foreground "#ffffff"
+                           :opacity *opacity* :radius *radius* :frost *frost*)
+               (incf *preview-count*))
+             (widget :label (format nil "Activated ~D times" *preview-count*)
+                     :foreground "#ffffff"))))
+    (if (eq *toolkit* :glass)
+        (progn
+          (widget :label "Frost softens stripes; lower opacity reveals more backdrop.")
+          (column (:width (grow) :height (fixed (units 14)) :clip-p t)
+            ;; Opaque detail makes backdrop blur and tint independently visible.
+            (row (:width (grow) :height (grow))
+              (dotimes (stripe 48)
+                (panel (:width (grow) :height (grow) :opacity 1
+                        :radius 0 :frost 0
+                        :background (if (evenp stripe) "#17304d" "#dbe7ed")))))
+            (column (:floating-p t :offset-x (units 1) :offset-y (units 1)
+                     :width (percent 0.95))
+              (preview))))
+        (preview))))
+
+(defun modal-p ()
+  (let ((package (find-package "LUI.EXAMPLE.SEVEN.CIRCLES")))
+    (and package
+         (funcall (symbol-function (find-symbol "MODAL-P" package))))))
 
 (defun draw ()
   (update-fps)
-  (when (activated-p :toolkit)
+  (when (and (not (modal-p)) (activated-p :toolkit))
     (setf *toolkit* (or (second (member *toolkit* *toolkits*))
                         (first *toolkits*))))
   (panel (:id :window :width (grow) :height (grow)
@@ -190,24 +217,29 @@
       (widget :label "LUI feature gallery" :width (grow))
       (widget :button :toolkit
               (ecase *toolkit*
-                (:glass "Glass") (:motif "Motif") (:garnet "Garnet"))))
+                (:glass "Glass") (:motif "Motif") (:garnet "Garnet"))
+              :disabled-p (modal-p)))
     (widget :label (if (= *unit* 1) "Terminal: event-driven rendering"
                        (format nil "~,1F FPS · ~,2F ms/frame"
                                *fps* *frame-ms*)))
     (row (:width (grow) :gap (units 1))
       (dolist (page *pages*)
         (when (widget :tab (list :page (first page)) (second page)
-                      :selected-p (eq *page* (first page)))
+                      :selected-p (eq *page* (first page))
+                      :disabled-p (modal-p))
           (setf *page* (first page)))))
     (panel (:id (list :body *page*) :width (grow) :height (grow)
-            :scroll-p (not (eq *page* :scroll))
+            :scroll-p (not (member *page* '(:scroll :seven)))
             :padding (units 1) :gap (units 1))
       (case *page*
         (:controls (controls-page))
         (:editing (editing-page))
         (:layout (layout-page))
         (:scroll (scroll-page))
-        (:styles (styles-page))))))
+        (:styles (styles-page))
+        (:seven
+         (funcall (symbol-function
+                   (find-symbol "DRAW-CONTENT" "LUI.EXAMPLE.SEVEN"))))))))
 
 (defun main ()
   (run #'draw :title "LUI feature gallery"))

@@ -9,6 +9,6 @@
 
 ;; Load the desired LUI backend system before this launcher, e.g. lui/x11.
 
-(load "examples/demo.lisp")
+(asdf:load-system "lui/demo")
 
 (lui.example:main)

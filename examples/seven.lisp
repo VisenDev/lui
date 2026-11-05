@@ -254,17 +254,18 @@
     (reveal-person)))
 
 (fn circles-page ()
-  (widget :label "Circle Drawer is being implemented."))
+  (lui.example.seven.circles:draw))
 
 (fn cells-page ()
-  (widget :label "Cells is being implemented."))
+  (lui.example.seven.cells:draw-content))
 
 (fn draw-content ()
   (dolist (tasks (list (subseq *tasks* 0 4) (subseq *tasks* 4)))
     (row (:width (grow) :gap (units 0.5))
       (dolist (task tasks)
         (when (widget :tab (list :seven-task (first task)) (second task)
-                      :selected-p (eq (state-task *state*) (first task)))
+                      :selected-p (eq (state-task *state*) (first task))
+                      :disabled-p (lui.example.seven.circles:modal-p))
           (setf (state-task *state*) (first task))
           (request-frame)))))
   (panel (:id (list :seven-body (state-task *state*))
@@ -288,7 +289,8 @@
         (widget :label "7GUIs" :width (grow))
         (when (widget :button :seven-toolkit
                       (ecase (state-toolkit *state*)
-                        (:glass "Glass") (:motif "Motif") (:garnet "Garnet")))
+                        (:glass "Glass") (:motif "Motif") (:garnet "Garnet"))
+                      :disabled-p (lui.example.seven.circles:modal-p))
           (setf (state-toolkit *state*)
                 (case (state-toolkit *state*)
                   (:glass :motif) (:motif :garnet) (otherwise :glass)))

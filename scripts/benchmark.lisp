@@ -11,7 +11,7 @@
   (error "Unsupported Lisp benchmark platform ~S." *platform*))
 (asdf:load-system (if (string= *platform* "core") "lui"
                      (concatenate 'string "lui/" *platform*)))
-(load "examples/demo.lisp")
+(asdf:load-system "lui/demo")
 
 (defparameter *cases*
   (loop :for toolkit :in lui.example::*toolkits*

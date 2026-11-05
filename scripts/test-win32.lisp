@@ -10,5 +10,5 @@
           (uiop:pathname-directory-pathname *load-truename*))))
   (asdf:load-asd (merge-pathnames "lui.asd" root))
   (asdf:load-system "lui/win32")
-  (load (merge-pathnames "examples/demo.lisp" root))
+  (asdf:load-system "lui/demo")
   (load (merge-pathnames "tests/win32.lisp" root)))

@@ -18,7 +18,8 @@ work.
   and vertical positioning. Percentage sizes exclude padding and inter-child gaps.
   Fixed sizes and minimum bounds may overflow instead of silently shrinking.
 - Glass, Motif, and Garnet collections with labels, buttons, checkboxes, sliders, text
-  fields, tabs, and styled layout panels. Collections share interaction logic.
+  fields, tabs, single-selection rows, progress gauges, circle canvases, and
+  styled layout panels. Collections share interaction logic.
 - Stable IDs, pointer capture, release activation, hover feedback, and keyboard
   navigation. Button clicks preserve existing keyboard focus; focus rings appear
   for keyboard navigation. Text fields acquire editing focus on click.
@@ -33,7 +34,7 @@ font size, `:font-family` (`:sans-serif` or `:monospace`), and `:font-weight`
 widgets also support a custom painter callback.
 
 There is one [demo gallery](examples/demo.lisp), with Controls, Editing, Layout,
-Scroll, and Styles pages. Its Glass/Motif/Garnet selector changes the collection for
+Scroll, Styles, and 7GUIs pages. Its Glass/Motif/Garnet selector changes the collection for
 the whole gallery, so each page uses one toolkit consistently. Style Preview
 buttons select an interactive sample. Motif uses an opaque matching background,
 beveled checkboxes, and visually distinct disabled buttons. Garnet uses bold
@@ -41,7 +42,16 @@ monospaced text, black hairlines, checker stipples, hard offset shadows, and X
 checkboxes inspired by the original Garnet gadgets. Window backgrounds remain
 opaque; Glass translucency composites within the application. The gallery also
 displays FPS and average frame time on graphical backends; these include backend
-pacing. The terminal labels its event-driven rendering instead.
+pacing. The terminal labels its event-driven rendering instead. Its sliders have tracks
+and thumbs, colors distinguish selection from pointer hover, and text/clip edges
+share cell rounding. Raw-terminal output uses ANSI colors; plain snapshots remain
+escape-free.
+
+The 7GUIs page includes Counter, Temperature Converter, Flight Booker, Timer,
+CRUD, Circle Drawer with undo/redo, and a virtual A0:Z99 spreadsheet. Formulas use
+a small safe parser and incremental dependencies. Every page uses the same Lisp
+code on all backends. The Glass Styles preview places stripes behind its sample,
+so frost and opacity changes can be compared visibly without window transparency.
 
 ## Make commands
 
@@ -89,8 +99,8 @@ records output. `make test-core` and `make test-native` run individual checks.
 build files, examples, and test code are outside that source count.
 
 `make benchmark` defaults to 240 measured frames total after 30 warmup frames,
-spread across all three toolkits and five pages (16 measured frames per case by
-default). `BENCH_FRAMES` must be at least 15 and `WARMUP` nonnegative. Reports
+spread across all three toolkits and six pages (13–14 measured frames per case by
+default). `BENCH_FRAMES` must be at least 18 and `WARMUP` nonnegative. Reports
 include per-toolkit/page FPS, mean, median, 95th-percentile, and maximum frame
 time, plus timer/settings information.
 

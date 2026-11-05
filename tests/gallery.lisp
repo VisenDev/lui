@@ -33,10 +33,12 @@
                  (when (widget-p widget)
                    ;; A whole page, including navigation, uses one collection.
                    (assert (eq style (widget-style widget)))
-                   (when (eq (widget-kind widget) :tab)
+                   (when (and (eq (widget-kind widget) :tab)
+                              (consp (element-id node))
+                              (eq :page (first (element-id node))))
                      (incf tabs)
                      (when (widget-value widget) (incf selected)))))))
-            (assert (= tabs 5))
+            (assert (= tabs (length lui.example::*pages*)))
             (assert (= selected 1)))
           (assert (plusp (length (render-terminal context))))))
       ;; Percentage panels fit all wrapped text and shrink again on resize.

@@ -1,6 +1,7 @@
 (defpackage #:lui.glass
   (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
-  (:export #:label #:button #:checkbox #:slider #:text-field #:panel #:tab #:canvas #:gauge #:list-item
+  (:export #:label #:button #:checkbox #:slider #:text-field #:panel #:tab
+           #:canvas #:gauge #:list-item
            #:*defaults*))
 
 (in-package #:lui.glass)
