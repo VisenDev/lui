@@ -205,6 +205,25 @@
   (display :pointer) (window :ulong) (cursor :ulong))
 (binding ("XFreeCursor" free-cursor) :int (display :pointer) (cursor :ulong))
 
+(binding ("XSetSelectionOwner" set-selection-owner) :int
+  (display :pointer) (selection :ulong) (owner :ulong) (time :ulong))
+(binding ("XChangeProperty" change-property) :int
+  (display :pointer) (window :ulong) (property :ulong) (type :ulong)
+  (format :int) (mode :int) (data :pointer) (count :int))
+(binding ("XSendEvent" send-event) :int
+  (display :pointer) (window :ulong) (propagate :int) (mask :long)
+  (event :pointer))
+(binding ("XMaxRequestSize" max-request-size) :long (display :pointer))
+
+(cffi:defcstruct selection-request
+  (type :int) (serial :ulong) (send :int) (display :pointer)
+  (owner :ulong) (requestor :ulong) (selection :ulong) (target :ulong)
+  (property :ulong) (time :ulong))
+(cffi:defcstruct selection-notify
+  (type :int) (serial :ulong) (send :int) (display :pointer)
+  (requestor :ulong) (selection :ulong) (target :ulong) (property :ulong)
+  (time :ulong))
+
 (cffi:defcstruct key-event
   (type :int)
   (serial :ulong)
@@ -268,12 +287,75 @@
   format
   mask-format
   context
+  (clipboard 0 :type integer)
+  (clipboard-text nil :type (or null string))
   (depth 0 :type integer)
   (width 640 :type integer)
   (height 480 :type integer)
   (colors (make-hash-table :test 'equal) :type hash-table)
   (cursors (make-hash-table :test 'eq) :type hash-table)
   cursor-kind (pointer-x -1 :type real) (pointer-y -1 :type real))
+
+(fn copy-clipboard ((window x-window) (text string))
+  (setf (x-window-clipboard-text window) (copy-seq text))
+  (set-selection-owner (x-window-display window) (x-window-clipboard window)
+                       (x-window-window window) 0)
+  (flush-display (x-window-display window)))
+
+(fn selection-request ((window x-window) event)
+  (let* ((display (x-window-display window))
+         (targets (intern-atom display "TARGETS" 0))
+         (utf8 (intern-atom display "UTF8_STRING" 0))
+         (text-atom (intern-atom display "TEXT" 0))
+         (text (x-window-clipboard-text window))
+         (result 0))
+    (cffi:with-foreign-slots
+        ((requestor selection target property time) event
+         (:struct selection-request))
+      (let ((destination (if (zerop property) target property)))
+        (when (and text (= selection (x-window-clipboard window)))
+          (cond
+            ((= target targets)
+             (cffi:with-foreign-object (atoms :ulong 4)
+               (loop :for atom :in (list targets utf8 text-atom 31)
+                     :for index :from 0
+                     :do (setf (cffi:mem-aref atoms :ulong index) atom))
+               (change-property display requestor destination 4 32 0 atoms 4))
+             (setf result destination))
+            ((member target (list utf8 text-atom 31))
+             (let ((legacy (= target 31)))
+               (cffi:with-foreign-string
+                   ((bytes byte-size)
+                    (if legacy
+                        (map 'string (lambda (char)
+                                       (if (< (char-code char) 256) char #\?))
+                             text) text)
+                    :encoding (if legacy :iso-8859-1 :utf-8))
+                 ;; Refuse an oversized direct transfer without an X error.
+                 (when (< byte-size (- (* 4 (max-request-size display)) 64))
+                   (change-property display requestor destination
+                                    (if legacy 31 utf8) 8 0
+                                    bytes (1- byte-size))
+                   (setf result destination)))))))
+        (cffi:with-foreign-object (reply :long 24)
+          (dotimes (index 24) (setf (cffi:mem-aref reply :long index) 0))
+          (setf
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'type) 31
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'display) display
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'requestor) requestor
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'selection) selection
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'target) target
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'property) result
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'time) time)
+          (send-event display requestor 0 0 reply)
+          (flush-display display))))))
 
 (fn convolution-supported-p ((window x-window))
   (let ((filters (query-filters (x-window-display window)
@@ -444,7 +526,8 @@
                             '((#xff51 . :left) (#xff53 . :right)
                               (#xff52 . :up) (#xff54 . :down)
                               (#xff50 . :home) (#xff57 . :end)
-                              (#xff08 . :backspace) (#xffff . :delete)))))
+                              (#xff08 . :backspace) (#xffff . :delete)
+                              (#xff1b . :escape)))))
            (name (case code
                    (#xff51 "ArrowLeft") (#xff53 "ArrowRight")
                    (#xff08 "Backspace")
@@ -453,7 +536,9 @@
            (command (when text-p
                       (lui.widgets:readline-key name :control control
                                                 :alt alt :shift shift))))
-      (cond (command (make-event :kind :key :key command))
+      (cond ((and control (not alt) (member code '(#x63 #x43)))
+             (make-event :kind :key :key :copy))
+            (command (make-event :kind :key :key command))
             ((member code '(#xff09 #xfe20))
              (make-event :kind :tab
                          :key (when (or shift (= code #xfe20)) :backward)))
@@ -548,6 +633,8 @@
                  (unless (and (= width (x-window-width window))
                               (= height (x-window-height window)))
                    (resize-buffer window width height))))
+              (29 (setf (x-window-clipboard-text window) nil))
+              (30 (selection-request window event))
               (33
                (when (= (cffi:mem-ref
                          (cffi:foreign-slot-pointer
@@ -612,6 +699,8 @@
                  (create-picture display (x-window-window window) format 0
                                  (cffi:null-pointer))
                  font (open-font))
+           (setf (x-window-clipboard window)
+                 (intern-atom display "CLIPBOARD" 0))
            (store-name display (x-window-window window) title)
            (select-input display (x-window-window window)
                          (logior 1 4 8 16 32 64 #x8000 #x20000))
@@ -635,6 +724,7 @@
                              (blur-backdrop window box radius frost))))
                   (context
                    (make-context
+                    :copy (lambda (text) (copy-clipboard window text))
                     :measure (lambda (widget width)
                                (measure-widget renderer widget width)))))
              (setf (x-window-context window) context)

@@ -40,8 +40,16 @@ class ClientEvent(C.Structure):
     ]
 
 
+class SelectionEvent(C.Structure):
+    _fields_ = [("type", C.c_int), ("serial", C.c_ulong), ("send", C.c_int),
+                ("display", C.c_void_p), ("requestor", C.c_ulong),
+                ("selection", C.c_ulong), ("target", C.c_ulong),
+                ("property", C.c_ulong), ("time", C.c_ulong)]
+
+
 class Event(C.Union):
     _fields_ = [("key", KeyEvent), ("client", ClientEvent),
+                ("selection", SelectionEvent),
                 ("padding", C.c_long * 24)]
 
 
@@ -107,6 +115,22 @@ class X11:
             "XInternAtom": (C.c_ulong, [C.c_void_p, C.c_char_p, C.c_int]),
             "XResizeWindow": (C.c_int, [C.c_void_p, C.c_ulong,
                 C.c_uint, C.c_uint]),
+            "XCreateSimpleWindow": (C.c_ulong, [C.c_void_p, C.c_ulong,
+                C.c_int, C.c_int, C.c_uint, C.c_uint, C.c_uint,
+                C.c_ulong, C.c_ulong]),
+            "XDestroyWindow": (C.c_int, [C.c_void_p, C.c_ulong]),
+            "XGetSelectionOwner": (C.c_ulong, [C.c_void_p, C.c_ulong]),
+            "XSetSelectionOwner": (C.c_int, [C.c_void_p, C.c_ulong,
+                C.c_ulong, C.c_ulong]),
+            "XConvertSelection": (C.c_int, [C.c_void_p, C.c_ulong,
+                C.c_ulong, C.c_ulong, C.c_ulong, C.c_ulong]),
+            "XCheckTypedWindowEvent": (C.c_int, [C.c_void_p, C.c_ulong,
+                C.c_int, C.POINTER(Event)]),
+            "XGetWindowProperty": (C.c_int, [C.c_void_p, C.c_ulong,
+                C.c_ulong, C.c_long, C.c_long, C.c_int, C.c_ulong,
+                C.POINTER(C.c_ulong), C.POINTER(C.c_int),
+                C.POINTER(C.c_ulong), C.POINTER(C.c_ulong),
+                C.POINTER(C.c_void_p)]),
         }
         for name, (result, arguments) in signatures.items():
             function = getattr(self.lib, name)
@@ -180,6 +204,32 @@ class X11:
                                          C.byref(attributes))
         self.lib.XMapRaised(self.display, window)
         self.lib.XFlush(self.display)
+
+    def selection(self, requestor, target, no_property=False):
+        atom = self.lib.XInternAtom(self.display, target.encode(), 0)
+        clipboard = self.lib.XInternAtom(self.display, b"CLIPBOARD", 0)
+        prop = 0 if no_property else self.lib.XInternAtom(
+            self.display, b"LUI_TEST_SELECTION", 0)
+        self.lib.XConvertSelection(self.display, clipboard, atom, prop, requestor, 0)
+        self.lib.XFlush(self.display)
+        event = Event()
+        wait_for(lambda: self.lib.XCheckTypedWindowEvent(
+            self.display, requestor, 31, C.byref(event)))
+        if not event.selection.property:
+            return None
+        actual, count, remaining = C.c_ulong(), C.c_ulong(), C.c_ulong()
+        format_, data = C.c_int(), C.c_void_p()
+        self.lib.XGetWindowProperty(self.display, requestor,
+            event.selection.property, 0, 1 << 20, 1, 0, C.byref(actual),
+            C.byref(format_), C.byref(count), C.byref(remaining), C.byref(data))
+        assert remaining.value == 0
+        try:
+            if format_.value == 32:
+                return list(C.cast(data, C.POINTER(C.c_ulong))[:count.value])
+            assert format_.value == 8
+            return C.string_at(data, count.value)
+        finally:
+            self.lib.XFree(data)
 
     def close(self, window):
         event = Event()
@@ -283,9 +333,59 @@ class X11Tests(unittest.TestCase):
                        check=True, timeout=10)
         return Image.open(path).convert("RGB")
 
+    def test_native_clipboard_utf8_targets_and_ownership(self):
+        source = r'''
+(defvar *clipboard-text* "Native café 🦊")
+(lui.x11:run-x11
+ (lambda ()
+   (setf *clipboard-text*
+     (lui.motif:text-field :copy *clipboard-text*))
+   (when (lui.frame:previous-box :copy)
+     (let ((box (lui.frame:previous-box :copy)))
+       (with-open-file (stream STATE_PATH :direction :output
+                               :if-exists :supersede)
+         (format stream "{~S:[~D,~D,~D,~D],~S:~A}"
+                 "bounds" (round (lui.layout:box-x box))
+                 (round (lui.layout:box-y box))
+                 (round (lui.layout:box-width box))
+                 (round (lui.layout:box-height box))
+                 "focused" (if (eq :copy
+                                  (lui.frame:context-focus lui.frame:*context*))
+                               "true" "false"))))))
+ :title WINDOW_TITLE :width 400 :height 100)
+'''
+        with self.application("clipboard", source) as (window, path):
+            state = self.state(path)
+            self.x.click(window, state["bounds"])
+            self.state(path, lambda state: state["focused"])
+            self.x.key(window, "a", state=5)
+            self.x.key(window, "c", state=4)
+            clipboard = self.x.lib.XInternAtom(self.x.display, b"CLIPBOARD", 0)
+            wait_for(lambda: self.x.lib.XGetSelectionOwner(
+                self.x.display, clipboard) == window)
+            requestor = self.x.lib.XCreateSimpleWindow(
+                self.x.display, self.x.root, 0, 0, 1, 1, 0, 0, 0)
+            try:
+                self.assertEqual(self.x.selection(requestor, "UTF8_STRING"),
+                                 "Native café 🦊".encode())
+                self.assertEqual(self.x.selection(requestor, "TEXT", no_property=True),
+                                 "Native café 🦊".encode())
+                self.assertEqual(self.x.selection(requestor, "STRING"),
+                                 "Native café ?".encode("latin1"))
+                targets = self.x.selection(requestor, "TARGETS")
+                self.assertIn(self.x.lib.XInternAtom(
+                    self.x.display, b"UTF8_STRING", 0), targets)
+                self.assertIsNone(self.x.selection(requestor, "image/png"))
+                self.x.lib.XSetSelectionOwner(self.x.display, clipboard, requestor, 0)
+                self.x.lib.XFlush(self.x.display)
+                wait_for(lambda: self.x.lib.XGetSelectionOwner(
+                    self.x.display, clipboard) == requestor)
+            finally:
+                self.x.lib.XDestroyWindow(self.x.display, requestor)
+
     def test_shared_demo_pixels_interaction_and_resize(self):
         source = r'''
-(load "examples/demo.lisp")
+(asdf:load-system "lui/demo")
 (lui.x11:run-x11
  (lambda ()
    (lui.example:draw)
