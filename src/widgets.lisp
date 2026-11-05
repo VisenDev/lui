@@ -43,7 +43,13 @@
             (let ((text (widget-text widget)) (value (widget-value widget)))
               (case (widget-kind widget)
                 (:label text)
-                (:panel "")
+                ((:panel :canvas) "")
+                (:gauge
+                 (let ((filled (round (* 10 (min 1 (max 0 value))))))
+                   (format nil "[~A~A] ~D%"
+                           (make-string filled :initial-element #\#)
+                           (make-string (- 10 filled) :initial-element #\.)
+                           (round (* 100 (min 1 (max 0 value)))))))
                 (:checkbox (format nil "[~A] ~A" (if value "x" " ") text))
                 (:slider
                  (format nil "~A [~D%]" text
@@ -124,7 +130,7 @@
            :disabled-p (not (null disabled-p)) :painter painter)))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding
-           :interactive-p (and (not disabled-p) (not (eq kind :label)))
+           :interactive-p (and (not disabled-p) (not (member kind '(:label :gauge))))
            :pointer-focus-p (eq kind :text-field)
            :measure (lambda (available) (funcall measure widget available))))
     (and (not disabled-p) (member kind '(:button :tab)) (activated-p id))))
@@ -364,7 +370,10 @@
               (when (realp (event-value event))
                 (setf value (event-value event))))
              ((:press :move)
-              (when (and box (plusp (box-width box)))
+              (when (and box (plusp (box-width box))
+                         (eq (event-button event) :primary)
+                         (or (eq (event-kind event) :press)
+                             (event-dragging-p event)))
                 (setf value
                       (+ minimum
                          (* (- maximum minimum)

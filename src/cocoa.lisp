@@ -274,7 +274,7 @@
       (message sb-alien:void cursor "set"))))
 
 (fn input-for-window-p ((type integer) window target)
-  (and (member type '(1 2 5 6 8 9 10 22))
+  (and (member type '(1 2 3 4 5 6 7 8 9 10 22))
        (not (null-object-p target))
        (same-object-p window target)))
 
@@ -313,8 +313,10 @@
           (make-event :kind :scroll :x x :y y
                       :value (- (message sb-alien:double event
                                          "scrollingDeltaY")))
-          (make-event :kind (case type (1 :press) (2 :release)
+          (make-event :kind (case type ((1 3) :press) ((2 4) :release)
                                   (otherwise :move))
+                      :button (if (member type '(3 4 7))
+                                  :secondary :primary)
                       :x x :y y)))))
 
 (fn poll-cocoa-events (application view)

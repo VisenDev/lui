@@ -1,6 +1,6 @@
 (defpackage #:lui.example
   (:use #:cl #:lui #:lui.layout #:lui.frame)
-  (:export #:main #:draw))
+  (:export #:main #:draw #:widget #:panel))
 (in-package #:lui.example)
 
 (defvar *page* :controls)

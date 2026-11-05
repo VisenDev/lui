@@ -396,6 +396,18 @@
            (paint-widget-body renderer node))
       (setf (renderer-font renderer) font))))
 
+(fn paint-canvas ((renderer renderer) (node element))
+  (let* ((widget (element-content node)) (box (element-box node)))
+    (shape renderer box 0 (widget-background widget) 1)
+    (dolist (command (widget-value widget))
+      (destructuring-bind (kind cx cy radius stroke fill) command
+        (assert (eq kind :circle))
+        (let ((circle (make-box :x (+ (box-x box) cx (- radius))
+                                :y (+ (box-y box) cy (- radius))
+                                :width (* 2 radius) :height (* 2 radius))))
+          (when fill (shape renderer circle radius fill 1))
+          (when stroke (outline renderer circle radius stroke 1 1)))))))
+
 (fn paint-widget-body ((renderer renderer) (node element))
   (let* ((widget (element-content node))
          (box (element-box node))
@@ -415,6 +427,14 @@
     (cond
       ((widget-painter widget)
        (funcall (widget-painter widget) renderer node))
+      ((eq kind :gauge)
+       (shape renderer box radius (widget-background widget) 1)
+       (let ((fill (make-box :x (box-x box) :y (box-y box)
+                             :width (* (box-width box) (widget-value widget))
+                             :height (box-height box))))
+         (shape renderer fill radius (widget-accent widget) 1))
+       (outline renderer box radius foreground 1 1))
+      ((eq kind :canvas) (paint-canvas renderer node))
       ((eq (widget-style widget) :garnet) (paint-garnet renderer node))
       (t
        (unless (eq kind :label)

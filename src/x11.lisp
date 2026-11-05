@@ -529,7 +529,7 @@
                     (push (make-event :kind :scroll :x x :y y
                                       :value (if (= code 4) -32 32))
                           events))
-                   ((or (member type '(6 7)) (= code 1))
+                   ((or (member type '(6 7)) (member code '(1 3)))
                     (setf (x-window-pointer-x window) x
                           (x-window-pointer-y window) y)
                     (push (make-event
@@ -537,6 +537,9 @@
                                    (4 :press)
                                    (5 :release)
                                    (otherwise :move))
+                           :button (if (and (member type '(4 5))
+                                            (= code 3))
+                                       :secondary :primary)
                            :x x :y y)
                           events)))))
               (22

@@ -232,7 +232,7 @@
       (#x2a3
        (setf (win-window-tracking-p window) nil)
        (queue-input window (make-event :kind :move :x -1 :y -1)))
-      ((#x200 #x201 #x202)
+      ((#x200 #x201 #x202 #x204 #x205)
         (when (and (= message #x200) (not (win-window-tracking-p window)))
           (cffi:with-foreign-object (tracking '(:struct mouse-tracking))
             (cffi:with-foreign-slots
@@ -246,7 +246,10 @@
         (when (= message #x202) (release-capture))
         (queue-input window
           (make-event :kind
-            (case message (#x201 :press) (#x202 :release) (t :move))
+            (case message ((#x201 #x204) :press)
+                          ((#x202 #x205) :release) (t :move))
+            :button (if (member message '(#x204 #x205))
+                        :secondary :primary)
             :x x :y y)))
       (#x20a
         (cffi:with-foreign-object (point :int 2)

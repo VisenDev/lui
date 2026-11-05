@@ -171,8 +171,9 @@
 (callback pointer-button
     ((serial :uint32) (time :uint32) (button :uint32) (state :uint32))
   (declare (ignore serial time))
-  (when (= button #x110)
+  (when (member button '(#x110 #x111))
     (queue-input (if (zerop state) :release :press)
+                 :button (if (= button #x111) :secondary :primary)
                  :x (wl-window-x *window*) :y (wl-window-y *window*))))
 
 (callback pointer-axis ((time :uint32) (axis :uint32) (value :int32))

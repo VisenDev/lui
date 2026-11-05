@@ -4,7 +4,8 @@
            #:context-active #:context-measure #:*context* #:*parent*
            #:with-frame
            #:row #:column #:event #:event-kind #:event-x #:event-y #:event-id
-           #:event-value #:event-key #:context-events #:events-for
+           #:event-value #:event-key #:event-button #:event-clicks
+           #:event-dragging-p #:context-events #:events-for
            #:previous-box
            #:context-state #:context-width #:context-height #:emit
            #:activated-p
@@ -19,6 +20,9 @@
   (kind :move :type
         (member :move :press :release :tab :activate :change
                 :key :text :scroll))
+  (button :primary :type (member :primary :secondary))
+  (clicks 1 :type integer)
+  (dragging-p nil :type boolean)
   id
   value
   key
@@ -30,6 +34,7 @@
   (previous-root nil :type (or null element))
   (width 0 :type real)
   (height 0 :type real)
+  last-click
   (time 0 :type real)
   (next-frame nil :type (or null real))
   focus
@@ -124,7 +129,9 @@
       (setf (context-active context) nil (context-hover context) nil))
     (dolist (event events)
       (let ((target (unless resized
-                      (hit context (event-x event) (event-y event)))))
+                      (hit context (event-x event) (event-y event))))
+            (captured (context-active context)))
+        (setf (event-dragging-p event) (not (null captured)))
         (when (member (event-kind event) '(:move :press :release))
           (setf (context-hover context) target))
         (case (event-kind event)
@@ -133,15 +140,29 @@
              (scroll-at context (event-x event) (event-y event)
                         (event-value event))))
           (:press
-           (setf (context-active context) target
-                 (context-focus-visible-p context) nil)
+           (let ((previous (context-last-click context)))
+             (when (and previous (equal target (second previous))
+                        (eq (event-button event) (third previous))
+                        (<= (- (context-time context) (first previous)) 0.4)
+                        (< (abs (- (event-x event) (fourth previous))) 4)
+                        (< (abs (- (event-y event) (fifth previous))) 4))
+               (setf (event-clicks event) 2))
+             (setf (context-last-click context)
+                   (unless (= (event-clicks event) 2)
+                     (list (context-time context) target (event-button event)
+                           (event-x event) (event-y event)))))
+           (when (eq (event-button event) :primary)
+             (setf (context-active context) target
+                   (context-focus-visible-p context) nil))
            (let ((node (gethash target (context-ids context))))
              (when (and node (element-pointer-focus-p node))
                (setf (context-focus context) target))))
           (:release
-           (when (and target (equal target (context-active context)))
+           (when (and (eq (event-button event) :primary)
+                      target (equal target (context-active context)))
              (setf (gethash target (context-activated context)) t))
-           (setf (context-active context) nil))
+           (when (eq (event-button event) :primary)
+             (setf (context-active context) nil)))
           (:tab
            (setf (context-focus-visible-p context) t)
            (focus-next context (eq (event-key event) :backward)))
@@ -153,7 +174,7 @@
           (otherwise nil))
         (let ((id (or (event-id event)
                       (if (member (event-kind event) '(:press :move :release))
-                          (context-active context)
+                          (or (context-active context) captured target)
                           (context-focus context)))))
           (when id (push event (gethash id (context-events context))))))))
   (clrhash (context-regions context))

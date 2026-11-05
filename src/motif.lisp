@@ -1,6 +1,6 @@
 (defpackage #:lui.motif
   (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
-  (:export #:label #:button #:checkbox #:slider #:text-field #:panel #:tab
+  (:export #:label #:button #:checkbox #:slider #:text-field #:panel #:tab #:canvas #:gauge
            #:*defaults*))
 
 (in-package #:lui.motif)
@@ -35,6 +35,14 @@
 
 (fn text-field (id (value string) &rest options)
   (value-widget :text-field :motif id value "" (append options *defaults*)))
+
+(fn gauge (id (fraction real) &rest options)
+  (apply #'declare-widget :gauge :motif id ""
+         :value (max 0 (min 1 fraction)) (append options *defaults*)))
+
+(fn canvas (id (commands list) &rest options)
+  (apply #'declare-widget :canvas :motif id ""
+         :value commands (append options *defaults*)))
 
 (defmacro panel ((&rest options) &body body)
   `(let ((*parent* (declare-panel :motif
