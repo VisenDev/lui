@@ -48,6 +48,10 @@ class WebTests(unittest.TestCase):
         self.page.on("pageerror", lambda error: self.errors.append(str(error)))
         self.page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
         expect(self.page.get_by_role("button", name="Say hello")).to_be_visible()
+        # The runtime compiler needs the special declarations when compiling
+        # new fixture callbacks against an already compiled application.
+        self.page.evaluate("""() => {jscl.evaluateString(`(declaim (special
+            lui.frame:*context* lui.frame:*parent* lui:*unit*))`);}""")
 
     def tearDown(self):
         self.page.close()
@@ -96,7 +100,7 @@ class WebTests(unittest.TestCase):
         expect(page.locator("canvas")).to_have_count(0)
         expect(page.get_by_role("textbox")).to_have_value("Common Lisp")
         page.get_by_role("button", name="Say hello").click()
-        expect(page.get_by_text("Hello Common Lisp (1)", exact=True).filter(visible=True)).to_be_visible()
+        expect(page.locator("div").filter(has_text="Hello Common Lisp (1)").last.filter(visible=True)).to_be_visible()
         page.get_by_role("textbox").fill("Ada")
         expect(page.get_by_text("Hello Ada (1)", exact=True).filter(visible=True)).to_be_visible()
         checkbox = page.get_by_role("checkbox", name="Enabled")
@@ -131,11 +135,69 @@ class WebTests(unittest.TestCase):
             "nodes => nodes.every(n => getComputedStyle(n).borderTopLeftRadius !== '0px')"))
         self.page.get_by_role("button", name="Glass", exact=True).click()
         expect(self.page.get_by_role("button", name="Motif", exact=True)).to_be_visible()
+        self.assertEqual(self.page.locator("main").evaluate(
+            "n => [getComputedStyle(n).backgroundImage,getComputedStyle(n).backgroundColor]"),
+            ["none", "rgb(184, 184, 184)"])
         self.assertTrue(self.page.locator("main button").evaluate_all(
             "nodes => nodes.every(n => getComputedStyle(n).borderTopLeftRadius === '0px')"))
         self.page.get_by_role("tab", name="Editing", exact=True).click()
         expect(self.page.get_by_role("textbox")).to_have_value("Persistent editor")
         expect(self.page.locator("canvas")).to_have_count(0)
+
+    def test_native_shift_tab_order_and_stable_label_measurement(self):
+        name = self.page.get_by_role("textbox")
+        name.focus()
+        name.press("Shift+Tab")
+        expect(self.page.get_by_role("tab", name="Controls", exact=True)).to_be_focused()
+        self.page.keyboard.press("Shift+Tab")
+        expect(self.page.get_by_role("button", name="Glass", exact=True)).to_be_focused()
+        self.page.keyboard.press("Tab")
+        expect(self.page.get_by_role("tab", name="Controls", exact=True)).to_be_focused()
+        self.page.keyboard.press("Tab")
+        expect(name).to_be_focused()
+        fps = self.page.get_by_text("FPS", exact=False).filter(visible=True)
+        expect(fps).to_have_count(1)
+        self.assertLess(fps.bounding_box()["height"], 30)
+        before = self.page.get_by_role("checkbox", name="Enabled").bounding_box()["y"]
+        self.page.get_by_role("checkbox", name="Enabled").hover()
+        self.frames()
+        self.assertEqual(self.page.get_by_role("checkbox", name="Enabled").bounding_box()["y"], before)
+
+    def test_wheel_over_child_control_chains_and_capture_is_removed(self):
+        self.lisp('''(defvar *scroll-test-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *scroll-test-host* "id") #j"scroll-host"
+                (jscl/ffi:oget *scroll-test-host* "style" "width") #j"420px"
+                (jscl/ffi:oget *scroll-test-host* "style" "height") #j"180px")
+          (#j:document:body:appendChild *scroll-test-host*)
+          (defvar *scroll-test-app*
+            (lui.web:mount *scroll-test-host*
+              (lambda ()
+                (lui.frame:column (:id :outer :width (lui.layout:grow)
+                                  :height (lui.layout:grow) :scroll-p t)
+                  (lui.frame:column (:id :inner :width (lui.layout:grow)
+                                    :height (lui.layout:fixed 80) :scroll-p t)
+                    (lui.glass:button :wheel-row "Wheel over this row"
+                      :height (lui.layout:fixed 32) :width (lui.layout:grow)))
+                  (lui.glass:label "Outer scroll content"
+                    :height (lui.layout:fixed 300))))))''')
+        row = self.page.get_by_role("button", name="Wheel over this row")
+        row.hover()
+        before = row.evaluate("n => parseFloat(n.style.top)")
+        row.evaluate("n => n.addEventListener('wheel', e => e.stopPropagation())")
+        self.page.mouse.wheel(0, 30)
+        self.page.wait_for_function("""before => parseFloat(
+            document.querySelector('#scroll-host button').style.top)<before""", arg=before)
+        self.assertEqual(self.number(
+            '(round (cdr (gethash :outer (lui.frame::context-scroll (lui.web::web-app-context *scroll-test-app*)))))'), 30)
+        self.assertEqual(self.number(
+            '(round (cdr (gethash :inner (lui.frame::context-scroll (lui.web::web-app-context *scroll-test-app*)))))'), 0)
+        self.lisp('(lui.web:unmount *scroll-test-app*)')
+        prevented = self.page.locator("#scroll-host").evaluate("""n => {
+            const event = new WheelEvent('wheel', {bubbles:true, cancelable:true});
+            n.dispatchEvent(event); return event.defaultPrevented;
+        }""")
+        self.assertFalse(prevented)
+        expect(self.page.locator("#scroll-host > *")).to_have_count(0)
 
     def test_identity_selection_composition_and_host_resize(self):
         self.fixture()
@@ -274,6 +336,8 @@ class WebTests(unittest.TestCase):
         expect(second).to_have_attribute("aria-selected", "true")
         expect(first).to_have_attribute("aria-selected", "false")
         self.assertTrue(second.evaluate("n => n.matches(':focus-visible')"))
+        self.assertLess(second.evaluate(
+            "n => parseFloat(getComputedStyle(n).outlineOffset)"), 0)
         second.press("Home")
         expect(first).to_be_focused()
         first.press("End")
@@ -317,6 +381,87 @@ class WebTests(unittest.TestCase):
         self.frames()
         self.assertEqual(self.number('*web-test-draws*'), draws)
         self.lisp('(lui.web:unmount *web-test-app*)')
+
+
+    def test_rejected_native_changes_restore_model(self):
+        self.lisp('''
+          (defvar *reject-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *reject-host* "id") #j"reject-host"
+                (jscl/ffi:oget *reject-host* "style" "width") #j"500px"
+                (jscl/ffi:oget *reject-host* "style" "height") #j"250px")
+          (#j:document:body:appendChild *reject-host*)
+          (defvar *reject-app*
+            (lui.web:mount *reject-host*
+              (lambda ()
+                (lui.frame:column (:width (lui.layout:grow))
+                  (lui.widgets:declare-widget :text-field :glass
+                    :reject-text "" :value "Fixed")
+                  (lui.widgets:declare-widget :checkbox :motif
+                    :reject-check "Reject check" :value nil)
+                  (lui.widgets:declare-widget :slider :glass
+                    :reject-range "" :value 0.5 :width (lui.layout:grow))
+                  (lui.widgets:declare-widget :slider :motif
+                    :disabled-range "" :value 0.5 :disabled-p t
+                    :width (lui.layout:grow))))))
+        ''')
+        host = self.page.locator("#reject-host")
+        field = host.get_by_role("textbox")
+        expect(field).to_have_value("Fixed")
+        field.fill("Rejected")
+        expect(field).to_have_value("Fixed")
+        check = host.get_by_role("checkbox")
+        check.click()
+        expect(check).not_to_be_checked()
+        slider = host.get_by_role("slider").first
+        slider.evaluate("""n => {n.valueAsNumber = .9;
+            n.dispatchEvent(new Event('input', {bubbles:true}));}""")
+        expect(slider).to_have_value("0.5")
+        disabled = host.get_by_role("slider").last
+        self.assertEqual(disabled.evaluate(
+            "n => getComputedStyle(n).getPropertyValue('--lui-accent')"),
+            "#999999")
+        self.lisp('(lui.web:unmount *reject-app*)')
+
+    def test_checkbox_theme_keyboard_and_disabled_cursor(self):
+        page = self.page
+        page.get_by_role("button", name="Glass", exact=True).click()
+        expect(page.get_by_role("button", name="Motif", exact=True)).to_be_visible()
+        check = page.get_by_role("checkbox", name="Enabled", exact=True)
+        expect(check).to_be_checked()
+        self.assertEqual(check.evaluate("n => getComputedStyle(n).appearance"), "none")
+        self.assertEqual(check.evaluate("n => getComputedStyle(n.parentNode).borderStyle"), "none")
+        self.assertEqual(check.evaluate("n => getComputedStyle(n).borderTopStyle"), "inset")
+        check.focus()
+        check.press("Enter")
+        expect(check).not_to_be_checked()
+        check.press("Space")
+        expect(check).to_be_checked()
+        check.hover()
+        self.frames()
+        # The live FPS label can resize the page during the first hover frame.
+        check.hover()
+        page.wait_for_function("""() => getComputedStyle(
+            document.querySelector('.lui-motif-check input')).filter === 'brightness(1.2)'""")
+        disabled = page.get_by_role("button", name="Disabled", exact=True)
+        expect(disabled).to_be_disabled()
+        disabled.hover(force=True)
+        self.assertEqual(disabled.evaluate("n => getComputedStyle(n).cursor"), "not-allowed")
+        self.assertEqual(disabled.evaluate(
+            "n => [getComputedStyle(n).opacity,getComputedStyle(n).color]"),
+            ["1", "rgb(119, 119, 119)"])
+        button = page.get_by_role("button", name="Say hello", exact=True)
+        button.hover()
+        self.assertEqual(button.evaluate("n => getComputedStyle(n).opacity"), "1")
+        button.focus()
+        button.press("Space")
+        expect(page.locator("div").filter(has_text="Hello Common Lisp (1)").last).to_be_visible()
+        button.press("Enter")
+        expect(page.locator("div").filter(has_text="Hello Common Lisp (2)").last).to_be_visible()
+        field = page.get_by_role("textbox")
+        field.focus()
+        field.press("End")
+        field.press("Space")
+        expect(field).to_have_value("Common Lisp ")
 
 
 if __name__ == "__main__":
