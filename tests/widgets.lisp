@@ -199,6 +199,13 @@
   (test-readline)
   (test-tabs-and-hover)
   (test-keyboard-activation)
+  (let ((context (make-terminal-context)))
+    (with-frame (context 10 4)
+      (lui.widgets:declare-widget :splitter :glass :divider ""
+                                 :width (fixed 2) :height (fixed 4)))
+    (assert (eq :resize-horizontal
+                (lui.widgets:cursor-at context 1 1)))
+    (assert (eq :default (lui.widgets:cursor-at context 3 1))))
   (test-nested-scroll)
   (let ((context (make-terminal-context))
         (slider 0.0)

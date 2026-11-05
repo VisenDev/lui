@@ -206,6 +206,8 @@
                            49 0 " " nil " " t))))
   (assert (equal " "
                  (event-value (lui.cocoa::cocoa-key-input 49 0 " " t))))
+  (assert (equal "resizeLeftRightCursor"
+                 (lui.cocoa::cursor-selector :resize-horizontal)))
   (assert (equal "operationNotAllowedCursor"
                  (lui.cocoa::cursor-selector :not-allowed)))
   (assert (eq :home

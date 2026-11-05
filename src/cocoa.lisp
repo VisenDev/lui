@@ -317,6 +317,7 @@
 (fn cursor-selector ((kind symbol))
   (case kind (:not-allowed "operationNotAllowedCursor")
         (:pointer "pointingHandCursor") (:text "IBeamCursor")
+        (:resize-horizontal "resizeLeftRightCursor")
         (otherwise "arrowCursor")))
 
 (fn update-cursor ((x real) (y real))

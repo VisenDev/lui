@@ -92,7 +92,8 @@
     (lui.win32::window-message window #x102 32 0)
     (assert (equal " " (event-value
                        (first (lui.win32::win-window-events window))))))
-  (dolist (kind '(:default :pointer :text :not-allowed))
+  (dolist (kind '(:default :pointer :text :not-allowed
+                  :resize-horizontal))
     (assert (not (cffi:null-pointer-p
                   (lui.win32::load-cursor
                    (cffi:null-pointer)

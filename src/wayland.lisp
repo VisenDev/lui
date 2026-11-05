@@ -151,7 +151,8 @@
       (flush-display (wl-window-display window)))))
 
 (fn cursor-shape ((kind symbol))
-  (case kind (:not-allowed 15) (:pointer 4) (:text 9) (otherwise 1)))
+  (case kind (:not-allowed 15) (:pointer 4) (:text 9)
+        (:resize-horizontal 26) (otherwise 1)))
 
 (fn cursor-image-for ((window wl-window) (kind symbol))
   (when (and (wl-window-shm window)
@@ -169,6 +170,8 @@
                          (:not-allowed '("not-allowed" "crossed_circle"))
                          (:pointer '("pointer" "hand2"))
                          (:text '("text" "xterm"))
+                         (:resize-horizontal
+                          '("ew-resize" "sb_h_double_arrow" "h_double_arrow"))
                          (otherwise '("default" "left_ptr")))
           :for cursor :=
           (cffi:foreign-funcall "wl_cursor_theme_get_cursor"

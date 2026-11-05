@@ -183,6 +183,8 @@
                    (cond ((widget-disabled-p widget)
                           (if (eq (widget-kind widget) :cell)
                               :default :not-allowed))
+                         ((eq (widget-kind widget) :splitter)
+                          :resize-horizontal)
                          ((member (widget-kind widget) '(:label :text-field))
                           :text)
                          ((member (widget-kind widget)
