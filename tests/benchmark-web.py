@@ -10,7 +10,7 @@ from web import WebTests
 from playwright.sync_api import expect
 
 toolkits = tuple(os.environ.get("BENCH_TOOLKITS", "Glass,Motif,Garnet").split(","))
-pages = ("Controls", "Editing", "Layout", "Scroll", "Styles")
+pages = ("Controls", "Editing", "Layout", "Scroll", "Styles", "7GUIs")
 case_count = len(toolkits) * len(pages)
 frames = int(os.environ.get("BENCH_FRAMES", "240"))
 warmup = int(os.environ.get("WARMUP", "30"))

@@ -117,7 +117,7 @@ class WebTests(unittest.TestCase):
 
     def test_gallery_pages_persist_inputs_and_switch_collection(self):
         tabs = self.page.get_by_role("tab")
-        expect(tabs).to_have_count(5)
+        expect(tabs).to_have_count(6)
         expect(self.page.get_by_role("tab", name="Controls")).to_have_attribute(
             "aria-selected", "true")
         self.page.get_by_role("textbox").fill("Persistent name")
@@ -392,6 +392,207 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.number('*web-test-draws*'), draws)
         self.lisp('(lui.web:unmount *web-test-app*)')
 
+
+    def test_editor_enter_escape_and_native_clipboard(self):
+        self.fixture()
+        self.lisp('''
+          (defvar *edit-keys* nil)
+          (defvar *edit-original* (lui.web::web-app-callback *web-test-app*))
+          (setf (lui.web::web-app-callback *web-test-app*)
+            (lambda ()
+              (setf *edit-keys* (append (lui.frame:events-for :fixture)
+                                      *edit-keys*))
+              (funcall *edit-original*)))
+        ''')
+        field = self.page.locator("#test-host input")
+        field.press("Enter")
+        self.frames()
+        field.press("Escape")
+        self.frames()
+        self.assertEqual(self.number(
+            "(count :activate *edit-keys* :key #'lui.frame:event-kind)"), 1)
+        self.assertEqual(self.number('''(count-if (lambda (event)
+            (and (eq :key (lui.frame:event-kind event))
+                 (eq :escape (lui.frame:event-key event)))) *edit-keys*)'''), 1)
+        self.page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+        field.evaluate("n => n.setSelectionRange(0,4)")
+        field.press("Control+c")
+        self.assertEqual(self.page.evaluate("navigator.clipboard.readText()"), "orig")
+        expect(field).to_have_value("original")
+        self.lisp('(lui.web:unmount *web-test-app*)')
+
+    def test_seven_gui_timer_updates_progress_without_input(self):
+        self.page.get_by_role("tab", name="7GUIs", exact=True).click()
+        self.page.get_by_role("tab", name="Timer", exact=True).click()
+        gauge = self.page.get_by_role("progressbar")
+        expect(gauge).to_be_visible()
+        before = float(gauge.get_attribute("aria-valuenow"))
+        self.page.wait_for_function("""before => Number(document.querySelector(
+            '[role=progressbar]').getAttribute('aria-valuenow')) > before + .005""",
+            arg=before)
+        self.page.get_by_role("slider").evaluate("""n => {
+            n.value = '.2'; n.dispatchEvent(new Event('input', {bubbles:true}));
+        }""")
+        expect(gauge).to_have_attribute("aria-valuenow", "1")
+        self.page.get_by_role("tab", name="Counter", exact=True).click()
+        self.page.get_by_role("button", name="Count", exact=True).click()
+        expect(self.page.get_by_text("1", exact=True).filter(visible=True)).to_be_visible()
+
+    def test_visible_label_selection_and_native_copy_survive_refresh(self):
+        self.page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+        label = self.page.get_by_text("Hello Common Lisp (0)", exact=True).filter(visible=True)
+        label.evaluate("""node => {
+            const range = document.createRange(); range.selectNodeContents(node);
+            const selection = getSelection(); selection.removeAllRanges();
+            selection.addRange(range);
+        }""")
+        self.page.evaluate("window.dispatchEvent(new Event('resize'))")
+        self.frames()
+        self.assertEqual(self.page.evaluate("getSelection().toString()"),
+                         "Hello Common Lisp (0)")
+        self.page.keyboard.press("Control+c")
+        self.assertEqual(self.page.evaluate("navigator.clipboard.readText()"),
+                         "Hello Common Lisp (0)")
+
+    def test_requested_frames_deadlines_idle_and_unmount(self):
+        self.lisp('''
+          (defvar *clock-running* t)
+          (defvar *clock-delay* 0.04)
+          (defvar *clock-draws* 0)
+          (defvar *clock-times* nil)
+          (defvar *clock-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *clock-host* "style" "width") #j"300px"
+                (jscl/ffi:oget *clock-host* "style" "height") #j"80px")
+          (#j:document:body:appendChild *clock-host*)
+          (defvar *clock-app*
+            (lui.web:mount *clock-host*
+              (lambda ()
+                (incf *clock-draws*)
+                (push (lui.frame:frame-time) *clock-times*)
+                (lui.glass:label "Clock")
+                (when *clock-running*
+                  (lui.frame:request-frame *clock-delay*))))))
+        ''')
+        self.page.wait_for_function("""() => jscl.evaluateString(
+            '*clock-draws*') >= 4""")
+        self.assertGreater(self.number(
+            '(- (first *clock-times*) (car (last *clock-times*)))'), 0.06)
+        self.lisp('''(setf *clock-delay* 0.3)
+          (lui.web:refresh *clock-app*)''')
+        self.frames()
+        self.lisp('''(setf *clock-running* nil)
+          (dotimes (index 10) (lui.web:refresh *clock-app*))''')
+        self.frames()
+        stopped = self.number('*clock-draws*')
+        self.page.wait_for_timeout(350)
+        self.assertEqual(self.number('*clock-draws*'), stopped)
+        self.assertEqual(self.number(
+            '(if (lui.web::web-app-deadline-timer *clock-app*) 1 0)'), 0)
+        self.lisp('''(setf *clock-running* t *clock-delay* 0.04)
+          (lui.web:refresh *clock-app*)''')
+        self.frames()
+        self.lisp('(lui.web:unmount *clock-app*)')
+        stopped = self.number('*clock-draws*')
+        self.page.wait_for_timeout(100)
+        self.assertEqual(self.number('*clock-draws*'), stopped)
+        self.assertEqual(self.number(
+            '(if (lui.web::web-app-deadline-timer *clock-app*) 1 0)'), 0)
+
+    def test_svg_canvas_pointer_hover_secondary_doubleclick_and_gauge(self):
+        self.lisp('''
+          (defvar *canvas-log* nil)
+          (defvar *canvas-hover* nil)
+          (defvar *canvas-commands* '((:circle 50 50 20 "#000000" nil)))
+          (defvar *canvas-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *canvas-host* "id") #j"canvas-host"
+                (jscl/ffi:oget *canvas-host* "style" "width") #j"400px"
+                (jscl/ffi:oget *canvas-host* "style" "height") #j"250px")
+          (#j:document:body:appendChild *canvas-host*)
+          (defvar *canvas-app*
+            (lui.web:mount *canvas-host*
+              (lambda ()
+                (dolist (event (lui.frame:events-for :drawing))
+                  (push event *canvas-log*)
+                  (when (eq :move (lui.frame:event-kind event))
+                    (setf *canvas-hover* (> (lui.frame:event-x event) 100))))
+                (setf (sixth (first *canvas-commands*))
+                      (when *canvas-hover* "#aabbcc"))
+                (lui.frame:column (:gap 8)
+                  (lui.garnet:canvas :drawing *canvas-commands*
+                    :width (lui.layout:fixed 300)
+                    :height (lui.layout:fixed 160))
+                  (lui.motif:gauge :progress 0.25
+                    :width (lui.layout:fixed 300)))))))
+        ''')
+        host = self.page.locator("#canvas-host")
+        svg = host.locator("svg")
+        circle = svg.locator("circle")
+        expect(circle).to_have_attribute("cx", "50px")
+        expect(circle).to_have_attribute("fill", "none")
+        gauge = host.get_by_role("progressbar")
+        expect(gauge).to_have_attribute("aria-valuenow", "0.25")
+        self.assertAlmostEqual(gauge.locator("div").bounding_box()["width"],
+                               (gauge.bounding_box()["width"] - 2) * .25, delta=1)
+        svg.scroll_into_view_if_needed()
+        box = svg.bounding_box()
+        self.page.mouse.move(box["x"] + 30, box["y"] + 50)
+        self.frames()
+        first_moves = self.number("(count :move *canvas-log* :key #'lui.frame:event-kind)")
+        self.page.mouse.move(box["x"] + 140, box["y"] + 50)
+        expect(circle).to_have_attribute("fill", "#aabbcc")
+        self.assertGreater(self.number(
+            "(count :move *canvas-log* :key #'lui.frame:event-kind)"), first_moves)
+        self.page.mouse.click(box["x"] + 50, box["y"] + 50, button="right")
+        self.frames()
+        self.assertGreater(self.number('''(count-if (lambda (event)
+            (and (eq :press (lui.frame:event-kind event))
+                 (eq :secondary (lui.frame:event-button event)))) *canvas-log*)'''), 0)
+        self.page.mouse.dblclick(box["x"] + 60, box["y"] + 60)
+        self.frames()
+        self.assertGreater(self.number('''(count-if (lambda (event)
+            (and (eq :press (lui.frame:event-kind event))
+                 (= 2 (lui.frame:event-clicks event)))) *canvas-log*)'''), 0)
+        self.page.mouse.move(box["x"] + 70, box["y"] + 70)
+        self.page.mouse.down()
+        self.page.mouse.move(box["x"] + 330, box["y"] + 70)
+        self.page.mouse.up()
+        self.frames()
+        self.assertGreater(self.number('''(count-if (lambda (event)
+            (and (eq :move (lui.frame:event-kind event))
+                 (lui.frame:event-dragging-p event))) *canvas-log*)'''), 0)
+        self.lisp('(lui.web:unmount *canvas-app*)')
+        expect(host.locator("svg")).to_have_count(0)
+
+    def test_motif_scroll_clips_rows_inside_panel_padding(self):
+        self.lisp('''
+          (defvar *clip-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *clip-host* "id") #j"clip-host"
+                (jscl/ffi:oget *clip-host* "style" "width") #j"300px"
+                (jscl/ffi:oget *clip-host* "style" "height") #j"120px")
+          (#j:document:body:appendChild *clip-host*)
+          (defvar *clip-app*
+            (lui.web:mount *clip-host*
+              (lambda ()
+                (lui.motif:panel (:id :viewport :width (lui.layout:grow)
+                                  :height (lui.layout:grow) :padding 8
+                                  :scroll-p t)
+                  (dotimes (index 8)
+                    (lui.motif:button index (format nil "Row ~D" index)
+                      :height (lui.layout:fixed 32))))))))
+        ''')
+        host = self.page.locator("#clip-host")
+        row = host.get_by_role("button", name="Row 0", exact=True)
+        row.hover()
+        self.page.mouse.wheel(0, 20)
+        self.page.wait_for_function("""() => parseFloat(
+            document.querySelector('#clip-host button').style.top) < 0""")
+        self.assertGreaterEqual(row.evaluate("""n => parseFloat(n.style.top) +
+            parseFloat(getComputedStyle(n).clipPath.slice(6))"""), 8)
+        box = host.bounding_box()
+        self.assertFalse(self.page.evaluate("""({x,y}) =>
+            !!document.elementFromPoint(x,y).closest('button')""",
+            {"x": box["x"] + 20, "y": box["y"] + 2}))
+        self.lisp('(lui.web:unmount *clip-app*)')
 
     def test_garnet_monochrome_controls_and_stipple(self):
         self.lisp('''

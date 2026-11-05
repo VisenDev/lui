@@ -22,11 +22,29 @@
   resize-handler
   resize-observer
   animation-frame
+  deadline-timer
   wheel-handler
   (listeners nil :type list))
 
 (fn create-node ((tag string))
   (#j:document:createElement (jscl/ffi:jsstring tag)))
+
+(fn create-svg-node ((tag string))
+  (#j:document:createElementNS #j"http://www.w3.org/2000/svg"
+                              (jscl/ffi:jsstring tag)))
+
+(fn queue-pointer ((app web-app) event kind)
+  (let ((rect ((jscl/ffi:oget (web-app-host app)
+                             "getBoundingClientRect"))))
+    (queue-event
+     app (make-event :kind kind
+                     :button (if (= 2 (jscl/ffi:oget event "button"))
+                                 :secondary :primary)
+                     :clicks (max 1 (jscl/ffi:oget event "detail"))
+                     :x (- (jscl/ffi:oget event "clientX")
+                           (jscl/ffi:oget rect "left"))
+                     :y (- (jscl/ffi:oget event "clientY")
+                           (jscl/ffi:oget rect "top"))))))
 
 (fn node-cache (node (name string))
   (let ((cache (jscl/ffi:oget node name)))
@@ -117,6 +135,19 @@
 (fn dom-text-index ((text string) (index integer))
   (jscl/ffi:oget (jscl/ffi:jsstring (subseq text 0 index)) "length"))
 
+(fn native-application-key ((app web-app) id event)
+  (unless (or (jscl/ffi:clbool (jscl/ffi:oget event "isComposing"))
+              (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
+              (jscl/ffi:clbool (jscl/ffi:oget event "metaKey"))
+              (jscl/ffi:clbool (jscl/ffi:oget event "altKey")))
+    (let ((key (jscl/ffi:clstring (jscl/ffi:oget event "key"))))
+      (when (member key '("Enter" "Escape") :test #'string=)
+        ((jscl/ffi:oget event "preventDefault"))
+        (queue-event app (if (string= key "Enter")
+                             (make-event :kind :activate :id id)
+                             (make-event :kind :key :key :escape :id id)))
+        t))))
+
 (fn native-text-key ((app web-app) control id event)
   (unless (or (jscl/ffi:clbool (jscl/ffi:oget event "isComposing"))
               (eql 229 (jscl/ffi:oget event "keyCode"))
@@ -124,6 +155,8 @@
               (jscl/ffi:clbool (jscl/ffi:oget event "metaKey"))
               (and (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
                    (jscl/ffi:clbool (jscl/ffi:oget event "altKey"))))
+    (when (native-application-key app id event)
+      (return-from native-text-key nil))
     (let* ((key (jscl/ffi:clstring (jscl/ffi:oget
                                     event "key")))
            (command (readline-key key
@@ -133,6 +166,8 @@
                                         (jscl/ffi:oget event "altKey"))
                                   :shift (jscl/ffi:clbool
                                           (jscl/ffi:oget event "shiftKey")))))
+      ;; Native input copy uses the browser clipboard and DOM selection.
+      (when (eq command :copy) (setf command nil))
       (if (null command)
           (unless (member key '("Control" "Alt" "Shift" "Meta" "CapsLock")
                           :test #'string=)
@@ -236,18 +271,43 @@
       (remove-node app (cdr entry))
       (setf entry nil))
     (unless entry
-      (let* ((dom (create-node
-                   (case kind
-                     ((:button :tab) "button")
-                     ((:slider :text-field) "input")
-                     (:checkbox "label")
-                     (otherwise "div"))))
+      (let* ((dom (if (eq kind :canvas)
+                      (create-svg-node "svg")
+                      (create-node
+                       (case kind
+                         ((:button :tab) "button")
+                         ((:slider :text-field) "input")
+                         (:checkbox "label")
+                         (otherwise "div")))))
              (control (if (eq kind :checkbox) (create-node "input") dom))
              (id (element-id node)))
         (setf (jscl/ffi:oget dom "luiId") id)
         (when (eq kind :checkbox)
           ((jscl/ffi:oget dom "appendChild") control)
           ((jscl/ffi:oget dom "appendChild") (create-node "span")))
+        (when (eq kind :canvas)
+          (attribute dom "role" "img")
+          (attribute dom "tabindex" "0")
+          (style dom "touch-action" "none")
+          (listen app dom "keydown"
+                  (lambda (event) (native-application-key app id event)))
+          (listen app dom "contextmenu"
+                  (lambda (event)
+                    ((jscl/ffi:oget event "preventDefault"))))
+          (listen app dom "pointerdown"
+                  (lambda (event)
+                    ((jscl/ffi:oget event "preventDefault"))
+                    ((jscl/ffi:oget dom "setPointerCapture")
+                     (jscl/ffi:oget event "pointerId"))
+                    (queue-pointer app event :press)))
+          (dolist (name '("pointerup" "pointercancel"))
+            (listen app dom name
+                    (lambda (event)
+                      (queue-pointer app event :release)
+                      (let ((id (jscl/ffi:oget event "pointerId")))
+                        (when (jscl/ffi:clbool
+                               ((jscl/ffi:oget dom "hasPointerCapture") id))
+                          ((jscl/ffi:oget dom "releasePointerCapture") id)))))))
         (case kind
           ((:button :tab)
            (attribute dom "type" "button")
@@ -366,7 +426,10 @@
     (unless (and (plusp (box-width clip)) (plusp (box-height clip)))
       (return-from update-node dom))
     (let ((signature (render-signature widget box clip)))
-      (when (same-signature-p signature (jscl/ffi:oget dom "luiSignature"))
+      ;; Canvas command lists may be edited in place by the application.
+      (when (and (not (eq kind :canvas))
+                 (same-signature-p signature
+                                   (jscl/ffi:oget dom "luiSignature")))
         (return-from update-node dom))
       (setf (jscl/ffi:oget dom "luiSignature") signature))
     (when (and (eq kind :panel) (= 1 (widget-opacity widget))
@@ -412,7 +475,7 @@
                          (- (+ (box-y box) (box-height box))
                             (+ (box-y clip) (box-height clip)))))
                    (px (- (box-x clip) (box-x box)))))
-    (unless (member kind '(:text-field :slider :checkbox))
+    (unless (member kind '(:text-field :slider :checkbox :canvas :gauge))
       (node-text dom (widget-text widget)))
     (unless (eq kind :label)
       (property control "disabled"
@@ -498,6 +561,24 @@
          (setf (jscl/ffi:oget dom "value")
                (jscl/ffi:jsstring (widget-value widget)))))
       (otherwise nil))
+    (case kind
+      (:canvas (update-canvas dom widget))
+      (:gauge
+       (attribute dom "role" "progressbar")
+       (attribute dom "aria-valuemin" "0")
+       (attribute dom "aria-valuemax" "1")
+       (attribute dom "aria-valuenow"
+                  (jscl/ffi:clstring (#j:String (widget-value widget))))
+       (when (eq #j:null (jscl/ffi:oget dom "firstElementChild"))
+         ((jscl/ffi:oget dom "appendChild") (create-node "div")))
+       (let ((fill (jscl/ffi:oget dom "firstElementChild")))
+         (style fill "height" "100%")
+         (style fill "width"
+                (jscl/ffi:clstring
+                 ((jscl/ffi:oget (#j:String (* 100 (widget-value widget)))
+                                "concat") #j"%")))
+         (style fill "background" (widget-accent widget))
+         (style fill "border-radius" "inherit"))))
     (when (eq (widget-style widget) :garnet)
       (style dom "border-radius" "0")
       (style dom "backdrop-filter" "none")
@@ -551,7 +632,35 @@
     (unless (eq (widget-style widget) :garnet)
       (style dom "flex-direction" "row")
       (style dom "justify-content" "normal"))
+    (when (member kind '(:canvas :gauge))
+      (style dom "padding" "0")
+      (style dom "background" (widget-background widget))
+      (style dom "backdrop-filter" "none")
+      (style dom "box-shadow" "none")
+      (style dom "border"
+             (if (eq kind :canvas) "none"
+                 (concatenate 'string "1px solid "
+                              (widget-foreground widget)))))
+    (when (eq kind :canvas) (style dom "border-radius" "0"))
     dom))
+
+(fn update-canvas (dom (widget widget))
+  (let ((index 0))
+    (dolist (command (widget-value widget))
+      (destructuring-bind (kind x y radius stroke fill) command
+        (assert (eq kind :circle))
+        (let ((circle ((jscl/ffi:oget dom "children" "item") index)))
+          (when (eq circle #j:null)
+            (setf circle (create-svg-node "circle"))
+            ((jscl/ffi:oget dom "appendChild") circle))
+          (attribute circle "cx" (px x))
+          (attribute circle "cy" (px y))
+          (attribute circle "r" (px radius))
+          (attribute circle "stroke" (or stroke "none"))
+          (attribute circle "fill" (or fill "none"))
+          (incf index))))
+    (loop :while (> (jscl/ffi:oget dom "children" "length") index)
+          :do ((jscl/ffi:oget dom "lastElementChild" "remove")))))
 
 (fn update-tablists ((app web-app))
   (let ((seen (make-hash-table :test 'equal)))
@@ -619,6 +728,26 @@
       (unless (eq active #j:document:activeElement)
         ((jscl/ffi:oget active "focus"))))))
 
+(fn cancel-deadline ((app web-app))
+  (when (web-app-deadline-timer app)
+    (#j:clearTimeout (web-app-deadline-timer app))
+    (setf (web-app-deadline-timer app) nil)))
+
+(fn schedule-deadline ((app web-app))
+  (cancel-deadline app)
+  (let ((deadline (context-next-frame (web-app-context app))))
+    (when (and deadline (not (web-app-pending-p app)))
+      (let ((delay (- deadline (/ (get-internal-real-time)
+                                  internal-time-units-per-second))))
+        (if (<= delay 0)
+            (refresh app)
+            (setf (web-app-deadline-timer app)
+                  (#j:setTimeout
+                   (lambda ()
+                     (setf (web-app-deadline-timer app) nil)
+                     (refresh app))
+                   (ceiling (* 1000 delay)))))))))
+
 (fn draw-frame ((app web-app))
   (let* ((host (web-app-host app))
          (context (web-app-context app))
@@ -661,9 +790,11 @@
            (push key removed)))
        (web-app-nodes app))
       (dolist (key removed) (remhash key (web-app-nodes app))))
-    (reconcile-dom-order app)))
+    (reconcile-dom-order app)
+    (schedule-deadline app)))
 
 (fn refresh ((app web-app))
+  (cancel-deadline app)
   (when (and (web-app-alive-p app) (not (web-app-pending-p app)))
     (setf (web-app-pending-p app) t)
     (setf (web-app-animation-frame app)
@@ -733,7 +864,11 @@
                               #j"[data-lui-interactive='true']"))
                      (id (unless (eq target #j:null)
                            (jscl/ffi:oget target "luiId"))))
-                (unless (equal id (web-app-hover-id app))
+                (when (or (not (equal id (web-app-hover-id app)))
+                          (and (not (eq target #j:null))
+                               (string= "svg" (jscl/ffi:clstring
+                                               (jscl/ffi:oget target
+                                                              "localName")))))
                   (setf (web-app-hover-id app) id)
                   (let ((rect ((jscl/ffi:oget host "getBoundingClientRect"))))
                     (queue-event
@@ -753,6 +888,7 @@
     app))
 
 (fn unmount ((app web-app))
+  (cancel-deadline app)
   (setf (web-app-alive-p app) nil
         (web-app-events app) nil
         (web-app-pending-p app) nil)
