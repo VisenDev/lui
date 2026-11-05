@@ -18,6 +18,10 @@
 (lui.tests.widgets:run-tests)
 
 (load "examples/seven-model.lisp")
+(load "src/debug.lisp")
+(load "tests/debug.lisp")
+(lui.tests.debug:run-tests)
+
 (load "examples/demo.lisp")
 (load "examples/seven-circles.lisp")
 (load "examples/seven-cells.lisp")

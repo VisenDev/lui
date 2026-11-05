@@ -17,8 +17,12 @@
                              (:file "terminal"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
 
-(defsystem "lui/demo"
+(defsystem "lui/debug"
   :depends-on ("lui")
+  :components ((:module "src" :components ((:file "debug")))))
+
+(defsystem "lui/demo"
+  :depends-on ("lui/debug")
   :serial t
   :components ((:module "examples"
                 :serial t
@@ -33,7 +37,8 @@
   :serial t
   :components ((:module "tests"
                 :serial t
-                :components ((:file "core")
+                :components ((:file "debug")
+                             (:file "core")
                              (:file "widgets")
                              (:file "gallery")
                              (:file "seven-model")
@@ -42,6 +47,7 @@
                              (:file "seven"))))
   :perform (test-op (operation component)
              (declare (ignore operation component))
+             (uiop:symbol-call :lui.tests.debug :run-tests)
              (uiop:symbol-call :lui.tests :run-tests)
              (uiop:symbol-call :lui.tests.widgets :run-tests)
              (uiop:symbol-call :lui.tests.gallery :run-tests)

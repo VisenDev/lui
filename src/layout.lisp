@@ -7,7 +7,8 @@
            #:element-padding
            #:element-direction #:element-gap #:element-align
            #:element-cross-align #:element-pointer-focus-p
-           #:element-interactive-p #:append-child #:solve #:walk-elements
+           #:element-interactive-p #:element-keyboard-focus-p
+           #:append-child #:solve #:walk-elements
            #:do-children
            #:element-clip #:element-clip-p #:element-scroll-p
            #:element-scroll-x
@@ -61,6 +62,7 @@
   ;; Callback returns intrinsic width and height; width is NIL before sizing.
   (measure nil :type (or null function))
   (interactive-p nil :type boolean)
+  (keyboard-focus-p t :type boolean)
   (pointer-focus-p nil :type boolean)
   (clip-p nil :type boolean)
   (clip (make-box) :type box)

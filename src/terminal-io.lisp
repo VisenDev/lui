@@ -86,8 +86,9 @@
     (dolist (event (reverse (input-events input)))
       (case (event-kind event)
         (:tab
-         (let* ((order (if (eq (event-key event) :backward)
-                           (reverse nodes) nodes))
+         (let* ((focusable (remove-if-not #'element-keyboard-focus-p nodes))
+                (order (if (eq (event-key event) :backward)
+                           (reverse focusable) focusable))
                 (next (or (second (member focus order :key #'element-id
                                                      :test #'equal))
                           (first order))))
