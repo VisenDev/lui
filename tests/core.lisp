@@ -55,6 +55,58 @@
         (solve root 40 20)
         (check (= (box-x (element-box a)) 30))
         (check (= (box-y (element-box a)) 8)))
+      ;; Clipping reserves fractional padding without clipping the container.
+      (let* ((root (make-element :padding 1.5 :clip-p t))
+             (child (append-child
+                     root (make-element :width (fixed 20) :height (fixed 12)
+                                        :floating-p t :offset-x -1
+                                        :offset-y -1))))
+        (solve root 10 8)
+        (check (= (box-width (element-clip root)) 10))
+        (check (= (box-x (element-clip child)) 1.5))
+        (check (= (box-y (element-clip child)) 1.5))
+        (check (= (box-width (element-clip child)) 7))
+        (check (= (box-height (element-clip child)) 5)))
+      ;; Scrolled children stay inside padding; the last row can reach its end.
+      (let* ((root (make-element :padding 2 :scroll-p t :scroll-y 1.5))
+             (first (append-child
+                     root (make-element :width (fixed 20)
+                                        :height (fixed 8)))))
+        (append-child root (make-element :height (fixed 8)))
+        (solve root 20 10)
+        (check (= (box-y (element-box first)) 0.5))
+        (check (= (box-y (element-clip first)) 2))
+        (check (= (box-height (element-clip first)) 6))
+        (check (= (element-scroll-limit-y root) 10))
+        (setf (element-scroll-y root) 100
+              (element-scroll-x root) 100)
+        (solve root 20 10)
+        (check (= (element-scroll-y root) 10))
+        (check (= (element-scroll-x root) 4))
+        (let ((last (aref (element-children root) 1)))
+          (check (= (box-y (element-clip last)) 2))
+          (check (= (box-height (element-clip last)) 6))))
+      ;; Padding has no child hit/cursor region, even behind a scrolled row.
+      (let ((context (make-terminal-context))
+            (clicked nil))
+        (labels ((draw ()
+                   (column (:id :scroll :width (fixed 20) :height (fixed 10)
+                            :padding 2 :scroll-p t)
+                     (setf clicked
+                           (lui.motif:button :row "Row" :height (fixed 16))))))
+          (with-frame (context 20 10) (draw))
+          (check (eq :default (lui.widgets:cursor-at context 3 1)))
+          (check (eq :pointer (lui.widgets:cursor-at context 3 2)))
+          (with-frame
+              (context 20 10 :events
+                       (list (make-event :kind :scroll :x 3 :y 3 :value 1.5)
+                             (make-event :kind :press :x 3 :y 1)
+                             (make-event :kind :release :x 3 :y 1)))
+            (draw))
+          (check (not clicked))
+          (check (eq :default (lui.widgets:cursor-at context 3 1)))
+          (check (eq :default (lui.widgets:cursor-at context 3 8)))
+          (check (eq :pointer (lui.widgets:cursor-at context 3 3)))))
       ;; Wrapped height reaches the parent before vertical positioning.
       (let ((context (make-terminal-context)))
         (with-frame (context 5 10)
