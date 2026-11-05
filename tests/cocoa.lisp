@@ -276,6 +276,23 @@
       (assert (plusp (box-width (element-box (context-root context)))))
       (assert (plusp (box-height (element-box (context-root context))))))))
 
+#+linux
+(fn test-stacktrace-guard ()
+  ;; Isolate fake Objective-C symbols from the parent and real AppKit smoke.
+  (let* ((root (asdf:system-source-directory "lui"))
+         (library (merge-pathnames "build/cocoa-stacktrace-test.so" root)))
+    (ensure-directories-exist library)
+    (uiop:run-program
+     (list (or (uiop:getenv "CC") "cc") "-shared" "-fPIC" "-std=c99"
+           "-Wall" "-Wextra" "-Werror"
+           (namestring (merge-pathnames "tests/fixtures/cocoa-stacktrace.c"
+                                        root)) "-o" (namestring library)))
+    (uiop:run-program
+     (list (namestring sb-ext:*runtime-pathname*) "--noinform"
+           "--disable-debugger" "--script" "tests/cocoa-stacktrace.lisp"
+           (namestring library))
+     :directory root :output t :error-output t)))
+
 (fn run-tests ()
   (test-layout-and-encoding)
   (test-message-abi-selection)
@@ -284,6 +301,7 @@
   (test-key-input)
   (test-window-routing)
   (test-float-boundaries)
+  #+linux (test-stacktrace-guard)
   #+darwin (test-macos-runtime)
   (format t "Cocoa ABI/callback/input tests passed.~%")
   #-darwin (format t "AppKit runtime smoke skipped: macOS unavailable.~%")
