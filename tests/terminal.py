@@ -46,7 +46,11 @@ def script(error=False):
   (error () (uiop:symbol-call :ql :quickload "cffi" :silent t)))
 (asdf:load-asd (truename "lui.asd"))
 (asdf:load-system "lui/terminal")
+(load "examples/seven-model.lisp")
 (load "examples/demo.lisp")
+(load "examples/seven.lisp")
+(load "examples/seven-circles.lisp")
+(load "examples/seven-cells.lisp")
 (assert (= (lui.terminal:text-width "A界é") 4))
 (assert (equal (lui.terminal:text-lines "界 ab" 3) '("界" "ab")))
 (let ((context (lui.terminal:make-terminal-context)))
@@ -67,6 +71,49 @@ def script(error=False):
       (lui.glass:label "X")))
   (assert (string= (lui.terminal:render-terminal context)
                    (format nil "╭──╮    ~%│X │    ~%╰──╯    ~%"))))
+;; Track endpoints agree with keyboard and raw mouse edits.
+(let ((context (lui.terminal:make-terminal-context)) (value 0.5))
+  (flet ((draw ()
+           (setf value (lui.motif:slider :slide value
+                         :width (lui.layout:fixed 20) :step 0.25))))
+    (dolist (entry '((0 0) (0.5 8) (1 14)))
+      (setf value (first entry))
+      (lui.frame:with-frame (context 20 2) (draw))
+      (assert (char= (char (lui.terminal:render-terminal context)
+                           (second entry)) #\\●)))
+    (setf value 0.5)
+    (lui.frame:with-frame (context 20 2) (draw))
+    (dolist (entry '((16 1) (1 0) (9 0.5)))
+      (let ((input (lui.terminal.io::make-input)))
+        (lui.terminal.io::mouse-event input
+          (format nil "0;~D;1M" (first entry)) context)
+        (lui.frame:with-frame
+            (context 20 2 :events
+              (reverse (lui.terminal.io::input-events input)))
+          (draw))
+        (assert (= value (second entry)))))
+    (dolist (entry '((:home 0) (:end 1) (:left 0.75) (:right 1)))
+      (lui.frame:with-frame
+          (context 20 2 :events
+            (list (lui.frame:make-event :kind :key :id :slide
+                                       :key (first entry))))
+        (draw))
+      (assert (= value (second entry))))))
+(dolist (width '(1 2 3))
+  (let ((context (lui.terminal:make-terminal-context)))
+    (lui.frame:with-frame (context width 1)
+      (lui.motif:slider :narrow 0.5 :width (lui.layout:fixed width)))
+    (let ((line (lui.terminal:render-terminal context)))
+      (assert (= (1+ width) (lui.terminal:text-width line)))
+      (assert (find #\\● line)))))
+(let ((context (lui.terminal:make-terminal-context)))
+  (lui.frame:with-frame (context 12 1)
+    (lui.frame:column (:width (lui.layout:fixed 10) :clip-p t)
+      (lui.motif:slider :clipped 1 :width (lui.layout:fixed 20))))
+  (let ((line (lui.terminal:render-terminal context)))
+    (assert (char= (char line 10) #\\Space))
+    (assert (char= (char line 11) #\\Space))
+    (assert (not (find #\\● line)))))
 ;; Shared gauge/canvas values have useful plain and colored representations.
 (let ((context (lui.terminal:make-terminal-context)))
   (lui.frame:with-frame (context 20 1)
@@ -265,6 +312,7 @@ def exercise(lisp, path):
     try:
         terminal.until(b"\x1b[?1049h", timeout=180)
         terminal.until(b"Common Lisp")
+        terminal.until(b"\x1b[38;2;")
         assert b"\x1b[38;2;" in terminal.output
         assert b"\x1b[48;2;" in terminal.output
         assert not termios.tcgetattr(terminal.slave)[3] & termios.ICANON
@@ -301,11 +349,12 @@ def exercise(lisp, path):
         assert match, terminal.output
         x, y = (int(value) for value in match.groups())
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        # Shift-Tab from the first field reaches the last tab; Space opens it.
-        terminal.send(b"\x1b[Z ")
+        # Shift-Tab reaches 7GUIs; Left selects the preceding Styles tab.
+        terminal.send(b"\x1b[Z\x1b[D")
         terminal.until(b"Customize the active collection")
-        terminal.send(b"\x1b[H\r")
+        terminal.send(b"\x1b[H")
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        terminal.send(b"\x1b")
         terminal.send(b"\x01\x0bTerminal")
         # Space in a text field inserts a character, then Ctrl-H removes it.
         terminal.send(b" \x08")
