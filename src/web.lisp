@@ -220,7 +220,8 @@
 
 (fn css-font-family ((widget widget))
   (if (eq (widget-font-family widget) :monospace)
-      "Liberation Mono,Courier New,DejaVu Sans Mono,monospace" "DejaVu Sans,Arial,sans-serif"))
+      "Liberation Mono,Courier New,DejaVu Sans Mono,monospace"
+      "DejaVu Sans,Arial,sans-serif"))
 
 (fn css-font-weight ((widget widget))
   (if (eq (widget-font-weight widget) :bold) "700" "400"))
@@ -265,18 +266,30 @@
 
 (fn native-option-key ((app web-app) id event)
   (unless (or (native-application-key app id event)
+              (jscl/ffi:clbool (jscl/ffi:oget event "isComposing"))
               (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
               (jscl/ffi:clbool (jscl/ffi:oget event "metaKey"))
               (jscl/ffi:clbool (jscl/ffi:oget event "altKey")))
     (let ((key (cdr (assoc
                      (jscl/ffi:clstring (jscl/ffi:oget event "key"))
                      '(("ArrowUp" . :up) ("ArrowDown" . :down)
+                       ("ArrowLeft" . :left) ("ArrowRight" . :right)
                        ("Home" . :home) ("End" . :end))
                      :test #'string=))))
       (when key
         ((jscl/ffi:oget event "preventDefault"))
         (setf (web-app-tab-focus-p app) t)
         (queue-event app (make-event :kind :key :key key :id id))))))
+
+(fn native-button-key ((app web-app) id event)
+  (native-option-key app id event)
+  (let ((key (jscl/ffi:clstring (jscl/ffi:oget event "key"))))
+    (when (and (= (length key) 1) (not (string= key " "))
+               (not (some (lambda (name)
+                            (jscl/ffi:clbool (jscl/ffi:oget event name)))
+                          '("isComposing" "ctrlKey" "metaKey" "altKey"))))
+      ((jscl/ffi:oget event "preventDefault"))
+      (queue-event app (make-event :kind :text :id id :value key)))))
 
 (fn widget-node ((app web-app) (node element) key)
   (let* ((widget (element-content node))
@@ -322,7 +335,8 @@
                       (let ((id (jscl/ffi:oget event "pointerId")))
                         (when (jscl/ffi:clbool
                                ((jscl/ffi:oget dom "hasPointerCapture") id))
-                          ((jscl/ffi:oget dom "releasePointerCapture") id)))))))
+                          ((jscl/ffi:oget dom "releasePointerCapture")
+                           id)))))))
         (case kind
           ((:button :tab :list-item)
            (attribute dom "type" "button")
@@ -332,6 +346,9 @@
                      ;; Buttons keep editing focus; list options take focus.
                      (unless (eq kind :list-item)
                        ((jscl/ffi:oget event "preventDefault")))))
+           (when (eq kind :button)
+             (listen app dom "keydown"
+                     (lambda (event) (native-button-key app id event))))
            (when (eq kind :list-item)
              (attribute dom "role" "option")
              (attribute dom "class" "lui-control lui-option")
@@ -343,10 +360,16 @@
                      (lambda (event) (native-tab-key app id event))))
            (listen app dom "click"
                    (lambda (event)
-                     (declare (ignore event))
-                     (queue-event
-                      app (make-event :kind :activate :id id)))))
+                     (if (plusp (jscl/ffi:oget event "detail"))
+                         (progn (queue-pointer app event :press)
+                                (queue-pointer app event :release))
+                         (queue-event
+                          app (make-event :kind :activate :id id))))))
           ((:slider :text-field :checkbox)
+           (when (eq kind :slider)
+             (listen app control "keydown"
+                     (lambda (event)
+                       (native-application-key app id event))))
            (when (eq kind :checkbox)
              (listen app control "keydown"
                      (lambda (event)
@@ -785,9 +808,27 @@
                      (refresh app))
                    (ceiling (* 1000 delay)))))))))
 
+(fn restore-application-focus ((app web-app))
+  (when (web-app-tab-focus-p app)
+    (let* ((context (web-app-context app))
+           (id (context-focus context))
+           (node (gethash id (lui.frame::context-ids context)))
+           (target (gethash id (web-app-nodes app))))
+      (cond ((null id) (setf (web-app-tab-focus-p app) nil))
+            ((and target node (element-interactive-p node))
+             (let ((control (if (eq (car target) :checkbox)
+                                (jscl/ffi:oget (cdr target)
+                                               "firstElementChild")
+                                (cdr target))))
+               ((jscl/ffi:oget control "focus"))
+               (setf (web-app-tab-focus-p app) nil)))))))
+
 (fn draw-frame ((app web-app))
   (let* ((host (web-app-host app))
          (context (web-app-context app))
+         (previous-focus (context-focus context))
+         (previous-active #j:document:activeElement)
+         (desired-focus nil)
          (events (nreverse (web-app-events app)))
          (seen (make-hash-table :test 'equal))
          (index 0))
@@ -799,6 +840,7 @@
           (context (jscl/ffi:oget host "clientWidth")
                    (jscl/ffi:oget host "clientHeight") :events events)
         (funcall (web-app-callback app))))
+    (setf desired-focus (context-focus context))
     (setf (web-app-hover-id app) (context-hover context))
     (when events (refresh app))
     (walk-elements
@@ -813,11 +855,6 @@
                   (jscl/ffi:clstring (#j:String (incf index))))
            (setf (gethash key seen) t)))))
     (update-tablists app)
-    (when (web-app-tab-focus-p app)
-      (setf (web-app-tab-focus-p app) nil)
-      (let ((target (gethash (context-focus context) (web-app-nodes app))))
-        (when (and target (member (car target) '(:tab :list-item)))
-          ((jscl/ffi:oget (cdr target) "focus")))))
     (let ((removed nil))
       (maphash
        (lambda (key entry)
@@ -828,6 +865,14 @@
        (web-app-nodes app))
       (dolist (key removed) (remhash key (web-app-nodes app))))
     (reconcile-dom-order app)
+    ;; Reparenting can fire focus events for the old active DOM control.
+    (setf (context-focus context) desired-focus)
+    (when (or (not (equal previous-focus (context-focus context)))
+              (and (not (eq previous-active #j:document:activeElement))
+                   (equal (jscl/ffi:oget previous-active "luiId")
+                          (context-focus context))))
+      (setf (web-app-tab-focus-p app) t))
+    (restore-application-focus app)
     (schedule-deadline app)))
 
 (fn refresh ((app web-app))
