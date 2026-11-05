@@ -1,0 +1,14 @@
+(defpackage #:lui.tests.win32-runner (:use #:cl))
+(in-package #:lui.tests.win32-runner)
+
+(require :asdf)
+
+;; Configure ASDF's source registry for CFFI and ZPB-TTF before running.
+;; This script works with both native Windows SBCL and Windows SBCL in Wine.
+(let ((root
+        (uiop:pathname-parent-directory-pathname
+          (uiop:pathname-directory-pathname *load-truename*))))
+  (asdf:load-asd (merge-pathnames "lui.asd" root))
+  (asdf:load-system "lui/win32")
+  (load (merge-pathnames "examples/demo.lisp" root))
+  (load (merge-pathnames "tests/win32.lisp" root)))
