@@ -2,7 +2,8 @@
   (:use #:cl #:lui.fn)
   (:export #:interface #:request #:listen-proxy #:destroy-proxy
            #:connect-display #:disconnect-display #:roundtrip
-           #:dispatch-display #:flush-display #:pump-display))
+           #:dispatch-display #:flush-display #:pump-display
+           #:call-with-interfaces))
 (in-package #:lui.wayland-protocol)
 
 (cffi:define-foreign-library wayland-client
@@ -44,7 +45,18 @@
   (proxy :pointer) (opcode :uint32) (interface :pointer)
   (version :uint32) (flags :uint32) (args :pointer))
 
-(defvar *interfaces* (make-hash-table :test 'equal))
+(defvar *interfaces*)
+(defvar *interface-storage*)
+
+(fn allocate-metadata (type &rest options)
+  (let ((pointer (apply #'cffi:foreign-alloc type options)))
+    (push pointer *interface-storage*)
+    pointer))
+
+(fn metadata-string ((text string))
+  (let ((pointer (cffi:foreign-string-alloc text)))
+    (push pointer *interface-storage*)
+    pointer))
 
 (fn interface ((name string))
   (or (gethash name *interfaces*)
@@ -53,41 +65,41 @@
 
 (fn make-messages ((descriptions list))
   (let ((messages
-          (cffi:foreign-alloc '(:struct wl-message)
-                              :count (max 1 (length descriptions)))))
+          (allocate-metadata '(:struct wl-message)
+                             :count (max 1 (length descriptions)))))
     (loop :for (name signature types) :in descriptions
           :for i :from 0
           :for message :=
           (cffi:mem-aptr messages '(:struct wl-message) i)
           :do
           (let ((type-array
-                  (cffi:foreign-alloc :pointer
-                                      :count (max 1 (length types)))))
+                  (allocate-metadata :pointer
+                                     :count (max 1 (length types)))))
             (loop :for type :in types :for j :from 0
                   :do (setf (cffi:mem-aref type-array :pointer j)
                             (if type (interface type)
                                 (cffi:null-pointer))))
             (setf
              (cffi:foreign-slot-value message '(:struct wl-message) 'name)
-             (cffi:foreign-string-alloc name)
+             (metadata-string name)
              (cffi:foreign-slot-value message '(:struct wl-message)
                                       'signature)
-             (cffi:foreign-string-alloc signature)
+             (metadata-string signature)
              (cffi:foreign-slot-value message '(:struct wl-message) 'types)
              type-array)))
     messages))
 
 (fn define-interfaces ((descriptions list))
-  ;; Interface metadata has library lifetime, like system wl_*_interface data.
+  ;; Metadata belongs to the active connection, never to a saved Lisp image.
   (dolist (description descriptions)
     (setf (gethash (first description) *interfaces*)
-          (cffi:foreign-alloc '(:struct wl-interface))))
+          (allocate-metadata '(:struct wl-interface))))
   (dolist (description descriptions)
     (destructuring-bind (name methods events) description
       (let ((pointer (interface name)))
         (setf
          (cffi:foreign-slot-value pointer '(:struct wl-interface) 'name)
-         (cffi:foreign-string-alloc name)
+         (metadata-string name)
          (cffi:foreign-slot-value pointer '(:struct wl-interface) 'version)
          1
          (cffi:foreign-slot-value pointer '(:struct wl-interface)
@@ -161,8 +173,8 @@
                                       :pointer display :int))
       (error "Wayland dispatch failed."))))
 
-;; XDG shell v1 metadata. See NOTICE for the protocol license.
-(define-interfaces
+;; XDG shell and decoration v1 metadata. See NOTICE for protocol licenses.
+(defparameter *xdg-interfaces*
  '(("xdg_wm_base"
     (("destroy" "" ())
      ("create_positioner" "n" ("xdg_positioner"))
@@ -206,4 +218,24 @@
     (("destroy" "" ())
      ("grab" "ou" ("wl_seat" nil)))
     (("configure" "iiii" (nil nil nil nil))
-     ("popup_done" "" ())))))
+     ("popup_done" "" ())))
+   ("zxdg_decoration_manager_v1"
+    (("destroy" "" ())
+     ("get_toplevel_decoration" "no"
+      ("zxdg_toplevel_decoration_v1" "xdg_toplevel")))
+    ())
+   ("zxdg_toplevel_decoration_v1"
+    (("destroy" "" ())
+     ("set_mode" "u" (nil))
+     ("unset_mode" "" ()))
+    (("configure" "u" (nil))))))
+
+(fn call-with-interfaces ((function function))
+  (let ((*interfaces* (make-hash-table :test 'equal))
+        (*interface-storage* nil))
+    (unwind-protect
+         (progn
+           (define-interfaces *xdg-interfaces*)
+           (funcall function))
+      (dolist (pointer *interface-storage*)
+        (cffi:foreign-free pointer)))))

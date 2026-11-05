@@ -136,14 +136,49 @@
       (cffi:foreign-funcall "xkb_context_unref" :pointer context :void)))
   (format t "Wayland keyboard repeat timing, modifiers, and cancellation passed.~%"))
 
+(defun test-decoration-configure ()
+  (let ((lui.wayland::*window* (lui.wayland::make-wl-window))
+        (null (cffi:null-pointer)))
+    ;; Missing manager is a valid compositor configuration.
+    (lui.wayland::create-decoration lui.wayland::*window*)
+    (assert (null (lui.wayland::wl-window-decoration
+                   lui.wayland::*window*)))
+    (dolist (mode '(2 1))
+      (let ((old (lui.wayland::wl-window-decoration-mode
+                  lui.wayland::*window*)))
+        (cffi:foreign-funcall-pointer
+         (cffi:callback lui.wayland::decoration-configure) ()
+         :pointer null :pointer null :uint32 mode :void)
+        (assert (eql old (lui.wayland::wl-window-decoration-mode
+                         lui.wayland::*window*)))
+        (assert (= mode (lui.wayland::wl-window-pending-decoration-mode
+                         lui.wayland::*window*)))
+        (lui.wayland::accept-surface-configure lui.wayland::*window*)
+        (assert (= mode (lui.wayland::wl-window-decoration-mode
+                         lui.wayland::*window*)))))))
+
+(test-decoration-configure)
+
 (test-key-repeat)
 
-(let ((frames 0))
+(let ((frames 0) (native nil))
   (setf lui.example::*count* 0)
   (catch 'done
     (run
      (lambda ()
        (incf frames)
+       (when (= frames 1)
+         (setf native lui.wayland::*window*)
+         (if (lui.wayland::wl-window-decoration-manager native)
+             (progn
+               (assert (lui.wayland::wl-window-decoration native))
+               (assert (member (lui.wayland::wl-window-decoration-mode native)
+                               '(1 2)))
+               (format t "Wayland negotiated ~A decorations.~%"
+                       (if (= 2 (lui.wayland::wl-window-decoration-mode
+                                 native))
+                           "server-side" "client-side")))
+             (assert (null (lui.wayland::wl-window-decoration native)))))
        (lui.example:draw)
        (when (= frames 2)
          ;; Exercise the actual C callback ABI without moving the user's mouse.
@@ -175,4 +210,6 @@
          (throw 'done t)))
      :backend :wayland))
   (assert (= frames 5))
+  (assert (null (lui.wayland::wl-window-decoration native)))
+  (assert (null (lui.wayland::wl-window-decoration-manager native)))
   (format t "Wayland compositor, pointer callbacks, and cleanup passed.~%"))

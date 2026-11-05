@@ -13,6 +13,7 @@
 
 (defstruct wl-window
   display registry compositor shell seat surface xdg toplevel
+  decoration-manager decoration decoration-mode pending-decoration-mode
   pointer keyboard native gpu font xkb-context keymap key-state
   (seat-version 1 :type integer)
   ;; Older keyboards have no repeat_info; use conventional client defaults.
@@ -245,7 +246,9 @@
 
 (callback registry-global
     ((name :uint32) (interface-name :string) (version :uint32))
-  (when (member interface-name '("wl_compositor" "xdg_wm_base" "wl_seat")
+  (when (member interface-name
+                '("wl_compositor" "xdg_wm_base" "wl_seat"
+                  "zxdg_decoration_manager_v1")
                 :test #'string=)
     (let* ((version (min version
                          (if (member interface-name
@@ -261,6 +264,8 @@
                       version)))
       (cond ((string= interface-name "wl_compositor")
              (setf (wl-window-compositor *window*) object))
+            ((string= interface-name "zxdg_decoration_manager_v1")
+             (setf (wl-window-decoration-manager *window*) object))
             ((string= interface-name "xdg_wm_base")
              (setf (wl-window-shell *window*) object)
              (attach-listener object (list (cffi:callback shell-ping))))
@@ -274,9 +279,42 @@
 (callback registry-remove ((name :uint32))
   (declare (ignore name)))
 
+(callback decoration-configure ((mode :uint32))
+  ;; This pending state belongs to the next xdg_surface.configure sequence.
+  (setf (wl-window-pending-decoration-mode *window*) mode))
+
+(fn accept-surface-configure ((window wl-window))
+  (when (wl-window-pending-decoration-mode window)
+    (setf (wl-window-decoration-mode window)
+          (wl-window-pending-decoration-mode window)
+          (wl-window-pending-decoration-mode window) nil))
+  (setf (wl-window-configured-p window) t))
+
 (callback surface-configure ((serial :uint32))
   (request proxy 4 nil (list (cons :uint32 serial)))
-  (setf (wl-window-configured-p *window*) t))
+  (accept-surface-configure *window*))
+
+(fn create-decoration ((window wl-window))
+  (when (wl-window-decoration-manager window)
+    (setf (wl-window-decoration window)
+          (request (wl-window-decoration-manager window) 1
+                   "zxdg_toplevel_decoration_v1"
+                   (list (cons :pointer (cffi:null-pointer))
+                         (cons :pointer (wl-window-toplevel window)))))
+    (attach-listener (wl-window-decoration window)
+                     (list (cffi:callback decoration-configure)))
+    ;; Version 1 requires this before the first surface commit or buffer.
+    (request (wl-window-decoration window) 1 nil (list (cons :uint32 2)))))
+
+(fn destroy-extension (proxy)
+  (when proxy (request proxy 0 nil nil nil t)))
+
+(fn release-extensions ((window wl-window))
+  ;; The decoration must disappear before the associated xdg_toplevel.
+  (destroy-extension (wl-window-decoration window))
+  (setf (wl-window-decoration window) nil)
+  (destroy-extension (wl-window-decoration-manager window))
+  (setf (wl-window-decoration-manager window) nil))
 
 (callback toplevel-configure
     ((width :int32) (height :int32) (states :pointer))
@@ -288,7 +326,7 @@
 (callback toplevel-close ()
   (setf (wl-window-quit-p *window*) t))
 
-(fn run-wayland ((draw function) &key title width height (interactive t))
+(fn run-window ((draw function) &key title width height (interactive t))
   (let* ((display (connect-display (cffi:null-pointer)))
          (*window* (make-wl-window :display display
                                   :width (or width 720)
@@ -326,6 +364,7 @@
            (attach-listener (wl-window-toplevel *window*)
                             (list (cffi:callback toplevel-configure)
                                   (cffi:callback toplevel-close)))
+           (create-decoration *window*)
            (request (wl-window-toplevel *window*) 2 nil
                     (list (cons :string title)))
            (request (wl-window-toplevel *window*) 3 nil
@@ -388,6 +427,7 @@
         (cffi:foreign-funcall "xkb_context_unref"
                               :pointer (wl-window-xkb-context *window*)
                               :void))
+      (release-extensions *window*)
       (dolist (proxy (list (wl-window-keyboard *window*)
                           (wl-window-pointer *window*)
                           (wl-window-seat *window*)
@@ -401,5 +441,11 @@
       (dolist (listener (wl-window-listeners *window*))
         (cffi:foreign-free listener))
       (disconnect-display display))))
+
+(fn run-wayland ((draw function) &key title width height (interactive t))
+  (call-with-interfaces
+   (lambda ()
+     (run-window draw :title title :width width :height height
+                      :interactive interactive))))
 
 (register-backend :wayland #'run-wayland)
