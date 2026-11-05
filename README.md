@@ -29,6 +29,59 @@ widgets also support a custom painter callback. The optional
 [showcase](examples/showcase.lisp) demonstrates panels and mixed collections;
 it does not replace the shared demo.
 
+## Make commands
+
+The Makefile needs GNU Make and Python 3 for build/test tooling; the Lisp default
+is SBCL. Backend dependencies and display requirements still apply. Run from the
+repository directory:
+
+```sh
+make test                    # Core tests plus the detected platform's checks
+make demo                    # Shared examples/demo.lisp
+make example                 # Alias for demo
+make showcase                # Optional style showcase
+```
+
+`PLATFORM=auto` selects Windows on Windows, Cocoa on macOS, then Wayland when
+`WAYLAND_DISPLAY` is set, X11 when `DISPLAY` is set, or terminal otherwise.
+Selection uses the environment; it does not start a display server. Tests run
+core checks, native font/painter checks for graphical native platforms, and the
+selected backend's tests. Each stage prints progress and PASS/FAIL results;
+timestamped platform logs, including test output and the final result, go in
+`build/logs/`. Failed stages make `make test` fail.
+
+Override the selection or tool commands as needed:
+
+```sh
+make test PLATFORM=core
+make test PLATFORM=terminal LISP=clisp LISP_KIND=clisp
+make demo PLATFORM=x11
+make showcase PLATFORM=web JSCL=/path/to/jscl PORT=8080
+make web-build JSCL=/path/to/jscl
+```
+
+`PLATFORM` accepts `terminal`, `x11`, `wayland`, `win32`, `cocoa`, `web`, `gl`,
+`core`, and `native`; the last three are test-only. `LISP` is an executable path
+or command prefix, and `LISP_KIND=sbcl|clisp|ecl` selects its command-line flags.
+The POSIX terminal PTY harness launches the installed implementation named by
+`LISP_KIND`; the X11 harness launches installed SBCL. Those subprocesses do not
+use a custom `LISP` command. Raw-terminal PTY checks are skipped on Windows.
+
+`JSCL` names a built JSCL checkout, defaulting to `~/clone/jscl`; browser builds
+also need Node.js. Browser launches build both examples, print the local URL,
+and serve on `PORT` (default 8000). Open the printed URL; showcase uses
+`?example=showcase`. Stop the server with Ctrl-C. Browser tests additionally need
+Playwright and Chromium.
+
+For Windows SBCL under Wine, a configured installation can be selected with:
+
+```sh
+make test PLATFORM=win32 LISP='wine C:/sbcl/sbcl.exe --core C:/sbcl/sbcl.core'
+```
+
+Supply the appropriate existing `WINEPREFIX` and ASDF dependency configuration
+for that Windows Lisp. The driver does not install Wine, Lisp, or dependencies.
+
 ## Install and run
 
 Start a Common Lisp implementation in the repository directory:
