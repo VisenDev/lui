@@ -14,6 +14,10 @@
 (defstruct wl-window
   display registry compositor shell seat surface xdg toplevel
   pointer keyboard native gpu font xkb-context keymap key-state
+  (seat-version 1 :type integer)
+  ;; Older keyboards have no repeat_info; use conventional client defaults.
+  (repeat-rate 25 :type integer) (repeat-delay 600 :type integer)
+  repeat-code repeat-at
   (width 720 :type integer) (height 520 :type integer)
   (x 0 :type real) (y 0 :type real)
   (configured-p nil :type boolean) (quit-p nil :type boolean)
@@ -62,7 +66,25 @@
     (queue-input :scroll :x (wl-window-x *window*)
                         :y (wl-window-y *window*) :value (/ value 256.0))))
 
+(fn stop-key-repeat ((window wl-window))
+  (setf (wl-window-repeat-code window) nil
+        (wl-window-repeat-at window) nil))
+
+(fn start-key-repeat ((code integer)
+                      &optional ((now real) (get-internal-real-time)))
+  (when (and (plusp (wl-window-repeat-rate *window*))
+             (wl-window-keymap *window*)
+             (plusp (cffi:foreign-funcall
+                     "xkb_keymap_key_repeats"
+                     :pointer (wl-window-keymap *window*)
+                     :uint (+ code 8) :int)))
+    (setf (wl-window-repeat-code *window*) code
+          (wl-window-repeat-at *window*)
+          (+ now (* (/ internal-time-units-per-second 1000)
+                    (wl-window-repeat-delay *window*))))))
+
 (fn release-keymap ((window wl-window))
+  (stop-key-repeat window)
   (when (wl-window-key-state window)
     (cffi:foreign-funcall "xkb_state_unref"
                           :pointer (wl-window-key-state window) :void)
@@ -76,11 +98,14 @@
   (unwind-protect
        (when (and (= format 1) (< 0 size (* 16 1024 1024)))
          (cffi:with-foreign-object (text :char (1+ size))
-           (loop :with offset := 0 :while (< offset size)
+           (loop :with offset := 0
                  :for count :=
-                 (cffi:foreign-funcall "read" :int fd
-                                       :pointer (cffi:inc-pointer text offset)
-                                       :size (- size offset) :long)
+                 (when (< offset size)
+                   (cffi:foreign-funcall
+                    "read" :int fd
+                    :pointer (cffi:inc-pointer text offset)
+                    :size (- size offset) :long))
+                 :while (< offset size)
                  :do (when (<= count 0) (return))
                      (incf offset count)
                  :finally
@@ -101,14 +126,14 @@
 
 (callback keyboard-enter
     ((serial :uint32) (surface :pointer) (keys :pointer))
-  (declare (ignore serial surface keys)))
+  (declare (ignore serial surface keys))
+  (stop-key-repeat *window*))
 (callback keyboard-leave ((serial :uint32) (surface :pointer))
-  (declare (ignore serial surface)))
+  (declare (ignore serial surface))
+  (stop-key-repeat *window*))
 
-(callback keyboard-key
-    ((serial :uint32) (time :uint32) (code :uint32) (pressed :uint32))
-  (declare (ignore serial time))
-  (when (and (= pressed 1) (wl-window-key-state *window*))
+(fn emit-key-input ((code integer))
+  (when (wl-window-key-state *window*)
     (let* ((state (wl-window-key-state *window*))
            (key (+ code 8))
            (symbol (cffi:foreign-funcall "xkb_state_key_get_one_sym"
@@ -134,6 +159,38 @@
                     (cffi:foreign-string-to-lisp text :count length
                                                     :encoding :utf-8))))))))))
 
+(callback keyboard-key
+    ((serial :uint32) (time :uint32) (code :uint32) (pressed :uint32))
+  (declare (ignore serial time))
+  (case pressed
+    (0
+     (when (eql code (wl-window-repeat-code *window*))
+       (stop-key-repeat *window*)))
+    (1
+     (emit-key-input code)
+     (start-key-repeat code))))
+
+(callback keyboard-repeat-info ((rate :int32) (delay :int32))
+  (setf (wl-window-repeat-rate *window*) (max 0 rate)
+        (wl-window-repeat-delay *window*) (max 0 delay))
+  (let ((code (wl-window-repeat-code *window*)))
+    (stop-key-repeat *window*)
+    (when code (start-key-repeat code))))
+
+(fn repeat-input (&optional ((now real) (get-internal-real-time)))
+  (when (and (wl-window-repeat-code *window*)
+             (wl-window-repeat-at *window*)
+             (plusp (wl-window-repeat-rate *window*)))
+    (let ((interval (/ internal-time-units-per-second
+                       (wl-window-repeat-rate *window*))))
+      ;; Bound catch-up after a stalled frame so one held key cannot flood UI.
+      (loop :repeat 8
+            :while (<= (wl-window-repeat-at *window*) now)
+            :do (emit-key-input (wl-window-repeat-code *window*))
+                (incf (wl-window-repeat-at *window*) interval))
+      (when (<= (wl-window-repeat-at *window*) now)
+        (setf (wl-window-repeat-at *window*) (+ now interval))))))
+
 (callback keyboard-modifiers
     ((serial :uint32) (depressed :uint32) (latched :uint32)
      (locked :uint32) (group :uint32))
@@ -144,11 +201,24 @@
                           :uint depressed :uint latched :uint locked
                           :uint 0 :uint 0 :uint group :uint)))
 
+(callback seat-name ((name :string))
+  (declare (ignore name)))
+
+(fn release-keyboard ((window wl-window))
+  (release-keymap window)
+  (when (wl-window-keyboard window)
+    (if (>= (wl-window-seat-version window) 3)
+        (request (wl-window-keyboard window) 0 nil nil nil t)
+        (destroy-proxy (wl-window-keyboard window)))
+    (setf (wl-window-keyboard window) nil)))
+
 (callback seat-capabilities ((capabilities :uint32))
+  (unless (logtest capabilities 2) (release-keyboard *window*))
   (when (and (logtest capabilities 1) (null (wl-window-pointer *window*)))
     (let ((pointer
             (request proxy 0 "wl_pointer"
-                     (list (cons :pointer (cffi:null-pointer))) 1)))
+                     (list (cons :pointer (cffi:null-pointer)))
+                     (wl-window-seat-version *window*))))
       (setf (wl-window-pointer *window*) pointer)
       (attach-listener
        pointer (list (cffi:callback pointer-enter)
@@ -159,14 +229,16 @@
   (when (and (logtest capabilities 2) (null (wl-window-keyboard *window*)))
     (let ((keyboard
             (request proxy 1 "wl_keyboard"
-                     (list (cons :pointer (cffi:null-pointer))) 1)))
+                     (list (cons :pointer (cffi:null-pointer)))
+                     (wl-window-seat-version *window*))))
       (setf (wl-window-keyboard *window*) keyboard)
       (attach-listener
        keyboard (list (cffi:callback keyboard-map)
                       (cffi:callback keyboard-enter)
                       (cffi:callback keyboard-leave)
                       (cffi:callback keyboard-key)
-                      (cffi:callback keyboard-modifiers))))))
+                      (cffi:callback keyboard-modifiers)
+                      (cffi:callback keyboard-repeat-info))))))
 
 (callback shell-ping ((serial :uint32))
   (request proxy 3 nil (list (cons :uint32 serial))))
@@ -175,8 +247,11 @@
     ((name :uint32) (interface-name :string) (version :uint32))
   (when (member interface-name '("wl_compositor" "xdg_wm_base" "wl_seat")
                 :test #'string=)
-    (let* ((version (min version (if (string= interface-name "wl_compositor")
-                                    4 1)))
+    (let* ((version (min version
+                         (if (member interface-name
+                                     '("wl_compositor" "wl_seat")
+                                     :test #'string=)
+                             4 1)))
            (object
              (request proxy 0 interface-name
                       (list (cons :uint32 name)
@@ -190,9 +265,11 @@
              (setf (wl-window-shell *window*) object)
              (attach-listener object (list (cffi:callback shell-ping))))
             (t
-             (setf (wl-window-seat *window*) object)
-             (attach-listener object
-                              (list (cffi:callback seat-capabilities))))))))
+             (setf (wl-window-seat *window*) object
+                   (wl-window-seat-version *window*) version)
+             (attach-listener
+              object (list (cffi:callback seat-capabilities)
+                           (cffi:callback seat-name))))))))
 
 (callback registry-remove ((name :uint32))
   (declare (ignore name)))
@@ -288,6 +365,7 @@
                       :pointer (wl-window-native *window*)
                       :int (gpu-width gpu) :int (gpu-height gpu)
                       :int 0 :int 0 :void))
+                   (repeat-input)
                    (with-frame
                        (context (gpu-width gpu) (gpu-height gpu)
                         :events (nreverse (wl-window-events *window*)))

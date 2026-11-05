@@ -161,7 +161,8 @@ Additional checks:
 - After loading `lui/gl` and `examples/demo.lisp`, load `tests/gl.lisp` for the
   offscreen EGL/OpenGL smoke test. Ensure `build/` exists.
 - With a Wayland compositor, load `lui/wayland`, the shared demo, and
-  `tests/wayland.lisp` to exercise multiple frames and native pointer callbacks.
+  `tests/wayland.lisp` to exercise native pointer callbacks, keyboard repeat,
+  modifier changes, cancellation, and delivery through the shared frame loop.
 - After loading `lui/cocoa`, load `tests/cocoa.lisp` for portable SBCL ABI,
   UTF-8, event-routing, callback-safety, and floating-point-boundary checks.
   On macOS it additionally runs AppKit selector and shared-demo smoke tests;
@@ -176,14 +177,14 @@ Additional checks:
 | HTML | Three Chromium integration tests: interaction, composition/lifecycle, resizing and teardown |
 | X11/XRender | Two real-window tests, including native rendering, input/resize, convolution and fallback behavior |
 | EGL/OpenGL | Offscreen shared-demo rendering, glass shader, pixel readback, and GL error checks |
-| Wayland | Shared-demo compositor smoke test spanning 11 frames |
+| Wayland | SBCL, CLISP, ECL: shared-demo compositor frames, pointer callbacks, repeat timing/modifiers/cancellation |
 | Win32 | Windows SBCL under Wine: outline holes, alpha, clipping, input, resizing, and filtered blur |
 | Cocoa | Source/test compilation and seven ABI/callback/input/FP test groups passed on Linux SBCL; AppKit runtime unverified |
 
 The portable core and CFFI backends target Common Lisp implementations generally;
 Cocoa deliberately uses SBCL. The verified combinations above are narrower than
 that portability goal. Native IME and clipboard support remain incomplete,
-Wayland key repeat and text-input/IME protocols need work, and native text is not
+Wayland text-input/IME protocols need work, and native text is not
 a complete shaping engine. Cocoa runtime behavior still needs macOS validation.
 Performance tuning and broader platform/implementation coverage remain open.
 
