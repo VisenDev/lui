@@ -163,111 +163,47 @@
 
 ;; XDG shell v1 metadata. See NOTICE for the protocol license.
 (define-interfaces
- '(
-   ("xdg_wm_base"
-    (
-     ("destroy" ""
-      ())
-     ("create_positioner" "n"
-      ("xdg_positioner"))
-     ("get_xdg_surface" "no"
-      ("xdg_surface" "wl_surface"))
-     ("pong" "u"
-      (nil))
-    )
-    (
-     ("ping" "u"
-      (nil))
-    )
-   )
+ '(("xdg_wm_base"
+    (("destroy" "" ())
+     ("create_positioner" "n" ("xdg_positioner"))
+     ("get_xdg_surface" "no" ("xdg_surface" "wl_surface"))
+     ("pong" "u" (nil)))
+    (("ping" "u" (nil))))
    ("xdg_positioner"
-    (
-     ("destroy" ""
-      ())
-     ("set_size" "ii"
-      (nil nil))
-     ("set_anchor_rect" "iiii"
-      (nil nil nil nil))
-     ("set_anchor" "u"
-      (nil))
-     ("set_gravity" "u"
-      (nil))
-     ("set_constraint_adjustment" "u"
-      (nil))
-     ("set_offset" "ii"
-      (nil nil))
-    )
-    (
-    )
-   )
+    (("destroy" "" ())
+     ("set_size" "ii" (nil nil))
+     ("set_anchor_rect" "iiii" (nil nil nil nil))
+     ("set_anchor" "u" (nil))
+     ("set_gravity" "u" (nil))
+     ("set_constraint_adjustment" "u" (nil))
+     ("set_offset" "ii" (nil nil)))
+    ())
    ("xdg_surface"
-    (
-     ("destroy" ""
-      ())
-     ("get_toplevel" "n"
-      ("xdg_toplevel"))
-     ("get_popup" "n?oo"
-      ("xdg_popup" "xdg_surface" "xdg_positioner"))
-     ("set_window_geometry" "iiii"
-      (nil nil nil nil))
-     ("ack_configure" "u"
-      (nil))
-    )
-    (
-     ("configure" "u"
-      (nil))
-    )
-   )
+    (("destroy" "" ())
+     ("get_toplevel" "n" ("xdg_toplevel"))
+     ("get_popup" "n?oo" ("xdg_popup" "xdg_surface" "xdg_positioner"))
+     ("set_window_geometry" "iiii" (nil nil nil nil))
+     ("ack_configure" "u" (nil)))
+    (("configure" "u" (nil))))
    ("xdg_toplevel"
-    (
-     ("destroy" ""
-      ())
-     ("set_parent" "?o"
-      ("xdg_toplevel"))
-     ("set_title" "s"
-      (nil))
-     ("set_app_id" "s"
-      (nil))
-     ("show_window_menu" "ouii"
-      ("wl_seat" nil nil nil))
-     ("move" "ou"
-      ("wl_seat" nil))
-     ("resize" "ouu"
-      ("wl_seat" nil nil))
-     ("set_max_size" "ii"
-      (nil nil))
-     ("set_min_size" "ii"
-      (nil nil))
-     ("set_maximized" ""
-      ())
-     ("unset_maximized" ""
-      ())
-     ("set_fullscreen" "?o"
-      ("wl_output"))
-     ("unset_fullscreen" ""
-      ())
-     ("set_minimized" ""
-      ())
-    )
-    (
-     ("configure" "iia"
-      (nil nil nil))
-     ("close" ""
-      ())
-    )
-   )
+    (("destroy" "" ())
+     ("set_parent" "?o" ("xdg_toplevel"))
+     ("set_title" "s" (nil))
+     ("set_app_id" "s" (nil))
+     ("show_window_menu" "ouii" ("wl_seat" nil nil nil))
+     ("move" "ou" ("wl_seat" nil))
+     ("resize" "ouu" ("wl_seat" nil nil))
+     ("set_max_size" "ii" (nil nil))
+     ("set_min_size" "ii" (nil nil))
+     ("set_maximized" "" ())
+     ("unset_maximized" "" ())
+     ("set_fullscreen" "?o" ("wl_output"))
+     ("unset_fullscreen" "" ())
+     ("set_minimized" "" ()))
+    (("configure" "iia" (nil nil nil))
+     ("close" "" ())))
    ("xdg_popup"
-    (
-     ("destroy" ""
-      ())
-     ("grab" "ou"
-      ("wl_seat" nil))
-    )
-    (
-     ("configure" "iiii"
-      (nil nil nil nil))
-     ("popup_done" ""
-      ())
-    )
-   )
- ))
+    (("destroy" "" ())
+     ("grab" "ou" ("wl_seat" nil)))
+    (("configure" "iiii" (nil nil nil nil))
+     ("popup_done" "" ())))))

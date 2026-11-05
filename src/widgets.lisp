@@ -3,7 +3,8 @@
   (:export #:widget #:widget-p #:widget-kind #:widget-style #:widget-text
            #:widget-foreground #:widget-background #:widget-radius
            #:widget-frost
-           #:widget-terminal-text #:declare-panel #:declare-widget #:value-widget
+           #:widget-terminal-text #:declare-panel #:declare-widget
+           #:value-widget
            #:make-widget
            #:widget-value #:widget-minimum #:widget-maximum #:widget-step
            #:widget-font-size #:widget-opacity #:widget-accent

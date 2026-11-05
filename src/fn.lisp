@@ -8,7 +8,8 @@
   (defun symbolicate (&rest things)
     (intern (string-upcase
              (apply #'concatenate 'string
-                    (mapcar (lambda (thing) (format nil "~a" thing)) things)))))
+                    (mapcar (lambda (thing) (format nil "~a" thing))
+                            things)))))
 
   (defstruct param
     (name nil :type symbol)
