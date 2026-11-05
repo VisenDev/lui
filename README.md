@@ -31,56 +31,71 @@ it does not replace the shared demo.
 
 ## Make commands
 
-The Makefile needs GNU Make and Python 3 for build/test tooling; the Lisp default
-is SBCL. Backend dependencies and display requirements still apply. Run from the
-repository directory:
+The Makefile uses GNU Make, Bash, and SBCL. Backend dependencies and display
+requirements still apply. Python 3 is needed only by the existing terminal,
+X11, and browser integration tests. Run from the repository directory:
 
 ```sh
-make test                    # Core tests plus the detected platform's checks
-make demo                    # Shared examples/demo.lisp
+make test                    # Test the detected platform; save progress/results
+make build                   # Save both native example executables
+make demo                    # Build and run the shared demo executable
 make example                 # Alias for demo
-make showcase                # Optional style showcase
+make showcase                # Build and run the style showcase executable
 ```
 
-`PLATFORM=auto` selects Windows on Windows, Cocoa on macOS, then Wayland when
-`WAYLAND_DISPLAY` is set, X11 when `DISPLAY` is set, or terminal otherwise.
-Selection uses the environment; it does not start a display server. Tests run
-core checks, native font/painter checks for graphical native platforms, and the
-selected backend's tests. Each stage prints progress and PASS/FAIL results;
-timestamped platform logs, including test output and the final result, go in
-`build/logs/`. Failed stages make `make test` fail.
-
-Override the selection or tool commands as needed:
+Native builds invoke SBCL with `--load scripts/build.lisp`, load the backend and
+shared example, then use `sb-ext:save-lisp-and-die` to save an executable.
+`demo`, `example`, and `showcase` run those saved executables from `build/bin/`.
+For example:
 
 ```sh
-make test PLATFORM=core
-make test PLATFORM=terminal LISP=clisp LISP_KIND=clisp
+make build PLATFORM=terminal
+build/bin/demo-terminal --smoke-test
+build/bin/showcase-terminal --smoke-test
 make demo PLATFORM=x11
+```
+
+`--smoke-test` renders one frame and exits. Native executable names include the
+platform, with `.exe` on Windows. `PLATFORM` defaults to Windows on Windows,
+Cocoa on macOS, then Wayland when `WAYLAND_DISPLAY` is set, X11 when `DISPLAY`
+is set, or terminal otherwise. Selection uses the environment; it does not
+start a display server. Override with `terminal`, `x11`, `wayland`, `win32`,
+`cocoa`, or `web`. `core`, `native`, and `gl` are test-only selections.
+
+`make test` runs core checks, native font/painter checks where applicable, and
+the selected backend checks. Web tests use JSCL for the core. Tests print stage
+progress and a final PASS/FAIL result; timestamped logs containing the output
+go in `build/logs/`. Bash `pipefail` preserves failures while `tee` displays and
+records the output. `make test-core` and `make test-native` run those individual
+checks directly.
+
+Override `SBCL` for its executable or command prefix and `SBCL_FLAGS` for its
+flags (default `--noinform --non-interactive`). The POSIX terminal PTY and X11
+harnesses launch installed SBCL themselves; those subprocesses do not use a
+custom `SBCL` command. Raw-terminal PTY checks are skipped on Windows. `PYTHON`
+selects the interpreter for Python integration tests.
+
+For browser builds and launches, Node.js and a built JSCL checkout are needed:
+
+```sh
+make test PLATFORM=web JSCL=/path/to/jscl
 make showcase PLATFORM=web JSCL=/path/to/jscl PORT=8080
 make web-build JSCL=/path/to/jscl
 ```
 
-`PLATFORM` accepts `terminal`, `x11`, `wayland`, `win32`, `cocoa`, `web`, `gl`,
-`core`, and `native`; the last three are test-only. `LISP` is an executable path
-or command prefix, and `LISP_KIND=sbcl|clisp|ecl` selects its command-line flags.
-The POSIX terminal PTY harness launches the installed implementation named by
-`LISP_KIND`; the X11 harness launches installed SBCL. Those subprocesses do not
-use a custom `LISP` command. Raw-terminal PTY checks are skipped on Windows.
-
-`JSCL` names a built JSCL checkout, defaulting to `~/clone/jscl`; browser builds
-also need Node.js. Browser launches build both examples, print the local URL,
-and serve on `PORT` (default 8000). Open the printed URL; showcase uses
-`?example=showcase`. Stop the server with Ctrl-C. Browser tests additionally need
-Playwright and Chromium.
+`JSCL` defaults to `~/clone/jscl`. Browser launches build both examples and use
+the Node static server in `scripts/serve-web.mjs`; open the printed local URL.
+`PORT` defaults to 8000; showcase uses `?example=showcase`. Stop the server with
+Ctrl-C. Browser tests additionally need Playwright and Chromium.
 
 For Windows SBCL under Wine, a configured installation can be selected with:
 
 ```sh
-make test PLATFORM=win32 LISP='wine C:/sbcl/sbcl.exe --core C:/sbcl/sbcl.core'
+make test PLATFORM=win32 SBCL='wine C:/sbcl/sbcl.exe --core C:/sbcl/sbcl.core'
 ```
 
 Supply the appropriate existing `WINEPREFIX` and ASDF dependency configuration
-for that Windows Lisp. The driver does not install Wine, Lisp, or dependencies.
+for that Windows Lisp. Make does not install Wine, Lisp, or dependencies.
 
 ## Install and run
 
@@ -145,17 +160,10 @@ and Lisp errors. Other platforms and non-TTY input retain line input:
 terminal output remains dependency-free. Cell widths approximate common CJK,
 emoji, and combining marks; full grapheme handling is not implemented.
 
-For the browser, use a built JSCL checkout:
-
-```sh
-mkdir -p build
-node /path/to/jscl/dist/jscl-node.js scripts/build-web.lisp
-cp /path/to/jscl/dist/jscl.js build/jscl.js
-python3 -m http.server 8000
-```
-
-Open [the browser example](http://localhost:8000/examples/web.html). This compiles the same
-`examples/demo.lisp`; it is not a separate browser application.
+For the browser, `make demo PLATFORM=web JSCL=/path/to/jscl` compiles and
+serves the same `examples/demo.lisp`. Open the local URL printed by the server;
+it is not a separate browser application. `make web-build` builds the JavaScript
+without launching a server.
 
 ## Rendering differences
 
