@@ -117,13 +117,15 @@ Browser builds need Node.js and a built JSCL checkout:
 
 ```sh
 make test PLATFORM=web JSCL=/path/to/jscl
-make demo PLATFORM=web JSCL=/path/to/jscl PORT=8080
+make web-demo JSCL=/path/to/jscl PORT=8080
 make web-build JSCL=/path/to/jscl
 ```
 
-`JSCL` defaults to `~/clone/jscl`. `make demo PLATFORM=web` builds the gallery,
-prints its local URL, and runs `python3 -m http.server` bound to localhost.
-`PORT` defaults to 8000. Open the printed URL and stop the server with Ctrl-C.
+`JSCL` defaults to `~/clone/jscl`. `make web-demo` builds the gallery and
+`build/index.html`, prints its local URL, and runs `python3 -m http.server`
+bound to localhost with `--directory build`. Open the printed root URL
+(default [http://localhost:8000/](http://localhost:8000/)); it opens the app, not
+a directory listing. `PORT` defaults to 8000. Stop the server with Ctrl-C.
 `make web-build` only builds JavaScript. Browser tests additionally need
 Playwright and Chromium.
 
@@ -207,8 +209,8 @@ edit, and `:quit`. Noninteractive terminal output remains dependency-free. Cell
 widths approximate common CJK, emoji, and combining marks; full grapheme handling
 is not implemented.
 
-For the browser, `make demo PLATFORM=web JSCL=/path/to/jscl` compiles and
-serves the same `examples/demo.lisp`. Open the local URL printed by the server;
+For the browser, `make web-demo JSCL=/path/to/jscl` compiles and serves the
+same `examples/demo.lisp`. Open the root URL printed by the server;
 it is not a separate browser application. `make web-build` builds the JavaScript
 without launching a server.
 
@@ -229,6 +231,39 @@ Appearance is backend-dependent:
 
 These effects are approximations, not identical implementations of a single
 physical glass model.
+
+## Local performance evidence
+
+Short isolated Wayland runs used a 170 Hz monitor at 150% scale and a requested
+720×520 window. Offscreen GL used 720×520; headless Chromium used a 900×700
+viewport. These are machine-specific results, not performance guarantees.
+Reproduce the measurement paths with:
+
+```sh
+make benchmark PLATFORM=wayland BENCH_FRAMES=60 WARMUP=10
+make benchmark PLATFORM=gl BENCH_FRAMES=60 WARMUP=10
+make benchmark PLATFORM=web BENCH_FRAMES=240 WARMUP=30
+```
+
+| Local run | FPS | Mean frame time | 95th percentile |
+| --- | ---: | ---: | ---: |
+| Wayland before optimization, profiled | 8.04 | 124.309 ms | 158.884 ms |
+| Wayland after optimization, unprofiled | 170.22 | 5.875 ms | 5.978 ms |
+| Wayland after optimization, profiled | 170.19 | 5.876 ms | 5.970 ms |
+| Offscreen GL after optimization, `glFinish` | 397.94 | 2.513 ms | 6.510 ms |
+| Headless Chromium, per toolkit/page | 60.00–60.02 | 16.662–16.667 ms | 16.7–16.8 ms |
+
+The matched profiled Wayland runs show about a 21× throughput improvement;
+the unprofiled result confirms the post-optimization timing. Wayland includes
+compositor pacing. Chromium's requestAnimationFrame intervals are paced at
+60 Hz in this setup, while offscreen GL has no screen presentation limit.
+These numbers do not rank the backends against one another.
+
+Recorded local evidence is in generated logs under `build/`:
+`profile-wayland-before.log`, `profile-wayland-after.log`,
+`benchmark-wayland-after.log`, `benchmark-gl-after.log`, and
+`benchmark-web-baseline.log`. Logs include the workload and timing settings;
+new `make benchmark` runs also record the current cloc source report.
 
 ## Frame contract
 
