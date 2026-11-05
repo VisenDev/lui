@@ -1,6 +1,6 @@
 (defpackage #:lui.fn
   (:use #:cl)
-  (:export #:fn #:symbolicate))
+  (:export #:fn #:symbolicate #:defstruct*))
 
 (in-package #:lui.fn)
 
@@ -127,3 +127,18 @@
                            params))
          ,@declarations
          (the ,return-type (progn ,@body))))))
+
+(defmacro defstruct* (name &rest slots)
+  "Typed native structures without JSCL's repeated generic slot type parsing."
+  `(defstruct ,name
+     ,@(mapcar
+        (lambda (slot)
+          #-jscl slot
+          #+jscl
+          (if (consp slot)
+              (list* (first slot) (second slot)
+                     (loop :for (key value) :on (cddr slot) :by #'cddr
+                           :unless (eq key :type)
+                             :append (list key value)))
+              slot))
+        slots)))

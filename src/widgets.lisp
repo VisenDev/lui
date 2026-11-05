@@ -15,7 +15,7 @@
 
 (in-package #:lui.widgets)
 
-(defstruct widget
+(defstruct* widget
   (kind :label :type symbol)
   (style :glass :type symbol)
   value
@@ -123,7 +123,7 @@
            :measure (lambda (available) (funcall measure widget available))))
     (and (not disabled-p) (member kind '(:button :tab)) (activated-p id))))
 
-(defstruct edit-state
+(defstruct* edit-state
   (cursor 0 :type integer)
   (anchor 0 :type integer)
   (kill "" :type string)

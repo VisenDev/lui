@@ -14,7 +14,7 @@
 
 (in-package #:lui.frame)
 
-(defstruct event
+(defstruct* event
   (kind :move :type
         (member :move :press :release :tab :activate :change
                 :key :text :scroll))
@@ -24,7 +24,7 @@
   (x 0 :type real)
   (y 0 :type real))
 
-(defstruct context
+(defstruct* context
   (root nil :type (or null element))
   (previous-root nil :type (or null element))
   (width 0 :type real)

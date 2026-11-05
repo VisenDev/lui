@@ -16,7 +16,7 @@
 
 (in-package #:lui.layout)
 
-(defstruct (sizing (:constructor %sizing (kind value minimum maximum)))
+(defstruct* (sizing (:constructor %sizing (kind value minimum maximum)))
   (kind :fit :type (member :fit :grow :fixed :percent))
   (value 0 :type real)
   (minimum 0 :type real)
@@ -39,13 +39,13 @@
   (assert (<= 0 fraction 1))
   (checked-size :percent fraction 0 nil))
 
-(defstruct box
+(defstruct* box
   (x 0 :type real)
   (y 0 :type real)
   (width 0 :type real)
   (height 0 :type real))
 
-(defstruct element
+(defstruct* element
   id
   content
   (children (make-array 0 :adjustable t :fill-pointer 0) :type vector)
