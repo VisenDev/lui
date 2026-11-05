@@ -53,3 +53,18 @@
   :depends-on ("lui/native")
   :components ((:module "src"
                 :components ((:file "win32")))))
+
+(defsystem "lui/cocoa"
+  :depends-on ("lui/native")
+  :components ((:module "src"
+                :components ((:file "cocoa")))))
+
+(defsystem "lui/terminal"
+  :depends-on ("lui" "cffi")
+  :components ((:module "src"
+                :components ((:file "terminal-io")))))
+
+(defsystem "lui/native/tests"
+  :depends-on ("lui/native")
+  :components ((:module "tests"
+                :components ((:file "native")))))
