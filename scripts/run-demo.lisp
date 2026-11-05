@@ -1,4 +1,5 @@
-(defpackage #:lui.start.native (:use #:cl))
+(defpackage #:lui.start.native
+  (:use #:cl))
 
 (in-package #:lui.start.native)
 

@@ -9,15 +9,16 @@
 
 (fn button (id (text string) &rest options)
   (apply #'declare-widget :button :motif id text
-    (append options '(:radius 0 :frost 0))))
+         (append options '(:radius 0 :frost 0))))
 
 (fn checkbox (id value (text string) &rest options)
   (value-widget :checkbox :motif id value text options))
 
 (fn slider (id (value real) &rest options)
   (value-widget :slider :motif id value (getf options :text "")
-    (loop :for (key val) :on options :by #'cddr :unless (eq key :text)
-      :append (list key val))))
+                (loop :for (key val) :on options :by #'cddr
+                      :unless (eq key :text)
+                        :append (list key val))))
 
 (fn text-field (id (value string) &rest options)
   (value-widget :text-field :motif id value "" options))

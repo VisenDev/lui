@@ -15,8 +15,9 @@
 
 (fn slider (id (value real) &rest options)
   (value-widget :slider :glass id value (getf options :text "")
-    (loop :for (key val) :on options :by #'cddr :unless (eq key :text)
-      :append (list key val))))
+                (loop :for (key val) :on options :by #'cddr
+                      :unless (eq key :text)
+                        :append (list key val))))
 
 (fn text-field (id (value string) &rest options)
   (value-widget :text-field :glass id value "" options))

@@ -23,4 +23,5 @@
       (when (lui.motif:button :reset "Reset") (setf *count* 0)))
     (lui.glass:label (format nil "Hello ~A (~D)" *name* *count*))))
 
-(defun main () (run #'draw :title "LUI widget collections"))
+(defun main ()
+  (run #'draw :title "LUI widget collections"))
