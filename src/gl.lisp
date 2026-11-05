@@ -325,7 +325,9 @@ void main() {
            :float 0.19 :float 1.0 :void)
   (call-gl "glClear" :uint #x4000 :void)
   (call-gl "glEnable" :uint #x0be2 :void)
-  (call-gl "glBlendFunc" :uint #x0302 :uint #x0303 :void)
+  ;; Keep the opaque destination alpha while blending translucent RGB overlays.
+  (call-gl "glBlendFuncSeparate" :uint #x0302 :uint #x0303
+           :uint 1 :uint #x0303 :void)
   (call-gl "glEnable" :uint #x0c11 :void)
   (call-gl "glMatrixMode" :uint #x1701 :void)
   (call-gl "glLoadIdentity" :void)

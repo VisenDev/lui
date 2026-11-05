@@ -31,6 +31,52 @@
       (cffi:foreign-free pixels))))
 
 
+(defun pixel-color (x y)
+  (cffi:with-foreign-object (pixel :uint8 4)
+    (cffi:foreign-funcall "glReadPixels"
+                          :int x :int (- 519 y) :int 1 :int 1
+                          :uint #x1908 :uint #x1401 :pointer pixel :void)
+    (loop :for channel :below 4
+          :collect (cffi:mem-aref pixel :uint8 channel))))
+
+(defun test-opaque-compositing (gpu renderer context)
+  (cffi:with-foreign-object (bits :int)
+    (cffi:foreign-funcall "glGetIntegerv" :uint #x0d55 :pointer bits :void)
+    ;; An RGB-only target would hide destination-alpha regressions.
+    (assert (>= (cffi:mem-ref bits :int) 8)))
+  (flet ((button ()
+           (lui.motif:button :alpha "Hover"
+                             :width (fixed 160) :height (fixed 50))))
+    (with-frame (context 720 520) (button))
+    (begin-gpu-frame gpu)
+    (paint-frame renderer context)
+    (let ((normal (pixel-color 130 25)))
+      (with-frame (context 720 520
+                           :events (list (make-event :kind :move
+                                                     :x 130 :y 25)))
+        (button))
+      (assert (eq :alpha (context-hover context)))
+      (begin-gpu-frame gpu)
+      (paint-frame renderer context)
+      (let ((hover (pixel-color 130 25)))
+        (assert (> (first hover) (first normal)))
+        (assert (= 255 (fourth hover))))))
+  (with-frame (context 720 520)
+    (lui.glass:button :glass "Glass" :background "#c00000" :opacity 0.35
+                      :width (fixed 160) :height (fixed 50)))
+  (begin-gpu-frame gpu)
+  (funcall (renderer-clip renderer) (make-box :width 720 :height 520))
+  (funcall (renderer-polygons renderer)
+           '(((0 . 0) (720 . 0) (720 . 520) (0 . 520))) "#204060" 1)
+  (paint-frame renderer context)
+  (let ((glass (pixel-color 130 25)))
+    ;; Glass still blends with the app's backdrop, while the window stays opaque.
+    (assert (< 32 (first glass) 190))
+    (assert (> (third glass) 30))
+    (assert (= 255 (fourth glass))))
+  (assert (= 255 (fourth (pixel-color 600 450))))
+  (format t "Opaque window alpha survives Motif hover and Glass tint.~%"))
+
 (defun test-fractional-resolution (gpu renderer)
   (setf (gpu-logical-width gpu) 480
         (gpu-logical-height gpu) (/ 1040 3))
@@ -65,6 +111,7 @@
        (*unit* 8))
   (unwind-protect
        (progn
+         (test-opaque-compositing gpu renderer context)
          (test-fractional-resolution gpu renderer)
          (with-frame (context 720 520) (lui.example:draw))
          (begin-gpu-frame gpu)
