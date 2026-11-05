@@ -30,7 +30,34 @@
                  (let ((cell (sheet-cell (state-sheet *state*) address)))
                    (assert (= number (cell-value cell))))))
         (frame)
+        (assert (null (gethash (cell-id 0)
+                               (lui.frame::context-ids context))))
+        (assert (context-next-frame context))
         (frame)
+        (assert (element-floating-p
+                 (gethash (cell-id 0) (lui.frame::context-ids context))))
+        (assert (eq :cell (lui.widgets:widget-kind (widget-at 0))))
+        (assert (lui.widgets:widget-value (widget-at 0)))
+        (assert (not (lui.widgets:widget-value (widget-at 1))))
+        (assert (equal "#ffffff"
+                       (lui.widgets:widget-background (widget-at 1))))
+        (assert (equal "#202430"
+                       (lui.widgets:widget-foreground (widget-at 1))))
+        (let ((headers 0))
+          (walk-elements
+           (context-root context)
+           (lambda (node)
+             (let ((widget (element-content node)))
+               (when (and (lui.widgets:widget-p widget)
+                          (eq :cell (lui.widgets:widget-kind widget))
+                          (lui.widgets:widget-disabled-p widget)
+                          (equal "#e5e9ee"
+                                 (lui.widgets:widget-background widget)))
+                 (incf headers)
+                 (assert (not (element-interactive-p node)))
+                 (assert (equal "#202430"
+                                (lui.widgets:widget-foreground widget)))))))
+          (assert (> headers 3)))
         (let ((count 0))
           (maphash (lambda (id node)
                      (declare (ignore node))
@@ -47,9 +74,31 @@
         (frame)
         (assert (= 5 (parse-number
                        (lui.widgets:widget-text (widget-at 2)))))
+        ;; Control bytes cannot start an edit or become document contents.
+        (frame (make-event :kind :text :id (cell-id 0)
+                           :value (string (code-char 1))))
+        (assert (null (state-editing *state*)))
         (edit 0)
         (assert (eq :text-field (lui.widgets:widget-kind (widget-at 0))))
+        (assert (equal "#ffffff"
+                       (lui.widgets:widget-background (widget-at 0))))
+        (assert (equal "#000000"
+                       (lui.widgets:widget-foreground (widget-at 0))))
         (assert (equal "2" (lui.widgets:widget-value (widget-at 0))))
+        (frame (make-event :kind :text :value (string (code-char 1)))
+               (make-event :kind :text :value "X"))
+        (assert (equal "X2" (lui.widgets:widget-value (widget-at 0))))
+        (dotimes (i 3)
+          (frame)
+          (assert (eql 0 (state-editing *state*)))
+          (assert (eq :text-field (lui.widgets:widget-kind (widget-at 0))))
+          (assert (equal "#ffffff"
+                         (lui.widgets:widget-background (widget-at 0)))))
+        (frame (make-event :kind :text :value (string (code-char 5)))
+               (make-event :kind :text :value (string (code-char 8))))
+        (assert (equal "X" (lui.widgets:widget-value (widget-at 0))))
+        (frame (key :escape))
+        (edit 0)
         ;; Batched final text and Enter must commit the latest draft exactly once.
         (frame (change "10") (activate))
         (assert (null (state-editing *state*)))
@@ -126,6 +175,17 @@
                           (plusp (box-width clip)) (plusp (box-height clip)))
                  (assert (>= (box-x clip) (+ (box-x bounds) 4)))
                  (assert (>= (box-y clip) (+ (box-y bounds) 3))))))))
+        ;; Reentry reuses a matching viewport without a full-window guess.
+        (with-frame (context 100 60))
+        (frame)
+        (assert (gethash (cell-id 27) (lui.frame::context-ids context)))
+        ;; A different toolkit invalidates the cached viewport key.
+        (with-frame (context 100 60))
+        (let ((lui.example::*toolkit* (if (eq style :glass) :motif :glass)))
+          (frame)
+          (assert (null (gethash (cell-id 27)
+                                 (lui.frame::context-ids context)))))
+        (frame)
         ;; Resize schedules a second measurement with the new viewport geometry.
         (with-frame (context 120 70) (draw-content))
         (assert (context-next-frame context))

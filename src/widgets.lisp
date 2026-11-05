@@ -42,7 +42,7 @@
       (setf (widget-terminal-cache widget)
             (let ((text (widget-text widget)) (value (widget-value widget)))
               (case (widget-kind widget)
-                ((:label :list-item) text)
+                ((:label :list-item :cell) text)
                 ((:panel :canvas) "")
                 (:gauge
                  (let ((filled (round (* 10 (min 1 (max 0 value))))))
@@ -111,6 +111,7 @@
 (fn declare-widget
     ((kind symbol) (style symbol) id (text string) &key ((width sizing) (fit))
      ((height sizing) (fit)) ((padding real) 0)
+     ((floating-p boolean) nil) ((offset-x real) 0) ((offset-y real) 0)
      ((foreground string) "#ffffff") ((background string) "#303040")
      ((radius real) 12) ((frost real) 12) value ((minimum real) 0)
      ((maximum real) 1) ((step real) 0.01) ((font-size real) 16)
@@ -130,11 +131,12 @@
            :disabled-p (not (null disabled-p)) :painter painter)))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding
+           :floating-p floating-p :offset-x offset-x :offset-y offset-y
            :interactive-p (and (not disabled-p)
                                (not (member kind '(:label :gauge))))
            :pointer-focus-p (eq kind :text-field)
            :measure (lambda (available) (funcall measure widget available))))
-    (and (not disabled-p) (member kind '(:button :tab :list-item))
+    (and (not disabled-p) (member kind '(:button :tab :list-item :cell))
          (activated-p id))))
 
 (defstruct* edit-state
@@ -162,7 +164,7 @@
   (let ((widget (focused-widget context)))
     (and (widget-p widget) (not (widget-disabled-p widget))
          (not (null (member (widget-kind widget)
-                            '(:button :checkbox :tab :list-item)))))))
+                            '(:button :checkbox :tab :list-item :cell)))))))
 
 (fn (cursor-at symbol) ((context context) (x real) (y real))
   (let ((cursor :default))
@@ -178,11 +180,14 @@
                       (<= (box-y clip) y)
                       (< y (+ (box-y clip) (box-height clip))))
              (setf cursor
-                   (cond ((widget-disabled-p widget) :not-allowed)
+                   (cond ((widget-disabled-p widget)
+                          (if (eq (widget-kind widget) :cell)
+                              :default :not-allowed))
                          ((member (widget-kind widget) '(:label :text-field))
                           :text)
                          ((member (widget-kind widget)
-                                  '(:button :checkbox :tab :slider)) :pointer)
+                                  '(:button :checkbox :tab :slider
+                                    :list-item :cell)) :pointer)
                          (t :default))))))))
     cursor))
 

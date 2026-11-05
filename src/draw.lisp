@@ -96,7 +96,8 @@
     (return-from measure-widget (values 0 0)))
   (let* ((font (widget-font renderer widget))
          (kind (widget-kind widget))
-         (extra (case kind (:label 0) (:checkbox 48) (otherwise 24))))
+         (extra (case kind (:label 0) (:cell 8) (:checkbox 48)
+                       (otherwise 24))))
     (let ((lines (wrap-text font
                             (if (eq kind :text-field)
                                 (widget-value widget)
@@ -429,6 +430,17 @@
     (cond
       ((widget-painter widget)
        (funcall (widget-painter widget) renderer node))
+      ((eq kind :cell)
+       (shape renderer box 0
+              (if (widget-value widget) "#e7effa"
+                  (widget-background widget)) 1)
+       (outline renderer box 0
+                (if (widget-value widget) (widget-accent widget) "#939ba5")
+                1 (if (widget-value widget) 2 1))
+       (paint-text renderer (widget-text widget)
+                   (+ (box-x box) 4)
+                   (+ (box-y box) 6 (baseline font))
+                   (widget-foreground widget)))
       ((eq kind :list-item)
        (shape renderer box 0
               (if (widget-value widget) (widget-accent widget)

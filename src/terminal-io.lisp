@@ -255,7 +255,8 @@
                       (widget (and node (element-content node))))
                  (push (if (and (widget-p widget)
                                 (member (widget-kind widget)
-                                        '(:button :checkbox :tab)))
+                                        '(:button :checkbox :tab
+                                          :list-item :cell)))
                            (make-event :kind :activate)
                            (make-event :kind :text :value " "))
                        (input-events input))))

@@ -1,7 +1,7 @@
 (defpackage #:lui.motif
   (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
   (:export #:label #:button #:checkbox #:slider #:text-field #:panel #:tab
-           #:canvas #:gauge #:list-item
+           #:canvas #:gauge #:list-item #:cell
            #:*defaults*))
 
 (in-package #:lui.motif)
@@ -36,6 +36,18 @@
 
 (fn text-field (id (value string) &rest options)
   (value-widget :text-field :motif id value "" (append options *defaults*)))
+
+(fn cell (id (text string) &rest options)
+  (let ((args nil))
+    (do ((tail options (cddr tail))) ((null tail))
+      (unless (eq (car tail) :selected-p)
+        (push (car tail) args)
+        (push (cadr tail) args)))
+    (apply #'declare-widget :cell :motif id text
+           :value (not (null (getf options :selected-p)))
+           (append (nreverse args)
+                   '(:background "#ffffff" :foreground "#202430")
+                   *defaults*))))
 
 (fn list-item (id (text string) &rest options)
   (apply #'declare-widget :list-item :motif id text

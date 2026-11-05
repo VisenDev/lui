@@ -601,6 +601,42 @@
     (assert (= 0 (lui.draw::selection-index renderer node -1 1)))
     (assert (= 4096 (lui.draw::selection-index renderer node 100000 1)))))
 
+(defun test-flat-cells (font)
+  (dolist (style '(:glass :motif :garnet))
+    (let* ((paths nil) (glass 0) (texts nil)
+           (renderer (make-renderer
+                      :font font
+                      :polygons (lambda (contours color alpha)
+                                  (push (list contours color alpha) paths))
+                      :clip (lambda (box) (declare (ignore box)))
+                      :text (lambda (face text x y color)
+                              (declare (ignore face x y))
+                              (push (list text color) texts))
+                      :glass (lambda (&rest args)
+                               (declare (ignore args)) (incf glass))))
+           (context (make-context
+                     :measure (lambda (widget width)
+                                (measure-widget renderer widget width)))))
+      (with-frame (context 200 80)
+        (let* ((package (find-package (format nil "LUI.~A" style)))
+               (cell (symbol-function (find-symbol "CELL" package))))
+          (funcall cell :normal "2" :width (fixed 100))
+          (funcall cell :selected "3" :width (fixed 100) :selected-p t)))
+      (paint-frame renderer context)
+      (assert (zerop glass))
+      ;; Two flat fills and two hairlines; no bevel, stipple, or hard shadow.
+      (assert (= 4 (length paths)))
+      (assert (every (lambda (entry) (= 1 (third entry))) paths))
+      (assert (every (lambda (entry)
+                       (every (lambda (contour)
+                                (= 4 (length (remove-duplicates
+                                              contour :test #'equalp))))
+                              (first entry)))
+                     paths))
+      (assert (member '("2" "#202430") texts :test #'equal))
+      (assert (member '("3" "#202430") texts :test #'equal))
+      (assert (find "#e7effa" paths :key #'second :test #'equal)))))
+
 (defun run-tests ()
   (let ((font (open-font)))
     (unwind-protect
@@ -618,7 +654,8 @@
            (test-pointer-selection font)
            (test-selection-regressions font)
            (test-long-selection-index font)
-           (test-selection-clipping font))
+           (test-selection-clipping font)
+           (test-flat-cells font))
       (close-font font)))
   (format t "Native geometry, fonts, wrapping, focus, selection, and caret passed.~%")
   t)

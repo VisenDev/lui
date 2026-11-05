@@ -8,7 +8,9 @@
 (defstruct* state
   (sheet (make-sheet) :type sheet)
   (selected 0 :type integer) editing (draft "" :type string)
-  (frame-width 0 :type real) (frame-height 0 :type real))
+  (frame-width 0 :type real) (frame-height 0 :type real)
+  (view-width nil :type (or null real))
+  (view-height nil :type (or null real)) view-toolkit)
 (defvar *state* (make-state))
 
 (fn cell-id ((index integer))
@@ -75,41 +77,64 @@
          (state-draft *state*) (gethash id (context-state *context*))
          (list event))))
 
+(fn cell-input-event ((event event) editing-p)
+  (if (and (eq (event-kind event) :text) (stringp (event-value event)))
+      (let* ((text (event-value event))
+             (code (when (= (length text) 1) (char-code (char text 0)))))
+        (cond
+          ((and code (or (< code 32) (= code 127)))
+           (when editing-p
+             (let ((key (if (= code 127) :backspace
+                            (lui.widgets:readline-key
+                             (string (code-char (+ code 64))) :control t))))
+               (when key (make-event :kind :key :key key)))))
+          (t
+           (let ((clean (remove-if (lambda (char)
+                                    (or (< (char-code char) 32)
+                                        (= (char-code char) 127)))
+                                  text)))
+             (when (plusp (length clean))
+               (make-event :kind :text :value clean))))))
+      event))
+
 (fn handle-cell-events ((index integer))
   (let ((id (cell-id index)))
     (when (and (events-for id) (state-editing *state*)
                (not (eql index (state-editing *state*))))
       (finish-edit))
-    (dolist (event (events-for id))
-      (cond
-        ((and (eq (event-kind event) :press)
-              (eq (event-button event) :primary))
-         (unless (eql index (state-editing *state*)) (finish-edit))
-         (setf (state-selected *state*) index
-               (context-focus *context*) id)
-         (when (and (>= (event-clicks event) 2)
-                    (not (state-editing *state*)))
-           (start-edit index)))
-        ((state-editing *state*)
-         (cond ((and (eq (event-kind event) :key)
-                     (eq (event-key event) :escape))
-                (finish-edit t))
-               ((or (eq (event-kind event) :activate)
-                    (and (eq (event-kind event) :key)
-                         (eq (event-key event) :enter)))
-                (finish-edit))
-               (t (edit-event id event))))
-        ((or (eq (event-kind event) :activate)
-             (and (eq (event-kind event) :key)
-                  (eq (event-key event) :enter)))
-         (start-edit index))
-        ((eq (event-kind event) :key)
-         (setf (state-selected *state*) index)
-         (move-selection (event-key event)))
-        ((and (eq (event-kind event) :text)
-              (stringp (event-value event)))
-         (start-edit index "")
-         (edit-event id event))))
+    (dolist (raw (events-for id))
+      (let ((event (cell-input-event
+                    raw (eql index (state-editing *state*)))))
+        (when event
+          (cond
+            ((and (eq (event-kind event) :press)
+                  (eq (event-button event) :primary))
+             (unless (eql index (state-editing *state*)) (finish-edit))
+             (setf (state-selected *state*) index
+                   (context-focus *context*) id)
+             (when (and (>= (event-clicks event) 2)
+                        (not (state-editing *state*)))
+               (start-edit index)))
+            ((state-editing *state*)
+             (cond ((and (eq (event-kind event) :key)
+                         (eq (event-key event) :escape))
+                    (finish-edit t))
+                   ((or (eq (event-kind event) :activate)
+                        (and (eq (event-kind event) :key)
+                             (eq (event-key event) :enter)))
+                    (finish-edit))
+                   (t (edit-event id event))))
+            ((or (eq (event-kind event) :activate)
+                 (and (eq (event-kind event) :key)
+                      (eq (event-key event) :enter)))
+             (start-edit index))
+            ((eq (event-kind event) :key)
+             (setf (state-selected *state*) index)
+             (move-selection (event-key event)))
+            ((and (eq (event-kind event) :text)
+                  (stringp (event-value event)))
+             (start-edit index "")
+             (edit-event id event))))))
     ;; Shared text-field declaration receives the already edited draft.
     (setf (gethash id (context-events *context*)) nil)))
 
@@ -132,25 +157,22 @@
              (context-events *context*))))
 
 (fn header ((text string) (x real) (y real) (width real) (height real))
-  (panel (:width (fixed width) :height (fixed height) :floating-p t
-          :offset-x x :offset-y y :align :center :cross-align :center
-          :background "#404550" :foreground "#ffffff"
-          :radius 0 :frost 0 :opacity 1)
-    (widget :label text)))
+  (widget :cell nil text :width (fixed width) :height (fixed height)
+          :floating-p t :offset-x x :offset-y y :disabled-p t
+          :padding (units 0.5) :background "#e5e9ee" :foreground "#202430"))
 
 (fn draw-cell ((index integer) (x real) (y real) (width real) (height real))
-  (column (:width (fixed width) :height (fixed height) :floating-p t
-           :offset-x x :offset-y y :padding (units 0.1))
-    (if (eql index (state-editing *state*))
-        (setf (state-draft *state*)
-              (widget :text-field (cell-id index) (state-draft *state*)
-                      :width (grow) :height (grow) :radius 0 :frost 0
-                      :opacity 1))
-        (apply #'widget :button (cell-id index)
-               (cell-display (sheet-cell (state-sheet *state*) index))
-               :width (grow) :height (grow) :radius 0 :frost 0 :opacity 1
-               (when (= index (state-selected *state*))
-                 '(:background "#235b9b" :foreground "#ffffff"))))))
+  (if (eql index (state-editing *state*))
+      (setf (state-draft *state*)
+            (widget :text-field (cell-id index) (state-draft *state*)
+                    :width (fixed width) :height (fixed height)
+                    :floating-p t :offset-x x :offset-y y :radius 0 :frost 0
+                    :opacity 1 :background "#ffffff" :foreground "#000000"))
+      (widget :cell (cell-id index)
+              (cell-display (sheet-cell (state-sheet *state*) index))
+              :width (fixed width) :height (fixed height)
+              :floating-p t :offset-x x :offset-y y
+              :selected-p (= index (state-selected *state*)))))
 
 (fn visible-span ((offset real) (viewport real) (size real) (header real)
                   (count integer))
@@ -161,20 +183,34 @@
   (when (or (/= (state-frame-width *state*) (context-width *context*))
             (/= (state-frame-height *state*) (context-height *context*)))
     (setf (state-frame-width *state*) (context-width *context*)
-          (state-frame-height *state*) (context-height *context*))
+          (state-frame-height *state*) (context-height *context*)
+          (state-view-width *state*) nil
+          (state-view-height *state*) nil)
     (request-frame))
   (handle-input)
   (widget :label "Double-click or Enter to edit; Enter commits, Esc cancels. Arrows move; Home/End reach A0/Z99.")
   (widget :label (format nil "Selected: ~A"
                         (cell-address (state-selected *state*))))
-  (let* ((viewport (previous-box :seven-grid))
+  (let* ((previous (context-previous-root *context*))
+         (viewport (when (and previous
+                              (= (box-width (element-box previous))
+                                 (context-width *context*))
+                              (= (box-height (element-box previous))
+                                 (context-height *context*)))
+                     (previous-box :seven-grid)))
          (width (units 10)) (height (units 3)) (header (units 4))
+         (cached (eq (state-view-toolkit *state*) lui.example::*toolkit*))
          (view-width (if viewport (box-width viewport)
-                         (context-width *context*)))
+                         (or (and cached (state-view-width *state*)) 0)))
          (view-height (if viewport (box-height viewport)
-                          (context-height *context*)))
+                          (or (and cached (state-view-height *state*)) 0)))
          (full-width (+ header (* 26 width)))
          (full-height (* 101 height)))
+    (when viewport
+      (setf (state-view-width *state*) view-width
+            (state-view-height *state*) view-height
+            (state-view-toolkit *state*) lui.example::*toolkit*))
+    ;; The cold geometry pass avoids constructing rows for a whole-window guess.
     (unless viewport (request-frame))
     (multiple-value-bind (x y) (scroll-position :seven-grid)
       (let* ((maximum (max 0 (- full-width view-width)))
