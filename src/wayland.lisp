@@ -29,6 +29,8 @@
   (scale120 120 :type integer) (buffer-scale 1 :type integer)
   applied-buffer-scale
   (viewport-width 0 :type integer) (viewport-height 0 :type integer)
+  clipboard-manager clipboard-device clipboard-source clipboard-listener
+  clipboard-text clipboard-serial
   pointer keyboard native gpu font xkb-context keymap key-state
   (seat-version 1 :type integer)
   ;; Older keyboards have no repeat_info; use conventional client defaults.
@@ -52,6 +54,101 @@
 (fn queue-input ((kind symbol) &rest options)
   (push (apply #'make-event :kind kind options)
         (wl-window-events *window*)))
+
+(fn release-clipboard-source ((window wl-window))
+  (when (wl-window-clipboard-source window)
+    (request (wl-window-clipboard-source window) 1 nil nil nil t)
+    (setf (wl-window-clipboard-source window) nil
+          (wl-window-clipboard-text window) nil))
+  (when (wl-window-clipboard-listener window)
+    (cffi:foreign-free (wl-window-clipboard-listener window))
+    (setf (wl-window-clipboard-listener window) nil)))
+
+(fn write-clipboard-fd ((text string) (fd integer))
+  (unwind-protect
+       (cffi:with-foreign-string ((bytes byte-size) text :encoding :utf-8)
+         (let ((size (1- byte-size))
+               (offset 0))
+           (loop :while (< offset size)
+                 :for count :=
+                 (cffi:foreign-funcall "write" :int fd
+                   :pointer (cffi:inc-pointer bytes offset)
+                   :size (- size offset) :long)
+                 :do (cond ((plusp count) (incf offset count))
+                           ((and (minusp count)
+                                 (= 4 (cffi:mem-ref
+                                       (cffi:foreign-funcall
+                                        "__errno_location" :pointer) :int))))
+                           (t (return nil))))))
+    (cffi:foreign-funcall "close" :int fd :int)))
+
+(callback clipboard-target ((mime :pointer))
+  (declare (ignore mime)))
+(callback clipboard-send ((mime :string) (fd :int))
+  ;; FD belongs to this event; close it even for an unsupported target.
+  (handler-case
+      (write-clipboard-fd
+       (if (and (wl-window-clipboard-source *window*)
+                (cffi:pointer-eq proxy
+                                 (wl-window-clipboard-source *window*))
+                (member mime '("text/plain;charset=utf-8" "text/plain")
+                        :test #'string=))
+           (or (wl-window-clipboard-text *window*) "") "") fd)
+    (error () nil)))
+(callback clipboard-cancelled ()
+  (when (and (wl-window-clipboard-source *window*)
+             (cffi:pointer-eq proxy (wl-window-clipboard-source *window*)))
+    (release-clipboard-source *window*)))
+
+(callback clipboard-offer ((offer :pointer))
+  ;; This backend publishes text. Unrequested incoming offers need no transfer.
+  (request offer 2 nil nil nil t))
+(callback clipboard-enter
+    ((serial :uint32) (surface :pointer) (x :int32) (y :int32)
+     (offer :pointer))
+  (declare (ignore serial surface x y offer)))
+(callback clipboard-leave ())
+(callback clipboard-motion ((time :uint32) (x :int32) (y :int32))
+  (declare (ignore time x y)))
+(callback clipboard-drop ())
+(callback clipboard-selection ((offer :pointer))
+  (declare (ignore offer)))
+
+(fn create-clipboard-device ((window wl-window))
+  ;; Core protocol v1 is enough for clipboard ownership on older compositors.
+  (when (and (wl-window-clipboard-manager window) (wl-window-seat window))
+    (let ((device
+            (request (wl-window-clipboard-manager window) 1 "wl_data_device"
+                     (list (cons :pointer (cffi:null-pointer))
+                           (cons :pointer (wl-window-seat window))) 1)))
+      (setf (wl-window-clipboard-device window) device)
+      (attach-listener device
+                       (list (cffi:callback clipboard-offer)
+                             (cffi:callback clipboard-enter)
+                             (cffi:callback clipboard-leave)
+                             (cffi:callback clipboard-motion)
+                             (cffi:callback clipboard-drop)
+                             (cffi:callback clipboard-selection))))))
+
+(fn copy-clipboard ((window wl-window) (text string))
+  (when (and (wl-window-clipboard-device window)
+             (wl-window-clipboard-serial window))
+    (release-clipboard-source window)
+    (let ((source
+            (request (wl-window-clipboard-manager window) 0 "wl_data_source"
+                     (list (cons :pointer (cffi:null-pointer))) 1)))
+      (setf (wl-window-clipboard-source window) source
+            (wl-window-clipboard-text window) (copy-seq text)
+            (wl-window-clipboard-listener window)
+            (listen-proxy source (list (cffi:callback clipboard-target)
+                                       (cffi:callback clipboard-send)
+                                       (cffi:callback clipboard-cancelled))))
+      (dolist (mime '("text/plain;charset=utf-8" "text/plain"))
+        (request source 0 nil (list (cons :string mime))))
+      (request (wl-window-clipboard-device window) 1 nil
+               (list (cons :pointer source)
+                     (cons :uint32 (wl-window-clipboard-serial window))))
+      (flush-display (wl-window-display window)))))
 
 (fn cursor-shape ((kind symbol))
   (case kind (:not-allowed 15) (:pointer 4) (:text 9) (otherwise 1)))
@@ -170,7 +267,8 @@
 
 (callback pointer-button
     ((serial :uint32) (time :uint32) (button :uint32) (state :uint32))
-  (declare (ignore serial time))
+  (declare (ignore time))
+  (setf (wl-window-clipboard-serial *window*) serial)
   (when (member button '(#x110 #x111))
     (queue-input (if (zerop state) :release :press)
                  :button (if (= button #x111) :secondary :primary)
@@ -279,8 +377,13 @@
                          '((#xff51 . :left) (#xff53 . :right)
                            (#xff52 . :up) (#xff54 . :down)
                            (#xff50 . :home) (#xff57 . :end)
-                           (#xff08 . :backspace) (#xffff . :delete))))))
-      (cond (editor (queue-input :key :key editor))
+                           (#xff08 . :backspace) (#xffff . :delete)
+                           (#xff1b . :escape))))))
+      (cond ((and (member symbol '(#x63 #x43))
+                  (modifier-active-p state "Control")
+                  (not (modifier-active-p state "Mod1")))
+             (queue-input :key :key :copy))
+            (editor (queue-input :key :key editor))
             ((member symbol '(#xff09 #xfe20))
              (queue-input :tab :key
                           (when (or (= symbol #xfe20)
@@ -305,7 +408,8 @@
 
 (callback keyboard-key
     ((serial :uint32) (time :uint32) (code :uint32) (pressed :uint32))
-  (declare (ignore serial time))
+  (declare (ignore time))
+  (setf (wl-window-clipboard-serial *window*) serial)
   (case pressed
     (0
      (when (eql code (wl-window-repeat-code *window*))
@@ -403,6 +507,7 @@
     ((name :uint32) (interface-name :string) (version :uint32))
   (when (member interface-name
                 '("wl_compositor" "xdg_wm_base" "wl_seat" "wl_shm"
+                  "wl_data_device_manager"
                   "zxdg_decoration_manager_v1" "wp_viewporter"
                   "wp_fractional_scale_manager_v1"
                   "wp_cursor_shape_manager_v1")
@@ -422,6 +527,8 @@
       (cond ((string= interface-name "wl_compositor")
              (setf (wl-window-compositor *window*) object
                    (wl-window-compositor-version *window*) version))
+            ((string= interface-name "wl_data_device_manager")
+             (setf (wl-window-clipboard-manager *window*) object))
             ((string= interface-name "wl_shm")
              (setf (wl-window-shm *window*) object))
             ((string= interface-name "wp_cursor_shape_manager_v1")
@@ -554,6 +661,13 @@
   (when proxy (request proxy 0 nil nil nil t)))
 
 (fn release-extensions ((window wl-window))
+  (release-clipboard-source window)
+  (dolist (proxy (list (wl-window-clipboard-device window)
+                      (wl-window-clipboard-manager window)))
+    (when proxy (destroy-proxy proxy)))
+  (setf (wl-window-clipboard-device window) nil
+        (wl-window-clipboard-manager window) nil
+        (wl-window-clipboard-serial window) nil)
   ;; Children disappear before their xdg_toplevel/wl_surface and managers.
   (dolist (proxy (list (wl-window-cursor-surface window)
                       (wl-window-cursor-device window)
@@ -610,6 +724,7 @@
                                   (cffi:callback registry-remove)))
            (when (minusp (roundtrip display))
              (error "Wayland registry roundtrip failed."))
+           (create-clipboard-device *window*)
            (unless (and (wl-window-compositor *window*)
                         (wl-window-shell *window*))
              (error "Wayland compositor requires wl_compositor and xdg_wm_base."))
@@ -654,6 +769,9 @@
                   (renderer (gpu-renderer gpu))
                   (context
                     (make-context
+                     :copy (when (wl-window-clipboard-device *window*)
+                             (let ((window *window*))
+                               (lambda (text) (copy-clipboard window text))))
                      :measure (lambda (widget width)
                                 (measure-widget renderer widget width))))
                   (*context* context))

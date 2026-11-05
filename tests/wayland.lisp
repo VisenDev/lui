@@ -134,6 +134,83 @@
       (cffi:foreign-funcall "xkb_context_unref" :pointer context :void)))
   (format t "Wayland keyboard repeat timing, modifiers, and cancellation passed.~%"))
 
+(defun test-clipboard-transfer ()
+  (let* ((source (cffi:make-pointer 1))
+         (text "Clipboard café 🦊")
+         (lui.wayland::*window*
+           (lui.wayland::make-wl-window :clipboard-source source
+                                       :clipboard-text text)))
+    (dolist (mime '("text/plain;charset=utf-8" "text/plain" "image/png"))
+      (cffi:with-foreign-object (fds :int 2)
+        (assert (zerop (cffi:foreign-funcall "pipe" :pointer fds :int)))
+        (let ((read-fd (cffi:mem-aref fds :int 0))
+              (write-fd (cffi:mem-aref fds :int 1)))
+          (unwind-protect
+               (progn
+                 (cffi:with-foreign-string (type mime)
+                   (cffi:foreign-funcall-pointer
+                    (cffi:callback lui.wayland::clipboard-send) ()
+                    :pointer (cffi:null-pointer) :pointer source
+                    :pointer type :int write-fd :void))
+                 (cffi:with-foreign-object (bytes :char 128)
+                   (let ((count (cffi:foreign-funcall
+                                 "read" :int read-fd :pointer bytes
+                                 :size 128 :long)))
+                     (assert (>= count 0))
+                     (assert (string=
+                              (if (string= mime "image/png") "" text)
+                              (cffi:foreign-string-to-lisp
+                               bytes :count count :encoding :utf-8))))
+                   ;; The callback owns and closes the transferred write FD.
+                   (assert (zerop (cffi:foreign-funcall
+                                   "read" :int read-fd :pointer bytes
+                                   :size 128 :long)))))
+            (cffi:foreign-funcall "close" :int read-fd :int))))))
+  (format t "Wayland clipboard UTF-8 transfer and descriptor cleanup passed.~%"))
+
+(test-clipboard-transfer)
+
+(defun test-clipboard-source (window context)
+  (if (lui.wayland::wl-window-clipboard-device window)
+      (let ((serial (lui.wayland::wl-window-clipboard-serial window))
+            (text (copy-seq "Native café 🦊")))
+        (assert (functionp (context-copy context)))
+        (unwind-protect
+             (progn
+               ;; No user input serial: exercise the actual protocol lifecycle
+               ;; without claiming that this synthetic request gains ownership.
+               (setf (lui.wayland::wl-window-clipboard-serial window) 0)
+               (funcall (context-copy context) text)
+               (setf (char text 0) #\X)
+               (assert (string= "Native café 🦊"
+                                (lui.wayland::wl-window-clipboard-text
+                                 window)))
+               (let ((first-id
+                       (cffi:foreign-funcall "wl_proxy_get_id" :pointer
+                         (lui.wayland::wl-window-clipboard-source window)
+                         :uint32)))
+                 (funcall (context-copy context) "Replacement")
+                 (assert (/= first-id
+                             (cffi:foreign-funcall "wl_proxy_get_id" :pointer
+                               (lui.wayland::wl-window-clipboard-source
+                                window) :uint32))))
+               (assert (not (minusp
+                             (lui.wayland-protocol:roundtrip
+                              (lui.wayland::wl-window-display window)))))
+               (let ((source
+                       (lui.wayland::wl-window-clipboard-source window)))
+                 (when source
+                   (cffi:foreign-funcall-pointer
+                    (cffi:callback lui.wayland::clipboard-cancelled) ()
+                    :pointer (cffi:null-pointer) :pointer source :void)))
+               (assert (null (lui.wayland::wl-window-clipboard-source
+                              window)))
+               (assert (null (lui.wayland::wl-window-clipboard-listener
+                              window))))
+          (setf (lui.wayland::wl-window-clipboard-serial window) serial)
+          (lui.wayland::release-clipboard-source window)))
+      (assert (null (context-copy context)))))
+
 (defun test-themed-cursor (window)
   (when (lui.wayland::wl-window-shm window)
     (let ((image (lui.wayland::cursor-image-for window :not-allowed))
@@ -170,6 +247,8 @@
        (cffi:callback lui.wayland::pointer-button) ()
        :pointer null :pointer null :uint32 42 :uint32 0
        :uint32 #x110 :uint32 state :void)
+      (assert (= 42 (lui.wayland::wl-window-clipboard-serial
+                     lui.wayland::*window*)))
       ;; Cursor-shape requests require ENTER's serial, never BUTTON's serial.
       (assert (= 41 (lui.wayland::wl-window-cursor-serial
                      lui.wayland::*window*))))
@@ -234,6 +313,7 @@
                            (22 :kill-start) (17 :kill-word) (21 :yank)
                            (20 :transpose))
                    :do (expect code command))
+             (expect 46 :copy)
              (modifiers 5)
              (expect 30 :select-all)
              (modifiers 8)
@@ -246,6 +326,7 @@
                (assert (eq :tab (event-kind event)))
                (assert (eq :backward (event-key event))))
              (modifiers 0)
+             (expect 1 :escape)
              (setf (lui.widgets:widget-kind
                     (element-content (context-root context))) :button)
              (keyboard-key 57 1)
@@ -297,6 +378,7 @@
        (incf frames)
        (when (= frames 1)
          (setf native lui.wayland::*window*)
+         (test-clipboard-source native *context*)
          (test-themed-cursor native)
          (let ((gpu (lui.wayland::wl-window-gpu native)))
            (assert (= (context-width *context*)
@@ -361,6 +443,10 @@
          (throw 'done t)))
      :backend :wayland))
   (assert (= frames 5))
+  (assert (null (lui.wayland::wl-window-clipboard-source native)))
+  (assert (null (lui.wayland::wl-window-clipboard-listener native)))
+  (assert (null (lui.wayland::wl-window-clipboard-device native)))
+  (assert (null (lui.wayland::wl-window-clipboard-manager native)))
   (assert (null (lui.wayland::wl-window-decoration native)))
   (assert (null (lui.wayland::wl-window-decoration-manager native)))
   (assert (null (lui.wayland::wl-window-cursor-theme native)))
