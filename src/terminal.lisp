@@ -124,6 +124,44 @@
         (put left bottom (char corners 2))
         (put right bottom (char corners 3))))))
 
+(fn paint-canvas ((cells array) (colors array) (borders array)
+                  (node element) (widget widget))
+  (let ((box (element-box node)) (clip (element-clip node)))
+    (dolist (command (widget-value widget))
+      (destructuring-bind (kind cx cy radius stroke fill) command
+        (assert (eq kind :circle))
+        (let ((center-x (+ (box-x box) cx))
+              (center-y (+ (box-y box) cy))
+              (outline-style (list (or stroke (widget-foreground widget))
+                                   (widget-background widget) nil))
+              (fill-style (list (or fill (widget-foreground widget))
+                                (or fill (widget-background widget)) nil)))
+          (loop :for row :from (max 0 (cell-edge (box-y clip)))
+                :below (min (array-dimension cells 0)
+                            (cell-edge (+ (box-y clip) (box-height clip))))
+                :do (loop :for column
+                          :from (max 0 (cell-edge (box-x clip)))
+                          :below (min (array-dimension cells 1)
+                                      (cell-edge (+ (box-x clip)
+                                                    (box-width clip))))
+                          :unless (aref borders row column)
+                            :do (let* ((distance
+                                         (sqrt (+ (expt (- (+ column 0.5)
+                                                           center-x) 2)
+                                                  (expt (- (+ row 0.5)
+                                                           center-y) 2))))
+                                       (edge (and stroke
+                                                  (<= (abs (- distance
+                                                              radius))
+                                                      0.6))))
+                                  (when (or edge
+                                            (and fill (< distance radius)))
+                                    (setf (aref cells row column)
+                                          (if edge "o" ".")
+                                          (aref colors row column)
+                                          (if edge outline-style
+                                              fill-style)))))))))))
+
 (fn terminal-style ((widget widget) (node element) (context context))
   (let ((active (and (element-interactive-p node)
                      (not (widget-disabled-p widget))
@@ -185,6 +223,8 @@
                                          (aref colors row column) style)))
              (when (eq (widget-kind widget) :panel)
                (paint-panel cells colors borders style node widget))
+             (when (eq (widget-kind widget) :canvas)
+               (paint-canvas cells colors borders node widget))
              (loop :for line :in (text-lines (widget-terminal-text widget) w)
                    :for row :from y :below (min height bottom)
                    :do (loop :with column := x

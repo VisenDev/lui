@@ -67,6 +67,36 @@ def script(error=False):
       (lui.glass:label "X")))
   (assert (string= (lui.terminal:render-terminal context)
                    (format nil "╭──╮    ~%│X │    ~%╰──╯    ~%"))))
+;; Shared gauge/canvas values have useful plain and colored representations.
+(let ((context (lui.terminal:make-terminal-context)))
+  (lui.frame:with-frame (context 20 1)
+    (lui.widgets:declare-widget :gauge :motif :progress "" :value 0.5))
+  (assert (search "[#####.....] 50%"
+                  (lui.terminal:render-terminal context))))
+(let ((context (lui.terminal:make-terminal-context)))
+  (lui.frame:with-frame (context 5 5)
+    (lui.motif:panel (:width (lui.layout:grow) :height (lui.layout:grow))
+      (lui.widgets:declare-widget
+       :canvas :motif :circles "" :width (lui.layout:fixed 5)
+       :height (lui.layout:fixed 5)
+       :value '((:circle 2.5 2.5 2 "#ff0000" "#00ff00")))))
+  (let ((plain (lui.terminal:render-terminal context))
+        (colored (lui.terminal:render-terminal context :ansi t)))
+    (assert (search "+---+" plain))
+    (assert (find #\\o plain))
+    (assert (find #\\. plain))
+    (assert (search "[38;2;255;0;0m" colored))
+    (assert (search "[48;2;0;255;0m" colored))))
+(let ((input (lui.terminal.io::make-input)))
+  (lui.terminal.io::mouse-event input "2;3;4M")
+  (assert (eq (lui.frame:event-button
+               (first (lui.terminal.io::input-events input))) :secondary))
+  (lui.terminal.io::mouse-event input "32;3;4M")
+  (assert (lui.frame:event-dragging-p
+           (first (lui.terminal.io::input-events input))))
+  (lui.terminal.io::mouse-event input "35;3;4M")
+  (assert (not (lui.frame:event-dragging-p
+                (first (lui.terminal.io::input-events input))))))
 ;; Fractional cell boundaries must agree for painting and clipping.
 (let ((context (lui.terminal:make-terminal-context)))
   (lui.frame:with-frame (context 10 4)
