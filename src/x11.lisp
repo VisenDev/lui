@@ -104,6 +104,32 @@
   (keysym :pointer)
   (compose :pointer))
 
+(binding ("XFree" free-memory) :int (data :pointer))
+
+(binding ("XRenderQueryFilters" query-filters)
+  :pointer (display :pointer) (drawable :ulong))
+
+(binding ("XRenderSetPictureFilter" set-filter)
+  :void
+  (display :pointer)
+  (picture :ulong)
+  (filter :string)
+  (parameters :pointer)
+  (count :int))
+
+(binding ("XRenderChangePicture" change-picture)
+  :void
+  (display :pointer)
+  (picture :ulong)
+  (mask :ulong)
+  (attributes :pointer))
+
+(cffi:defcstruct filters
+  (count :int)
+  (names :pointer)
+  (alias-count :int)
+  (aliases :pointer))
+
 (binding ("XRenderFindVisualFormat" visual-format)
   :pointer
   (display :pointer)
@@ -223,6 +249,12 @@
   (picture 0 :type integer)
   (back 0 :type integer)
   (pixmap 0 :type integer)
+  (backdrop 0 :type integer)
+  (scratch 0 :type integer)
+  (scratch-pixmap 0 :type integer)
+  (glass-mask 0 :type integer)
+  (mask-pixmap 0 :type integer)
+  (convolution-p nil :type boolean)
   format
   mask-format
   (depth 0 :type integer)
@@ -230,189 +262,309 @@
   (height 480 :type integer)
   (colors (make-hash-table :test 'equal) :type hash-table))
 
-(fn resize-buffer ((window x-window) (width integer) (height integer))
+(fn convolution-supported-p ((window x-window))
+  (let ((filters (query-filters (x-window-display window)
+                                (x-window-window window))))
+    (unless (cffi:null-pointer-p filters)
+      (unwind-protect
+           (cffi:with-foreign-slots ((count names) filters (:struct filters))
+             (loop :for index :below count
+                   :thereis (string= "convolution"
+                                     (cffi:foreign-string-to-lisp
+                                      (cffi:mem-aref names :pointer index)))))
+        (free-memory filters)))))
+
+(fn free-buffer ((window x-window))
   (let ((display (x-window-display window)))
-    (when (plusp (x-window-back window))
-      (free-picture display (x-window-back window)))
-    (when (plusp (x-window-pixmap window))
-      (free-pixmap display (x-window-pixmap window)))
-    (setf (x-window-width window) (max 1 width) (x-window-height window)
-      (max 1 height) (x-window-pixmap window)
-      (create-pixmap display (x-window-window window) (max 1 width)
-        (max 1 height) (x-window-depth window)) (x-window-back window)
-      (create-picture display (x-window-pixmap window)
-        (x-window-format window) 0 (cffi:null-pointer)))))
+    (dolist (picture (list (x-window-back window)
+                           (x-window-backdrop window)
+                           (x-window-scratch window)
+                           (x-window-glass-mask window)))
+      (when (plusp picture) (free-picture display picture)))
+    (dolist (pixmap (list (x-window-pixmap window)
+                          (x-window-scratch-pixmap window)
+                          (x-window-mask-pixmap window)))
+      (when (plusp pixmap) (free-pixmap display pixmap)))
+    (setf (x-window-back window) 0
+          (x-window-backdrop window) 0
+          (x-window-scratch window) 0
+          (x-window-glass-mask window) 0
+          (x-window-pixmap window) 0
+          (x-window-scratch-pixmap window) 0
+          (x-window-mask-pixmap window) 0)))
+
+(fn resize-buffer ((window x-window) (width integer) (height integer))
+  (free-buffer window)
+  (setf (x-window-width window) (max 1 width)
+        (x-window-height window) (max 1 height))
+  (let ((display (x-window-display window)))
+    (flet ((pixmap (depth)
+             (create-pixmap display (x-window-window window)
+                            (x-window-width window)
+                            (x-window-height window) depth))
+           (picture (pixmap format)
+             (create-picture display pixmap format 0 (cffi:null-pointer))))
+      (setf (x-window-pixmap window) (pixmap (x-window-depth window))
+            (x-window-back window)
+            (picture (x-window-pixmap window) (x-window-format window)))
+      (when (x-window-convolution-p window)
+        ;; The independent source picture has no widget clip. Sampling the
+        ;; clipped destination would discard pixels needed by the blur kernel.
+        (setf (x-window-backdrop window)
+              (picture (x-window-pixmap window) (x-window-format window))
+              (x-window-scratch-pixmap window)
+              (pixmap (x-window-depth window))
+              (x-window-scratch window)
+              (picture (x-window-scratch-pixmap window)
+                       (x-window-format window))
+              (x-window-mask-pixmap window) (pixmap 8)
+              (x-window-glass-mask window)
+              (picture (x-window-mask-pixmap window)
+                       (x-window-mask-format window)))
+        (cffi:with-foreign-object (repeat :int)
+          ;; RepeatPad extends the window edge through the convolution kernel.
+          (setf (cffi:mem-ref repeat :int) 2)
+          (change-picture display (x-window-backdrop window) 1 repeat)
+          (change-picture display (x-window-scratch window) 1 repeat))))))
 
 (fn color-picture ((window x-window) (color string) (alpha real))
   (or (gethash (list color alpha) (x-window-colors window))
-    (setf (gethash (list color alpha) (x-window-colors window))
-      (cffi:with-foreign-object (rgba :ushort 4)
-        (loop :for component :in (color-components color alpha) :for i
-          :from 0 :do
-          (setf (cffi:mem-aref rgba :ushort i)
-            (round (* 65535 component (if (< i 3) alpha 1)))))
-        (solid-fill (x-window-display window) rgba)))))
+      (setf (gethash (list color alpha) (x-window-colors window))
+            (cffi:with-foreign-object (rgba :ushort 4)
+              (loop :for component :in (color-components color alpha) :for i
+                    :from 0 :do
+                    (setf (cffi:mem-aref rgba :ushort i)
+                          (round (* 65535 component (if (< i 3) alpha 1)))))
+              (solid-fill (x-window-display window) rgba)))))
 
 (fn draw-polygons
-  ((window x-window) (contours list) (color string) (alpha real))
+    ((window x-window) (contours list) (color string) (alpha real)
+     &optional target)
   (let ((triangles nil))
-    (trapezoids contours
-      (lambda (quad)
-        (push (list (first quad) (second quad) (third quad)) triangles)
-        (push (list (first quad) (third quad) (fourth quad)) triangles)))
+    (trapezoids
+     contours
+     (lambda (quad)
+       (push (list (first quad) (second quad) (third quad)) triangles)
+       (push (list (first quad) (third quad) (fourth quad)) triangles)))
     (when triangles
       (cffi:with-foreign-object (data :int32 (* 6 (length triangles)))
         (loop :for triangle :in triangles :for i :from 0 :do
-          (loop :for point :in triangle :for j :from (* i 6) :by 2 :do
-            (setf (cffi:mem-aref data :int32 j)
-              (round (* 65536 (car point)))
-              (cffi:mem-aref data :int32 (1+ j))
-              (round (* 65536 (cdr point))))))
-        (composite-triangles (x-window-display window) 3
-          (color-picture window color alpha) (x-window-back window)
-          (x-window-mask-format window) 0 0 data (length triangles))))))
+              (loop :for point :in triangle :for j :from (* i 6) :by 2 :do
+                    (setf (cffi:mem-aref data :int32 j)
+                          (round (* 65536 (car point)))
+                          (cffi:mem-aref data :int32 (1+ j))
+                          (round (* 65536 (cdr point))))))
+        (composite-triangles
+         (x-window-display window) 3 (color-picture window color alpha)
+         (or target (x-window-back window)) (x-window-mask-format window)
+         0 0 data (length triangles))))))
+
+(fn gaussian-filter ((window x-window) picture (radius integer)
+                     horizontal-p)
+  (let* ((size (1+ (* 2 radius)))
+         (sigma (max 0.5 (/ radius 2.0)))
+         (weights (loop :for offset :from (- radius) :to radius
+                        :collect (exp (- (/ (* offset offset)
+                                            (* 2 sigma sigma))))))
+         (total (reduce #'+ weights))
+         (fixed (mapcar (lambda (weight) (round (* 65536 (/ weight total))))
+                        weights)))
+    ;; Preserve a constant background exactly despite fixed-point rounding.
+    (incf (nth radius fixed) (- 65536 (reduce #'+ fixed)))
+    (cffi:with-foreign-object (parameters :int32 (+ 2 size))
+      (setf (cffi:mem-aref parameters :int32 0)
+            (* 65536 (if horizontal-p size 1))
+            (cffi:mem-aref parameters :int32 1)
+            (* 65536 (if horizontal-p 1 size)))
+      (loop :for weight :in fixed :for index :from 2
+            :do (setf (cffi:mem-aref parameters :int32 index) weight))
+      (set-filter (x-window-display window) picture "convolution"
+                  parameters (+ 2 size)))))
+
+(fn blur-backdrop ((window x-window) (box box) (corner-radius real)
+                   (blur-radius real))
+  (when (and (x-window-convolution-p window) (plusp blur-radius))
+    (let* ((display (x-window-display window))
+           ;; Bound native filter size while retaining a useful frosted radius.
+           (radius (min 64 (ceiling blur-radius)))
+           (x (max 0 (floor (box-x box))))
+           (y (max 0 (floor (box-y box))))
+           (right (min (x-window-width window)
+                       (ceiling (+ (box-x box) (box-width box)))))
+           (bottom (min (x-window-height window)
+                        (ceiling (+ (box-y box) (box-height box)))))
+           (top (max 0 (- y radius)))
+           (end (min (x-window-height window) (+ bottom radius))))
+      (when (and (< x right) (< y bottom))
+        (gaussian-filter window (x-window-backdrop window) radius t)
+        (composite display 1 (x-window-backdrop window) 0
+                   (x-window-scratch window) x top 0 0 x top
+                   (- right x) (- end top))
+        (composite display 1 (color-picture window "#000000" 0) 0
+                   (x-window-glass-mask window) 0 0 0 0 0 0
+                   (x-window-width window) (x-window-height window))
+        (draw-polygons window (list (rounded-polygon box corner-radius))
+                       "#ffffff" 1 (x-window-glass-mask window))
+        (gaussian-filter window (x-window-scratch window) radius nil)
+        (composite display 3 (x-window-scratch window)
+                   (x-window-glass-mask window) (x-window-back window)
+                   x y x y x y (- right x) (- bottom y))))))
 
 (fn clip-window ((window x-window) (box box))
   (cffi:with-foreign-object (rect '(:struct rectangle))
     (cffi:with-foreign-slots ((x y width height) rect (:struct rectangle))
       (setf x (round (box-x box)) y (round (box-y box)) width
-        (max 0 (floor (box-width box))) height
-        (max 0 (floor (box-height box)))))
+            (max 0 (floor (box-width box))) height
+            (max 0 (floor (box-height box)))))
     (set-clip (x-window-display window) (x-window-back window) 0 0 rect 1)))
 
 (fn key-input (event)
   (cffi:with-foreign-objects ((buffer :char 64) (symbol :ulong))
-    (let*
-      ((length
-          (lookup-string event buffer 64 symbol (cffi:null-pointer)))
-        (code (cffi:mem-ref symbol :ulong))
-        (key
-          (cdr
-            (assoc code
-              '((#xff51 . :left) (#xff53 . :right) (#xff52 . :up)
-                 (#xff54 . :down) (#xff50 . :home) (#xff57 . :end)
-                 (#xff08 . :backspace) (#xffff . :delete))))))
+    (let* ((length
+            (lookup-string event buffer 64 symbol (cffi:null-pointer)))
+           (code (cffi:mem-ref symbol :ulong))
+           (key
+            (cdr
+             (assoc code
+                    '((#xff51 . :left) (#xff53 . :right) (#xff52 . :up)
+                      (#xff54 . :down) (#xff50 . :home) (#xff57 . :end)
+                      (#xff08 . :backspace) (#xffff . :delete))))))
       (cond ((= code #xff09) (make-event :kind :tab))
-        ((= code #xff0d) (make-event :kind :activate))
-        (key (make-event :kind :key :key key))
-        ((plusp length)
-          (make-event :kind :text :value
-            (cffi:foreign-string-to-lisp buffer :count length :encoding
-              :iso-8859-1)))))))
+            ((= code #xff0d) (make-event :kind :activate))
+            (key (make-event :kind :key :key key))
+            ((plusp length)
+             (make-event :kind :text :value
+                         (cffi:foreign-string-to-lisp
+                          buffer :count length :encoding :iso-8859-1)))))))
 
-(fn run-x11 ((draw function) &key title width height (interactive t))
-  (let*
-    ((display (open-display (cffi:null-pointer)))
-      (window (make-x-window :display display)) (font nil) (*unit* 8))
-    (when (cffi:null-pointer-p display) (error "Cannot open X11 display."))
-    (unwind-protect
-      (let*
-        ((screen (default-screen display))
-          (format
-            (visual-format display (default-visual display screen)))
-          (delete (intern-atom display "WM_DELETE_WINDOW" 0)))
-        (when (cffi:null-pointer-p format)
-          (error "XRender is unavailable."))
-        (setf (x-window-depth window) (default-depth display screen)
-          (x-window-format window) format (x-window-mask-format window)
-          (standard-format display 2) (x-window-window window)
-          (create-window display (root-window display screen) 0 0
-            (or width 720) (or height 520) 0 0 0)
-          (x-window-picture window)
-          (create-picture display (x-window-window window) format 0
-            (cffi:null-pointer)) font (open-font))
-        (store-name display (x-window-window window) title)
-        (select-input display (x-window-window window)
-          (logior 1 4 8 64 #x8000 #x20000))
-        (cffi:with-foreign-object (atom :ulong)
-          (setf (cffi:mem-ref atom :ulong) delete)
-          (set-protocols display (x-window-window window) atom 1))
-        (resize-buffer window (or width 720) (or height 520))
-        (map-window display (x-window-window window))
-        (let*
-          ((renderer
-              (make-renderer :font font :polygons
-                (lambda (polys color alpha)
-                  (draw-polygons window polys color alpha)) :clip
-                (lambda (box) (clip-window window box))))
-            (context
-              (make-context :measure
-                (lambda (widget width)
-                  (measure-widget renderer widget width)))) (quit nil))
-          (cffi:with-foreign-object (event :long 24)
-            (loop :until quit :do
-              (let ((events nil))
-                (loop :while (plusp (pending display)) :do
-                  (next-event display event)
-                  (case (cffi:mem-ref event :int)
-                    (2
-                      (let ((input (key-input event)))
-                        (when input (push input events))))
-                    ((4 5 6)
-                      (cffi:with-foreign-slots
-                        ((type x y code) event
-                          (:struct key-event))
-                        (cond
-                          ((and (= type 4)
-                              (member code '(4 5)))
-                            (push
-                              (make-event :kind :scroll :x x
-                                :y y :value
-                                (if (= code 4) -32 32)) events))
-                          ((or (= type 6) (= code 1))
-                            (push
-                              (make-event :kind
-                                (case type
-                                  (4 :press)
-                                  (5 :release)
-                                  (otherwise :move)) :x x :y y)
-                              events)))))
-                    (22
-                      (cffi:with-foreign-slots
-                        ((width height) event
-                          (:struct configure-event))
-                        (unless
-                          (and (= width (x-window-width window))
-                            (= height (x-window-height window)))
-                          (resize-buffer window width height))))
-                    (33
-                      (when
-                        (=
-                          (cffi:mem-ref
-                            (cffi:foreign-slot-pointer event
-                              '(:struct client-event) 'data)
-                            :long) delete) (setf quit t)))
-                    (otherwise nil)))
-                (with-frame
-                  (context (x-window-width window)
-                    (x-window-height window) :events
-                    (nreverse events)) (funcall draw))
-                (clip-window window
-                  (make-box :width (x-window-width window) :height
-                    (x-window-height window)))
-                (composite display 1
-                  (color-picture window "#202532" 1) 0
+(fn read-events ((window x-window) (delete integer))
+  (let ((display (x-window-display window))
+        (events nil)
+        (quit nil))
+    (cffi:with-foreign-object (event :long 24)
+      (loop :while (plusp (pending display))
+            :do (next-event display event)
+            (case (cffi:mem-ref event :int)
+              (2
+               (let ((input (key-input event)))
+                 (when input (push input events))))
+              ((4 5 6)
+               (cffi:with-foreign-slots
+                   ((type x y code) event (:struct key-event))
+                 (cond
+                   ((and (= type 4) (member code '(4 5)))
+                    (push (make-event :kind :scroll :x x :y y
+                                      :value (if (= code 4) -32 32))
+                          events))
+                   ((or (= type 6) (= code 1))
+                    (push (make-event
+                           :kind (case type
+                                   (4 :press)
+                                   (5 :release)
+                                   (otherwise :move))
+                           :x x :y y)
+                          events)))))
+              (22
+               (cffi:with-foreign-slots
+                   ((width height) event (:struct configure-event))
+                 (unless (and (= width (x-window-width window))
+                              (= height (x-window-height window)))
+                   (resize-buffer window width height))))
+              (33
+               (when (= (cffi:mem-ref
+                         (cffi:foreign-slot-pointer
+                          event '(:struct client-event) 'data)
+                         :long)
+                        delete)
+                 (setf quit t)))
+              (otherwise nil))))
+    (values (nreverse events) quit)))
+
+(fn full-window-clip ((window x-window))
+  (clip-window window (make-box :width (x-window-width window)
+                                :height (x-window-height window))))
+
+(fn draw-window ((window x-window) (renderer renderer) (context context)
+                 (draw function) interactive (delete integer))
+  (let ((display (x-window-display window)))
+    (loop
+     (multiple-value-bind (events quit) (read-events window delete)
+       (when quit (return context))
+       (with-frame (context (x-window-width window) (x-window-height window)
+                            :events events)
+         (funcall draw))
+       (full-window-clip window)
+       (composite display 1 (color-picture window "#202532" 1) 0
                   (x-window-back window) 0 0 0 0 0 0
                   (x-window-width window) (x-window-height window))
-                (paint-frame renderer context)
-                (clip-window window
-                  (make-box :width (x-window-width window) :height
-                    (x-window-height window)))
-                (composite display 1 (x-window-back window) 0
+       (paint-frame renderer context)
+       ;; A source clip also clips the final copy. Restore the whole frame.
+       (full-window-clip window)
+       (composite display 1 (x-window-back window) 0
                   (x-window-picture window) 0 0 0 0 0 0
                   (x-window-width window) (x-window-height window))
-                (flush-display display)
-                (unless interactive (sync-display display 0)
-                  (return context))
-                (sleep 0.016))))))
+       (flush-display display)
+       (unless interactive
+         (sync-display display 0)
+         (return context))
+       (sleep 0.016)))))
+
+(fn run-x11 ((draw function) &key title width height (interactive t))
+  (let* ((display (open-display (cffi:null-pointer)))
+         (window (make-x-window :display display))
+         (font nil)
+         (*unit* 8))
+    (when (cffi:null-pointer-p display) (error "Cannot open X11 display."))
+    (unwind-protect
+         (let* ((screen (default-screen display))
+                (format
+                 (visual-format display (default-visual display screen)))
+                (delete (intern-atom display "WM_DELETE_WINDOW" 0)))
+           (when (cffi:null-pointer-p format)
+             (error "XRender is unavailable."))
+           (setf (x-window-depth window) (default-depth display screen)
+                 (x-window-format window) format
+                 (x-window-mask-format window)
+                 (standard-format display 2)
+                 (x-window-window window)
+                 (create-window display (root-window display screen) 0 0
+                                (or width 720) (or height 520) 0 0 0)
+                 (x-window-picture window)
+                 (create-picture display (x-window-window window) format 0
+                                 (cffi:null-pointer))
+                 font (open-font))
+           (store-name display (x-window-window window) title)
+           (select-input display (x-window-window window)
+                         (logior 1 4 8 64 #x8000 #x20000))
+           (cffi:with-foreign-object (atom :ulong)
+             (setf (cffi:mem-ref atom :ulong) delete)
+             (set-protocols display (x-window-window window) atom 1))
+           (setf (x-window-convolution-p window)
+                 (not (null (convolution-supported-p window))))
+           (unless (x-window-convolution-p window)
+             (warn
+              "XRender convolution is unavailable; glass uses tint and rim only."))
+           (resize-buffer window (or width 720) (or height 520))
+           (map-window display (x-window-window window))
+           (let* ((renderer
+                   (make-renderer
+                    :font font
+                    :polygons (lambda (polys color alpha)
+                                (draw-polygons window polys color alpha))
+                    :clip (lambda (box) (clip-window window box))
+                    :glass (lambda (box radius frost)
+                             (blur-backdrop window box radius frost))))
+                  (context
+                   (make-context
+                    :measure (lambda (widget width)
+                               (measure-widget renderer widget width)))))
+             (draw-window window renderer context draw interactive delete)))
       (when font (close-font font))
       (maphash
-        (lambda (key picture) (declare (ignore key))
-          (free-picture display picture)) (x-window-colors window))
-      (when (plusp (x-window-back window))
-        (free-picture display (x-window-back window)))
-      (when (plusp (x-window-pixmap window))
-        (free-pixmap display (x-window-pixmap window)))
+       (lambda (key picture)
+         (declare (ignore key))
+         (free-picture display picture)) (x-window-colors window))
+      (free-buffer window)
       (when (plusp (x-window-picture window))
         (free-picture display (x-window-picture window)))
       (when (plusp (x-window-window window))
