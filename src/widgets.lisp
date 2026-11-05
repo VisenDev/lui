@@ -3,12 +3,13 @@
   (:export #:widget #:widget-p #:widget-kind #:widget-style #:widget-text
            #:widget-foreground #:widget-background #:widget-radius
            #:widget-frost
-           #:widget-terminal-text #:declare-widget #:value-widget
+           #:widget-terminal-text #:declare-panel #:declare-widget #:value-widget
            #:make-widget
            #:widget-value #:widget-minimum #:widget-maximum #:widget-step
            #:widget-font-size #:widget-opacity #:widget-accent
            #:widget-disabled-p
-           #:widget-painter))
+           #:widget-painter #:edit-state #:edit-state-cursor
+           #:edit-state-anchor))
 
 (in-package #:lui.widgets)
 
@@ -172,3 +173,17 @@
          (setf value (edit-text value state events)))))
     (apply #'declare-widget kind style id text :value value options)
     (values value (not (equal original value)))))
+
+
+(fn (declare-panel element) ((style symbol) (options list))
+  "Declare a styled layout container without introducing retained widgets."
+  (let ((appearance nil) (layout nil))
+    (loop :for (key value) :on options :by #'cddr
+          :do (if (member key '(:foreground :background :radius :frost
+                               :opacity :accent :font-size :painter))
+                  (setf appearance (append appearance (list key value)))
+                  (setf layout (append layout (list key value)))))
+    (emit (apply #'make-element
+                 :content (apply #'make-widget :kind :panel :style style
+                                 appearance)
+                 layout))))
