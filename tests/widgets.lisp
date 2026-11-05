@@ -49,7 +49,11 @@
       (key :yank :up :home :kill-end :kill-end)
       (assert (string= text "two three"))
       (key :yank)
-      (assert (string= text (format nil "one~%two three")))))
+      (assert (string= text (format nil "one~%two three")))
+      (key :select-all)
+      (insert "Raven River")
+      (key :kill-word)
+      (assert (string= text "Raven "))))
   (assert (eq :home (lui.widgets:readline-key "a" :control t)))
   (assert (eq :select-all
               (lui.widgets:readline-key "A" :control t :shift t)))

@@ -224,7 +224,7 @@
   (let ((index (if (minusp direction) (1- cursor) cursor)))
     (flet ((word-p (character)
              (if whitespace
-                 (not (find character '(#\Space #\Tab #\Newline #\Return)))
+                 (not (member (char-code character) '(9 10 13 32)))
                  (alphanumericp character))))
       (loop :while (and (<= 0 index) (< index (length text))
                         (not (word-p (char text index))))
