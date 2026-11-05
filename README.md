@@ -17,7 +17,7 @@ work.
 - Width-dependent text wrapping: horizontal sizing precedes measurement of height
   and vertical positioning. Percentage sizes exclude padding and inter-child gaps.
   Fixed sizes and minimum bounds may overflow instead of silently shrinking.
-- Glass and Motif collections with labels, buttons, checkboxes, sliders, text
+- Glass, Motif, and Garnet collections with labels, buttons, checkboxes, sliders, text
   fields, tabs, and styled layout panels. Collections share interaction logic.
 - Stable IDs, pointer capture, release activation, hover feedback, and keyboard
   navigation. Button clicks preserve existing keyboard focus; focus rings appear
@@ -26,15 +26,20 @@ work.
   tabs. Widgets return current-frame values and activation results.
 
 Pass appearance options to individual widgets or dynamically bind
-`lui.glass:*defaults*` / `lui.motif:*defaults*` for a group. Options include
-foreground/background, radius, frost, opacity, accent, and font size. Native
+`lui.glass:*defaults*`, `lui.motif:*defaults*`, or `lui.garnet:*defaults*` for a
+group. Options include foreground/background, radius, frost, opacity, accent,
+font size, `:font-family` (`:sans-serif` or `:monospace`), and `:font-weight`
+(`:normal` or `:bold`). Native
 widgets also support a custom painter callback.
 
 There is one [demo gallery](examples/demo.lisp), with Controls, Editing, Layout,
-Scroll, and Styles pages. Its Glass/Motif selector changes the collection for
+Scroll, and Styles pages. Its Glass/Motif/Garnet selector changes the collection for
 the whole gallery, so each page uses one toolkit consistently. Style Preview
 buttons select an interactive sample. Motif uses an opaque matching background,
-beveled checkboxes, and visually distinct disabled buttons. The gallery also
+beveled checkboxes, and visually distinct disabled buttons. Garnet uses bold
+monospaced text, black hairlines, checker stipples, hard offset shadows, and X
+checkboxes inspired by the original Garnet gadgets. Window backgrounds remain
+opaque; Glass translucency composites within the application. The gallery also
 displays FPS and average frame time on graphical backends; these include backend
 pacing. The terminal labels its event-driven rendering instead.
 
@@ -84,8 +89,8 @@ records output. `make test-core` and `make test-native` run individual checks.
 build files, examples, and test code are outside that source count.
 
 `make benchmark` defaults to 240 measured frames total after 30 warmup frames,
-spread across both toolkits and all five pages (24 measured frames per case by
-default). `BENCH_FRAMES` must be at least 10 and `WARMUP` nonnegative. Reports
+spread across all three toolkits and five pages (16 measured frames per case by
+default). `BENCH_FRAMES` must be at least 15 and `WARMUP` nonnegative. Reports
 include per-toolkit/page FPS, mean, median, 95th-percentile, and maximum frame
 time, plus timer/settings information.
 
@@ -159,6 +164,10 @@ Quicklisp, `(ql:quickload '("cffi" "zpb-ttf"))` installs the Lisp dependencies f
 native graphics; raw terminal input needs only CFFI. No native rendering library
 is bundled. A TrueType font is required for native graphics: common system paths
 are tried automatically, or set `lui.font:*font-path*` after loading the backend.
+Additional faces are cached and closed with the base font. Override their paths
+with `lui.font:*font-paths*`, for example
+`'(((:monospace :bold) . "/path/to/Mono-Bold.ttf"))`. Browser measurement and
+painting use the same CSS family and weight.
 
 | ASDF system | Purpose and system requirements |
 | --- | --- |
@@ -272,7 +281,7 @@ samples and 24 updated samples per page):
 | Controls | 79.180 ms | 4.679 ms | 6.000 ms |
 | Scroll, 60 rows | 280.950 ms | 10.558 ms | 11.200 ms |
 
-The 240-frame run across both toolkits and all five pages completed at
+The recorded 240-frame run across Glass and Motif and all five pages completed at
 59.65–60.45 FPS, with means of 3.97–10.56 ms. The benchmark also verifies that
 wheel input over a row moves the content. Improvements come from cached text
 measurements and unchanged DOM styles, lazy terminal strings, and direct layout

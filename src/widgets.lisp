@@ -7,7 +7,8 @@
            #:value-widget
            #:make-widget
            #:widget-value #:widget-minimum #:widget-maximum #:widget-step
-           #:widget-font-size #:widget-opacity #:widget-accent
+           #:widget-font-size #:widget-font-family #:widget-font-weight
+           #:widget-opacity #:widget-accent
            #:widget-disabled-p
            #:widget-painter #:edit-state #:edit-state-cursor
            #:edit-state-anchor #:make-edit-state #:edit-text #:readline-key
@@ -23,6 +24,8 @@
   (maximum 1 :type real)
   (step 0.01 :type real)
   (font-size 16 :type real)
+  (font-family :sans-serif :type (member :sans-serif :monospace))
+  (font-weight :normal :type (member :normal :bold))
   (opacity 0.85 :type real)
   (accent "#258bff" :type string)
   (disabled-p nil :type boolean)
@@ -50,7 +53,8 @@
                 (:text-field (format nil "[~A]" value))
                 (:tab (format nil (if value "[ ~A ]" "  ~A  ") text))
                 (otherwise
-                 (format nil (if (eq (widget-style widget) :motif)
+                 (format nil (if (member (widget-style widget)
+                                             '(:motif :garnet))
                                  "[ ~A ]" "( ~A )") text)))))))
 
 (fn tab-arrow-p ((event event))
@@ -104,6 +108,7 @@
      ((foreground string) "#ffffff") ((background string) "#303040")
      ((radius real) 12) ((frost real) 12) value ((minimum real) 0)
      ((maximum real) 1) ((step real) 0.01) ((font-size real) 16)
+     ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
      ((opacity real) 0.85) ((accent string) "#258bff") (disabled-p nil)
      painter)
   (when (eq kind :tab) (navigate-tabs))
@@ -114,6 +119,7 @@
            :kind kind :style style :text text :foreground foreground
            :background background :radius radius :frost frost :value value
            :minimum minimum :maximum maximum :step step :font-size font-size
+           :font-family font-family :font-weight font-weight
            :opacity opacity :accent accent
            :disabled-p (not (null disabled-p)) :painter painter)))
     (emit (make-element
@@ -393,7 +399,8 @@
   (let ((appearance nil) (layout nil))
     (loop :for (key value) :on options :by #'cddr
           :do (if (member key '(:foreground :background :radius :frost
-                               :opacity :accent :font-size :painter))
+                               :opacity :accent :font-size :font-family
+                               :font-weight :painter))
                   (setf appearance (append appearance (list key value)))
                   (setf layout (append layout (list key value)))))
     (emit (apply #'make-element

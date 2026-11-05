@@ -5,6 +5,7 @@
 
 (defvar *page* :controls)
 (defvar *toolkit* :glass)
+(defparameter *toolkits* '(:glass :motif :garnet))
 (defvar *name* "Common Lisp")
 (defvar *volume* 0.4)
 (defvar *enabled* t)
@@ -46,7 +47,8 @@
   *filtered-items*)
 
 (defun toolkit-package ()
-  (if (eq *toolkit* :glass) "LUI.GLASS" "LUI.MOTIF"))
+  (ecase *toolkit*
+    (:glass "LUI.GLASS") (:motif "LUI.MOTIF") (:garnet "LUI.GARNET")))
 
 (defun widget (name &rest arguments)
   (apply (symbol-function (find-symbol (symbol-name name) (toolkit-package)))
@@ -138,9 +140,9 @@
 
 (defun styles-page ()
   (widget :label "Customize the active collection without mixing toolkits.")
-  (widget :label (format nil "Opacity: ~D%" (round (* 100 *opacity*))))
-  (setf *opacity* (widget :slider :opacity *opacity* :width (grow)))
   (when (eq *toolkit* :glass)
+    (widget :label (format nil "Opacity: ~D%" (round (* 100 *opacity*))))
+    (setf *opacity* (widget :slider :opacity *opacity* :width (grow)))
     (widget :label (format nil "Frost: ~D; corner radius: ~D"
                            (round *frost*) (round *radius*)))
     (setf *frost* (widget :slider :frost *frost* :maximum 24 :step 1
@@ -174,15 +176,19 @@
 (defun draw ()
   (update-fps)
   (when (activated-p :toolkit)
-    (setf *toolkit* (if (eq *toolkit* :glass) :motif :glass)))
+    (setf *toolkit* (or (second (member *toolkit* *toolkits*))
+                        (first *toolkits*))))
   (panel (:id :window :width (grow) :height (grow)
-          :background (if (eq *toolkit* :glass) "#202430" "#b8b8b8")
+          :background (ecase *toolkit*
+                        (:glass "#202430") (:motif "#b8b8b8")
+                        (:garnet "#ffffff"))
           :opacity 1 :radius 0 :frost 0
           :padding (units 1) :gap (units 1))
     (row (:width (grow) :gap (units 1) :cross-align :center)
       (widget :label "LUI feature gallery" :width (grow))
       (widget :button :toolkit
-              (if (eq *toolkit* :glass) "Glass" "Motif")))
+              (ecase *toolkit*
+                (:glass "Glass") (:motif "Motif") (:garnet "Garnet"))))
     (widget :label (if (= *unit* 1) "Terminal: event-driven rendering"
                        (format nil "~,1F FPS · ~,2F ms/frame"
                                *fps* *frame-ms*)))

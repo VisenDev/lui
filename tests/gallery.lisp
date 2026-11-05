@@ -15,7 +15,7 @@
     (flet ((frame (&optional events)
              (with-frame (context 100 60 :events events)
                (lui.example:draw))))
-      (dolist (style '(:glass :motif))
+      (dolist (style lui.example::*toolkits*)
         (setf lui.example::*toolkit* style)
         (dolist (page lui.example::*pages*)
           (setf lui.example::*page* (first page))

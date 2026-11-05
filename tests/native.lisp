@@ -299,6 +299,121 @@
       (paint-frame renderer context)
       (assert (= (1+ unchecked) (length calls))))))
 
+(defun test-font-faces ()
+  (let* ((base (open-font))
+         (normal (font-face base :monospace :normal))
+         (bold (font-face base :monospace :bold))
+         (sans-bold (font-face base :sans-serif :bold))
+         (renderer (make-renderer
+                    :font base
+                    :clip (lambda (box) (declare (ignore box)))
+                    :polygons (lambda (&rest arguments)
+                                (declare (ignore arguments)))))
+         (context (make-context
+                   :measure (lambda (widget width)
+                              (measure-widget renderer widget width)))))
+    (unwind-protect
+         (progn
+           (assert (eq bold (font-face base :monospace :bold)))
+           (assert (eq normal (font-face bold :monospace :normal)))
+           (assert (eq base (font-face bold :sans-serif :normal)))
+           (assert (near (text-width bold "i") (text-width bold "W")))
+           (assert (not (equal (glyph-polygons normal #\W)
+                               (glyph-polygons bold #\W))))
+           (let ((saw-font nil))
+             (with-frame (context 240 80)
+               (lui.garnet:button
+                :custom "Selected face" :font-size 20
+                :painter (lambda (renderer node)
+                           (declare (ignore node))
+                           (setf saw-font
+                                 (and (eq bold (renderer-font renderer))
+                                      (= 20 (font-size bold)))))))
+             (paint-frame renderer context)
+             (assert saw-font)
+             (assert (eq base (renderer-font renderer)))
+             (setf (widget-painter
+                    (element-content
+                     (aref (element-children (context-root context)) 0)))
+                   (lambda (renderer node)
+                     (declare (ignore node))
+                     (assert (eq bold (renderer-font renderer)))
+                     (error "Expected painter failure.")))
+             (assert (handler-case (progn (paint-frame renderer context) nil)
+                       (error () t)))
+             (assert (eq base (renderer-font renderer)))))
+      (close-font base))
+    (dolist (face (list base normal bold sans-bold))
+      (assert (null (font-loader face))))
+    (close-font base)))
+
+(defun test-garnet-states (font)
+  (let* ((calls nil) (texts nil) (glass-calls 0)
+         (renderer
+           (make-renderer
+            :font font
+            :clip (lambda (box) (declare (ignore box)))
+            :glass (lambda (&rest arguments)
+                     (declare (ignore arguments)) (incf glass-calls))
+            :text (lambda (face text x y color)
+                    (push (list text x y color face) texts))
+            :polygons (lambda (contours color alpha)
+                        (push (list contours color alpha) calls))))
+         (context (make-context
+                   :measure (lambda (widget width)
+                              (measure-widget renderer widget width)))))
+    (with-frame (context 400 400)
+      (lui.garnet:panel (:id :window :width (grow) :height (grow)
+                        :padding 8 :gap 8)
+        (lui.garnet:label "Garnet")
+        (lui.garnet:button :push "Push")
+        (lui.garnet:button :disabled "Disabled" :disabled-p t)
+        (lui.garnet:checkbox :check t "Checked")
+        (lui.garnet:slider :range 0.5)
+        (lui.garnet:text-field :text "Edit")
+        (lui.garnet:tab :tab "Selected" :selected-p t)))
+    (flet ((paint ()
+             (setf calls nil texts nil)
+             (paint-frame renderer context)))
+      (paint)
+      (assert (zerop glass-calls))
+      (assert (every (lambda (call) (= 1 (third call))) calls))
+      (let ((first (car (last calls))))
+        ;; The root is one opaque rectangle, without a window-sized shadow.
+        (assert (equal '("#ffffff" 1) (rest first)))
+        (assert (equal '(0 0 400 400) (bounds (first first)))))
+      (assert (find "#777777" texts :key #'fourth :test #'equal))
+      (assert (equal "#ffffff" (fourth (find "Selected" texts
+                                            :key #'first :test #'equal))))
+      (assert (every (lambda (text)
+                       (eq (fifth text) (font-face font :monospace :bold)))
+                     texts))
+      (let* ((pattern (first (find-if
+                             (lambda (call) (> (length (first call)) 2))
+                             calls)))
+             (push-text (find "Push" texts :key #'first :test #'equal))
+             (count (length calls)))
+        (assert pattern)
+        (dolist (square pattern)
+          (assert (equal '(1 1) (cddr (bounds (list square))))))
+        (paint)
+        (assert (find pattern calls :key #'first :test #'eq))
+        (setf (context-hover context) :disabled)
+        (paint)
+        (assert (= count (length calls)))
+        (setf (context-hover context) :push
+              (context-active context) :push)
+        (paint)
+        (let ((pressed (find "Push" texts :key #'first :test #'equal)))
+          (assert (near (+ 4 (second push-text)) (second pressed)))
+          (assert (near (+ 4 (third push-text)) (third pressed)))))
+      ;; Checkmarks are two crossed polygon strokes, not a font-dependent glyph.
+      (assert (find-if
+               (lambda (call)
+                 (and (= 2 (length (first call)))
+                      (equal '(10 10) (cddr (bounds (first call))))))
+               calls)))))
+
 (defun run-tests ()
   (let ((font (open-font)))
     (unwind-protect
@@ -310,7 +425,9 @@
            (test-edit-painting font)
            (test-panel-painting font)
            (test-button-feedback font)
-           (test-motif-states font))
+           (test-motif-states font)
+           (test-font-faces)
+           (test-garnet-states font))
       (close-font font)))
   (format t "Native geometry, fonts, wrapping, focus, selection, and caret passed.~%")
   t)

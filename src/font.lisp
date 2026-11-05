@@ -2,14 +2,19 @@
   (:use #:cl #:lui.fn)
   (:export #:font #:open-font #:close-font #:font-size #:font-loader
            #:text-width #:line-height #:baseline #:wrap-text #:glyph-polygons
-           #:*font-path*))
+           #:*font-path* #:*font-paths* #:font-face))
 
 (in-package #:lui.font)
 
 (defvar *font-path* nil "Override the default TrueType font pathname.")
 
+(defvar *font-paths* nil
+  "Optional ((family weight) . pathname) overrides for additional font faces.")
+
 (defstruct font
   loader
+  owner
+  (faces (make-array 4 :initial-element nil) :type simple-vector)
   (size 16 :type real)
   (cache (make-hash-table) :type hash-table))
 
@@ -27,7 +32,63 @@
              :size size))
 
 (fn close-font ((font font))
-  (zpb-ttf:close-font-loader (font-loader font)))
+  (dotimes (index 4)
+    (let ((face (aref (font-faces font) index)))
+      (when face (close-font face))))
+  (fill (font-faces font) nil)
+  (when (font-loader font)
+    (zpb-ttf:close-font-loader (font-loader font))
+    (setf (font-loader font) nil))
+  (clrhash (font-cache font)))
+
+(fn (font-face font) ((font font) (family symbol) (weight symbol))
+  (let* ((owner (or (font-owner font) font))
+         (index (+ (ecase family (:sans-serif 0) (:monospace 2))
+                   (ecase weight (:normal 0) (:bold 1)))))
+    (if (zerop index) owner
+        (or (aref (font-faces owner) index)
+            (let* ((key (list family weight))
+                   (names
+                     (ecase index
+                       (1 '("DejaVuSans-Bold.ttf" "arialbd.ttf"
+                            "Arial Bold.ttf"))
+                       (2 '("DejaVuSansMono.ttf" "cour.ttf"
+                            "Courier New.ttf"))
+                       (3 '("DejaVuSansMono-Bold.ttf" "courbd.ttf"
+                            "Courier New Bold.ttf"))))
+                   (path
+                     (or (cdr (assoc key *font-paths* :test #'equal))
+                         (when (> index 1)
+                           (let ((name (if (= index 2)
+                                           "LiberationMono-Regular.ttf"
+                                           "LiberationMono-Bold.ttf")))
+                             (find-if #'probe-file
+                                      (mapcar
+                                       (lambda (directory)
+                                         (concatenate 'string directory name))
+                                       '("/usr/share/fonts/liberation-mono-fonts/"
+                                         "/usr/share/fonts/truetype/liberation2/"
+                                         "/usr/share/fonts/truetype/liberation/")))))
+                         (find-if
+                          #'probe-file
+                          (list
+                           (concatenate 'string
+                            "/usr/share/fonts/dejavu-sans-mono-fonts/"
+                            (first names))
+                           (concatenate 'string
+                            "/usr/share/fonts/dejavu-sans-fonts/"
+                            (first names))
+                           (concatenate 'string
+                            "/usr/share/fonts/truetype/dejavu/" (first names))
+                           (concatenate 'string "C:/Windows/Fonts/"
+                                        (second names))
+                           (concatenate 'string
+                            "/System/Library/Fonts/Supplemental/"
+                            (third names))))
+                         (error "Set LUI.FONT:*FONT-PATHS* for ~S." key)))
+                   (face (open-font path (font-size owner))))
+              (setf (font-owner face) owner
+                    (aref (font-faces owner) index) face))))))
 
 (fn (scale-font real) ((font font))
   (/ (font-size font) (zpb-ttf:units/em (font-loader font))))

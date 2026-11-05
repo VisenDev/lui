@@ -7,6 +7,7 @@
 
 (dolist (file '("src/fn.lisp" "src/layout.lisp" "src/frame.lisp"
                 "src/widgets.lisp" "src/glass.lisp" "src/motif.lisp"
+                "src/garnet.lisp"
                 "src/app.lisp" "src/terminal.lisp" "tests/core.lisp"))
   (load file))
 

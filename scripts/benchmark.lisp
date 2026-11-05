@@ -14,7 +14,7 @@
 (load "examples/demo.lisp")
 
 (defparameter *cases*
-  (loop :for toolkit :in '(:glass :motif)
+  (loop :for toolkit :in lui.example::*toolkits*
         :append (loop :for (page title) :in lui.example::*pages*
                       :collect (list toolkit page))))
 (defparameter *frames*

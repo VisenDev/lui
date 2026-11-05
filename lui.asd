@@ -12,6 +12,7 @@
                              (:file "widgets")
                              (:file "glass")
                              (:file "motif")
+                             (:file "garnet")
                              (:file "app")
                              (:file "terminal"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
