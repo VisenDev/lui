@@ -109,8 +109,10 @@
   (widget :label "Resize the window: percentages and grow share the space.")
   (setf *split* (widget :slider :split *split* :minimum 0.15 :maximum 0.7
                         :step 0.05 :width (grow)))
-  (row (:width (grow) :gap (units 1) :height (fixed (units 8)))
-    (panel (:width (percent *split*) :height (grow) :padding (units 1))
+  (row (:id :split-panels :width (grow) :gap (units 1)
+        :height (fit (units 8)))
+    (panel (:id :split-panel :width (percent *split*) :height (grow)
+            :padding (units 1))
       (widget :label (format nil "~D% width" (round (* 100 *split*))))
       (widget :label "Text wraps as this panel becomes narrower."))
     (panel (:width (grow) :height (grow) :padding (units 1))
