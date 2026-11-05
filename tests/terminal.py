@@ -71,6 +71,11 @@ def script(error=False):
   (lui.layout:walk-elements
    (lui.frame:context-root context)
    (lambda (node)
+     (when (eq (lui.layout:element-id node) :name)
+       (let ((box (lui.layout:element-box node)))
+         (format t "~&@@NAME=~D,~D~%"
+                 (1+ (floor (lui.layout:box-x box)))
+                 (1+ (floor (lui.layout:box-y box))))))
      (when (eq (lui.layout:element-id node) :reset)
        (let ((box (lui.layout:element-box node)))
          (format t "~&@@RESET=~D,~D~%"
@@ -99,6 +104,11 @@ class Terminal:
         environment["CL_SOURCE_REGISTRY"] = (
             f'(:source-registry (:directory "{ROOT}/") '
             f'(:tree "{software}/") :ignore-inherited-configuration)'
+        )
+        cache = Path(cmd[-1]).parent / "cache"
+        environment["ASDF_OUTPUT_TRANSLATIONS"] = (
+            f'(:output-translations ("{ROOT}/" "{cache}/") '
+            ':inherit-configuration)'
         )
         self.process = subprocess.Popen(
             cmd, cwd=ROOT, stdin=self.slave, stdout=self.slave,
@@ -161,7 +171,11 @@ def exercise(lisp, path):
         terminal.until(b"\x1b[?1049h", timeout=180)
         terminal.until(b"Common Lisp")
         assert not termios.tcgetattr(terminal.slave)[3] & termios.ICANON
-        terminal.send(b"\t\x01Terminal")
+        match = re.search(rb"@@NAME=(\d+),(\d+)", terminal.output)
+        assert match, terminal.output
+        x, y = (int(value) for value in match.groups())
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        terminal.send(b"\x01\x0bTerminal")
         # UTF-8 and CSI input may arrive in separate reads.
         terminal.send("界".encode("utf-8")[:1])
         terminal.send("界".encode("utf-8")[1:])
@@ -170,6 +184,8 @@ def exercise(lisp, path):
         terminal.send(b"l")
         # Backspace before the final wide character, then replace that character.
         terminal.send(b"\x1b[F\x7f!")
+        terminal.send(b"\x01\x06\x04e\x05\x08!\x15\x19")
+        terminal.send(b"\x17\x19\x14\x14")
         terminal.send(b"\t\x1b[C\t \t\r")
         terminal.until(b"(1)")
         # Hit the shared demo's actual Reset geometry, including panel padding.

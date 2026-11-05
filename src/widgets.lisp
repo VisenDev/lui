@@ -10,7 +10,8 @@
            #:widget-font-size #:widget-opacity #:widget-accent
            #:widget-disabled-p
            #:widget-painter #:edit-state #:edit-state-cursor
-           #:edit-state-anchor))
+           #:edit-state-anchor #:make-edit-state #:edit-text #:readline-key
+           #:text-field-focused-p))
 
 (in-package #:lui.widgets)
 
@@ -33,6 +34,45 @@
   (radius 12 :type real)
   (frost 12 :type real))
 
+(fn navigate-tabs ()
+  (when (context-previous-root *context*)
+    (walk-elements
+     (context-previous-root *context*)
+     (lambda (parent)
+       (let ((tabs (remove-if-not
+                    (lambda (node)
+                      (let ((widget (element-content node)))
+                        (and (widget-p widget) (eq (widget-kind widget) :tab)
+                             (element-interactive-p node))))
+                    (coerce (element-children parent) 'list))))
+         (dolist (tab tabs)
+           (let* ((id (element-id tab))
+                  (events (gethash id (context-events *context*)))
+                  (arrows (remove-if-not
+                           (lambda (event)
+                             (and (eq (event-kind event) :key)
+                                  (member (event-key event)
+                                          '(:left :right :home :end))))
+                           (reverse events))))
+             (dolist (event arrows)
+               (let* ((index (or (position (context-focus *context*) tabs
+                                           :key #'element-id
+                                           :test #'equal) 0))
+                      (next (ecase (event-key event)
+                              (:home 0) (:end (1- (length tabs)))
+                              (:left (mod (1- index) (length tabs)))
+                              (:right (mod (1+ index) (length tabs)))))
+                      (target (element-id (nth next tabs))))
+                 (dolist (node tabs)
+                   (remhash (element-id node) (context-activated *context*)))
+                 (setf (context-focus-visible-p *context*) t
+                       (context-focus *context*) target
+                       (gethash target (context-activated *context*)) t)))
+             (when arrows
+               (setf (gethash id (context-events *context*))
+                     (remove-if (lambda (event) (member event arrows))
+                                events))))))))))
+
 (fn declare-widget
     ((kind symbol) (style symbol) id (text string) &key ((width sizing) (fit))
      ((height sizing) (fit)) ((padding real) 0)
@@ -41,6 +81,7 @@
      ((maximum real) 1) ((step real) 0.01) ((font-size real) 16)
      ((opacity real) 0.85) ((accent string) "#258bff") (disabled-p nil)
      painter)
+  (when (eq kind :tab) (navigate-tabs))
   (let ((measure (or (context-measure *context*)
                      (error "A backend text measurer is required.")))
         (widget
@@ -59,40 +100,137 @@
                       (round (* 100 (/ (- value minimum)
                                         (- maximum minimum))))))
              (:text-field (format nil "[~A]" value))
+             (:tab (format nil (if value "[ ~A ]" "  ~A  ") text))
              (otherwise
               (format nil (if (eq style :motif) "[ ~A ]" "( ~A )") text))))))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding
            :interactive-p (and (not disabled-p) (not (eq kind :label)))
+           :pointer-focus-p (eq kind :text-field)
            :measure (lambda (available) (funcall measure widget available))))
-    (and (not disabled-p) (eq kind :button) (activated-p id))))
+    (and (not disabled-p) (member kind '(:button :tab)) (activated-p id))))
 
 (defstruct edit-state
   (cursor 0 :type integer)
-  (anchor 0 :type integer))
+  (anchor 0 :type integer)
+  (kill "" :type string)
+  (last-command nil :type symbol))
+
+(fn (text-field-focused-p boolean) ((context context))
+  (let ((found nil))
+    (when (context-root context)
+      (walk-elements
+       (context-root context)
+       (lambda (node)
+         (let ((widget (element-content node)))
+           (when (and (equal (element-id node) (context-focus context))
+                      (widget-p widget) (eq (widget-kind widget) :text-field)
+                      (not (widget-disabled-p widget)))
+             (setf found t))))))
+    found))
+
+(fn readline-key ((key string) &key control alt shift)
+  "Translate modified keys to shared editor commands; NIL leaves native handling."
+  (let* ((name (string-downcase key))
+         (arrow (cond ((member name '("left" "arrowleft") :test #'string=)
+                       :word-left)
+                      ((member name '("right" "arrowright") :test #'string=)
+                       :word-right))))
+    (cond
+      ((and control shift (string= name "a")) :select-all)
+      ((and (or control alt) arrow)
+       (if shift
+           (if (eq arrow :word-left) :shift-word-left :shift-word-right)
+           arrow))
+      (control
+       (let ((command (cdr (assoc name
+                                 '(("a" . :home) ("e" . :end)
+                                   ("b" . :left) ("f" . :right)
+                                   ("p" . :up) ("n" . :down)
+                                   ("d" . :delete) ("h" . :backspace)
+                                   ("k" . :kill-end) ("u" . :kill-start)
+                                   ("w" . :kill-word) ("y" . :yank)
+                                   ("t" . :transpose))
+                                 :test #'string=))))
+         (if shift
+             (case command
+               (:home :shift-home) (:end :shift-end)
+               (:left :shift-left) (:right :shift-right)
+               (otherwise command))
+             command)))
+      (alt
+       (cdr (assoc name '(("b" . :word-left) ("f" . :word-right)
+                         ("d" . :kill-word-forward)
+                         ("backspace" . :kill-word))
+                   :test #'string=))))))
+
+(fn (line-start integer) ((text string) (cursor integer))
+  (let ((newline (position #\Newline text :end cursor :from-end t)))
+    (if newline (1+ newline) 0)))
+
+(fn (line-end integer) ((text string) (cursor integer))
+  (or (position #\Newline text :start cursor) (length text)))
+
+(fn (word-position integer) ((text string) (cursor integer)
+                            (direction integer) &optional whitespace)
+  (let ((index (if (minusp direction) (1- cursor) cursor)))
+    (flet ((word-p (character)
+             (if whitespace
+                 (not (find character '(#\Space #\Tab #\Newline #\Return)))
+                 (alphanumericp character))))
+      (loop :while (and (<= 0 index) (< index (length text))
+                        (not (word-p (char text index))))
+            :do (incf index direction))
+      (loop :while (and (<= 0 index) (< index (length text))
+                        (word-p (char text index)))
+            :do (incf index direction)))
+    (if (minusp direction) (1+ index) index)))
 
 (fn edit-text ((text string) (state edit-state) (events list))
   (dolist (event events)
     (setf (edit-state-cursor state)
-          (min (length text) (edit-state-cursor state))
+          (max 0 (min (length text) (edit-state-cursor state)))
           (edit-state-anchor state)
-          (min (length text) (edit-state-anchor state)))
-    (let ((start (min (edit-state-cursor state) (edit-state-anchor state)))
-          (end (max (edit-state-cursor state) (edit-state-anchor state))))
+          (max 0 (min (length text) (edit-state-anchor state))))
+    (let* ((cursor (edit-state-cursor state))
+           (start (min cursor (edit-state-anchor state)))
+           (end (max cursor (edit-state-anchor state))))
       (labels ((replace-selection (replacement)
                  (setf text
                        (concatenate 'string (subseq text 0 start) replacement
                                     (subseq text end))
                        (edit-state-cursor state)
                        (+ start (length replacement))
-                       (edit-state-anchor state)
-                       (edit-state-cursor state)))
+                       (edit-state-anchor state) (edit-state-cursor state)))
                (move-cursor (position &optional extend)
                  (setf (edit-state-cursor state)
                        (max 0 (min (length text) position)))
                  (unless extend
                    (setf (edit-state-anchor state)
-                         (edit-state-cursor state)))))
+                         (edit-state-cursor state))))
+               (kill-selection (backward)
+                 (when (< start end)
+                   (let ((killed (subseq text start end)))
+                     (setf (edit-state-kill state)
+                           (if (member (edit-state-last-command state)
+                                       '(:kill-end :kill-start :kill-word
+                                         :kill-word-forward))
+                               (if backward
+                                   (concatenate 'string killed
+                                                (edit-state-kill state))
+                                   (concatenate
+                                    'string (edit-state-kill state) killed))
+                               killed)))
+                   (replace-selection "")))
+               (move-line (direction)
+                 (let* ((left (line-start text cursor))
+                        (column (- cursor left))
+                        (next (if (minusp direction)
+                                  (1- left) (1+ (line-end text cursor)))))
+                   (when (<= 0 next (length text))
+                     (let ((begin (line-start text next)))
+                       (move-cursor (min (line-end text next)
+                                         (+ begin column))))))))
         (case (event-kind event)
           (:change
            (when (stringp (event-value event))
@@ -101,26 +239,58 @@
           (:text (replace-selection (event-value event)))
           (:key
            (case (event-key event)
-             (:left (move-cursor (if (< start end) start (1- start))))
-             (:right (move-cursor (if (< start end) end (1+ end))))
-             (:shift-left
-              (move-cursor (1- (edit-state-cursor state)) t))
-             (:shift-right
-              (move-cursor (1+ (edit-state-cursor state)) t))
-             (:home (move-cursor 0))
-             (:end (move-cursor (length text)))
+             (:left (move-cursor (if (< start end) start (1- cursor))))
+             (:right (move-cursor (if (< start end) end (1+ cursor))))
+             (:shift-left (move-cursor (1- cursor) t))
+             (:shift-right (move-cursor (1+ cursor) t))
+             (:home (move-cursor (line-start text cursor)))
+             (:end (move-cursor (line-end text cursor)))
+             (:shift-home (move-cursor (line-start text cursor) t))
+             (:shift-end (move-cursor (line-end text cursor) t))
+             (:up (move-line -1))
+             (:down (move-line 1))
+             ((:word-left :shift-word-left)
+              (move-cursor (word-position text cursor -1)
+                           (eq (event-key event) :shift-word-left)))
+             ((:word-right :shift-word-right)
+              (move-cursor (word-position text cursor 1)
+                           (eq (event-key event) :shift-word-right)))
              (:select-all
               (setf (edit-state-anchor state) 0
                     (edit-state-cursor state) (length text)))
              (:backspace
-              (when (= start end) (setf start (max 0 (1- start))))
+              (when (= start end) (setf start (max 0 (1- cursor))))
               (replace-selection ""))
              (:delete
-              (when (= start end)
-                (setf end (min (length text) (1+ end))))
+              (when (= start end) (setf end (min (length text) (1+ cursor))))
               (replace-selection ""))
+             (:kill-end
+              (when (= start end)
+                (setf end (line-end text cursor))
+                (when (< end (length text))
+                  (when (= cursor end) (incf end))))
+              (kill-selection nil))
+             (:kill-start
+              (when (= start end) (setf start (line-start text cursor)))
+              (kill-selection t))
+             (:kill-word
+              (when (= start end)
+                (setf start (word-position text cursor -1 t)))
+              (kill-selection t))
+             (:kill-word-forward
+              (when (= start end) (setf end (word-position text cursor 1)))
+              (kill-selection nil))
+             (:yank (replace-selection (edit-state-kill state)))
+             (:transpose
+              (when (and (plusp cursor) (> (length text) 1))
+                (let ((right (min cursor (1- (length text)))))
+                  (setf text (copy-seq text))
+                  (rotatef (char text (1- right)) (char text right))
+                  (move-cursor (1+ right)))))
              (otherwise nil)))
-          (otherwise nil)))))
+          (otherwise nil))
+        (setf (edit-state-last-command state)
+              (and (eq (event-kind event) :key) (event-key event))))))
   text)
 
 (fn value-widget

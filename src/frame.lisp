@@ -8,7 +8,9 @@
            #:previous-box
            #:context-state #:context-width #:context-height #:emit
            #:activated-p
-           #:make-event #:begin-frame #:end-frame))
+           #:make-event #:begin-frame #:end-frame #:context-hover #:hovered-p
+           #:context-previous-root #:context-activated
+           #:context-focus-visible-p))
 
 (in-package #:lui.frame)
 
@@ -24,9 +26,12 @@
 
 (defstruct context
   (root nil :type (or null element))
+  (previous-root nil :type (or null element))
   (width 0 :type real)
   (height 0 :type real)
   focus
+  (focus-visible-p nil :type boolean)
+  hover
   active
   (state (make-hash-table :test 'equal) :type hash-table)
   (regions (make-hash-table :test 'equal) :type hash-table)
@@ -77,10 +82,13 @@
   ;; Old hit regions are invalid after resizing. Establish new geometry first.
   (let ((resized (or (/= width (context-width context))
                      (/= height (context-height context)))))
-    (when resized (setf (context-active context) nil))
+    (when resized
+      (setf (context-active context) nil (context-hover context) nil))
     (dolist (event events)
       (let ((target (unless resized
                       (hit context (event-x event) (event-y event)))))
+        (when (member (event-kind event) '(:move :press :release))
+          (setf (context-hover context) target))
         (case (event-kind event)
           (:scroll
            (let ((scroller nil))
@@ -100,12 +108,18 @@
                            (element-scroll-y scroller))))))
           (:press
            (setf (context-active context) target
-                 (context-focus context) target))
+                 (context-focus-visible-p context) nil)
+           (let ((node (gethash target (context-ids context))))
+             (when (and node (element-pointer-focus-p node))
+               (setf (context-focus context) target))))
           (:release
            (when (and target (equal target (context-active context)))
              (setf (gethash target (context-activated context)) t))
            (setf (context-active context) nil))
-          (:tab (focus-next context))
+          (:tab
+           (setf (context-focus-visible-p context) t)
+           (focus-next context))
+          (:key (setf (context-focus-visible-p context) t))
           (:activate
            (let ((id (or (event-id event) (context-focus context))))
              (when id
@@ -125,7 +139,8 @@
          (setf (gethash (element-id node) (context-regions context))
                (element-box node))))))
   (clrhash (context-ids context))
-  (setf (context-width context) width
+  (setf (context-previous-root context) (context-root context)
+        (context-width context) width
         (context-height context) height
         (context-root context) (make-element :width (grow) :height (grow))
         (context-building-p context) t))
@@ -151,6 +166,9 @@
 (fn (events-for list) (id)
   (reverse (gethash id (context-events *context*))))
 
+(fn (hovered-p boolean) (id)
+  (and id (equal id (context-hover *context*))))
+
 (fn (activated-p boolean) (id)
   (not (null (gethash id (context-activated *context*)))))
 
@@ -162,7 +180,10 @@
            (let ((node (gethash id (context-ids context))))
              (and node (element-interactive-p node)))))
     (unless (interactive-p (context-focus context))
-      (setf (context-focus context) nil))
+      (setf (context-focus context) nil
+            (context-focus-visible-p context) nil))
+    (unless (interactive-p (context-hover context))
+      (setf (context-hover context) nil))
     (unless (interactive-p (context-active context))
       (setf (context-active context) nil)))
   (let ((removed nil))
@@ -179,7 +200,8 @@
      (when (and (element-id node) (element-scroll-p node))
        (setf (gethash (element-id node) (context-scroll context))
              (cons (element-scroll-x node) (element-scroll-y node))))))
-  (setf (context-building-p context) nil)
+  (setf (context-building-p context) nil
+        (context-previous-root context) nil)
   (context-root context))
 
 (defmacro with-frame ((context width height &key events) &body body)
@@ -196,6 +218,9 @@
          (unless complete
            (setf (context-root *context*) nil
                  (context-building-p *context*) nil
+                 (context-previous-root *context*) nil
+                 (context-hover *context*) nil
+                 (context-focus-visible-p *context*) nil
                  (context-active *context*) nil
                  (context-focus *context*) nil))))))
 

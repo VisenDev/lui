@@ -1,6 +1,6 @@
 (defpackage #:lui.motif
   (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
-  (:export #:label #:button #:checkbox #:slider #:text-field #:panel
+  (:export #:label #:button #:checkbox #:slider #:text-field #:panel #:tab
            #:*defaults*))
 
 (in-package #:lui.motif)
@@ -16,6 +16,12 @@
 (fn button (id (text string) &rest options)
   (apply #'declare-widget :button :motif id text
          (append options *defaults*)))
+
+(fn tab (id (text string) &rest options)
+  (apply #'declare-widget :tab :motif id text
+         :value (not (null (getf options :selected-p)))
+         (loop :for (key value) :on (append options *defaults*) :by #'cddr
+               :unless (eq key :selected-p) :append (list key value))))
 
 (fn checkbox (id value (text string) &rest options)
   (value-widget :checkbox :motif id value text (append options *defaults*)))
