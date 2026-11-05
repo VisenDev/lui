@@ -36,3 +36,8 @@
   :depends-on ("lui/native")
   :components ((:module "src"
                 :components ((:file "x11")))))
+
+(defsystem "lui/gl"
+  :depends-on ("lui/native")
+  :components ((:module "src"
+                :components ((:file "gl")))))
