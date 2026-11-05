@@ -18,84 +18,114 @@ work.
   and vertical positioning. Percentage sizes exclude padding and inter-child gaps.
   Fixed sizes and minimum bounds may overflow instead of silently shrinking.
 - Glass and Motif collections with labels, buttons, checkboxes, sliders, text
-  fields, and styled layout panels. Collections share interaction logic.
-- Stable IDs, pointer capture, release activation, forward keyboard focus, and
-  editable values. Widgets return current-frame values and activation results.
+  fields, tabs, and styled layout panels. Collections share interaction logic.
+- Stable IDs, pointer capture, release activation, hover feedback, and keyboard
+  navigation. Button clicks preserve existing keyboard focus; focus rings appear
+  for keyboard navigation. Text fields acquire editing focus on click.
+- Tabs support Left/Right wrapping and Home/End navigation, skipping disabled
+  tabs. Widgets return current-frame values and activation results.
 
 Pass appearance options to individual widgets or dynamically bind
 `lui.glass:*defaults*` / `lui.motif:*defaults*` for a group. Options include
 foreground/background, radius, frost, opacity, accent, and font size. Native
-widgets also support a custom painter callback. The optional
-[showcase](examples/showcase.lisp) demonstrates panels and mixed collections;
-it does not replace the shared demo.
+widgets also support a custom painter callback.
+
+There is one [demo gallery](examples/demo.lisp), with Controls, Editing, Layout,
+Scroll, and Styles pages. Its Glass/Motif selector changes the collection for
+the whole gallery, so each page uses one toolkit consistently. The gallery also
+displays FPS and average frame time on graphical backends; these include backend
+pacing. The terminal labels its event-driven rendering instead.
 
 ## Make commands
 
 The Makefile uses GNU Make, Bash, and SBCL. Backend dependencies and display
-requirements still apply. Python 3 is needed only by the existing terminal,
-X11, and browser integration tests. Run from the repository directory:
+requirements still apply. Python 3 runs browser serving and the existing
+terminal/X11/browser integration tests; `cloc` is needed for source reports and
+the test/benchmark targets. Run from the repository directory:
 
 ```sh
-make test                    # Test the detected platform; save progress/results
-make build                   # Save both native example executables
-make demo                    # Build and run the shared demo executable
-make example                 # Alias for demo
-make showcase                # Build and run the style showcase executable
+make build                   # Save the native demo executable
+make demo                    # Build and run the same executable
+make demo RUN_ARGS=--smoke-test
+make test                    # Platform checks, executable smoke test, and log
+make loc                     # cloc src, by file
+make benchmark               # Throughput/frame-time measurements and log
 ```
 
 Native builds invoke SBCL with `--load scripts/build.lisp`, load the backend and
-shared example, then use `sb-ext:save-lisp-and-die` to save an executable.
-`demo`, `example`, and `showcase` run those saved executables from `build/bin/`.
-For example:
+shared demo, then use `sb-ext:save-lisp-and-die` to save
+`build/bin/demo-PLATFORM` (`.exe` on Windows). `make demo` runs that executable;
+`RUN_ARGS=--smoke-test` renders one frame and exits. It can also be run directly:
 
 ```sh
 make build PLATFORM=terminal
 build/bin/demo-terminal --smoke-test
-build/bin/showcase-terminal --smoke-test
 make demo PLATFORM=x11
 ```
 
-`--smoke-test` renders one frame and exits. Native executable names include the
-platform, with `.exe` on Windows. `PLATFORM` defaults to Windows on Windows,
-Cocoa on macOS, then Wayland when `WAYLAND_DISPLAY` is set, X11 when `DISPLAY`
-is set, or terminal otherwise. Selection uses the environment; it does not
-start a display server. Override with `terminal`, `x11`, `wayland`, `win32`,
-`cocoa`, or `web`. `core`, `native`, and `gl` are test-only selections.
+`PLATFORM` defaults to Windows on Windows, Cocoa on macOS, then Wayland when
+`WAYLAND_DISPLAY` is set, X11 when `DISPLAY` is set, or terminal otherwise.
+Selection uses the environment; it does not start a display server. Override
+with `terminal`, `x11`, `wayland`, `win32`, `cocoa`, or `web`. `core`, `native`,
+and `gl` select tests without launching a native demo; `core` and `gl` also
+support offscreen benchmarks.
 
 `make test` runs core checks, native font/painter checks where applicable, and
-the selected backend checks. Web tests use JSCL for the core. Tests print stage
-progress and a final PASS/FAIL result; timestamped logs containing the output
-go in `build/logs/`. Bash `pipefail` preserves failures while `tee` displays and
-records the output. `make test-core` and `make test-native` run those individual
-checks directly.
+the selected backend checks. Web tests use JSCL for the core. Native platforms
+also build and smoke-test the saved executable; AppKit executable tests are
+explicitly skipped on Linux. Tests print stage progress and a final PASS/FAIL
+result. Timestamped test and benchmark logs go in `build/logs/`, including the
+source count report. Bash `pipefail` preserves failures while `tee` displays and
+records output. `make test-core` and `make test-native` run individual checks.
+`make loc` counts `src/` with cloc and writes `build/logs/src-loc.txt`; generated
+build files, examples, and test code are outside that source count.
+
+`make benchmark` defaults to 240 measured frames total after 30 warmup frames,
+spread across both toolkits and all five pages (24 measured frames per case by
+default). `BENCH_FRAMES` must be at least 10 and `WARMUP` nonnegative. Reports
+include per-toolkit/page FPS, mean, median, 95th-percentile, and maximum frame
+time, plus timer/settings information.
+
+Windowed native results include event-loop, window-system, and presentation
+pacing; browser results measure paced requestAnimationFrame intervals. The
+`core`/`terminal` benchmark measures layout and terminal string rendering; `gl`
+measures an offscreen pipeline with `glFinish`. These paths should not be
+compared as equivalent screen FPS. Compare logged platform/settings and matching
+toolkit/page rows:
+
+```sh
+make benchmark PLATFORM=core BENCH_FRAMES=240 WARMUP=30
+make benchmark PLATFORM=gl
+```
 
 Override `SBCL` for its executable or command prefix and `SBCL_FLAGS` for its
 flags (default `--noinform --non-interactive`). The POSIX terminal PTY and X11
 harnesses launch installed SBCL themselves; those subprocesses do not use a
 custom `SBCL` command. Raw-terminal PTY checks are skipped on Windows. `PYTHON`
-selects the interpreter for Python integration tests.
-
-For browser builds and launches, Node.js and a built JSCL checkout are needed:
-
-```sh
-make test PLATFORM=web JSCL=/path/to/jscl
-make showcase PLATFORM=web JSCL=/path/to/jscl PORT=8080
-make web-build JSCL=/path/to/jscl
-```
-
-`JSCL` defaults to `~/clone/jscl`. Browser launches build both examples and use
-the Node static server in `scripts/serve-web.mjs`; open the printed local URL.
-`PORT` defaults to 8000; showcase uses `?example=showcase`. Stop the server with
-Ctrl-C. Browser tests additionally need Playwright and Chromium.
-
-For Windows SBCL under Wine, a configured installation can be selected with:
+selects the interpreter for Python tests and browser serving. `RUNNER` prefixes
+saved executable launches, for example with Wine:
 
 ```sh
-make test PLATFORM=win32 SBCL='wine C:/sbcl/sbcl.exe --core C:/sbcl/sbcl.core'
+make test PLATFORM=win32 RUNNER=wine \
+  SBCL='wine C:/sbcl/sbcl.exe --core C:/sbcl/sbcl.core'
 ```
 
 Supply the appropriate existing `WINEPREFIX` and ASDF dependency configuration
 for that Windows Lisp. Make does not install Wine, Lisp, or dependencies.
+
+Browser builds need Node.js and a built JSCL checkout:
+
+```sh
+make test PLATFORM=web JSCL=/path/to/jscl
+make demo PLATFORM=web JSCL=/path/to/jscl PORT=8080
+make web-build JSCL=/path/to/jscl
+```
+
+`JSCL` defaults to `~/clone/jscl`. `make demo PLATFORM=web` builds the gallery,
+prints its local URL, and runs `python3 -m http.server` bound to localhost.
+`PORT` defaults to 8000. Open the printed URL and stop the server with Ctrl-C.
+`make web-build` only builds JavaScript. Browser tests additionally need
+Playwright and Chromium.
 
 ## Install and run
 
@@ -146,19 +176,36 @@ For a native window, load its system and select its backend:
 Use `lui/wayland` with `:wayland`, `lui/win32` with `:win32`, or `lui/cocoa` with
 `:cocoa` in the same launcher. `lui:available-backends` lists loaded backends.
 Width and height are backend coordinates; omit them for backend defaults.
-`examples/showcase.lisp` can be loaded and run through
-`lui.example.showcase:main` in the same way.
+
+Text inputs share GNU Readline-style commands across backends:
+
+| Shortcut | Action |
+| --- | --- |
+| Ctrl-A / Ctrl-E | Beginning / end of line |
+| Ctrl-B / Ctrl-F | Backward / forward character |
+| Alt-B / Alt-F, Ctrl-Left / Ctrl-Right | Backward / forward word |
+| Ctrl-D / Ctrl-H | Delete forward / backspace |
+| Ctrl-K / Ctrl-U | Kill to end / beginning of line |
+| Ctrl-W / Alt-D | Kill previous / next word |
+| Ctrl-Y / Ctrl-T | Yank killed text / transpose adjacent characters |
+| Shift-arrows | Extend selection |
+| Ctrl-Shift-A | Select all; Command-A also remains available on macOS |
+
+Consecutive kills combine in a per-field kill buffer. Ctrl-P/N navigate existing
+lines where supported; there is no command-history model. Browsers retain native
+DOM inputs and composition behavior. Modifier reporting differs between terminal
+emulators, so Ctrl-Shift-A requires a distinguishable terminal key sequence.
 
 For a real POSIX terminal, load `lui/terminal` and select `:terminal`. Tab changes
-focus; Enter activates; Space toggles buttons/checkboxes; arrows adjust sliders
-or move the text cursor. Home, End, Delete, Backspace, Shift-arrows, and Ctrl-A
-support editing. SGR mouse clicks, dragging, wheel scrolling, and terminal
-resizing are supported. Ctrl-Q, Ctrl-C, or Ctrl-D exits. Terminal attributes,
-mouse modes, cursor visibility, and the alternate screen are restored on exit
-and Lisp errors. Other platforms and non-TTY input retain line input:
-`:next`, an empty line to activate, text to edit, and `:quit`. Noninteractive
-terminal output remains dependency-free. Cell widths approximate common CJK,
-emoji, and combining marks; full grapheme handling is not implemented.
+focus; Enter activates; Space activates buttons/tabs or toggles checkboxes.
+Arrows adjust sliders, navigate tabs, or move the text cursor. SGR mouse clicks,
+dragging, wheel scrolling, and terminal resizing are supported. Ctrl-Q or Ctrl-C
+exits; Ctrl-D deletes text. Terminal attributes, mouse modes, cursor visibility,
+and the alternate screen are restored on exit and Lisp errors. Other platforms
+and non-TTY input retain line input: `:next`, an empty line to activate, text to
+edit, and `:quit`. Noninteractive terminal output remains dependency-free. Cell
+widths approximate common CJK, emoji, and combining marks; full grapheme handling
+is not implemented.
 
 For the browser, `make demo PLATFORM=web JSCL=/path/to/jscl` compiles and
 serves the same `examples/demo.lisp`. Open the local URL printed by the server;
@@ -233,10 +280,10 @@ Additional checks:
 
 | Area | Verified evidence |
 | --- | --- |
-| Portable core | SBCL, CLISP, ECL, and JSCL: 31 core checks plus widget/scrolling checks |
+| Portable core | SBCL, CLISP, ECL, and JSCL: core layout plus widget, editing, tab, hover, and focus checks |
 | Raw terminal | SBCL, CLISP, ECL: real PTY input, Unicode, mouse, resize, and cleanup after normal exit/errors |
-| HTML | Three Chromium integration tests: interaction, composition/lifecycle, resizing and teardown |
-| X11/XRender | Two real-window tests, including native rendering, input/resize, convolution and fallback behavior |
+| HTML | Chromium integration tests: interaction, composition/lifecycle, resizing and teardown |
+| X11/XRender | Real-window tests of native rendering, input/resize, convolution and fallback behavior |
 | EGL/OpenGL | Offscreen shared-demo rendering, glass shader, pixel readback, and GL error checks |
 | Wayland | SBCL, CLISP, ECL: shared-demo compositor frames, pointer callbacks, repeat timing/modifiers/cancellation |
 | Win32 | Windows SBCL under Wine: outline holes, alpha, clipping, input, resizing, and filtered blur |
