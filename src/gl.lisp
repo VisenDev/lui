@@ -171,11 +171,12 @@ void main() {
             "eglInitialize")
            (egl-check (call-gl "eglBindAPI" :uint #x30a2 :uint)
                       "eglBindAPI")
-           (cffi:with-foreign-objects ((attributes :int 13)
+           (cffi:with-foreign-objects ((attributes :int 17)
                                       (config :pointer) (count :int))
              (loop :for value :in
                    (list #x3024 8 #x3023 8 #x3022 8 #x3021 8
-                         #x3033 (if native-window 4 1) #x3040 8 #x3038)
+                         #x3033 (if native-window 4 1) #x3040 8
+                         #x3032 1 #x3031 4 #x3038)
                    :for i :from 0
                    :do (setf (cffi:mem-aref attributes :int i) value))
              (egl-check
@@ -183,6 +184,14 @@ void main() {
                        :pointer attributes :pointer config
                        :int 1 :pointer count :uint)
               "eglChooseConfig")
+             (when (zerop (cffi:mem-ref count :int))
+               ;; Multisampling is optional; retain the same rendering API.
+               (setf (cffi:mem-aref attributes :int 12) #x3038)
+               (egl-check
+                (call-gl "eglChooseConfig" :pointer display
+                         :pointer attributes :pointer config
+                         :int 1 :pointer count :uint)
+                "eglChooseConfig without multisampling"))
              (assert (plusp (cffi:mem-ref count :int)))
              (setf (gpu-context gpu)
                    (egl-check

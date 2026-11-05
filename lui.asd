@@ -67,4 +67,7 @@
 (defsystem "lui/native/tests"
   :depends-on ("lui/native")
   :components ((:module "tests"
-                :components ((:file "native")))))
+                :components ((:file "native"))))
+  :perform (test-op (operation component)
+             (declare (ignore operation component))
+             (uiop:symbol-call :lui.tests.native :run-tests)))
