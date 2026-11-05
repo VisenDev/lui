@@ -10,7 +10,8 @@
            #:activated-p
            #:make-event #:begin-frame #:end-frame #:context-hover #:hovered-p
            #:context-previous-root #:context-activated
-           #:context-focus-visible-p))
+           #:context-focus-visible-p #:frame-time #:request-frame
+           #:context-next-frame))
 
 (in-package #:lui.frame)
 
@@ -29,6 +30,8 @@
   (previous-root nil :type (or null element))
   (width 0 :type real)
   (height 0 :type real)
+  (time 0 :type real)
+  (next-frame nil :type (or null real))
   focus
   (focus-visible-p nil :type boolean)
   hover
@@ -46,6 +49,19 @@
 (defvar *context*)
 
 (defvar *parent*)
+
+(fn (frame-time real) ()
+  "Monotonic seconds sampled once for the current frame."
+  (context-time *context*))
+
+(fn request-frame (&optional ((delay real) 0))
+  "Request another frame after DELAY seconds; earliest request wins."
+  (assert (>= delay 0))
+  (let ((deadline (+ (frame-time) delay)))
+    (setf (context-next-frame *context*)
+          (if (context-next-frame *context*)
+              (min deadline (context-next-frame *context*))
+              deadline))))
 
 (fn (contains-p boolean) ((bounds box) (x real) (y real))
   (and (<= (box-x bounds) x) (< x (+ (box-x bounds) (box-width bounds)))
@@ -96,6 +112,9 @@
 (fn begin-frame ((context context) (width real) (height real) (events list))
   (assert (not (context-building-p context)))
   (assert (and (>= width 0) (>= height 0)))
+  (setf (context-time context)
+        (/ (get-internal-real-time) internal-time-units-per-second)
+        (context-next-frame context) nil)
   (clrhash (context-activated context))
   (clrhash (context-events context))
   ;; Old hit regions are invalid after resizing. Establish new geometry first.
