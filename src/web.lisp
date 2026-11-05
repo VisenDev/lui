@@ -185,7 +185,7 @@
 
 (fn css-font-family ((widget widget))
   (if (eq (widget-font-family widget) :monospace)
-      "DejaVu Sans Mono,monospace" "DejaVu Sans,Arial,sans-serif"))
+      "Liberation Mono,Courier New,DejaVu Sans Mono,monospace" "DejaVu Sans,Arial,sans-serif"))
 
 (fn css-font-weight ((widget widget))
   (if (eq (widget-font-weight widget) :bold) "700" "400"))
@@ -513,8 +513,9 @@
                                 (context-height (web-app-context app))))))
           (style dom "border" (if window-p "none" "1px solid #000"))
           (style dom "background"
-                 (if window-p (widget-background widget)
-                     "linear-gradient(#fff,#fff) 2px 2px / calc(100% - 4px) calc(100% - 4px) no-repeat,repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px"))
+                 (if (or window-p (eq kind :panel))
+                     (widget-background widget)
+                     "linear-gradient(#fff,#fff) 4px 4px / calc(100% - 8px) calc(100% - 8px) no-repeat,repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px"))
           (style dom "box-shadow"
                  (if window-p "none"
                      "inset 0 0 0 1px #000,4px 4px 0 #000"))
@@ -690,7 +691,7 @@
     (setf (jscl/ffi:oget sheet "textContent")
           (#j:String:prototype:concat:call
            (jscl/ffi:oget sheet "textContent")
-           #j"[data-lui-style=garnet].lui-control:hover:enabled{filter:none;background:#eee!important}[data-lui-style=garnet].lui-control:active:enabled{filter:none;transform:translate(4px,4px);box-shadow:inset 0 0 0 1px #000!important}.lui-garnet-check input{appearance:none;background:#fff;border:1px solid #000;border-radius:0;box-shadow:3px 3px 0 #000;display:grid;place-content:center}.lui-garnet-check input:checked::after{content:\"\";width:14px;height:14px;background:linear-gradient(45deg,transparent 44%,currentColor 44%,currentColor 56%,transparent 56%),linear-gradient(-45deg,transparent 44%,currentColor 44%,currentColor 56%,transparent 56%)}[data-lui-style=garnet].lui-range::-webkit-slider-runnable-track{height:12px;border:1px solid #000;border-radius:0;background:repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px}[data-lui-style=garnet].lui-range::-webkit-slider-thumb{width:18px;height:18px;margin-top:-4px;border:1px solid #000;border-radius:0;background:#fff;box-shadow:3px 3px 0 #000}[data-lui-style=garnet].lui-range::-moz-range-track{height:12px;border:1px solid #000;border-radius:0;background:repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px}[data-lui-style=garnet].lui-range::-moz-range-progress{background:transparent}[data-lui-style=garnet].lui-range::-moz-range-thumb{width:18px;height:18px;border:1px solid #000;border-radius:0;background:#fff;box-shadow:3px 3px 0 #000}"))
+           #j"[data-lui-style=garnet].lui-control:hover:enabled{filter:none;background:#eee!important}[data-lui-style=garnet].lui-control:active:enabled{filter:none;transform:translate(4px,4px);box-shadow:inset 0 0 0 1px #000!important}.lui-garnet-check input{appearance:none;background:linear-gradient(#fff,#fff) 3px 3px / calc(100% - 6px) calc(100% - 6px) no-repeat,repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px;border:1px solid #000;border-radius:0;box-shadow:4px 4px 0 #000;display:grid;place-content:center}.lui-garnet-check input:checked::after{content:\"\";width:10px;height:10px;background:linear-gradient(45deg,transparent 44%,currentColor 44%,currentColor 56%,transparent 56%),linear-gradient(-45deg,transparent 44%,currentColor 44%,currentColor 56%,transparent 56%)}[data-lui-style=garnet].lui-range::-webkit-slider-runnable-track{height:12px;border:1px solid #000;border-radius:0;background:repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px}[data-lui-style=garnet].lui-range::-webkit-slider-thumb{width:18px;height:18px;margin-top:-4px;border:1px solid #000;border-radius:0;background:#fff;box-shadow:3px 3px 0 #000}[data-lui-style=garnet].lui-range::-moz-range-track{height:12px;border:1px solid #000;border-radius:0;background:repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px}[data-lui-style=garnet].lui-range::-moz-range-progress{background:transparent}[data-lui-style=garnet].lui-range::-moz-range-thumb{width:18px;height:18px;border:1px solid #000;border-radius:0;background:#fff;box-shadow:3px 3px 0 #000}"))
     ((jscl/ffi:oget host "appendChild") sheet)
     ((jscl/ffi:oget host "appendChild") measure)
     (setf (web-app-style-node app) sheet

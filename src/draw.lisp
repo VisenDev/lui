@@ -351,13 +351,15 @@
          (when hover (garnet-outline renderer (inset-box face 4) 2))
          (when (widget-value widget)
            (let ((x (+ (box-x face) 5)) (y (+ (box-y face) 5)))
-             (funcall (renderer-polygons renderer)
+             ;; Separate strokes avoid crossing edges within one tessellation.
+             (dolist (stroke
                       (list (list (cons x y) (cons (+ x 2) y)
                                   (cons (+ x 10) (+ y 10))
                                   (cons (+ x 8) (+ y 10)))
                             (list (cons (+ x 8) y) (cons (+ x 10) y)
                                   (cons (+ x 2) (+ y 10))
-                                  (cons x (+ y 10)))) ink 1)))
+                                  (cons x (+ y 10)))))
+               (funcall (renderer-polygons renderer) (list stroke) ink 1))))
          (garnet-text renderer (widget-text widget)
                       (make-box :x (+ (box-x box) 12) :y (+ (box-y box) 6)
                                 :width (max 0 (- (box-width box) 48))

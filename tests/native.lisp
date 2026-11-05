@@ -407,12 +407,22 @@
         (let ((pressed (find "Push" texts :key #'first :test #'equal)))
           (assert (near (+ 4 (second push-text)) (second pressed)))
           (assert (near (+ 4 (third push-text)) (third pressed)))))
-      ;; Checkmarks are two crossed polygon strokes, not a font-dependent glyph.
-      (assert (find-if
-               (lambda (call)
-                 (and (= 2 (length (first call)))
-                      (equal '(10 10) (cddr (bounds (first call))))))
-               calls)))))
+      ;; Crossed contours in one tessellation can swap edge order mid-slab.
+      ;; Render independent strokes, each centered in the 20px checkbox face.
+      (let* ((strokes
+               (remove-if-not
+                (lambda (call)
+                  (and (= 1 (length (first call)))
+                       (equal '(10 10) (cddr (bounds (first call))))
+                       (near 20 (filled-area (first call))))) calls))
+             (box (element-box (gethash :check (lui.frame::context-ids context))))
+             (center-x (- (+ (box-x box) (box-width box)) 14))
+             (center-y (+ (box-y box) (/ (box-height box) 2) -2)))
+        (assert (= 2 (length strokes)))
+        (dolist (stroke strokes)
+          (destructuring-bind (x y width height) (bounds (first stroke))
+            (assert (near (+ x (/ width 2)) center-x))
+            (assert (near (+ y (/ height 2)) center-y))))))))
 
 (defun run-tests ()
   (let ((font (open-font)))

@@ -466,7 +466,7 @@ class WebTests(unittest.TestCase):
         self.lisp('''(setf *font-family* :monospace *font-weight* :bold)
           (lui.web:refresh *font-app*)''')
         expect(label).to_have_css("font-weight", "700")
-        self.assertIn("DejaVu Sans Mono", label.evaluate(
+        self.assertIn("Liberation Mono", label.evaluate(
             "n => getComputedStyle(n).fontFamily"))
         self.assertGreater(label.bounding_box()["width"], original_width * 1.5)
         self.lisp('''(setf *font-family* :sans-serif *font-weight* :normal)
