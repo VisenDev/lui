@@ -1,0 +1,7 @@
+/build/
+*.fasl
+*.fas
+*.fasc
+*.lib
+*.o
+*~

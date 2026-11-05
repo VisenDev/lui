@@ -1,0 +1,124 @@
+(defpackage #:lui.tests
+  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.terminal)
+  (:export #:run-tests))
+
+(in-package #:lui.tests)
+
+(fn (typed-example integer) ((value integer))
+  "Exercise docstrings and caller declarations."
+  (declare (ignorable value))
+  (1+ value))
+
+(defun run-tests ()
+  (let ((checks 0))
+    (flet
+      ((check (value) (incf checks)
+          (assert value () "Check ~D failed." checks)))
+      (check (= (typed-example 2) 3))
+      (check (stringp (documentation 'typed-example 'function)))
+      ;; Growth redistributes space after a maximum is reached.
+      (let*
+        ((root (make-element :direction :row :padding 2 :gap 2))
+          (a (append-child root (make-element :width (fixed 10))))
+          (b (append-child root (make-element :width (grow 0 20))))
+          (c (append-child root (make-element :width (grow)))))
+        (solve root 100 20)
+        (check (= (box-width (element-box a)) 10))
+        (check (= (box-width (element-box b)) 20))
+        (check (= (box-width (element-box c)) 62))
+        (check (= (box-x (element-box c)) 36)))
+      ;; Percentage basis excludes padding and inter-child gaps.
+      (let*
+        ((root (make-element :direction :row :padding 5 :gap 10))
+          (a (append-child root (make-element :width (percent 0.5))))
+          (b (append-child root (make-element :width (grow)))))
+        (solve root 100 20)
+        (check (= (box-width (element-box a)) 40))
+        (check (= (box-width (element-box b)) 40)))
+      ;; Shrink largest first, but never shrink fixed sizes or violate minima.
+      (let*
+        ((root (make-element :direction :row))
+          (a
+            (append-child root
+              (make-element :width (fit 8) :measure
+                (lambda (width) (declare (ignore width))
+                  (values 30 1)))))
+          (b (append-child root (make-element :width (fixed 10)))))
+        (solve root 20 10)
+        (check (= (box-width (element-box a)) 10))
+        (solve root 12 10)
+        (check (= (box-width (element-box a)) 8))
+        (check (= (box-width (element-box b)) 10)))
+      (let*
+        ((root
+            (make-element :direction :row :align :end :cross-align
+              :center))
+          (a
+            (append-child root
+              (make-element :width (fixed 10) :height (fixed 4)))))
+        (solve root 40 20)
+        (check (= (box-x (element-box a)) 30))
+        (check (= (box-y (element-box a)) 8)))
+      ;; Wrapped height reaches the parent before vertical positioning.
+      (let ((context (make-terminal-context)))
+        (with-frame (context 5 10)
+          (column (:width (grow)) (lui.glass:label "ab cd ef")
+            (lui.glass:label "next")))
+        (let*
+          ((column (aref (element-children (context-root context)) 0))
+            (second (aref (element-children column) 1)))
+          (check (= (box-height (element-box column)) 3))
+          (check (= (box-y (element-box second)) 2)))
+        (check
+          (search (format nil "ab cd~%ef   ~%next ")
+            (render-terminal context))))
+      (check
+        (equal (text-lines (format nil "a~%~%b~%") 3) '("a" "" "b" "")))
+      (check (equal (text-lines "longword ok" 3) '("longword" "ok")))
+      ;; Previous-frame hit testing; release requires capture of the same ID.
+      (let ((context (make-terminal-context)) (clicked nil))
+        (with-frame (context 20 5) (lui.glass:button :button "OK"))
+        (with-frame
+          (context 20 5 :events
+            (list (make-event :kind :press :x 1 :y 0)
+              (make-event :kind :release :x 1 :y 0)))
+          (setf clicked (lui.glass:button :button "OK")))
+        (check clicked)
+        (with-frame (context 20 5)
+          (setf clicked (lui.glass:button :button "OK")))
+        (check (not clicked))
+        (with-frame
+          (context 20 5 :events
+            (list (make-event :kind :press :x 1 :y 0)
+              (make-event :kind :release :x 19 :y 4)))
+          (setf clicked (lui.glass:button :button "OK")))
+        (check (not clicked))
+        (with-frame
+          (context 21 5 :events
+            (list (make-event :kind :press :x 1 :y 0)
+              (make-event :kind :release :x 1 :y 0)))
+          (setf clicked (lui.glass:button :button "OK")))
+        (check (not clicked))
+        (with-frame
+          (context 21 5 :events
+            (list (make-event :kind :tab) (make-event :kind :activate)))
+          (setf clicked (lui.glass:button :button "OK")))
+        (check clicked)
+        (with-frame (context 21 5))
+        (check (null (context-focus context)))
+        (check (null (context-active context)))
+        (check
+          (handler-case
+            (progn
+              (with-frame (context 20 5) (lui.glass:button :same "A")
+                (lui.motif:button :same "B"))
+              nil) (error () t)))
+        ;; Aborted frame must not leave stale geometry or prevent the next frame.
+        (check (null (context-root context)))
+        (with-frame (context 20 5) (lui.motif:button :new "New"))
+        (check (search "[ New ]" (render-terminal context))))
+      (check (handler-case (progn (percent 2) nil) (error () t)))
+      (check (handler-case (progn (fixed -1) nil) (error () t)))
+      (check (handler-case (progn (fit 10 5) nil) (error () t))))
+    (format t "~&~D LUI checks passed.~%" checks)
+    t))
