@@ -1,31 +1,37 @@
 # LUI
 
-An immediate-mode Common Lisp UI library, under construction. Source is in `src/`.
-The portable core has no external dependencies. Native drawing uses CFFI and
-zpb-ttf, with system rendering libraries. X11/XRender and JSCL HTML are now
-implemented; the remaining native backends and full glass effects are in progress.
+LUI is an immediate-mode Common Lisp UI library under development. The same
+[shared example](examples/demo.lisp) runs unchanged in a browser, native windows,
+and a terminal. Applications own their state; `lui:run` owns the backend lifecycle.
 
-## Implemented
+The portable core has no external dependencies. Native graphical backends add
+CFFI and zpb-ttf, plus operating-system rendering libraries. Browser output uses
+JSCL and native HTML controls, with browser DOM text measurement rather than
+Canvas. There is no application software pixel renderer; Vulkan remains future
+work.
 
-- A Clay-inspired layout core: rows/columns, fit/grow/fixed/percentage sizing,
-  min/max bounds, padding, gaps, main/cross-axis alignment, and backend measurement.
-- Width resolution, width-dependent text measurement, height resolution, then
-  positioning. Percentage sizes exclude parent padding and main-axis child gaps.
-  Unresolvable minimum/fixed-size overflow is preserved rather than violating bounds.
-- Immediate-mode declarations with stable, globally unique IDs for interactive
-  widgets; pointer capture, release activation, forward keyboard focus, and activation.
-- Glass and Motif labels, buttons, checkboxes, sliders, and text fields share
-  interaction logic, with terminal, HTML, and native graphical presentations.
-- Clipping, scrolling, and floating elements share the layout engine.
-- `lui:run` owns platform setup. The same `examples/demo.lisp` runs unchanged
-  across backends; backend selection belongs in the launcher.
-- Plain terminal frame output with word wrapping and explicit newline handling.
-  This is a cell-string renderer, not a terminal event loop. Cell width currently
-  assumes one character per cell; wide/combining Unicode handling remains outstanding.
+## Layout and widgets
 
-## Run
+- Rows, columns, fit/grow/fixed/percentage sizing, minimum/maximum bounds, padding,
+  gaps, alignment, clipping, scrolling, and floating elements.
+- Width-dependent text wrapping: horizontal sizing precedes measurement of height
+  and vertical positioning. Percentage sizes exclude padding and inter-child gaps.
+  Fixed sizes and minimum bounds may overflow instead of silently shrinking.
+- Glass and Motif collections with labels, buttons, checkboxes, sliders, text
+  fields, and styled layout panels. Collections share interaction logic.
+- Stable IDs, pointer capture, release activation, forward keyboard focus, and
+  editable values. Widgets return current-frame values and activation results.
 
-From the repository directory:
+Pass appearance options to individual widgets or dynamically bind
+`lui.glass:*defaults*` / `lui.motif:*defaults*` for a group. Options include
+foreground/background, radius, frost, opacity, accent, and font size. Native
+widgets also support a custom painter callback. The optional
+[showcase](examples/showcase.lisp) demonstrates panels and mixed collections;
+it does not replace the shared demo.
+
+## Install and run
+
+Start a Common Lisp implementation in the repository directory:
 
 ```lisp
 (require :asdf)
@@ -36,58 +42,154 @@ From the repository directory:
 (lui:run #'lui.example:draw :backend :terminal :interactive nil)
 ```
 
-Tests can also be source-loaded with `sbcl --script tests/run.lisp`,
-`clisp -q -q tests/run.lisp`, or `ecl -shell tests/run.lisp`.
+To make LUI discoverable from other directories, put the following in
+`~/.config/common-lisp/source-registry.conf.d/lui.conf`, substituting the actual
+absolute repository path:
 
-For X11, load `lui/x11` and call the same `lui.example:main`. Set
-`lui:*backend*` to select a loaded backend explicitly. Native dependencies must
-be available through ASDF. For the browser, run JSCL on
-`scripts/build-web.lisp`, copy its `dist/jscl.js` to `build/jscl.js`, and open
-`examples/web.html`. This compiles the same shared example, not a browser fork.
+```lisp
+(:directory "/absolute/path/to/lui/")
+```
 
-The portable terminal runner currently accepts lines: `:next` moves focus,
-an empty line activates, text edits the focused field, and `:quit` exits.
-Raw terminal input remains planned.
+Optional dependencies must also be discoverable through ASDF. If using
+Quicklisp, `(ql:quickload '("cffi" "zpb-ttf"))` installs the Lisp dependencies for
+native graphics; raw terminal input needs only CFFI. No native rendering library
+is bundled. A TrueType font is required for native graphics: common system paths
+are tried automatically, or set `lui.font:*font-path*` after loading the backend.
+
+| ASDF system | Purpose and system requirements |
+| --- | --- |
+| `lui` | Dependency-free layout, widgets, and portable terminal output |
+| `lui/terminal` | Optional raw POSIX terminal input through CFFI and libc |
+| `lui/native` | Shared native measurement and outline painting; CFFI, zpb-ttf |
+| `lui/x11` | X11 and XRender libraries, an X display |
+| `lui/gl` | EGL/OpenGL renderer; EGL and compatibility OpenGL libraries |
+| `lui/wayland` | Wayland client/EGL, xkbcommon, EGL/OpenGL, a Wayland compositor |
+| `lui/win32` | Windows User32, GDI32, Kernel32, and GDI+ |
+| `lui/cocoa` | macOS AppKit and Objective-C runtime; SBCL only |
+
+For a native window, load its system and select its backend:
+
+```lisp
+(asdf:load-system "lui/x11")
+(let ((lui:*backend* :x11))
+  (lui.example:main))
+```
+
+Use `lui/wayland` with `:wayland`, `lui/win32` with `:win32`, or `lui/cocoa` with
+`:cocoa` in the same launcher. `lui:available-backends` lists loaded backends.
+Width and height are backend coordinates; omit them for backend defaults.
+`examples/showcase.lisp` can be loaded and run through
+`lui.example.showcase:main` in the same way.
+
+For a real POSIX terminal, load `lui/terminal` and select `:terminal`. Tab changes
+focus; Enter activates; Space toggles buttons/checkboxes; arrows adjust sliders
+or move the text cursor. Home, End, Delete, Backspace, Shift-arrows, and Ctrl-A
+support editing. SGR mouse clicks, dragging, wheel scrolling, and terminal
+resizing are supported. Ctrl-Q, Ctrl-C, or Ctrl-D exits. Terminal attributes,
+mouse modes, cursor visibility, and the alternate screen are restored on exit
+and Lisp errors. Other platforms and non-TTY input retain line input:
+`:next`, an empty line to activate, text to edit, and `:quit`. Noninteractive
+terminal output remains dependency-free. Cell widths approximate common CJK,
+emoji, and combining marks; full grapheme handling is not implemented.
+
+For the browser, use a built JSCL checkout:
+
+```sh
+mkdir -p build
+node /path/to/jscl/dist/jscl-node.js scripts/build-web.lisp
+cp /path/to/jscl/dist/jscl.js build/jscl.js
+python3 -m http.server 8000
+```
+
+Open [the browser example](http://localhost:8000/examples/web.html). This compiles the same
+`examples/demo.lisp`; it is not a separate browser application.
+
+## Rendering differences
+
+Native text uses zpb-ttf metrics and TrueType outlines, including curved contours
+and holes. Platform drawing libraries or OpenGL rasterize those outlines.
+Appearance is backend-dependent:
+
+| Backend | Glass presentation |
+| --- | --- |
+| HTML | Browser backdrop filtering, tint, rounded borders, and native controls |
+| EGL/OpenGL / Wayland | Backdrop sampling, blur, and an edge refraction approximation |
+| XRender | Server-side Gaussian convolution, tint, and rim; no refraction. A warning identifies servers without convolution support, which fall back to tint/rim. |
+| Win32 | Native filtered downsample/upsample backdrop blur, tint, and rim; no refraction |
+| Cocoa | Whole-window AppKit material, with widget tint and rounded outlines; no per-widget backdrop blur |
+| Terminal | Cell text and square/rounded panel outlines |
+
+These effects are approximations, not identical implementations of a single
+physical glass model.
 
 ## Frame contract
 
 `with-frame` executes the application body once and returns its solved root.
-Rows and columns declare temporary layout elements. Button calls return activation
-from events routed against the previous completed layout. IDs use `equal`; use
-stable symbols, strings, or compound IDs, and do not mutate IDs after declaration.
-Duplicate non-NIL IDs are errors. Pointer events on a resized frame are ignored
-until fresh geometry exists. Removed widgets lose focus/capture. An aborted frame
-invalidates geometry. Applications own their domain state.
+Rows, columns, and panels declare temporary layout elements. Input is routed
+against the previous completed layout. IDs use `equal`; use stable symbols,
+strings, or compound IDs, and do not mutate them after declaration. Duplicate
+non-NIL IDs are errors. Resize invalidates old pointer geometry. Removed widgets
+lose focus/capture; an aborted frame invalidates geometry.
 
-Backends provide `(widget available-content-width) -> width, height` measurement;
-NIL width requests intrinsic measurement. Value widgets return the new value and a changed flag.
-A leaf measurer must return nonnegative dimensions. Layout containers and measured
-leaves are separate: do not attach children to a measured leaf. Layout structs are
-frame-local and should not be mutated after completion. Temporary storage currently
-allocates per frame; pooling is deferred until measurement justifies it.
+Backends measure `(widget available-content-width) -> width, height`; NIL width
+requests intrinsic measurement. Dimensions must be nonnegative. Measured leaves
+cannot have children. Value widgets return the new value and a changed flag.
+Layout structs are frame-local and should not be mutated after completion.
+Temporary storage currently allocates per frame; pooling is deferred.
 
-## Next stages
+## Tests and current evidence
 
-- Richer native input, terminal raw mode, and additional widgets.
-- Win32 and SBCL Cocoa adapters; Wayland with EGL/OpenGL.
-- XRender blur, native input methods, clipboard, and rendering performance.
-- Broader browser tests for resizing, composition, and DOM lifecycle.
-- GPU rendering using the shared zpb-ttf outline path.
-- Actual glass effects, per-backend capabilities, and implementation compatibility tests.
+Portable source tests run without ASDF or dependencies:
 
-No software pixel renderer is planned. Vulkan is a later optional renderer.
-The portable core targets Common Lisp implementations; only Cocoa may require SBCL.
-Core tests pass on SBCL, CLISP, ECL, and JSCL. Native FFI testing currently
-covers SBCL/X11; other combinations remain to be validated.
+```sh
+sbcl --script tests/run.lisp
+clisp -q -q tests/run.lisp
+ecl -shell tests/run.lisp
+node /path/to/jscl/dist/jscl-node.js tests/run.lisp
+```
+
+Additional checks:
+
+- `(asdf:test-system "lui/native/tests")` runs native font and painter regressions.
+- `python3 tests/terminal.py` runs the shared demo in a POSIX PTY on SBCL, CLISP,
+  and ECL; `--lisp sbcl` selects one implementation.
+- `python3 tests/x11.py` requires an X display, SBCL, Pillow, and ImageMagick
+  `import`, as well as the X11 backend dependencies.
+- `python3 tests/web.py` requires the browser build, Playwright, and Chromium.
+- On Windows SBCL, run `sbcl --script scripts/test-win32.lisp` with dependencies
+  registered in ASDF. The launcher also works with Windows SBCL under Wine.
+- After loading `lui/gl` and `examples/demo.lisp`, load `tests/gl.lisp` for the
+  offscreen EGL/OpenGL smoke test. Ensure `build/` exists.
+- With a Wayland compositor, load `lui/wayland`, the shared demo, and
+  `tests/wayland.lisp` to exercise multiple frames and native pointer callbacks.
+- `tests/cocoa.lisp` is a macOS SBCL runtime smoke test; load it after
+  `lui/cocoa` and the shared demo. It has not been executed on macOS here.
+
+| Area | Verified evidence |
+| --- | --- |
+| Portable core | SBCL, CLISP, ECL, and JSCL: 31 core checks plus widget/scrolling checks |
+| Raw terminal | SBCL, CLISP, ECL: real PTY input, Unicode, mouse, resize, and cleanup after normal exit/errors |
+| HTML | Three Chromium integration tests: interaction, composition/lifecycle, resizing and teardown |
+| X11/XRender | Two real-window tests, including native rendering, input/resize, convolution and fallback behavior |
+| EGL/OpenGL | Offscreen shared-demo rendering, glass shader, pixel readback, and GL error checks |
+| Wayland | Shared-demo compositor smoke test spanning 11 frames |
+| Win32 | Windows SBCL under Wine: outline holes, alpha, clipping, input, resizing, and filtered blur |
+| Cocoa | Compile checks only; no macOS runtime evidence |
+
+The portable core and CFFI backends target Common Lisp implementations generally;
+Cocoa deliberately uses SBCL. The verified combinations above are narrower than
+that portability goal. Native IME and clipboard support remain incomplete,
+Wayland key repeat and text-input/IME protocols need work, and native text is not
+a complete shaping engine. Cocoa runtime behavior still needs macOS validation.
+Performance tuning and broader platform/implementation coverage remain open.
 
 ## Conventions
 
-One package per source file; internal packages are used explicitly. External
-symbols are qualified or explicitly imported. Data uses `defstruct`, with typed
-slots and typed functions through `lui.fn`, adapted from `open-orders`.
-
-## Validation
+One package per source file; internal packages use `:use`, while external symbols
+are qualified or explicitly imported. Data uses `defstruct`, with typed slots and
+functions through `lui.fn`, adapted from `open-orders`. Normal Lisp code wraps at
+78 columns; LOOP clauses use keyword symbols.
 
 Run `mallet src --strict --disable no-package-use --disable error-without-custom-condition`.
-These two style rules conflict with the project's internal-package `:use` convention
-and its struct-only policy (custom conditions introduce condition classes).
+The disabled rules conflict with the internal-package `:use` convention and the
+struct-only policy: custom conditions introduce condition classes.
