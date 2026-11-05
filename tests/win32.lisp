@@ -37,6 +37,27 @@
   (assert (null (lui.win32::key-input 13 nil t nil nil)))
   (assert (null (lui.win32::key-input 66 t t nil t))))
 
+(lui.fn:fn test-navigation-and-cursors ()
+  (assert (eq :backward
+              (event-key (lui.win32::key-input 9 nil nil t nil))))
+  (assert (eq :activate
+              (event-kind (lui.win32::key-input 32 nil nil nil nil t))))
+  (assert (null (lui.win32::key-input 32 nil nil nil t)))
+  (let ((window (lui.win32::make-win-window :suppressed-spaces 1)))
+    ;; A Space activation must not also become text through WM_CHAR.
+    (lui.win32::window-message window #x102 32 0)
+    (assert (null (lui.win32::win-window-events window)))
+    (lui.win32::window-message window #x102 32 0)
+    (assert (equal " " (event-value
+                       (first (lui.win32::win-window-events window))))))
+  (dolist (kind '(:default :pointer :text :not-allowed))
+    (assert (not (cffi:null-pointer-p
+                  (lui.win32::load-cursor
+                   (cffi:null-pointer)
+                   (cffi:make-pointer (lui.win32::cursor-id kind))))))))
+
+(test-navigation-and-cursors)
+
 (test-readline-keys)
 
 (let ((window nil) (frames 0)

@@ -134,6 +134,32 @@
       (cffi:foreign-funcall "xkb_context_unref" :pointer context :void)))
   (format t "Wayland keyboard repeat timing, modifiers, and cancellation passed.~%"))
 
+(defun test-pointer-cursor-state ()
+  (let ((lui.wayland::*window* (lui.wayland::make-wl-window))
+        (null (cffi:null-pointer)))
+    (cffi:foreign-funcall-pointer
+     (cffi:callback lui.wayland::pointer-enter) ()
+     :pointer null :pointer null :uint32 41 :pointer null
+     :int32 768 :int32 1024 :void)
+    (let ((event (first (take-input))))
+      (assert (eq :move (event-kind event)))
+      (assert (= 3 (event-x event)))
+      (assert (= 4 (event-y event))))
+    (dolist (state '(1 0))
+      (cffi:foreign-funcall-pointer
+       (cffi:callback lui.wayland::pointer-button) ()
+       :pointer null :pointer null :uint32 42 :uint32 0
+       :uint32 #x110 :uint32 state :void)
+      ;; Cursor-shape requests require ENTER's serial, never BUTTON's serial.
+      (assert (= 41 (lui.wayland::wl-window-cursor-serial
+                     lui.wayland::*window*))))
+    (cffi:foreign-funcall-pointer
+     (cffi:callback lui.wayland::pointer-leave) ()
+     :pointer null :pointer null :uint32 43 :pointer null :void)
+    (assert (null (lui.wayland::wl-window-cursor-serial
+                   lui.wayland::*window*)))
+    (assert (= 15 (lui.wayland::cursor-shape :not-allowed)))))
+
 (defun test-surface-scaling ()
   (let ((lui.wayland::*window*
           (lui.wayland::make-wl-window :width 101 :height 55))
@@ -194,6 +220,20 @@
              (expect 48 :word-left)
              (expect 33 :word-right)
              (expect 32 :kill-word-forward)
+             (modifiers 1)
+             (keyboard-key 15 1)
+             (let ((event (first (take-input))))
+               (assert (eq :tab (event-kind event)))
+               (assert (eq :backward (event-key event))))
+             (modifiers 0)
+             (setf (lui.widgets:widget-kind
+                    (element-content (context-root context))) :button)
+             (keyboard-key 57 1)
+             (assert (eq :activate (event-kind (first (take-input)))))
+             (setf (lui.widgets:widget-kind
+                    (element-content (context-root context))) :text-field)
+             (keyboard-key 57 1)
+             (assert (equal " " (event-value (first (take-input)))))
              (modifiers 4)
              (setf (context-focus context) :another-widget)
              (keyboard-key 30 1)
@@ -222,6 +262,7 @@
         (assert (= mode (lui.wayland::wl-window-decoration-mode
                          lui.wayland::*window*)))))))
 
+(test-pointer-cursor-state)
 (test-decoration-configure)
 (test-surface-scaling)
 (test-readline-translation)
@@ -301,6 +342,8 @@
   (assert (= frames 5))
   (assert (null (lui.wayland::wl-window-decoration native)))
   (assert (null (lui.wayland::wl-window-decoration-manager native)))
+  (assert (null (lui.wayland::wl-window-cursor-device native)))
+  (assert (null (lui.wayland::wl-window-cursor-manager native)))
   (assert (null (lui.wayland::wl-window-viewport native)))
   (assert (null (lui.wayland::wl-window-fractional-object native)))
   (format t "Wayland compositor, pointer callbacks, and cleanup passed.~%"))

@@ -244,7 +244,16 @@
     ())
    ("wp_fractional_scale_v1"
     (("destroy" "" ()))
-    (("preferred_scale" "u" (nil))))))
+    (("preferred_scale" "u" (nil))))
+   ("wp_cursor_shape_manager_v1"
+    (("destroy" "" ())
+     ("get_pointer" "no" ("wp_cursor_shape_device_v1" "wl_pointer"))
+     ;; Tablet tools are not bound by this backend; leave that object untyped.
+     ("get_tablet_tool_v2" "no" ("wp_cursor_shape_device_v1" nil)))
+    ())
+   ("wp_cursor_shape_device_v1"
+    (("destroy" "" ()) ("set_shape" "uu" (nil nil)))
+    ())))
 
 (fn call-with-interfaces ((function function))
   (let ((*interfaces* (make-hash-table :test 'equal))

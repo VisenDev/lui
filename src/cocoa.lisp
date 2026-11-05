@@ -78,7 +78,9 @@
            (float ,height 1.0d0))
      ,@body))
 
-(defstruct cocoa-app window view renderer context error)
+(defstruct cocoa-app
+  window view renderer context error
+  (pointer-x -1 :type real) (pointer-y -1 :type real))
 (defvar *app* nil)
 
 (fn null-object-p (object)
@@ -216,7 +218,7 @@
     class))
 
 (fn cocoa-key-input ((code integer) (flags integer) (characters string)
-                     &optional text-p (key-name characters))
+                     &optional text-p (key-name characters) activation-p)
   (let* ((command (logtest flags #x100000))
          (shift (logtest flags #x20000))
          (command-key
@@ -236,7 +238,11 @@
           ((and text-p command (= code 0))
            (make-event :kind :key :key :select-all))
           (command nil)
-          ((= code 48) (make-event :kind :tab))
+          ((= code 48)
+           (make-event :kind :tab :key (when shift :backward)))
+          ((and (= code 49) activation-p
+                (not (logtest flags #xc0000)))
+           (make-event :kind :activate))
           ((member code '(36 76)) (make-event :kind :activate))
           (key (make-event :kind :key
                            :key (if shift
@@ -248,6 +254,24 @@
           ((and (plusp (length characters))
                 (every (lambda (char) (>= (char-code char) 32)) characters))
            (make-event :kind :text :value characters)))))
+
+(fn cursor-selector ((kind symbol))
+  (case kind (:not-allowed "operationNotAllowedCursor")
+        (:pointer "pointingHandCursor") (:text "IBeamCursor")
+        (otherwise "arrowCursor")))
+
+(fn update-cursor ((x real) (y real))
+  (when *app*
+    (setf (cocoa-app-pointer-x *app*) x (cocoa-app-pointer-y *app*) y))
+  (when (and *app* (cocoa-app-context *app*)
+             (<= 0 x) (< x (context-width (cocoa-app-context *app*)))
+             (<= 0 y) (< y (context-height (cocoa-app-context *app*))))
+    (let ((cursor
+            (message object (objc-class "NSCursor")
+                     (cursor-selector
+                      (lui.widgets:cursor-at
+                       (cocoa-app-context *app*) x y)))))
+      (message sb-alien:void cursor "set"))))
 
 (fn input-for-window-p ((type integer) window target)
   (and (member type '(1 2 5 6 8 9 10 22))
@@ -262,6 +286,7 @@
     (unless (input-for-window-p type (message object event "window") window)
       (return-from cocoa-event nil))
     (when (= type 9)
+      (setf (cocoa-app-pointer-x *app*) -1 (cocoa-app-pointer-y *app*) -1)
       (return-from cocoa-event (make-event :kind :move :x -1 :y -1)))
     (when (= type 10)
       (let ((characters (message object event "characters")))
@@ -275,12 +300,15 @@
                        (cocoa-app-context *app*)))
            (let ((name (message object event "charactersIgnoringModifiers")))
              (if (null-object-p name) ""
-                 (or (message utf8-string name "UTF8String") "")))))))
+                 (or (message utf8-string name "UTF8String") "")))
+           (and *app* (lui.widgets:activation-focused-p
+                       (cocoa-app-context *app*)))))))
     (let* ((location (message point event "locationInWindow"))
            (local (message point view "convertPoint:fromView:"
                            point location object (sb-sys:int-sap 0)))
            (x (sb-alien:slot local 'x))
            (y (sb-alien:slot local 'y)))
+      (update-cursor x y)
       (if (= type 22)
           (make-event :kind :scroll :x x :y y
                       :value (- (message sb-alien:double event
@@ -440,6 +468,8 @@
                                            (sb-alien:slot size 'height)
                                            :events events)
                                 (funcall draw)))
+                            (update-cursor (cocoa-app-pointer-x *app*)
+                                           (cocoa-app-pointer-y *app*))
                             (message sb-alien:void application
                                      "updateWindows")
                             (message sb-alien:void view "setNeedsDisplay:"

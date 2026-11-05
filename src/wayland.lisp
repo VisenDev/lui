@@ -15,6 +15,7 @@
   display registry compositor shell seat surface xdg toplevel
   decoration-manager decoration decoration-mode pending-decoration-mode
   viewporter viewport fractional-manager fractional-object
+  cursor-manager cursor-device cursor-serial cursor-kind
   (compositor-version 1 :type integer)
   (scale120 120 :type integer) (buffer-scale 1 :type integer)
   applied-buffer-scale
@@ -43,14 +44,49 @@
   (push (apply #'make-event :kind kind options)
         (wl-window-events *window*)))
 
+(fn cursor-shape ((kind symbol))
+  (case kind (:not-allowed 15) (:pointer 4) (:text 9) (otherwise 1)))
+
+(fn update-cursor ()
+  (when (and (wl-window-cursor-device *window*)
+             (wl-window-cursor-serial *window*))
+    (let ((kind (if (boundp '*context*)
+                    (lui.widgets:cursor-at
+                     *context* (wl-window-x *window*) (wl-window-y *window*))
+                    :default)))
+      (unless (eq kind (wl-window-cursor-kind *window*))
+        (request (wl-window-cursor-device *window*) 1 nil
+                 (list (cons :uint32 (wl-window-cursor-serial *window*))
+                       (cons :uint32 (cursor-shape kind))))
+        (setf (wl-window-cursor-kind *window*) kind)))))
+
+(fn create-cursor-device ()
+  (when (and (wl-window-cursor-manager *window*)
+             (wl-window-pointer *window*)
+             (null (wl-window-cursor-device *window*)))
+    (setf (wl-window-cursor-device *window*)
+          (request (wl-window-cursor-manager *window*) 1
+                   "wp_cursor_shape_device_v1"
+                   (list (cons :pointer (cffi:null-pointer))
+                         (cons :pointer (wl-window-pointer *window*))))
+          (wl-window-cursor-kind *window*) nil)
+    (update-cursor)))
+
 (callback pointer-enter
     ((serial :uint32) (surface :pointer) (x :int32) (y :int32))
-  (declare (ignore serial surface))
-  (setf (wl-window-x *window*) (/ x 256.0)
-        (wl-window-y *window*) (/ y 256.0)))
+  (declare (ignore surface))
+  (setf (wl-window-cursor-serial *window*) serial
+        (wl-window-cursor-kind *window*) nil
+        (wl-window-x *window*) (/ x 256.0)
+        (wl-window-y *window*) (/ y 256.0))
+  (queue-input :move :x (wl-window-x *window*) :y (wl-window-y *window*))
+  (update-cursor))
 
 (callback pointer-leave ((serial :uint32) (surface :pointer))
   (declare (ignore serial surface))
+  (setf (wl-window-cursor-serial *window*) nil
+        (wl-window-cursor-kind *window*) nil
+        (wl-window-x *window*) -1 (wl-window-y *window*) -1)
   (queue-input :move :x -1 :y -1))
 
 (callback pointer-motion ((time :uint32) (x :int32) (y :int32))
@@ -58,7 +94,8 @@
   (setf (wl-window-x *window*) (/ x 256.0)
         (wl-window-y *window*) (/ y 256.0))
   (queue-input :move :x (wl-window-x *window*)
-                    :y (wl-window-y *window*)))
+                    :y (wl-window-y *window*))
+  (update-cursor))
 
 (callback pointer-button
     ((serial :uint32) (time :uint32) (button :uint32) (state :uint32))
@@ -172,7 +209,14 @@
                            (#xff50 . :home) (#xff57 . :end)
                            (#xff08 . :backspace) (#xffff . :delete))))))
       (cond (editor (queue-input :key :key editor))
-            ((= symbol #xff09) (queue-input :tab))
+            ((member symbol '(#xff09 #xfe20))
+             (queue-input :tab :key
+                          (when (or (= symbol #xfe20)
+                                    (modifier-active-p state "Shift"))
+                            :backward)))
+            ((and (= symbol 32) (boundp '*context*)
+                  (lui.widgets:activation-focused-p *context*))
+             (queue-input :activate))
             ((= symbol #xff0d) (queue-input :activate))
             (command (queue-input :key :key command))
             (t
@@ -241,6 +285,17 @@
     (setf (wl-window-keyboard window) nil)))
 
 (callback seat-capabilities ((capabilities :uint32))
+  (unless (logtest capabilities 1)
+    (when (wl-window-cursor-device *window*)
+      (request (wl-window-cursor-device *window*) 0 nil nil nil t)
+      (setf (wl-window-cursor-device *window*) nil))
+    (when (wl-window-pointer *window*)
+      (if (>= (wl-window-seat-version *window*) 3)
+          (request (wl-window-pointer *window*) 1 nil nil nil t)
+          (destroy-proxy (wl-window-pointer *window*)))
+      (setf (wl-window-pointer *window*) nil))
+    (setf (wl-window-cursor-serial *window*) nil
+          (wl-window-cursor-kind *window*) nil))
   (unless (logtest capabilities 2) (release-keyboard *window*))
   (when (and (logtest capabilities 1) (null (wl-window-pointer *window*)))
     (let ((pointer
@@ -253,7 +308,8 @@
                      (cffi:callback pointer-leave)
                      (cffi:callback pointer-motion)
                      (cffi:callback pointer-button)
-                     (cffi:callback pointer-axis)))))
+                     (cffi:callback pointer-axis)))
+      (create-cursor-device)))
   (when (and (logtest capabilities 2) (null (wl-window-keyboard *window*)))
     (let ((keyboard
             (request proxy 1 "wl_keyboard"
@@ -276,7 +332,8 @@
   (when (member interface-name
                 '("wl_compositor" "xdg_wm_base" "wl_seat"
                   "zxdg_decoration_manager_v1" "wp_viewporter"
-                  "wp_fractional_scale_manager_v1")
+                  "wp_fractional_scale_manager_v1"
+                  "wp_cursor_shape_manager_v1")
                 :test #'string=)
     (let* ((version
              (min version
@@ -293,6 +350,9 @@
       (cond ((string= interface-name "wl_compositor")
              (setf (wl-window-compositor *window*) object
                    (wl-window-compositor-version *window*) version))
+            ((string= interface-name "wp_cursor_shape_manager_v1")
+             (setf (wl-window-cursor-manager *window*) object)
+             (create-cursor-device))
             ((string= interface-name "wp_viewporter")
              (setf (wl-window-viewporter *window*) object))
             ((string= interface-name "wp_fractional_scale_manager_v1")
@@ -418,18 +478,22 @@
 
 (fn release-extensions ((window wl-window))
   ;; Children disappear before their xdg_toplevel/wl_surface and managers.
-  (dolist (proxy (list (wl-window-decoration window)
+  (dolist (proxy (list (wl-window-cursor-device window)
+                      (wl-window-decoration window)
                       (wl-window-viewport window)
                       (wl-window-fractional-object window)))
     (destroy-extension proxy))
-  (setf (wl-window-decoration window) nil
+  (setf (wl-window-cursor-device window) nil
+        (wl-window-decoration window) nil
         (wl-window-viewport window) nil
         (wl-window-fractional-object window) nil)
-  (dolist (proxy (list (wl-window-decoration-manager window)
+  (dolist (proxy (list (wl-window-cursor-manager window)
+                      (wl-window-decoration-manager window)
                       (wl-window-viewporter window)
                       (wl-window-fractional-manager window)))
     (destroy-extension proxy))
-  (setf (wl-window-decoration-manager window) nil
+  (setf (wl-window-cursor-manager window) nil
+        (wl-window-decoration-manager window) nil
         (wl-window-viewporter window) nil
         (wl-window-fractional-manager window) nil))
 
@@ -520,6 +584,7 @@
                         :events (nreverse (wl-window-events *window*)))
                      (setf (wl-window-events *window*) nil)
                      (funcall draw))
+                   (update-cursor)
                    (begin-gpu-frame gpu)
                    (paint-frame renderer context)
                    (present-gpu gpu)

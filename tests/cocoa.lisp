@@ -199,6 +199,15 @@
     (assert (null (lui.cocoa::input-for-window-p 10 null null)))))
 
 (fn test-key-input ()
+  (assert (eq :backward
+              (event-key (lui.cocoa::cocoa-key-input 48 #x20000 ""))))
+  (assert (eq :activate
+              (event-kind (lui.cocoa::cocoa-key-input
+                           49 0 " " nil " " t))))
+  (assert (equal " "
+                 (event-value (lui.cocoa::cocoa-key-input 49 0 " " t))))
+  (assert (equal "operationNotAllowedCursor"
+                 (lui.cocoa::cursor-selector :not-allowed)))
   (assert (eq :home
               (event-key (lui.cocoa::cocoa-key-input 0 #x40000 "a" t))))
   (assert (eq :kill-end

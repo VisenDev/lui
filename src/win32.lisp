@@ -50,6 +50,9 @@
 (api ("TrackMouseEvent" track-mouse-event) :int (tracking :pointer))
 (api ("LoadCursorW" load-cursor) :pointer
   (instance :pointer) (name :pointer))
+(api ("SetCursor" set-cursor) :pointer (cursor :pointer))
+(api ("GetCursorPos" cursor-position) :int (point :pointer))
+
 (api ("CreateCompatibleDC" compatible-dc) :pointer (dc :pointer))
 (api ("CreateCompatibleBitmap" compatible-bitmap) :pointer
   (dc :pointer) (width :int) (height :int))
@@ -128,7 +131,8 @@
   (graphics (cffi:null-pointer))
   (width 0 :type integer) (height 0 :type integer)
   (events nil :type list)
-  quit error surrogate context suppress-system-char tracking-p)
+  quit error surrogate context suppress-system-char tracking-p
+  (suppressed-spaces 0 :type integer))
 
 (defvar *windows* (make-hash-table))
 (defvar *class-counter* 0)
@@ -164,7 +168,8 @@
             (queue-input window
               (make-event :kind :text :value (string char)))))))))
 
-(fn key-input ((code integer) control alt shift text-p)
+(fn key-input ((code integer) control alt shift text-p
+               &optional activation-p)
   (let* ((key (cdr (assoc code
                           '((37 . :left) (38 . :up) (39 . :right)
                             (40 . :down) (36 . :home) (35 . :end)
@@ -178,7 +183,9 @@
                                              :alt alt :shift shift))))
     (cond (command (make-event :kind :key :key command))
           ((and (not alt) (= code 9))
-           (make-event :kind :tab :value shift))
+           (make-event :kind :tab :key (when shift :backward)))
+          ((and (= code 32) activation-p (not control) (not alt))
+           (make-event :kind :activate))
           ((and (not alt) (= code 13)) (make-event :kind :activate))
           ((and key (not alt))
            (make-event :kind :key
@@ -187,6 +194,26 @@
                                   (:left :shift-left) (:right :shift-right)
                                   (otherwise key))
                                 key))))))
+
+(fn cursor-id ((kind symbol))
+  (case kind (:not-allowed 32648) (:pointer 32649) (:text 32513)
+        (otherwise 32512)))
+
+(fn update-cursor ((window win-window))
+  (when (win-window-context window)
+    (cffi:with-foreign-object (point :int 2)
+      (when (and (plusp (cursor-position point))
+                 (plusp (screen-to-client (win-window-handle window) point)))
+        (let ((x (cffi:mem-aref point :int 0))
+              (y (cffi:mem-aref point :int 1)))
+          (when (and (<= 0 x) (< x (win-window-width window))
+                     (<= 0 y) (< y (win-window-height window)))
+            (set-cursor
+             (load-cursor
+              (cffi:null-pointer)
+              (cffi:make-pointer
+               (cursor-id (lui.widgets:cursor-at
+                           (win-window-context window) x y)))))))))))
 
 (fn window-message
   ((window win-window) (message integer) (wparam integer)
@@ -197,6 +224,11 @@
       (#x10 (setf (win-window-quit window) t))
       (#x0f (validate-rect handle (cffi:null-pointer)))
       (#x14 (return-from window-message 1))
+      (#x20
+       (if (= (logand lparam #xffff) 1)
+           (progn (update-cursor window) (return-from window-message 1))
+           (return-from window-message
+             (default-procedure handle message wparam lparam))))
       (#x2a3
        (setf (win-window-tracking-p window) nil)
        (queue-input window (make-event :kind :move :x -1 :y -1)))
@@ -232,9 +264,14 @@
                      (minusp (key-state 18)) (minusp (key-state 16))
                      (and (win-window-context window)
                           (lui.widgets:text-field-focused-p
+                           (win-window-context window)))
+                     (and (win-window-context window)
+                          (lui.widgets:activation-focused-p
                            (win-window-context window))))))
          (when input
            (queue-input window input)
+           (when (and (= wparam 32) (eq (event-kind input) :activate))
+             (incf (win-window-suppressed-spaces window)))
            (when (= message #x104)
              (setf (win-window-suppress-system-char window) t)))
          (when (and (= message #x104) (null input))
@@ -248,7 +285,10 @@
        (unless (shiftf (win-window-suppress-system-char window) nil)
          (return-from window-message
            (default-procedure handle message wparam lparam))))
-      (#x102 (character-input window wparam))
+      (#x102
+       (if (and (= wparam 32) (plusp (win-window-suppressed-spaces window)))
+           (decf (win-window-suppressed-spaces window))
+           (character-input window wparam)))
       (otherwise
         (return-from window-message
           (default-procedure handle message wparam lparam)))))
@@ -453,6 +493,7 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
     (funcall draw))
   (checked (reset-clip (win-window-graphics window)))
   (checked (clear-graphics (win-window-graphics window) #xff202532))
+  (when (win-window-tracking-p window) (update-cursor window))
   (paint-frame renderer context)
   (checked (flush-graphics (win-window-graphics window) 1))
   (let ((dc (nonnull (get-dc (win-window-handle window)))))

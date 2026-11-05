@@ -225,6 +225,7 @@ class X11Tests(unittest.TestCase):
             program.write_text('''(require :asdf)
 (asdf:load-asd (truename "lui.asd"))
 (asdf:load-system "lui/x11")
+(load "tests/x11.lisp")
 ''' + source.replace("STATE_PATH", json.dumps(str(state))).replace(
                 "WINDOW_TITLE", json.dumps(title)))
             with (directory / "output.log").open("w+") as log:

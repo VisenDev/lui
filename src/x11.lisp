@@ -13,6 +13,10 @@
 
 (cffi:use-foreign-library xrender)
 
+(cffi:define-foreign-library xcursor
+  (:unix (:or "libXcursor.so.1" "libXcursor.so")))
+(ignore-errors (cffi:use-foreign-library xcursor))
+
 (defmacro binding (name result &rest args)
   `(cffi:defcfun ,name ,result ,@args))
 
@@ -195,6 +199,12 @@
   (width :uint)
   (height :uint))
 
+(binding ("XCreateFontCursor" create-font-cursor) :ulong
+  (display :pointer) (shape :uint))
+(binding ("XDefineCursor" define-cursor) :int
+  (display :pointer) (window :ulong) (cursor :ulong))
+(binding ("XFreeCursor" free-cursor) :int (display :pointer) (cursor :ulong))
+
 (cffi:defcstruct key-event
   (type :int)
   (serial :ulong)
@@ -261,7 +271,9 @@
   (depth 0 :type integer)
   (width 640 :type integer)
   (height 480 :type integer)
-  (colors (make-hash-table :test 'equal) :type hash-table))
+  (colors (make-hash-table :test 'equal) :type hash-table)
+  (cursors (make-hash-table :test 'eq) :type hash-table)
+  cursor-kind (pointer-x -1 :type real) (pointer-y -1 :type real))
 
 (fn convolution-supported-p ((window x-window))
   (let ((filters (query-filters (x-window-display window)
@@ -442,7 +454,12 @@
                       (lui.widgets:readline-key name :control control
                                                 :alt alt :shift shift))))
       (cond (command (make-event :kind :key :key command))
-            ((= code #xff09) (make-event :kind :tab :value shift))
+            ((member code '(#xff09 #xfe20))
+             (make-event :kind :tab
+                         :key (when (or shift (= code #xfe20)) :backward)))
+            ((and (= code 32) context
+                  (lui.widgets:activation-focused-p context))
+             (make-event :kind :activate))
             ((= code #xff0d) (make-event :kind :activate))
             (key (make-event :kind :key
                              :key (if (and text-p shift)
@@ -456,6 +473,39 @@
                          (cffi:foreign-string-to-lisp
                           buffer :count length :encoding :iso-8859-1)))))))
 
+(fn cursor-for ((window x-window) (kind symbol))
+  (or (gethash kind (x-window-cursors window))
+      (setf (gethash kind (x-window-cursors window))
+            (let ((cursor
+                    (if (ignore-errors
+                          (cffi:foreign-symbol-pointer
+                           "XcursorLibraryLoadCursor"))
+                        (cffi:foreign-funcall
+                         "XcursorLibraryLoadCursor"
+                         :pointer (x-window-display window)
+                         :string (case kind
+                                   (:not-allowed "not-allowed")
+                                   (:pointer "pointer") (:text "text")
+                                   (otherwise "default"))
+                         :ulong)
+                        0)))
+              (if (plusp cursor) cursor
+                  (create-font-cursor
+                   (x-window-display window)
+                   (case kind (:not-allowed 0) (:pointer 60)
+                         (:text 152) (otherwise 68))))))))
+
+(fn update-cursor ((window x-window))
+  (let ((kind (if (x-window-context window)
+                  (lui.widgets:cursor-at
+                   (x-window-context window)
+                   (x-window-pointer-x window) (x-window-pointer-y window))
+                  :default)))
+    (unless (eq kind (x-window-cursor-kind window))
+      (define-cursor (x-window-display window) (x-window-window window)
+                     (cursor-for window kind))
+      (setf (x-window-cursor-kind window) kind))))
+
 (fn read-events ((window x-window) (delete integer))
   (let ((display (x-window-display window))
         (events nil)
@@ -464,11 +514,14 @@
       (loop :while (plusp (pending display))
             :do (next-event display event)
             (case (cffi:mem-ref event :int)
-              (8 (push (make-event :kind :move :x -1 :y -1) events))
+              (8
+               (setf (x-window-pointer-x window) -1
+                     (x-window-pointer-y window) -1)
+               (push (make-event :kind :move :x -1 :y -1) events))
               (2
                (let ((input (key-input event (x-window-context window))))
                  (when input (push input events))))
-              ((4 5 6)
+              ((4 5 6 7)
                (cffi:with-foreign-slots
                    ((type x y code) event (:struct key-event))
                  (cond
@@ -476,7 +529,9 @@
                     (push (make-event :kind :scroll :x x :y y
                                       :value (if (= code 4) -32 32))
                           events))
-                   ((or (= type 6) (= code 1))
+                   ((or (member type '(6 7)) (= code 1))
+                    (setf (x-window-pointer-x window) x
+                          (x-window-pointer-y window) y)
                     (push (make-event
                            :kind (case type
                                    (4 :press)
@@ -513,6 +568,7 @@
        (with-frame (context (x-window-width window) (x-window-height window)
                             :events events)
          (funcall draw))
+       (update-cursor window)
        (full-window-clip window)
        (composite display 1 (color-picture window "#202532" 1) 0
                   (x-window-back window) 0 0 0 0 0 0
@@ -555,7 +611,7 @@
                  font (open-font))
            (store-name display (x-window-window window) title)
            (select-input display (x-window-window window)
-                         (logior 1 4 8 32 64 #x8000 #x20000))
+                         (logior 1 4 8 16 32 64 #x8000 #x20000))
            (cffi:with-foreign-object (atom :ulong)
              (setf (cffi:mem-ref atom :ulong) delete)
              (set-protocols display (x-window-window window) atom 1))
@@ -585,6 +641,9 @@
        (lambda (key picture)
          (declare (ignore key))
          (free-picture display picture)) (x-window-colors window))
+      (maphash (lambda (kind cursor)
+                 (declare (ignore kind)) (free-cursor display cursor))
+               (x-window-cursors window))
       (free-buffer window)
       (when (plusp (x-window-picture window))
         (free-picture display (x-window-picture window)))
