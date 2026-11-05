@@ -303,7 +303,7 @@
                       (create-svg-node "svg")
                       (create-node
                        (case kind
-                         ((:button :tab :list-item) "button")
+                         ((:button :tab :list-item :cell) "button")
                          ((:slider :text-field) "input")
                          (:checkbox "label")
                          (otherwise "div")))))
@@ -338,7 +338,7 @@
                           ((jscl/ffi:oget dom "releasePointerCapture")
                            id)))))))
         (case kind
-          ((:button :tab :list-item)
+          ((:button :tab :list-item :cell)
            (attribute dom "type" "button")
            (attribute dom "class" "lui-control")
            (listen app dom "mousedown"
@@ -346,7 +346,10 @@
                      ;; Buttons keep editing focus; list options take focus.
                      (unless (eq kind :list-item)
                        ((jscl/ffi:oget event "preventDefault")))))
-           (when (eq kind :button)
+           (when (member kind '(:button :cell))
+             (when (eq kind :cell)
+               (attribute dom "role" "gridcell")
+               (attribute dom "class" "lui-cell"))
              (listen app dom "keydown"
                      (lambda (event) (native-button-key app id event))))
            (when (eq kind :list-item)
@@ -527,7 +530,8 @@
       (attribute control "aria-label"
                  (if (plusp (length (widget-text widget)))
                      (widget-text widget)
-                     (princ-to-string key)))
+                     (if (eq kind :cell) "Empty cell"
+                         (princ-to-string key))))
       (style dom "border-radius" (px (if glass (widget-radius widget) 0)))
       (style dom "border"
              (if glass
@@ -686,6 +690,27 @@
              (if (widget-value widget) (widget-accent widget) "transparent"))
       (when (and (widget-value widget) (not (widget-disabled-p widget)))
         (style dom "color" "#ffffff")))
+    (when (eq kind :cell)
+      (attribute dom "aria-selected"
+                 (if (widget-value widget) "true" "false"))
+      (style dom "background"
+             (if (widget-value widget) "#e7effa"
+                 (widget-background widget)))
+      (style dom "color" (widget-foreground widget))
+      (style dom "outline"
+             (if (widget-value widget)
+                 (concatenate 'string "2px solid " (widget-accent widget))
+                 "none"))
+      (style dom "outline-offset" "-2px")
+      (style dom "border" "1px solid #b8b8b8")
+      (style dom "border-radius" "0")
+      (style dom "padding" "2px 4px")
+      (style dom "text-align" "left")
+      (style dom "cursor" (if (widget-disabled-p widget) "default" "pointer"))
+      (style dom "opacity" "1")
+      (when (widget-disabled-p widget) (attribute dom "tabindex" "-1"))
+      (style dom "box-shadow" "none")
+      (style dom "backdrop-filter" "none"))
     (unless (eq (widget-style widget) :garnet)
       (style dom "flex-direction" "row")
       (style dom "justify-content" "normal"))
@@ -909,6 +934,10 @@
           (#j:String:prototype:concat:call
            (jscl/ffi:oget sheet "textContent")
            #j".lui-option:active:enabled{transform:none;filter:none}.lui-option[aria-selected=false]:hover:enabled{filter:none;background:color-mix(in srgb,var(--lui-accent) 14%,transparent)!important}.lui-option[aria-selected=true]:hover:enabled{filter:none;background:var(--lui-accent)!important}"))
+    (setf (jscl/ffi:oget sheet "textContent")
+          (#j:String:prototype:concat:call
+           (jscl/ffi:oget sheet "textContent")
+           #j".lui-cell:focus-visible{outline:2px solid var(--lui-accent);outline-offset:-2px}"))
     ((jscl/ffi:oget host "appendChild") sheet)
     ((jscl/ffi:oget host "appendChild") measure)
     (setf (web-app-style-node app) sheet

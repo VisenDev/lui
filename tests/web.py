@@ -507,7 +507,7 @@ class WebTests(unittest.TestCase):
 
     def test_seven_cells_real_editing_dependencies_cancel_and_navigation(self):
         self.open_seven("Cells")
-        self.assertLess(self.page.locator('button[aria-label^="(:SEVEN-CELL"]').count(), 400)
+        self.assertLess(self.page.get_by_role("gridcell").count(), 400)
         a0 = self.cell(0)
         a0.click()
         expect(self.page.get_by_role("textbox")).to_have_count(0)
@@ -568,6 +568,87 @@ class WebTests(unittest.TestCase):
         expect(editor).to_have_count(0)
         expect(self.cell(2)).to_have_text("11")
         self.page.screenshot(path=str(ROOT / "build/seven-cells.png"))
+
+    def test_seven_cells_flat_readable_style_across_collections(self):
+        self.open_seven("Cells")
+        for name in ("Glass", "Motif", "Garnet"):
+            expect(self.page.get_by_role("button", name=name, exact=True)).to_be_visible()
+            normal = self.cell(1)
+            selected = self.cell(0)
+            expect(normal).to_have_attribute("role", "gridcell")
+            expect(normal).to_have_attribute("aria-label", "Empty cell")
+            expect(normal).to_have_attribute("aria-selected", "false")
+            expect(normal).to_have_css("background-color", "rgb(255, 255, 255)")
+            expect(normal).to_have_css("color", "rgb(32, 36, 48)")
+            expect(normal).to_have_css("border-top-width", "1px")
+            expect(normal).to_have_css("border-top-style", "solid")
+            expect(normal).to_have_css("box-shadow", "none")
+            expect(normal).to_have_css("background-image", "none")
+            expect(selected).to_have_attribute("aria-selected", "true")
+            expect(selected).to_have_css("color", "rgb(32, 36, 48)")
+            expect(selected).to_have_css("background-color", "rgb(231, 239, 250)")
+            expect(selected).to_have_css("outline-width", "2px")
+            header = self.page.get_by_text("A", exact=True).filter(visible=True)
+            expect(header).to_have_css("color", "rgb(32, 36, 48)")
+            normal.hover()
+            expect(normal).to_have_css("background-color", "rgb(255, 255, 255)")
+            self.page.screenshot(path=str(ROOT / f"build/seven-cells-{name.lower()}.png"))
+            self.page.get_by_role("button", name=name, exact=True).click()
+
+    def test_seven_cells_garnet_editor_identity_colors_and_readline(self):
+        self.page.get_by_role("button", name="Glass", exact=True).click()
+        self.page.get_by_role("button", name="Motif", exact=True).click()
+        self.open_seven("Cells")
+        self.cell(0).dblclick()
+        editor = self.page.get_by_role("textbox")
+        expect(editor).to_be_focused()
+        editor.evaluate("n => window.cellEditor = n")
+        for text in ("alpha", " beta", " gamma"):
+            self.page.keyboard.type(text)
+            self.frames()
+            self.assertTrue(editor.evaluate("n => n === window.cellEditor"))
+            expect(editor).to_have_css("background-color", "rgb(255, 255, 255)")
+            expect(editor).to_have_css("color", "rgb(0, 0, 0)")
+        expect(editor).to_have_value("alpha beta gamma")
+        editor.press("Control+a")
+        self.assertEqual(editor.evaluate("n => n.selectionStart"), 0)
+        expect(editor).to_have_value("alpha beta gamma")
+        self.page.keyboard.type("!")
+        expect(editor).to_have_value("!alpha beta gamma")
+        editor.press("Enter")
+        expect(editor).to_have_count(0)
+        expect(self.cell(0)).to_have_text("!alpha beta gamma")
+
+    def test_seven_cells_trusted_entry_latency(self):
+        self.open_seven("Counter")
+        self.page.evaluate("""() => {
+            document.addEventListener('click', event => {
+                if (event.target.closest('[role=tab]')?.textContent !== 'Cells')
+                    return;
+                window.cellEntry = {start:event.timeStamp,
+                                    trusted:event.isTrusted, elapsed:null};
+                function visibleFrame() {
+                    const cell = document.querySelector(
+                        '[role=gridcell]:not([disabled])');
+                    if (cell && cell.getBoundingClientRect().width > 0)
+                        window.cellEntry.elapsed = performance.now() - window.cellEntry.start;
+                    else requestAnimationFrame(visibleFrame);
+                }
+                requestAnimationFrame(visibleFrame);
+            }, true);
+        }""")
+        timings = []
+        for _ in range(2):
+            self.page.get_by_role("tab", name="Cells", exact=True).click()
+            self.page.wait_for_function("window.cellEntry?.elapsed !== null")
+            entry = self.page.evaluate("window.cellEntry")
+            self.assertTrue(entry["trusted"])
+            timings.append(round(entry["elapsed"], 1))
+            # Allows busy CI hosts while rejecting the former ~700ms path.
+            self.assertLess(entry["elapsed"], 450, entry)
+            self.page.get_by_role("tab", name="Counter", exact=True).click()
+            expect(self.page.get_by_role("button", name="Count", exact=True)).to_be_visible()
+        print(f"Cells trusted click-to-visible ms: cold={timings[0]}, warm={timings[1]}")
 
     def test_editor_enter_escape_and_native_clipboard(self):
         self.fixture()
