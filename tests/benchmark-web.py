@@ -10,7 +10,10 @@ from web import WebTests
 from playwright.sync_api import expect
 
 toolkits = tuple(os.environ.get("BENCH_TOOLKITS", "Glass,Motif,Garnet").split(","))
-pages = ("Controls", "Editing", "Layout", "Scroll", "Styles", "7GUIs")
+pages = ("Controls", "Editing", "Layout", "Scroll", "Styles") + tuple(
+    "7GUIs/" + task for task in
+    ("Counter", "Temperature", "Flight", "Timer", "CRUD", "Circles", "Cells")
+)
 case_count = len(toolkits) * len(pages)
 frames = int(os.environ.get("BENCH_FRAMES", "240"))
 warmup = int(os.environ.get("WARMUP", "30"))
@@ -134,9 +137,10 @@ try:
                                "Garnet": "Glass"}[current_toolkit]
             expect(page.get_by_role("button", name=current_toolkit,
                                     exact=True)).to_be_visible()
-        tab = page.get_by_role("tab", name=name, exact=True)
-        tab.click()
-        expect(tab).to_have_attribute("aria-selected", "true")
+        for tab_name in name.split("/"):
+            tab = page.get_by_role("tab", name=tab_name, exact=True)
+            tab.click()
+            expect(tab).to_have_attribute("aria-selected", "true")
         samples = page.evaluate(PROFILE if detail else RAW_PROFILE, {
             "count": frames // case_count + (case < frames % case_count),
             "warmup": warmup // case_count + (case < warmup % case_count),

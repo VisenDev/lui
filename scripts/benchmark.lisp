@@ -16,7 +16,12 @@
 (defparameter *cases*
   (loop :for toolkit :in lui.example::*toolkits*
         :append (loop :for (page title) :in lui.example::*pages*
-                      :collect (list toolkit page))))
+                      :append
+                      (if (eq page :seven)
+                          (loop :for (task label)
+                                  :in lui.example.seven::*tasks*
+                                :collect (list toolkit page task))
+                          (list (list toolkit page))))))
 (defparameter *frames*
   (parse-integer (or (uiop:getenv "BENCH_FRAMES") "240")))
 (defparameter *warmup* (parse-integer (or (uiop:getenv "WARMUP") "30")))
@@ -51,6 +56,8 @@
                    *cases*)))
     (setf lui.example::*toolkit* (first case)
           lui.example::*page* (second case))
+    (when (third case)
+      (setf (lui.example.seven:state-task lui.example.seven:*state*) (third case)))
     case))
 
 (defun sample (case ticks)
@@ -151,6 +158,9 @@
                            :sum (length values)))
           () "Benchmark ended before every measured frame completed.")
   (dolist (case *cases*)
-    (report-row (first case) (second case) (gethash case *samples*)))
+    (report-row (first case)
+                (if (third case) (format nil "seven/~A" (third case))
+                    (second case))
+                (gethash case *samples*)))
   (report-row :all :all
               (loop :for case :in *cases* :append (gethash case *samples*))))
