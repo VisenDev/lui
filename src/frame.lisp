@@ -12,7 +12,7 @@
            #:make-event #:begin-frame #:end-frame #:context-hover #:hovered-p
            #:context-previous-root #:context-activated
            #:context-focus-visible-p #:frame-time #:request-frame
-           #:context-next-frame))
+           #:context-next-frame #:scroll-position #:scroll-to))
 
 (in-package #:lui.frame)
 
@@ -206,6 +206,20 @@
         (setf (element-scroll-x node) (car offset)
               (element-scroll-y node) (cdr offset)))))
   (append-child *parent* node))
+
+(fn scroll-position (id)
+  "Return the retained horizontal and vertical scroll offsets."
+  (let ((offset (gethash id (context-scroll *context*))))
+    (values (or (car offset) 0) (or (cdr offset) 0))))
+
+(fn scroll-to (id (x real) (y real))
+  "Set scroll offsets; layout clamps them to the content extent."
+  (let ((offset (cons (max 0 x) (max 0 y))))
+    (setf (gethash id (context-scroll *context*)) offset)
+    (let ((node (gethash id (context-ids *context*))))
+      (when node
+        (setf (element-scroll-x node) (car offset)
+              (element-scroll-y node) (cdr offset))))))
 
 (fn previous-box (id)
   (gethash id (context-regions *context*)))
