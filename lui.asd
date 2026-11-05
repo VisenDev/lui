@@ -41,3 +41,15 @@
   :depends-on ("lui/native")
   :components ((:module "src"
                 :components ((:file "gl")))))
+
+(defsystem "lui/wayland"
+  :depends-on ("lui/gl")
+  :serial t
+  :components ((:module "src"
+                :components ((:file "wayland-protocol")
+                             (:file "wayland")))))
+
+(defsystem "lui/win32"
+  :depends-on ("lui/native")
+  :components ((:module "src"
+                :components ((:file "win32")))))
