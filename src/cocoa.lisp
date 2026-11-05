@@ -365,14 +365,75 @@
          (message sb-alien:void view "addTrackingArea:" object tracking)
       (message sb-alien:void tracking "release"))))
 
-(fn run-cocoa ((draw function) &key title width height (interactive t))
-  (unless (member :darwin *features*)
-    (error "The Cocoa backend requires macOS and SBCL."))
-  (unless (sb-thread:main-thread-p)
-    (error "Run Cocoa on the main thread."))
+(defvar *stacktrace-method* nil)
+(defvar *stacktrace-placeholder* nil)
+(defvar *stacktrace-reported-p* nil)
+
+(sb-alien:define-alien-callable nonempty-stacktrace object
+    ((receiver object) (command object))
   (with-cocoa-float-mode
-    (sb-alien:load-shared-object
-     "/System/Library/Frameworks/AppKit.framework/AppKit")
+    (let ((trace
+            (sb-alien:alien-funcall
+             (sb-alien:sap-alien *stacktrace-method*
+                                (function object object object))
+             receiver command)))
+      (if (and (not (null-object-p trace))
+               (plusp (message sb-alien:unsigned-long trace "count")))
+          trace
+          (progn
+            (unless *stacktrace-reported-p*
+              (setf *stacktrace-reported-p* t)
+              (handler-case
+                  (format *error-output*
+                          "~&Cocoa: supplied an empty-stack diagnostic placeholder.~%")
+                (stream-error () nil)))
+            *stacktrace-placeholder*)))))
+
+(fn replace-stacktrace-method (method implementation)
+  (sb-alien:alien-funcall
+   (sb-alien:extern-alien "method_setImplementation"
+     (function object object object))
+   method implementation))
+
+(fn call-with-stacktrace-guard ((function function))
+  ;; Ported from cc/tools/macos/cocoa-stacktrace.lisp. Keep real traces intact.
+  (assert (null *stacktrace-method*))
+  (let* ((method
+           (sb-alien:alien-funcall
+            (sb-alien:extern-alien "class_getClassMethod"
+              (function object object object))
+            (objc-class "NSThread") (selector "callStackSymbols")))
+         (pool (message object
+                        (message object (objc-class "NSAutoreleasePool")
+                                 "alloc") "init")))
+    (unwind-protect
+         (let* ((placeholder
+                  (message object (objc-class "NSArray") "arrayWithObject:"
+                           object
+                           (ns-string "Native trace unavailable across Lisp")))
+                (original
+                  (sb-alien:alien-funcall
+                   (sb-alien:extern-alien "method_getImplementation"
+                     (function object object))
+                   (require-object method "stacktrace method"))))
+           (setf *stacktrace-placeholder*
+                 (message object placeholder "retain")
+                 *stacktrace-method* original
+                 *stacktrace-reported-p* nil)
+           (unwind-protect
+                (progn
+                  (replace-stacktrace-method
+                   method
+                   (sb-alien:alien-sap
+                    (sb-alien:alien-callable-function 'nonempty-stacktrace)))
+                  (funcall function))
+             (replace-stacktrace-method method original)
+             (setf *stacktrace-method* nil *stacktrace-placeholder* nil)
+             (message sb-alien:void placeholder "release")))
+      (message sb-alien:void pool "drain"))))
+
+(fn run-cocoa-window ((draw function) &key title width height (interactive t))
+  (with-cocoa-float-mode
     (let* ((pool (message object
                           (message object (objc-class "NSAutoreleasePool")
                                    "alloc")
@@ -500,6 +561,17 @@
           (message sb-alien:void (cocoa-app-view *app*) "release"))
         (when font (close-font font))
         (message sb-alien:void pool "drain")))))
+
+(fn run-cocoa ((draw function) &rest options)
+  (unless (member :darwin *features*)
+    (error "The Cocoa backend requires macOS and SBCL."))
+  (unless (sb-thread:main-thread-p)
+    (error "Run Cocoa on the main thread."))
+  (with-cocoa-float-mode
+    (sb-alien:load-shared-object
+     "/System/Library/Frameworks/AppKit.framework/AppKit")
+    (call-with-stacktrace-guard
+     (lambda () (apply #'run-cocoa-window draw options)))))
 
 #+darwin
 (register-backend :cocoa #'run-cocoa)

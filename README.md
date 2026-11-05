@@ -99,8 +99,10 @@ records output. `make test-core` and `make test-native` run individual checks.
 build files, examples, and test code are outside that source count.
 
 `make benchmark` defaults to 240 measured frames total after 30 warmup frames,
-spread across all three toolkits and six pages (13–14 measured frames per case by
-default). `BENCH_FRAMES` must be at least 18 and `WARMUP` nonnegative. Reports
+spread across all three toolkits, five gallery pages, and every 7GUIs task
+(36 cases; 6–7 measured frames per case by default). Use 720 frames and 144
+warmup frames for 20 samples per case. `BENCH_FRAMES` must be at least 36
+and `WARMUP` nonnegative. Reports
 include per-toolkit/page FPS, mean, median, 95th-percentile, and maximum frame
 time, plus timer/settings information.
 
@@ -390,10 +392,14 @@ The supplied macOS log reaches the saved executable, then aborts in
 `NSRangeException`. This matches the macOS auto-hide issue reported by
 [Makie](https://github.com/MakieOrg/Makie.jl/issues/2629) and reproduced in a native
 Cocoa application in [CPython's report](https://github.com/python/cpython/issues/101067).
-For affected macOS 13 systems, temporarily set **Automatically hide and show the
-menu bar** to **Never**, then run `make test-macos`. LUI does not alter this system
-preference. This is separate from SBCL floating-point traps, which are already
-masked at Cocoa boundaries. The test log now includes the macOS and Lisp versions.
+The Cocoa runner now applies the same temporary empty-stacktrace guard used by
+cc's RGFW test runner. It substitutes one diagnostic entry only when
+`NSThread.callStackSymbols` returns an empty trace, preserves real traces, and
+restores the original method when the runner exits. Menu-bar auto-hide can stay
+enabled; LUI does not change system preferences. Floating-point traps are also
+masked at Cocoa boundaries. Run `make test-macos` to verify the native runtime;
+the log includes macOS and Lisp versions. The guard still needs confirmation
+on the affected macOS machine.
 
 An earlier `Component "zpb-ttf" not found` error means the font dependency is not
 installed or visible to ASDF; install/register it before building. A compiled
