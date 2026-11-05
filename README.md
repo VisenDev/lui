@@ -382,3 +382,19 @@ functions through `lui.fn`, adapted from `open-orders`. Normal Lisp code wraps a
 Run `mallet src --strict --disable no-package-use --disable error-without-custom-condition`.
 The disabled rules conflict with the internal-package `:use` convention and the
 struct-only policy: custom conditions introduce condition classes.
+
+### macOS 13 menu-bar auto-hide crash
+
+The supplied macOS log reaches the saved executable, then aborts in
+`HIPrintBacktrace` / `MenuBarInstance::IsAutoShowHideAllowed` with an empty-array
+`NSRangeException`. This matches the macOS auto-hide issue reported by
+[Makie](https://github.com/MakieOrg/Makie.jl/issues/2629) and reproduced in a native
+Cocoa application in [CPython's report](https://github.com/python/cpython/issues/101067).
+For affected macOS 13 systems, temporarily set **Automatically hide and show the
+menu bar** to **Never**, then run `make test-macos`. LUI does not alter this system
+preference. This is separate from SBCL floating-point traps, which are already
+masked at Cocoa boundaries. The test log now includes the macOS and Lisp versions.
+
+An earlier `Component "zpb-ttf" not found` error means the font dependency is not
+installed or visible to ASDF; install/register it before building. A compiled
+executable and passing Linux ABI checks do not establish a passing macOS runtime.
