@@ -15,3 +15,7 @@
 (load "tests/widgets.lisp")
 
 (lui.tests.widgets:run-tests)
+
+(load "examples/demo.lisp")
+(load "tests/gallery.lisp")
+(lui.tests.gallery:run-tests)

@@ -5,3 +5,6 @@
 *.lib
 *.o
 *~
+
+__pycache__/
+*.pyc

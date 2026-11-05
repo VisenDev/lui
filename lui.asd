@@ -5,6 +5,7 @@
   :version "0.1.0"
   :serial t
   :components ((:module "src"
+                :serial t
                 :components ((:file "fn")
                              (:file "layout")
                              (:file "frame")
@@ -17,18 +18,24 @@
 
 (defsystem "lui/tests"
   :depends-on ("lui")
-  :components ((:module "tests"
+  :serial t
+  :components ((:module "examples"
+                :components ((:file "demo")))
+               (:module "tests"
                 :components ((:file "core")
-                             (:file "widgets"))))
+                             (:file "widgets")
+                             (:file "gallery"))))
   :perform (test-op (operation component)
              (declare (ignore operation component))
              (uiop:symbol-call :lui.tests :run-tests)
-             (uiop:symbol-call :lui.tests.widgets :run-tests)))
+             (uiop:symbol-call :lui.tests.widgets :run-tests)
+             (uiop:symbol-call :lui.tests.gallery :run-tests)))
 
 (defsystem "lui/native"
   :depends-on ("lui" "cffi" "zpb-ttf")
   :serial t
   :components ((:module "src"
+                :serial t
                 :components ((:file "font")
                              (:file "draw")))))
 
@@ -46,6 +53,7 @@
   :depends-on ("lui/gl")
   :serial t
   :components ((:module "src"
+                :serial t
                 :components ((:file "wayland-protocol")
                              (:file "wayland")))))
 

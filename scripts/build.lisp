@@ -4,21 +4,16 @@
 
 (load "scripts/setup.lisp")
 
-(defvar *example* (uiop:getenv "LUI_EXAMPLE"))
 (defvar *backend* (uiop:getenv "PLATFORM"))
 
 (unless (member *backend* '("terminal" "x11" "wayland" "win32" "cocoa")
                 :test #'string=)
   (error "Cannot save a native executable for platform ~S." *backend*))
-(unless (member *example* '("demo" "showcase") :test #'string=)
-  (error "Unknown example ~S." *example*))
-
 (asdf:load-system (concatenate 'string "lui/" *backend*))
-(load (format nil "examples/~A.lisp" *example*))
+(load "examples/demo.lisp")
 
 (defun main ()
-  (let ((package (if (string= *example* "showcase")
-                     "LUI.EXAMPLE.SHOWCASE" "LUI.EXAMPLE")))
+  (let ((package "LUI.EXAMPLE"))
     (progv (list (find-symbol "*BACKEND*" "LUI"))
            (list (intern (string-upcase *backend*) :keyword))
       (if (member "--smoke-test" (uiop:command-line-arguments)

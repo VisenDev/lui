@@ -9,6 +9,9 @@ RUN_ARGS ?=
 PYTHON ?= python3
 JSCL ?= $(HOME)/clone/jscl
 PORT ?= 8000
+BENCH_FRAMES ?= 240
+WARMUP ?= 30
+export BENCH_FRAMES WARMUP
 PLATFORM ?= $(shell if [ "$(OS)" = Windows_NT ]; then echo win32; \
 	elif [ "$$(uname -s)" = Darwin ]; then echo cocoa; \
 	elif [ -n "$$WAYLAND_DISPLAY" ]; then echo wayland; \
@@ -23,16 +26,17 @@ TEST_PLATFORMS := $(NATIVE_PLATFORMS) web core native gl
 SOURCES := $(wildcard src/*.lisp) lui.asd scripts/setup.lisp scripts/build.lisp
 SUFFIX := $(if $(filter win32,$(PLATFORM)),.exe,)
 DEMO := build/bin/demo-$(PLATFORM)$(SUFFIX)
-SHOWCASE := build/bin/showcase-$(PLATFORM)$(SUFFIX)
 
-.PHONY: help check-platform build demo example showcase test test-platform \
-	test-core test-native test-executables web-build
+.PHONY: help check-platform build demo test test-platform \
+	test-core test-native test-executables web-build web-demo loc benchmark benchmark-platform
 help:
-	@echo 'make demo | example       Build and run the shared demo executable'
-	@echo 'make showcase             Build and run the showcase executable'
-	@echo 'make build                Save both executables in build/bin/'
+	@echo 'make demo                 Build and run the tabbed demo executable'
+	@echo 'make build                Save the demo executable in build/bin/'
 	@echo 'make test                 Test platform; progress/results in build/logs/'
-	@echo 'make web-build            Build JSCL browser demo and showcase'
+	@echo 'make benchmark            Measure throughput and frame times'
+	@echo 'make loc                  Report source line counts with cloc'
+	@echo 'make web-demo             Build and serve the browser demo at /'
+	@echo 'make web-build            Build the JSCL browser demo'
 	@echo 'PLATFORM=terminal|x11|wayland|win32|cocoa|web (auto-detected by default)'
 	@echo 'Test-only platforms: core native gl. Options: SBCL, SBCL_FLAGS, JSCL, PYTHON'
 
@@ -42,36 +46,33 @@ check-platform:
 
 ifeq ($(PLATFORM),web)
 build: web-build
-demo example: web-build
-	PORT=$(PORT) LUI_EXAMPLE=demo node scripts/serve-web.mjs
-showcase: web-build
-	PORT=$(PORT) LUI_EXAMPLE=showcase node scripts/serve-web.mjs
+demo: web-demo
 else
-build: $(DEMO) $(SHOWCASE)
-demo example: $(DEMO)
+build: $(DEMO)
+demo: $(DEMO)
 	$(RUNNER) "$(DEMO)" $(RUN_ARGS)
-showcase: $(SHOWCASE)
-	$(RUNNER) "$(SHOWCASE)" $(RUN_ARGS)
 endif
 
 $(DEMO): $(SOURCES) examples/demo.lisp | check-platform
 	@mkdir -p build/bin
-	LUI_EXAMPLE=demo LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build.lisp
-
-$(SHOWCASE): $(SOURCES) examples/showcase.lisp | check-platform
-	@mkdir -p build/bin
-	LUI_EXAMPLE=showcase LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build.lisp
+	LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build.lisp
 
 web-build:
 	@mkdir -p build
 	node "$(JSCL)/dist/jscl-node.js" scripts/build-web.lisp
 	cp "$(JSCL)/dist/jscl.js" build/jscl.js
+	sed 's#../build/##g' examples/web.html > build/index.html
 
-test: check-platform
+web-demo: web-build
+	@echo 'Open http://localhost:$(PORT)/'
+	$(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 --directory build
+
+test benchmark: check-platform
 	@mkdir -p build/logs
-	@log="build/logs/$(PLATFORM)-$$(date +%Y%m%d-%H%M%S)-$$$$.log"; \
-	{ echo "START platform=$(PLATFORM) log=$$log"; \
-	  if $(MAKE) --no-print-directory test-platform; then \
+	@log="build/logs/$@-$(PLATFORM)-$$(date +%Y%m%d-%H%M%S)-$$$$.log"; \
+	{ echo "START $@ platform=$(PLATFORM) log=$$log"; \
+	  $(MAKE) --no-print-directory loc; \
+	  if $(MAKE) --no-print-directory $@-platform; then \
 	    echo 'RESULT PASS platform=$(PLATFORM)'; \
 	  else status=$$?; echo "RESULT FAIL platform=$(PLATFORM) exit=$$status"; \
 	    exit "$$status"; fi; } 2>&1 | tee "$$log"
@@ -130,5 +131,17 @@ endif
 test-executables: build
 	@echo '[saved executables] RUN'
 	$(RUNNER) "$(DEMO)" --smoke-test
-	$(RUNNER) "$(SHOWCASE)" --smoke-test
 	@echo '[saved executables] PASS'
+
+loc:
+	@mkdir -p build/logs
+	cloc src --by-file --report-file=build/logs/src-loc.txt
+	@cat build/logs/src-loc.txt
+
+benchmark-platform: check-platform
+ifeq ($(PLATFORM),web)
+	$(MAKE) --no-print-directory web-build
+	$(PYTHON) -u tests/benchmark-web.py
+else
+	$(SBCL) $(SBCL_FLAGS) --load scripts/benchmark.lisp
+endif

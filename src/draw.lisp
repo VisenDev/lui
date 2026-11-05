@@ -1,7 +1,8 @@
 (defpackage #:lui.draw
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui.font)
   (:export #:renderer #:make-renderer #:renderer-font #:renderer-polygons
-           #:renderer-clip #:renderer-glass #:renderer-text #:paint-frame #:measure-widget
+           #:renderer-clip #:renderer-glass #:renderer-text
+           #:paint-frame #:measure-widget
            #:rounded-polygon #:color-components #:trapezoids #:paint-text))
 
 (in-package #:lui.draw)

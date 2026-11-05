@@ -267,6 +267,7 @@
              (assert (null (lui.wayland::wl-window-decoration native)))))
        (lui.example:draw)
        (when (= frames 2)
+         (setf (context-focus *context*) :name)
          ;; Exercise the actual C callback ABI without moving the user's mouse.
          (let* ((box (previous-box :hello))
                 (x (round (* 256 (+ (box-x box) 3))))
@@ -283,6 +284,8 @@
               :uint32 #x110 :uint32 state :void))))
        (when (= frames 3)
          (assert (= lui.example::*count* 1))
+         (assert (eq :name (context-focus *context*)))
+         (assert (not (context-focus-visible-p *context*)))
          (install-us-keymap lui.wayland::*window*)
          (repeat-info 20 100)
          (keyboard-key 30 1)
@@ -290,7 +293,7 @@
                (get-internal-real-time)))
        (when (= frames 4)
          ;; Both initial and repeated input must reach the next shared frame.
-         (assert (>= (count :text (events-for :hello) :key #'event-kind) 2))
+         (assert (>= (count :text (events-for :name) :key #'event-kind) 2))
          (keyboard-key 30 0))
        (when (= frames 5)
          (throw 'done t)))
