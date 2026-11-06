@@ -1,7 +1,8 @@
 (defpackage #:lui.frame
   (:use #:cl #:lui.fn #:lui.layout)
   (:export #:context #:make-context #:context-root #:context-focus
-           #:context-active #:context-measure #:*context* #:*parent*
+           #:context-focus-input #:context-active #:context-measure
+           #:*context* #:*parent*
            #:with-frame
            #:row #:column #:event #:event-kind #:event-x #:event-y #:event-id
            #:event-value #:event-key #:event-button #:event-clicks
@@ -44,6 +45,7 @@
   (copy nil :type (or null function))
   (input-handler nil :type (or null function))
   selection
+  focus-input
   last-click
   (time 0 :type real)
   (next-frame nil :type (or null real))
@@ -219,6 +221,13 @@
                           (or (context-active context) captured target)
                           (context-focus context)))))
           (when id (push event (gethash id (context-events context))))))))
+  ;; Native selection still needs the focused input after a composite editor
+  ;; consumes its events. Share the immutable event list with the observer.
+  (setf (context-focus-input context)
+        (when (context-selection context)
+          (let* ((id (context-focus context))
+                 (input (gethash id (context-events context))))
+            (when input (cons id input)))))
   (clrhash (context-regions context))
   (when (context-root context)
     (walk-elements

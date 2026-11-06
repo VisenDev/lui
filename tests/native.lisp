@@ -487,7 +487,8 @@
                  (dolist (id order)
                    (column (:id id) (lui.glass:label text)))
                  (when extra (lui.glass:label "Added"))
-                 (setf value (lui.glass:text-field :field value))
+                 (setf value (lui.interaction:edit-value :field value))
+                 (lui:text-field :field value)
                  (case cover
                    (:button
                     (column (:floating-p t)

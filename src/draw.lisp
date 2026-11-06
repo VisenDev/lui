@@ -843,11 +843,12 @@
        (when (widget-p (element-content node))
          (paint-widget renderer node))))
     (let* ((selection (context-selection context))
+           (input (context-focus-input context))
+           (focused (and input (equal (car input) (context-focus context))
+                         (cdr input)))
            (nodes (when (and selection
                              (or (text-selection-pending-copy-p selection)
-                                 (and (text-selection-anchor selection)
-                                      (gethash (context-focus context)
-                                               (context-events context)))))
+                                 (and (text-selection-anchor selection) focused)))
                     (selectable-nodes context)))
            (field (find (context-focus context) nodes :key #'element-id
                         :test #'equal)))
@@ -857,7 +858,7 @@
                          (or (member (event-kind event) '(:text :change))
                              (and (eq (event-kind event) :key)
                                   (not (eq (event-key event) :copy)))))
-                       (events-for (element-id field))))
+                       focused))
         (setf (text-selection-anchor selection) nil
               (text-selection-focus selection) nil
               (text-selection-dragging-p selection) nil))

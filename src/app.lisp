@@ -199,9 +199,11 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
     `(progn
        (register-toolkit ,name :surface ,name :defaults (lambda () ,defaults))
        ,@(loop :for local :in names :for fn :in functions :for a :in args
-               :collect `(defun ,local (,@a &rest options)
-                           (with-toolkit (,name)
-                             (,fn ,@a options))))
-       (defmacro ,panel-name ((&rest options) &body body)
-         (list 'with-toolkit (list ,name)
-               (list* 'panel (cons 'opt options) body))))))
+               :collect
+               `(defun ,local (,@a &optional options &rest legacy)
+                  (with-toolkit (,name)
+                    (,fn ,@a (if legacy (cons options legacy) options)))))
+       (defmacro ,panel-name (options &body body)
+         (let ((form (if (and (consp options) (keywordp (car options)))
+                         (cons 'opt options) options)))
+           (list 'with-toolkit (list ,name) (list* 'panel form body)))))))
