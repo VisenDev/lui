@@ -9,7 +9,8 @@
 (defstruct* state
   "Inspector state: visibility, selected snapshot node, expansion, and pane width."
   (open-p nil :type boolean) selected
-  (details-expanded-p nil :type boolean)
+  (details-height nil :type (or null real))
+  (details-grab nil :type (or null cons))
   (reveal-selection-p nil :type boolean)
   (width nil :type (or null real)) (grab nil :type (or null real))
   (collapsed (make-hash-table :test 'equal) :type hash-table)
@@ -242,8 +243,8 @@
                                  :accent accent :opacity opacity)))))
 
 (defun close-details (state)
-  (setf (state-selected state) nil (state-details-expanded-p state) nil
-        (state-reveal-selection-p state) nil)
+  (setf (state-selected state) nil (state-details-height state) nil
+        (state-details-grab state) nil (state-reveal-selection-p state) nil)
   (request-frame))
 
 (defun reveal-selection (state rows step height offset)
@@ -357,56 +358,90 @@
                            :text "Inspector width"
                            (lui:toolkit-defaults))))))
 
-(defun details-toggle (state full-width)
-  (when (lui:button (id :expand-details)
-                    (if (state-details-expanded-p state)
-                        "Restore tree" "Expand details")
-                    (lui:opt :width (if full-width (grow) (fit))
-                             :disabled-p (null (state-selected state))))
-    (setf (state-details-expanded-p state)
-          (not (state-details-expanded-p state)))
-    (request-frame)))
+(defun details-height (state maximum)
+  (let* ((minimum (min maximum (units (if (context-text-mode-p *context*)
+                                         6 12))))
+         (height (min maximum
+                      (max minimum (if (state-details-height state)
+                                       (units (state-details-height state))
+                                       (* maximum 0.75))))))
+    (dolist (event (events-for (id :details-resize)))
+      (when (or (and (eq (event-kind event) :press)
+                     (eq (event-button event) :primary))
+                (and (state-details-grab state)
+                     (member (event-kind event) '(:move :release)))
+                (and (eq (event-kind event) :key)
+                     (member (event-key event) '(:up :down :home :end))))
+        (case (event-kind event)
+          (:press
+           (setf (state-details-grab state) (cons (event-y event) height)
+                 (context-focus *context*) (id :details-resize)))
+          ((:move :release)
+           (setf height (+ (cdr (state-details-grab state))
+                           (- (car (state-details-grab state))
+                              (event-y event))))
+           (when (eq (event-kind event) :release)
+             (setf (state-details-grab state) nil)))
+          (:key
+           (case (event-key event)
+             (:up (incf height (units 2))) (:down (decf height (units 2)))
+             (:home (setf height maximum)) (:end (setf height 0)))))
+        (if (<= height (units 2))
+            (close-details state)
+            (setf height (min maximum (max minimum height))
+                  (state-details-height state) (/ height *unit*)))
+        (request-frame)))
+    height))
+
+(defun details-divider (height)
+  (emit (make-element
+         :id (id :details-resize) :interactive-p t :pointer-focus-p t
+         :width (grow) :height (fixed (units 1))
+         :content (apply #'make-widget :kind :splitter
+                         :style (current-toolkit) :orientation :horizontal
+                         :text "Properties height"
+                         :value (/ height (max 1 (context-height *context*)))
+                         (toolkit-defaults)))))
 
 (fn inspector ((state state) (width real))
   (when (activated-p (id :close-details)) (close-details state))
-  (unless (state-selected state) (setf (state-details-expanded-p state) nil))
-  (lui:panel (lui:opt :id (id :inspector) :interactive-p t
-                      :keyboard-focus-p nil :floating-p t
-                      :offset-x (- (context-width *context*) width)
-                      :width (fixed width)
-                      :height (fixed (context-height *context*))
-                      :padding (units 1) :gap (units 0.5) :opacity 1
-                      :radius 0 :frost 0)
-    (row (:width (grow) :gap (units 0.5))
-      (lui:label "Layout inspector" (lui:opt :width (grow)))
-      (when (lui:button (id :close) "Close")
-        (setf (state-open-p state) nil)
-        (request-frame))
-      (when (>= width (units 48)) (details-toggle state nil)))
-    (when (< width (units 48)) (details-toggle state t))
-    (unless (state-details-expanded-p state) (tree state width))
-    (let* ((node (gethash (state-selected state) (state-nodes state)))
-           (overhead (units (cond ((context-text-mode-p *context*) 4)
-                                  ((< width (units 48)) 11) (t 8))))
-           (available (max 0 (- (context-height *context*) overhead))))
-      (if node
-          (column (:id (id :property-pane) :width (grow)
-                   :height (if (state-details-expanded-p state) (grow)
-                               (fixed (* available 0.75))))
-            (row (:width (grow) :gap (units 0.5) :cross-align :center)
-              (when (>= width (units 36))
-                (lui:label "Properties" (lui:opt :width (grow))))
-              (lui:button (id :close-details) "Close details"
-                           (lui:opt :width (if (< width (units 36))
-                                              (grow) (fit)))))
-            (lui:panel (lui:opt :id (id :details) :width (grow) :height (grow)
-                                :scroll-p t :padding (units 1)
-                                :gap (if (context-text-mode-p *context*)
-                                         0 (units 0.25))
-                                :opacity 1 :radius 0 :frost 0)
-              (details node width)))
-          (lui:label "Select a tree row for properties."
-                     (lui:opt :width (grow) :font-size 14))))))
+  (let ((height (details-height state
+                                (max 0 (- (context-height *context*)
+                                          (units (if (context-text-mode-p
+                                                      *context*) 6 9)))))))
+    (lui:panel (lui:opt :id (id :inspector) :interactive-p t
+                        :keyboard-focus-p nil :floating-p t
+                        :offset-x (- (context-width *context*) width)
+                        :width (fixed width)
+                        :height (fixed (context-height *context*))
+                        :padding (units 1) :gap (units 0.5) :opacity 1
+                        :radius 0 :frost 0)
+      (row (:width (grow) :gap (units 0.5))
+        (lui:label "Layout inspector" (lui:opt :width (grow)))
+        (when (lui:button (id :close) "Close")
+          (setf (state-open-p state) nil)
+          (request-frame)))
+      (tree state width)
+      (let ((node (gethash (state-selected state) (state-nodes state))))
+        (if node
+            (progn
+              (details-divider height)
+              (column (:id (id :property-pane) :width (grow)
+                       :height (fixed height))
+                (row (:width (grow) :gap (units 0.5) :cross-align :center)
+                  (lui:label "Properties" (lui:opt :width (grow)))
+                  (lui:button (id :close-details) "×"
+                               (lui:opt :width (fixed (units 5)) :font-size 14
+                                        :accessible-name "Close details")))
+                (lui:panel (lui:opt :id (id :details)
+                                    :width (grow) :height (grow)
+                                    :scroll-p t :padding (units 1)
+                                    :gap (if (context-text-mode-p *context*)
+                                             0 (units 0.25))
+                                    :opacity 1 :radius 0 :frost 0)
+                  (details node width))))
+            (lui:label "Select a tree row for properties."
+                       (lui:opt :width (grow) :font-size 14)))))))
 
 (defun draw-inspector (state toolkit previous)
   (when (and (state-open-p state) (null previous)) (request-frame))

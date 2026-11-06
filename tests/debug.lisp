@@ -241,13 +241,23 @@
       (assert (every (lambda (widget)
                        (eq :normal (widget-font-weight widget)))
                      (labels-named "Actual editor value")))
-      (let ((split (box-height (element-box (node :details)))))
-        (frame (make-event :kind :activate
-                           :id (lui.debug::id :expand-details)))
-        (assert (null (node :tree)))
-        (assert (> (box-height (element-box (node :details))) split)))
-      (frame (make-event :kind :activate
-                         :id (lui.debug::id :expand-details)))
+      (assert (string= "×"
+                       (widget-text (element-content (node :close-details)))))
+      (assert (string= "Close details"
+                       (widget-accessible-name
+                        (element-content (node :close-details)))))
+      (assert (eq :horizontal
+                  (widget-orientation
+                   (element-content (node :details-resize)))))
+      (let ((split (box-height (element-box (node :property-pane)))))
+        (frame (make-event :kind :key :id (lui.debug::id :details-resize)
+                           :key :up))
+        (assert (> (box-height (element-box (node :property-pane))) split))
+        (frame (make-event :kind :key :id (lui.debug::id :details-resize)
+                           :key :down))
+        (assert (= (box-height (element-box (node :property-pane))) split)))
+      (frame (make-event :kind :key :id (lui.debug::id :details-resize)
+                         :key :home))
       (assert (node :tree))
       (assert (equal '(:id :field) (lui.debug:state-selected state)))
       (frame (make-event :kind :activate
@@ -257,12 +267,10 @@
       (frame (make-event :kind :activate
                          :id (lui.debug::id :row '(:id :field))))
       (frame (make-event :kind :activate
-                         :id (lui.debug::id :expand-details)))
-      (frame (make-event :kind :activate
                          :id (lui.debug::id :close-details)))
       (assert (lui.debug:state-open-p state))
       (assert (null (lui.debug:state-selected state)))
-      (assert (null (lui.debug::state-details-expanded-p state)))
+      (assert (null (lui.debug::state-details-height state)))
       (assert (node :tree))
       (assert (null (node :details)))
       ;; Anonymous nodes must not look focused/pressed just because IDs are NIL.
@@ -312,7 +320,48 @@
         (assert (zerop (nth-value 1 (scroll-position (lui.debug::id :tree)))))
         (lui.debug:draw #'app :state state)))))
 
+(fn test-details-drag ()
+  (let ((state (lui.debug:make-state :open-p t))
+        (context (make-terminal-context)) (lui:*unit* 1))
+    (labels ((frame (&rest events)
+               (with-frame (context 100 48 :events events)
+                 (lui.debug:draw (lambda () (lui:button :item "Item"))
+                                 :state state)))
+             (node (kind)
+               (gethash (lui.debug::id kind)
+                        (lui.frame::context-ids context)))
+             (select ()
+               (frame (make-event :kind :activate
+                                  :id (lui.debug::id :row '(:id :item))))
+               (frame)))
+      (frame) (frame) (select)
+      (let* ((rail (element-box (node :details-resize)))
+             (x (+ (box-x rail) 2)) (y (+ (box-y rail) 0.5))
+             (height (box-height (element-box (node :property-pane)))))
+        (frame (make-event :kind :press :x x :y y))
+        (assert (= height (box-height (element-box (node :property-pane)))))
+        (frame (make-event :kind :move :x x :y (- y 3)))
+        (assert (= (+ height 3)
+                   (box-height (element-box (node :property-pane)))))
+        (frame (make-event :kind :release :x x :y (- y 3)))
+        (assert (null (lui.debug::state-details-grab state))))
+      (let* ((rail (element-box (node :details-resize)))
+             (x (+ (box-x rail) 2)) (y (+ (box-y rail) 0.5)))
+        (frame (make-event :kind :press :x x :y y))
+        (frame (make-event :kind :move :x x :y 48))
+        (frame (make-event :kind :release :x x :y 48)))
+      (assert (null (lui.debug:state-selected state)))
+      (assert (null (node :details)))
+      (assert (node :tree))
+      (select)
+      (assert (> (box-height (element-box (node :property-pane))) 6))
+      (frame (make-event :kind :key :id (lui.debug::id :details-resize)
+                         :key :end))
+      (assert (null (node :details)))
+      (assert (null (lui.debug:state-selected state))))))
+
 (fn run-tests ()
+  (test-details-drag)
   (test-selection-reveal)
   (test-properties)
   (test-terminal-overlap)
