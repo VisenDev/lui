@@ -7,7 +7,8 @@
 
 (asdf:load-asd (truename "lui.asd"))
 
-;; Load the desired LUI backend system before this launcher, e.g. lui/x11.
+;; Load the host backends; an explicit LUI:*BACKEND* still selects one.
+(asdf:load-system "lui")
 
 (asdf:load-system "lui/demo")
 

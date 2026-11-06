@@ -9,7 +9,7 @@
                 '("core" "terminal" "gl" "x11" "wayland" "win32" "cocoa")
                 :test #'string=)
   (error "Unsupported Lisp benchmark platform ~S." *platform*))
-(asdf:load-system (if (string= *platform* "core") "lui"
+(asdf:load-system (if (string= *platform* "core") "lui/core"
                      (concatenate 'string "lui/" *platform*)))
 (asdf:load-system "lui/demo")
 

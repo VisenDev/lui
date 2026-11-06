@@ -6,7 +6,7 @@
 
 (let ((test (uiop:getenv "LUI_TEST")))
   (cond
-    ((string= test "core") (asdf:test-system "lui"))
+    ((string= test "core") (asdf:test-system "lui/core"))
     ((string= test "native") (asdf:test-system "lui/native/tests"))
     ((member test '("wayland" "win32" "cocoa" "gl") :test #'string=)
      #+darwin

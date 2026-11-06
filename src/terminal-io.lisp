@@ -4,7 +4,7 @@
 
 (in-package #:lui.terminal.io)
 
-;; The portable system never loads this file or CFFI. Only this optional backend
+;; LUI/CORE never loads this file or CFFI. Only this optional backend
 ;; accesses the terminal, through libc and the standard input/output descriptors.
 (cffi:defcstruct pollfd
   (fd :int)
@@ -37,9 +37,11 @@
   (cffi:with-foreign-object (size :unsigned-short 4)
     (if (zerop (cffi:foreign-funcall
                 "ioctl" :int 1 :unsigned-long
-                #+linux #x5413
-                #+(or darwin freebsd openbsd netbsd) #x40087468
-                #-(or linux darwin freebsd openbsd netbsd) 0
+                #+(or linux lui-linux-host) #x5413
+                #+(or darwin freebsd openbsd netbsd
+                      lui-bsd-host lui-darwin-host)
+                #x40087468
+                #-(or linux darwin freebsd openbsd netbsd lui-posix-host) 0
                 :pointer size :int))
         (values (max 1 (cffi:mem-aref size :unsigned-short 1))
                 (max 1 (cffi:mem-aref size :unsigned-short 0)))
@@ -459,5 +461,5 @@
                                              :pointer saved :int))))))))
 
 ;; Other platforms retain the portable line-input backend.
-#+(or linux darwin freebsd openbsd netbsd)
+#+(or linux darwin freebsd openbsd netbsd lui-posix-host)
 (register-backend :terminal #'run-raw-terminal)
