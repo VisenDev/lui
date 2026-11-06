@@ -1164,6 +1164,72 @@ class WebTests(unittest.TestCase):
                                bar.bounding_box()["width"])
         self.lisp('(lui.web:unmount *scroll-style-app*)')
 
+    def test_wrapped_list_rows_fit_content_across_collections(self):
+        self.lisp('''
+          (defvar *wrap-row-toolkit* :glass)
+          (defvar *wrap-row-width* 120)
+          (defvar *wrap-row-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *wrap-row-host* "id") #j"wrapped-rows"
+                (jscl/ffi:oget *wrap-row-host* "style" "width") #j"260px"
+                (jscl/ffi:oget *wrap-row-host* "style" "height") #j"420px")
+          (#j:document:body:appendChild *wrap-row-host*)
+          (defvar *wrap-row-app*
+            (lui.web:mount *wrap-row-host*
+              (lambda ()
+                (lui:with-toolkit (*wrap-row-toolkit*)
+                  (lui:panel (lui:opt :width (lui.layout:fixed *wrap-row-width*)
+                                      :height (lui.layout:grow) :opacity 1)
+                    (dolist (text '("Controls and options"
+                                    "Layout and scrolling"
+                                    "Input and inspection"
+                                    "Backends and running"))
+                      (lui:list-item text text
+                        (lui:opt :width (lui.layout:grow))))
+                    (lui:list-item :fixed "Explicitly fixed clipped row"
+                      (lui:opt :width (lui.layout:grow)
+                               :height (lui.layout:fixed 24))))))))
+        ''')
+        host = self.page.locator("#wrapped-rows")
+        for toolkit in ("glass", "motif", "garnet"):
+            self.lisp(f'''
+              (setf *wrap-row-toolkit* :{toolkit} *wrap-row-width* 120)
+              (lui.web:refresh *wrap-row-app*)
+            ''')
+            rows = host.get_by_role("option")
+            expect(rows.first).to_have_attribute("data-lui-style", toolkit)
+            expect(rows.first).to_have_css("width", "120px")
+            narrow_heights = []
+            for row in rows.all()[:-1]:
+                metrics = row.evaluate("""node => {
+                    const range = document.createRange();
+                    range.selectNodeContents(node);
+                    const css = getComputedStyle(node);
+                    return {height:node.clientHeight, scroll:node.scrollHeight,
+                        text:range.getBoundingClientRect().height,
+                        padding:parseFloat(css.paddingTop)+parseFloat(css.paddingBottom)};
+                }""")
+                self.assertLessEqual(metrics["scroll"], metrics["height"])
+                self.assertLessEqual(metrics["text"] + metrics["padding"],
+                                     metrics["height"] + 1)
+                self.assertGreater(metrics["text"], 25)
+                narrow_heights.append(metrics["height"])
+            fixed = rows.last
+            expect(fixed).to_have_css("height", "24px")
+            self.assertTrue(fixed.evaluate("n => n.scrollHeight > n.clientHeight"))
+            if toolkit == "garnet":
+                host.screenshot(
+                    path=str(ROOT / "build/web-wrapped-list-rows.png"))
+            self.lisp('''
+              (setf *wrap-row-width* 240)
+              (lui.web:refresh *wrap-row-app*)
+            ''')
+            expect(rows.first).to_have_css("width", "240px")
+            for row, narrow in zip(rows.all()[:-1], narrow_heights):
+                self.assertLess(row.bounding_box()["height"], narrow)
+                self.assertTrue(row.evaluate("n => n.scrollHeight <= n.clientHeight"))
+            expect(fixed).to_have_css("height", "24px")
+        self.lisp('(lui.web:unmount *wrap-row-app*)')
+
     def test_custom_toolkit_styles_inherit_and_widget_hook_runs_last(self):
         self.lisp('''
           (lui:register-toolkit :web-parent :parent :motif

@@ -229,21 +229,25 @@
          (text (if (eq kind :text-field)
                    (widget-value widget)
                    (widget-text widget)))
-         (extra (case kind (:label 0) (:checkbox 48) (otherwise 24))))
+         (extra (case kind
+                  (:label 0) (:checkbox 48)
+                  (:list-item (* 2 (list-item-inset widget width)))
+                  (otherwise 24)))
+         (vertical (case kind (:label 0) (:list-item 10) (otherwise 12))))
     (setf (jscl/ffi:oget node "textContent") (jscl/ffi:jsstring text))
     (style node "font-size" (px (widget-font-size widget)))
     (style node "font-family" (css-font-family widget))
     (style node "font-weight" (css-font-weight widget))
     (style node "width"
            (if width (px (max 0 (- width extra))) "max-content"))
-    (style node "white-space" (if (eq kind :label) "pre-wrap" "pre"))
+    (style node "white-space"
+           (if (member kind '(:label :list-item)) "pre-wrap" "pre"))
     (let ((rect ((jscl/ffi:oget node "getBoundingClientRect"))))
       (values
        (max (case kind (:slider 160) (:text-field 160) (otherwise 0))
             (ceiling (+ extra (jscl/ffi:oget rect "width"))))
-       (max (+ (if (eq kind :label) 0 12) (widget-font-size widget))
-            (ceiling (+ (if (eq kind :label) 0 12)
-                        (jscl/ffi:oget rect "height"))))))))
+       (max (+ vertical (widget-font-size widget))
+            (ceiling (+ vertical (jscl/ffi:oget rect "height"))))))))
 
 (fn measure-widget ((app web-app) (widget widget) width)
   (let* ((kind (widget-kind widget))

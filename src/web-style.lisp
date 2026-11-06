@@ -2,7 +2,7 @@
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets)
   (:export #:style #:attribute #:px #:add-sheet #:style-sheets
            #:framed-p #:window-panel-p #:tab-underline
-           #:finish-control-style))
+           #:finish-control-style #:list-item-inset))
 (in-package #:lui.web.style)
 
 (fn node-cache (node (name string))
@@ -66,12 +66,17 @@
     (style dom "box-shadow"
            (format nil "inset 0 -3px 0 ~A" (widget-accent widget)))))
 
+(fn (list-item-inset real) ((widget widget) width)
+  "Horizontal row padding, capped so narrow disclosure controls still fit."
+  (if width
+      (min 11 (max 0 (/ (- width (widget-font-size widget)) 2)))
+      11))
+
 (fn finish-control-style (dom (widget widget) (node element))
   "Apply shared flat-cell, list-row, canvas, and gauge defaults."
   (let ((kind (widget-kind widget)) (box (element-box node)))
     (when (eq kind :list-item)
-      (let ((inset (min 11 (max 0 (/ (- (box-width box)
-                                        (widget-font-size widget)) 2)))))
+      (let ((inset (list-item-inset widget (box-width box))))
         (style dom "padding" (concatenate 'string "5px " (px inset)))
         (style dom "text-align" (if (< inset 11) "center" "left")))
       (style dom "border" "none")
