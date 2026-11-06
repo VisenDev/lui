@@ -1213,8 +1213,8 @@ class WebTests(unittest.TestCase):
         stopped = self.number('*clock-draws*')
         self.page.wait_for_timeout(350)
         self.assertEqual(self.number('*clock-draws*'), stopped)
-        self.assertEqual(self.number(
-            '(if (lui.web::web-app-deadline-timer *clock-app*) 1 0)'), 0)
+        self.page.wait_for_function("() => jscl.evaluateString('*clock-draws*') > "
+                                    + str(stopped), timeout=1800)
         self.lisp('''(setf *clock-running* t *clock-delay* 0.04)
           (lui.web:refresh *clock-app*)''')
         self.frames()
@@ -1224,6 +1224,28 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.number('*clock-draws*'), stopped)
         self.assertEqual(self.number(
             '(if (lui.web::web-app-deadline-timer *clock-app*) 1 0)'), 0)
+
+    def test_window_frame_caps(self):
+        self.lisp('''
+          (defvar *rate-times* nil)
+          (defvar *rate-host* (#j:document:createElement #j"section"))
+          (#j:document:body:appendChild *rate-host*)
+          (defvar *rate-app*
+            (lui.web:mount *rate-host*
+              (lambda ()
+                (push (lui.frame:frame-time) *rate-times*)
+                (when (< (length *rate-times*) 4)
+                  (lui.frame:request-frame)))
+              :min-fps 2 :max-fps 10))
+        ''')
+        self.page.wait_for_function(
+            "() => jscl.evaluateString('(length *rate-times*)') >= 5")
+        self.assertGreaterEqual(self.number(
+            "(- (first *rate-times*) (second *rate-times*))"), 0.49)
+        self.assertGreaterEqual(self.number(
+            "(loop :for (a b) :on *rate-times* :while b :minimize (- a b))"
+        ), 0.099)
+        self.lisp("(lui.web:unmount *rate-app*)")
 
     def test_svg_canvas_pointer_hover_secondary_doubleclick_and_gauge(self):
         self.lisp('''

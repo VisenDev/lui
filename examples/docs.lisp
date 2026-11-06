@@ -38,7 +38,7 @@
       (when (lui:button :increment \"Increment\")
         (incf count)))))"
      "Give interactive controls stable, unique IDs. Reuse an ID across frames for the same logical control; changing it creates fresh editing/focus state. Duplicate IDs in a frame are errors. Conditional declarations add or remove controls immediately."
-     "lui.frame:frame-time returns this frame's clock snapshot. lui.frame:request-frame schedules another redraw, optionally after a delay in seconds. Prefer requesting a deadline for timers over a busy loop; terminal redraws can otherwise stay idle.")
+     "lui.frame:frame-time returns this frame's clock snapshot. lui.frame:request-frame schedules another redraw, optionally after a delay in seconds. Prefer requesting a deadline for timers over a busy loop; idle windows redraw at :min-fps (default 1). Set :max-fps (default 240) on lui:run to cap active rendering. Input wakes the window and explicit deadlines support animations.")
     (:widgets "Controls and options"
      "Buttons return true when activated. Text fields, sliders, and checkboxes return their current value: assign it back to your model. Tabs, cells, and list items accept :selected-p for visible selection. Panels contain other declarations."
      "(lui:panel (lui:opt :padding (lui:units 1))

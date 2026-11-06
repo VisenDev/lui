@@ -142,7 +142,7 @@ try:
             current_toolkit = {"Glass": "Motif", "Motif": "Garnet",
                                "Garnet": "Glass"}[current_toolkit]
             expect(page.get_by_text(f"Toolkit: {current_toolkit}",
-                                    exact=True)).to_be_visible()
+                                    exact=True).filter(visible=True)).to_be_visible()
         for tab_name in name.split("/"):
             tab = page.get_by_role("tab", name=tab_name, exact=True)
             tab.click()

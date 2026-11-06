@@ -731,6 +731,21 @@
 (callback toplevel-close ()
   (setf (wl-window-quit-p *window*) t))
 
+(fn wait-wayland (display (context context) events)
+  (loop :for delay := (lui.frame::frame-wait context events)
+        :for repeat := (wl-window-repeat-at *window*)
+        :when repeat
+          :do (let ((ticks (- repeat (get-internal-real-time))))
+                (setf delay
+                      (min delay (/ (max 0 ticks)
+                                    internal-time-units-per-second))))
+        :do (pump-display display (ceiling (* 1000 delay)))
+        :until (or (zerop delay) (wl-window-events *window*)
+                   (wl-window-quit-p *window*)
+                   (/= (wl-window-width *window*) (context-width context))
+                   (/= (wl-window-height *window*) (context-height context))))
+  (lui.frame::limit-frame-rate context))
+
 (fn run-window ((draw function) &key title width height (interactive t))
   (let* ((display (connect-display (cffi:null-pointer)))
          (*window* (make-wl-window :display display
@@ -802,22 +817,24 @@
                      :measure (lambda (widget width)
                                 (measure-widget renderer widget width))))
                   (*context* context))
-             (loop :until (wl-window-quit-p *window*)
+             (loop :with events
+                   :until (wl-window-quit-p *window*)
                    :do
                    (sync-window-size *window*)
                    (repeat-input)
+                   (setf events (nreverse (shiftf (wl-window-events *window*)
+                                                 nil)))
                    (with-frame
                        (context (wl-window-width *window*)
                                 (wl-window-height *window*)
-                        :events (nreverse (wl-window-events *window*)))
-                     (setf (wl-window-events *window*) nil)
+                        :events events)
                      (funcall draw))
                    (update-cursor)
                    (begin-gpu-frame gpu)
                    (paint-frame renderer context)
                    (present-gpu gpu)
                    (unless interactive (return context))
-                   (pump-display display))))
+                   (wait-wayland display context events))))
       (when (wl-window-gpu *window*)
         (close-gpu (wl-window-gpu *window*)))
       (when (wl-window-native *window*)

@@ -49,6 +49,9 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
   (last-input 0 :type real)
   (level 1 :type integer))
 
+(defvar *min-fps* 1)
+(defvar *max-fps* 240)
+
 (defstruct* context
   "Per-window frame state: completed tree, focus, events, editing, and scrolling.
 The backend supplies measurement, clipboard, and optional input callbacks."
@@ -66,6 +69,8 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   selection
   focus-input
   last-click
+  (min-fps *min-fps* :type real)
+  (max-fps *max-fps* :type real)
   (time 0 :type real)
   (next-frame nil :type (or null real))
   focus
@@ -95,6 +100,20 @@ The backend supplies measurement, clipboard, and optional input callbacks."
 (fn (frame-time real) ()
   "Monotonic seconds sampled once for the current frame."
   (context-time *context*))
+
+(fn frame-wait ((context context) &optional urgent
+                (now (/ (get-internal-real-time)
+                        internal-time-units-per-second)))
+  (let* ((start (context-time context))
+         (first (+ start (/ 1 (context-max-fps context))))
+         (idle (+ start (/ 1 (context-min-fps context))))
+         (due (min idle (or (context-next-frame context) idle))))
+    (max 0 (- (if urgent first (max first due)) now))))
+
+#-jscl
+(fn limit-frame-rate ((context context))
+  (let ((remaining (frame-wait context t)))
+    (when (plusp remaining) (sleep remaining))))
 
 (fn request-frame (&optional ((delay real) 0))
   "Request another frame after DELAY seconds; earliest request wins."

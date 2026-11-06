@@ -160,7 +160,7 @@ proxy version; DESTROY-P tells libwayland to destroy the sending proxy."
       (error "Cannot install Wayland listener."))
     listeners))
 
-(fn pump-display (display)
+(fn pump-display (display &optional (timeout 16))
   "Flush requests, wait briefly for readable input, and dispatch pending callbacks.
 Signal an error when the display disconnects or its read/dispatch operation fails."
   (loop :while
@@ -168,6 +168,7 @@ Signal an error when the display disconnects or its read/dispatch operation fail
               (cffi:foreign-funcall "wl_display_prepare_read"
                                     :pointer display :int)))
         :do
+        (setf timeout 0)
         (when (minusp (cffi:foreign-funcall "wl_display_dispatch_pending"
                                           :pointer display :int))
           (error "Wayland display disconnected.")))
@@ -178,7 +179,7 @@ Signal an error when the display disconnects or its read/dispatch operation fail
                                     :pointer display :int)
             events 1 revents 0)
       (let ((ready (cffi:foreign-funcall "poll" :pointer poll
-                                       :ulong 1 :int 16 :int)))
+                                       :ulong 1 :int timeout :int)))
         (if (and (plusp ready) (logtest revents 1))
             (when (minusp
                    (cffi:foreign-funcall "wl_display_read_events"

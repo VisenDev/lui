@@ -569,9 +569,19 @@
       (paint-frame (lui.gl:gpu-renderer gpu) context)
       (message sb-alien:void gl "flushBuffer"))))
 
-(fn frame-delay ((started real) (now real)
-                 &optional ((ticks real) internal-time-units-per-second))
-  (max 0 (- (/ 1d0 240) (/ (- now started) ticks))))
+(fn wait-cocoa (application (context context) events)
+  (let ((delay (lui.frame::frame-wait context events)))
+    (when (plusp delay)
+      ;; Peek so the ordinary event loop still translates and dispatches input.
+      (message object application
+               "nextEventMatchingMask:untilDate:inMode:dequeue:"
+               sb-alien:unsigned-long #xffffffffffffffff
+               object (message object (objc-class "NSDate")
+                               "dateWithTimeIntervalSinceNow:"
+                               sb-alien:double (float delay 1d0))
+               object (sb-alien:extern-alien "NSDefaultRunLoopMode" object)
+               objc-bool 0)))
+  (lui.frame::limit-frame-rate context))
 
 (fn run-cocoa-window ((draw function) &key title width height (interactive t))
   (with-cocoa-float-mode
@@ -664,7 +674,6 @@
              (loop :while (not (zerop
                                 (message objc-bool (cocoa-app-window *app*)
                                          "isVisible")))
-                   :for started := (get-internal-real-time)
                    :do
                    (let* ((view (cocoa-app-view *app*))
                           (frame-pool
@@ -698,13 +707,11 @@
                                   (message sb-alien:void view
                                            "displayIfNeeded")))
                             (when (cocoa-app-error *app*)
-                              (error (cocoa-app-error *app*))))
+                              (error (cocoa-app-error *app*)))
+                            (when interactive
+                              (wait-cocoa application context events)))
                        (message sb-alien:void frame-pool "drain")))
-                   :unless interactive :do (return context)
-                   :do (let ((remaining
-                               (frame-delay
-                                started (get-internal-real-time))))
-                         (when (plusp remaining) (sleep remaining)))))
+                   :unless interactive :do (return context)))
         (when gpu
           (message sb-alien:void gl "makeCurrentContext")
           (lui.gl:close-gpu gpu)

@@ -18,6 +18,9 @@
 (defmacro api (name result &rest args)
   `(cffi:defcfun (,@name :convention :stdcall) ,result ,@args))
 
+(api ("MsgWaitForMultipleObjectsEx" wait-messages) :uint
+  (count :uint) (handles :pointer) (timeout :uint) (mask :uint) (flags :uint))
+
 (api ("OpenClipboard" open-clipboard) :int (window :pointer))
 (api ("CloseClipboard" close-clipboard) :int)
 (api ("EmptyClipboard" empty-clipboard) :int)
@@ -156,6 +159,7 @@
   (version :uint32) (callback :pointer) (thread :int) (codecs :int))
 
 (defstruct win-window
+  redraw-p
   (handle (cffi:null-pointer))
   (dc (cffi:null-pointer))
   (bitmap (cffi:null-pointer))
@@ -258,7 +262,9 @@
         (x (signed-word lparam)) (y (signed-word (ash lparam -16))))
     (case message
       (#x10 (setf (win-window-quit window) t))
-      (#x0f (validate-rect handle (cffi:null-pointer)))
+      (#x05 (setf (win-window-redraw-p window) t))
+      (#x0f (setf (win-window-redraw-p window) t)
+             (validate-rect handle (cffi:null-pointer)))
       (#x14 (return-from window-message 1))
       (#x20
        (if (= (logand lparam #xffff) 1)
@@ -539,6 +545,17 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
       (dispatch-message message)))
   (when (win-window-error window) (error (win-window-error window))))
 
+(fn wait-win32 ((window win-window) (context context) input)
+  (loop
+    (pump-messages window)
+    (let ((delay (lui.frame::frame-wait context input)))
+      (when (or (zerop delay) (win-window-events window)
+                (win-window-redraw-p window) (win-window-quit window))
+        (return))
+      (wait-messages 0 (cffi:null-pointer) (ceiling (* 1000 delay))
+                     #x4ff 0)))
+  (unless (win-window-quit window) (lui.frame::limit-frame-rate context)))
+
 (fn render-frame
   ((window win-window) (renderer renderer) (context context)
     (draw function))
@@ -646,9 +663,11 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
             (loop
               (pump-messages window)
               (when (win-window-quit window) (return context))
-              (render-frame window renderer context draw)
-              (unless interactive (return context))
-              (sleep 0.016f0))))
+              (let ((input (win-window-events window)))
+                (setf (win-window-redraw-p window) nil)
+                (render-frame window renderer context draw)
+                (unless interactive (return context))
+                (wait-win32 window context input)))))
         (when font (close-font font))
         (free-buffer window)
         (unless (cffi:null-pointer-p (win-window-handle window))

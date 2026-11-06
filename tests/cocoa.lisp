@@ -293,14 +293,6 @@
       (assert (plusp (box-width (element-box (context-root context)))))
       (assert (plusp (box-height (element-box (context-root context))))))))
 
-(fn test-frame-pacing ()
-  (assert (< (abs (- (lui.cocoa::frame-delay 1000 1000 1000)
-                     (/ 1d0 240))) 1d-9))
-  (assert (< (abs (- (lui.cocoa::frame-delay 1000 1002 1000)
-                     (- (/ 1d0 240) 0.002d0))) 1d-9))
-  (assert (zerop (lui.cocoa::frame-delay 1000 1050 1000)))
-  (assert (zerop (lui.cocoa::frame-delay 1000 2000 1000))))
-
 #+linux
 (fn test-stacktrace-guard ()
   ;; Isolate fake Objective-C symbols from the parent and real AppKit smoke.
@@ -327,7 +319,6 @@
   (test-pointer-state)
   (test-window-routing)
   (test-float-boundaries)
-  (test-frame-pacing)
   #+linux (test-stacktrace-guard)
   #+darwin (test-macos-runtime)
   (format t "Cocoa ABI/callback/input tests passed.~%")

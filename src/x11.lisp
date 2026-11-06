@@ -424,26 +424,37 @@
                            (x-window-width window) (x-window-height window)
                            0 depth 1 visual #x2008 attrs)))))
 
+(cffi:defcstruct poll-fd (fd :int) (events :short) (revents :short))
+
+(fn wait-x11 (display (context context) events)
+  (when (zerop (pending display))
+    (cffi:with-foreign-object (p '(:struct poll-fd))
+      (cffi:with-foreign-slots ((fd events) p (:struct poll-fd))
+        (setf fd (cffi:foreign-funcall "XConnectionNumber"
+                                       :pointer display :int)
+              events 1))
+      (cffi:foreign-funcall "poll" :pointer p :ulong 1
+                            :int (ceiling (* 1000
+                                             (lui.frame::frame-wait
+                                              context events))) :int)))
+  (lui.frame::limit-frame-rate context))
+
 (fn draw-window ((window x-window) (gpu gpu) (context context)
                  (draw function) interactive delete)
   (loop
-    (let ((start (get-internal-real-time)))
-      (multiple-value-bind (events quit) (read-events window delete)
-        (when quit (return context))
-        (let ((w (x-window-width window)) (h (x-window-height window)))
-          (setf (gpu-width gpu) w (gpu-height gpu) h
-                (gpu-logical-width gpu) w (gpu-logical-height gpu) h)
-          (with-frame (context w h :events events) (funcall draw)))
-        (update-cursor window)
-        (begin-gpu-frame gpu)
-        (paint-frame (gpu-renderer gpu) context)
-        (swap-buffers (x-window-display window) (x-window-window window))
-        (cffi:foreign-funcall "glFinish" :void)
-        (unless interactive (return context))
-        (let ((remaining (- (/ 1 60)
-                            (/ (- (get-internal-real-time) start)
-                               internal-time-units-per-second))))
-          (when (plusp remaining) (sleep remaining)))))))
+    (multiple-value-bind (events quit) (read-events window delete)
+      (when quit (return context))
+      (let ((w (x-window-width window)) (h (x-window-height window)))
+        (setf (gpu-width gpu) w (gpu-height gpu) h
+              (gpu-logical-width gpu) w (gpu-logical-height gpu) h)
+        (with-frame (context w h :events events) (funcall draw)))
+      (update-cursor window)
+      (begin-gpu-frame gpu)
+      (paint-frame (gpu-renderer gpu) context)
+      (swap-buffers (x-window-display window) (x-window-window window))
+      (cffi:foreign-funcall "glFinish" :void)
+      (unless interactive (return context))
+      (wait-x11 (x-window-display window) context events))))
 
 (fn run-x11 ((draw function) &key title width height (interactive t))
   "Run DRAW in an Xlib window using the shared OpenGL renderer via GLX."

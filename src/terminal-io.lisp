@@ -373,17 +373,13 @@
 (fn wait-frame ((input input) (context context) width height)
   ;; Poll for resize without repainting idle frames; timers shorten the wait.
   (loop
-    (let* ((deadline (context-next-frame context))
-           (remaining (when deadline
-                        (- deadline (/ (get-internal-real-time)
-                                       internal-time-units-per-second)))))
-      (when (and remaining (<= remaining 0))
+    (let ((remaining (lui.frame::frame-wait context)))
+      (when (zerop remaining)
         (read-input input 0)
         (decode-input input context)
         (return))
       (let ((escape-only (equal (input-bytes input) '(27))))
-        (read-input input (if remaining (min 100 (ceiling (* remaining 1000)))
-                             100))
+        (read-input input (min 100 (ceiling (* remaining 1000))))
         (when (and escape-only (equal (input-bytes input) '(27)))
           (setf (input-bytes input) nil)
           (key-event input :escape))))
@@ -435,22 +431,13 @@
                       (with-frame (context (or width columns) (or height rows)
                                            :events events)
                         (funcall draw))
-                      ;; Input can change state after earlier widgets declared
-                      ;; their values. Settle once before displaying the frame.
                       (when events
-                        (let ((deadline (context-next-frame context)))
-                          (with-frame (context (or width columns)
-                                               (or height rows))
-                            (funcall draw))
-                          (when deadline
-                            (setf (context-next-frame context)
-                                  (min deadline
-                                       (or (context-next-frame context)
-                                           deadline))))))))
+                        (let ((*context* context)) (request-frame)))))
                   (setf (input-events input) nil)
                   (display-frame context)
                   (wait-frame input context width height)
-                  (when (input-quit-p input) (return context))))
+                  (when (input-quit-p input) (return context))
+                  (lui.frame::limit-frame-rate context)))
            ;; Restore termios even if output fails, or DRAW signals an error.
            (unwind-protect
                 (write-terminal

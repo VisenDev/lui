@@ -594,7 +594,10 @@ that the demo now runs with auto-hide enabled (November 5, 2026); no new log was
 provided. The initial reported speed was about 20 FPS.
 
 Cocoa uses a double-buffered OpenGL view and the shared GL renderer. It
-requests a zero swap interval and targets a 240 Hz application loop. When an
+requests a zero swap interval. All interactive backends default to one idle
+frame per second and a maximum of 240 active frames per second. Pass
+`:min-fps 1 :max-fps 170` to `lui:run` or `lui.web:mount` to change them.
+Input wakes the next frame, and animation deadlines can request faster redraws. When an
 accelerated pixel format is unavailable, it reports a warning and draws with
 AppKit. Run `make benchmark PLATFORM=cocoa BENCH_FRAMES=720 WARMUP=144`
 to measure the Mac. Each BUDGET row counts frame intervals exceeding 1/170 s,

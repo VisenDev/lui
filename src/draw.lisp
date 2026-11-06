@@ -528,7 +528,9 @@
              (outline renderer box radius "#ffffff"
                       (if disabled 0.15f0 0.4f0) 1)
              (unless (eq kind :checkbox)
-               (motif-bevel renderer box (or (eq kind :text-field) pressed)
+               (motif-bevel renderer box
+                           (or (eq kind :text-field)
+                               (and pressed (member kind '(:button :tab))))
                            disabled))))
        (when (and (member kind '(:button :tab :checkbox))
                   (not (widget-disabled-p widget)))

@@ -834,19 +834,14 @@
     (setf (web-app-deadline-timer app) nil)))
 
 (fn schedule-deadline ((app web-app))
-  (cancel-deadline app)
-  (let ((deadline (context-next-frame (web-app-context app))))
-    (when (and deadline (not (web-app-pending-p app)))
-      (let ((delay (- deadline (/ (get-internal-real-time)
-                                  internal-time-units-per-second))))
-        (if (<= delay 0)
-            (refresh app)
-            (setf (web-app-deadline-timer app)
-                  (#j:setTimeout
-                   (lambda ()
-                     (setf (web-app-deadline-timer app) nil)
-                     (refresh app))
-                   (ceiling (* 1000 delay)))))))))
+  (unless (web-app-pending-p app)
+    (cancel-deadline app)
+    (let ((delay (lui.frame::frame-wait (web-app-context app))))
+      (if (zerop delay)
+          (refresh app)
+          (setf (web-app-deadline-timer app)
+                (#j:setTimeout (lambda () (refresh app))
+                               (ceiling (* delay 1000))))))))
 
 (fn restore-application-focus ((app web-app))
   (when (web-app-tab-focus-p app)
@@ -924,20 +919,32 @@
 
 (fn refresh ((app web-app))
   "Request one redraw of a mounted application, coalescing pending requests."
-  (cancel-deadline app)
   (when (and (web-app-alive-p app) (not (web-app-pending-p app)))
+    (cancel-deadline app)
     (setf (web-app-pending-p app) t)
-    (setf (web-app-animation-frame app)
-          (#j:requestAnimationFrame
-           (lambda (time)
-             (declare (ignore time))
-             (setf (web-app-pending-p app) nil
-                   (web-app-animation-frame app) nil)
-             (when (web-app-alive-p app)
-               (draw-frame app)))))))
+    (flet ((enqueue ()
+             (setf (web-app-deadline-timer app) nil
+                   (web-app-animation-frame app)
+                   (#j:requestAnimationFrame
+                    (lambda (time)
+                      (declare (ignore time))
+                      (setf (web-app-pending-p app) nil
+                            (web-app-animation-frame app) nil)
+                      (when (web-app-alive-p app)
+                        (draw-frame app)))))))
+      (let* ((context (web-app-context app))
+             (wait (if (context-root context)
+                       (lui.frame::frame-wait context t) 0)))
+        (if (zerop wait)
+            (enqueue)
+            (setf (web-app-deadline-timer app)
+                  (#j:setTimeout #'enqueue (ceiling (* wait 1000)))))))))
 
-(fn mount (host (callback function))
+(fn mount (host (callback function) &key (min-fps lui.frame::*min-fps*)
+           (max-fps lui.frame::*max-fps*))
   "Mount in an existing DOM element with explicit dimensions. Returns a handle."
+  (assert (<= min-fps max-fps))
+  (assert (plusp min-fps))
   (let* ((app (make-web-app :host host :callback callback))
          (measure (create-node "span"))
          (sheet (create-node "style")))
@@ -953,8 +960,8 @@
     (setf (web-app-style-node app) sheet
           (web-app-measure-node app) measure
           (web-app-context app)
-          (make-context :measure
-                        (lambda (widget width)
+          (make-context :min-fps min-fps :max-fps max-fps
+                        :measure (lambda (widget width)
                           (measure-widget app widget width)))
           (web-app-resize-handler app)
           (lambda (event)

@@ -117,6 +117,7 @@
            (multiple-value-setq (bytes gc-time) (counters))
            (lui.example:draw *gallery*)))
        :backend (intern (string-upcase *platform*) :keyword)
+       :min-fps 240 :max-fps 240
        :title "LUI benchmark" :width *width* :height *height*))))
 
 (defun benchmark-loop (frame)

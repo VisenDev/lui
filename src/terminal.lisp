@@ -191,6 +191,8 @@
   (let* ((enabled (and (element-interactive-p node)
                        (not (widget-disabled-p widget))))
          (hover (and enabled
+                     (member (widget-kind widget)
+                             '(:button :tab :checkbox :list-item :cell))
                      (equal (element-id node) (context-hover context))))
          (selected (and enabled (member (widget-kind widget)
                                        '(:tab :list-item :cell))
@@ -372,6 +374,18 @@
             (setf previous nil))
           (terpri stream))))))
 
+(fn terminal-line ((context context) buffer)
+  (loop :for char := (read-char-no-hang *standard-input* nil :eof)
+        :do (cond ((or (eql char #\Newline) (eq char :eof))
+                   (when (and (eq char :eof) (zerop (length buffer)))
+                     (return :quit))
+                   (return (prog1 (copy-seq buffer)
+                             (setf (fill-pointer buffer) 0))))
+                  (char (vector-push-extend char buffer))
+                  (t (let ((delay (lui.frame::frame-wait context)))
+                       (when (zerop delay) (return nil))
+                       (sleep (min delay 0.02)))))))
+
 (fn run-terminal ((draw function) &key title width height (interactive t))
   "Run DRAW using portable text frames and optional line-oriented input.
 INTERACTIVE NIL writes one plain frame and returns its context. In interactive
@@ -381,6 +395,8 @@ optional raw terminal backend replaces this registered runner."
   (let ((context (make-terminal-context))
         (*unit* 1)
         (events nil)
+        (buffer (make-array 32 :element-type 'character
+                            :adjustable t :fill-pointer 0))
         (width (or width 80))
         (height (or height 24)))
     (loop
@@ -391,10 +407,12 @@ optional raw terminal backend replaces this registered runner."
       (finish-output)
       (unless interactive (return context))
       ;; Portable line-input fallback. Native terminal raw input is added separately.
-      (let ((line (read-line *standard-input* nil)))
-        (when (or (null line) (string= line ":quit")) (return context))
+      (let ((line (terminal-line context buffer)))
+        (when (or (eq line :quit) (equal line ":quit")) (return context))
+        (lui.frame::limit-frame-rate context)
         (setf events
-              (cond ((string= line ":next") (list (make-event :kind :tab)))
+              (cond ((null line) nil)
+                    ((string= line ":next") (list (make-event :kind :tab)))
                     ((string= line "") (list (make-event :kind :activate)))
                     (t (list (make-event :kind :text :value line)))))))))
 

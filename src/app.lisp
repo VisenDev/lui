@@ -40,12 +40,16 @@
 
 (fn run
     ((draw function) &key (backend *backend*) ((title string) "LUI") width
-     height (interactive t))
+     height (interactive t) ((min-fps real) 1) ((max-fps real) 240))
   "Run the same immediate-mode DRAW function on any registered backend.
 Backend-specific window, DOM, input, frame, and lifetime management stay in LUI.
 WIDTH/HEIGHT are optional backend coordinates; omit them for sensible defaults.
+MIN-FPS sets idle redraws per second. MAX-FPS caps input and animation frames.
 INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
-  (let* ((name (or backend
+  (assert (< 0 min-fps))
+  (assert (<= min-fps max-fps))
+  (let* ((lui.frame::*min-fps* min-fps) (lui.frame::*max-fps* max-fps)
+         (name (or backend
                    (and *default-backend-function*
                         (funcall *default-backend-function*))
                    (first (available-backends))))
