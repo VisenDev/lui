@@ -6,7 +6,8 @@
            #:with-frame
            #:row #:column #:event #:event-kind #:event-x #:event-y #:event-id
            #:event-value #:event-key #:event-button #:event-clicks
-           #:event-dragging-p #:context-events #:events-for
+           #:event-dragging-p #:event-scroll-mode
+           #:context-events #:events-for
            #:previous-box
            #:context-state #:context-width #:context-height #:emit
            #:activated-p
@@ -29,11 +30,20 @@ Pointer events also carry button, click count, and captured-drag metadata."
   (button :primary :type (member :primary :secondary))
   (clicks 1 :type integer)
   (dragging-p nil :type boolean)
+  ;; Precise OS inertia uses :IMMEDIATE; :AUTO keeps plain text contexts direct.
+  (scroll-mode :auto :type (member :auto :smooth :immediate))
   id
   value
   key
   (x 0 :type real)
   (y 0 :type real))
+
+(defstruct* scroll-motion
+  (path nil :type list)
+  (remaining 0 :type real)
+  (time 0 :type real)
+  (last-input 0 :type real)
+  (level 1 :type integer))
 
 (defstruct* context
   "Per-window frame state: completed tree, focus, events, editing, and scrolling.
@@ -42,6 +52,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (text-mode-p nil :type boolean)
   overlay-state
   (overlay nil :type (or null function))
+  (after-layout nil :type list)
   (tabs-handled-p nil :type boolean)
   (previous-root nil :type (or null element))
   (width 0 :type real)
@@ -61,6 +72,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (regions (make-hash-table :test 'equal) :type hash-table)
   (events (make-hash-table :test 'equal) :type hash-table)
   (scroll (make-hash-table :test 'equal) :type hash-table)
+  (scroll-motion nil :type (or null scroll-motion))
   (activated (make-hash-table :test 'equal) :type hash-table)
   (ids (make-hash-table :test 'equal) :type hash-table)
   (building-p nil :type boolean)
@@ -145,24 +157,81 @@ Native key translators use this to interpret a key after a batched click or Tab.
         predicted)
       context))
 
-(fn scroll-at ((context context) (x real) (y real) (amount real))
-  ;; Follow the painted hit path, then bubble unused wheel motion outward.
+(fn scroll-path ((context context) (x real) (y real))
+  ;; Follow the painted hit path, deepest scroller first.
   (let ((scrollers nil))
     (labels ((visit (node parents)
                (when (contains-p (element-clip node) x y)
                  (let ((path (if (element-scroll-p node)
-                                 (cons node parents) parents)))
+                                 (cons (element-id node) parents) parents)))
                    (setf scrollers path)
                    (do-children (child node)
                      (visit child path))))))
       (when (context-root context) (visit (context-root context) nil)))
-    (dolist (node scrollers)
-      (let* ((old (element-scroll-y node))
-             (new (min (element-scroll-limit-y node) (max 0 (+ old amount)))))
-        (decf amount (- new old))
-        (setf (element-scroll-y node) new
-              (gethash (element-id node) (context-scroll context))
-              (cons (element-scroll-x node) new))))))
+    scrollers))
+
+(fn scroll-along ((context context) (path list) (amount real))
+  ;; Bubble the unused portion outward, including during the animated tail.
+  (let ((requested amount))
+    (dolist (id path)
+      (let ((node (gethash id (context-ids context))))
+        (when (and node (element-scroll-p node))
+          (let* ((old (element-scroll-y node))
+                 (new (min (element-scroll-limit-y node)
+                           (max 0 (+ old amount)))))
+            (decf amount (- new old))
+            (setf (element-scroll-y node) new
+                  (gethash id (context-scroll context))
+                  (cons (element-scroll-x node) new))))))
+    (- requested amount)))
+
+(fn advance-scroll ((context context) (now real))
+  (let ((motion (context-scroll-motion context)))
+    (when motion
+      (let* ((remaining (scroll-motion-remaining motion))
+             (elapsed (max 0 (- now (scroll-motion-time motion))))
+             ;; Exponential decay is independent of redraw frequency.
+             (tail (* remaining (exp (/ (- elapsed) 0.07d0))))
+             (step (if (< (abs tail) 0.05d0) remaining
+                       (- remaining tail)))
+             (used (scroll-along context (scroll-motion-path motion) step)))
+        (decf (scroll-motion-remaining motion) used)
+        (setf (scroll-motion-time motion) now)
+        (when (or (< (abs (scroll-motion-remaining motion)) 1d-7)
+                  (> (abs (- step used)) 1d-7))
+          (setf (context-scroll-motion context) nil))))))
+
+(fn wheel-scroll ((context context) (event event))
+  (let* ((path (scroll-path context (event-x event) (event-y event)))
+         (amount (event-value event))
+         (now (context-time context))
+         (mode (event-scroll-mode event)))
+    (cond
+      ((or (eq mode :immediate)
+           (and (eq mode :auto) (context-text-mode-p context)))
+       (setf (context-scroll-motion context) nil)
+       (scroll-along context path amount))
+      ((and path (not (zerop amount)))
+       (let* ((old (context-scroll-motion context))
+              (continuing
+                (and old (equal path (scroll-motion-path old))
+                     (plusp (* amount (scroll-motion-remaining old)))
+                     (<= (- now (scroll-motion-last-input old)) 0.15d0)))
+              (level (if continuing
+                         (min 4 (1+ (scroll-motion-level old))) 1))
+              ;; Repeated wheel notches travel faster, with a bounded gain.
+              ;; OS-provided inertia bypasses this path via :IMMEDIATE.
+              (delta (* amount (+ 1 (* 0.35d0 (1- level))))))
+         (if continuing
+             (setf (scroll-motion-remaining old)
+                   (+ (scroll-motion-remaining old) delta)
+                   (scroll-motion-last-input old) now
+                   (scroll-motion-level old) level)
+             (setf (context-scroll-motion context)
+                   (make-scroll-motion :path path :remaining delta
+                                       :time (- now (/ 1d0 60))
+                                       :last-input now :level level)))))
+      (t (setf (context-scroll-motion context) nil)))))
 
 (fn begin-frame ((context context) (width real) (height real) (events list))
   "Begin rebuilding CONTEXT at WIDTH and HEIGHT after routing EVENTS.
@@ -185,18 +254,27 @@ clock, redraw deadline, declarations, and per-frame activation state."
                      (/= height (context-height context)))))
     (when resized
       (setf (context-active context) nil (context-hover context) nil))
+    (when (or resized
+              (some (lambda (event)
+                      (member (event-kind event)
+                              '(:press :release :tab :key :text
+                                :activate :change))) events))
+      (setf (context-scroll-motion context) nil))
+    (unless resized (advance-scroll context (context-time context)))
     (dolist (event events)
       (let ((target (unless resized
                       (hit context (event-x event) (event-y event))))
             (captured (context-active context)))
+        (when (member (event-kind event)
+                      '(:press :release :tab :key :text :activate :change))
+          (setf (context-scroll-motion context) nil))
         (setf (event-dragging-p event) (not (null captured)))
         (when (member (event-kind event) '(:move :press :release))
           (setf (context-hover context) target))
         (case (event-kind event)
           (:scroll
            (unless resized
-             (scroll-at context (event-x event) (event-y event)
-                        (event-value event))))
+             (wheel-scroll context event)))
           (:press
            (let ((previous (context-last-click context)))
              (when (and previous (equal target (second previous))
@@ -234,7 +312,8 @@ clock, redraw deadline, declarations, and per-frame activation state."
                       (if (member (event-kind event) '(:press :move :release))
                           (or (context-active context) captured target)
                           (context-focus context)))))
-          (when id (push event (gethash id (context-events context))))))))
+          (when id (push event (gethash id (context-events context)))))))
+    (unless resized (advance-scroll context (context-time context))))
   ;; Native selection still needs the focused input after a composite editor
   ;; consumes its events. Share the immutable event list with the observer.
   (setf (context-focus-input context)
@@ -251,7 +330,8 @@ clock, redraw deadline, declarations, and per-frame activation state."
          (setf (gethash (element-id node) (context-regions context))
                (element-box node))))))
   (clrhash (context-ids context))
-  (setf (context-tabs-handled-p context) nil
+  (setf (context-after-layout context) nil
+        (context-tabs-handled-p context) nil
         (context-previous-root context) (context-root context)
         (context-width context) width
         (context-height context) height
@@ -282,6 +362,7 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
 
 (fn scroll-to (id (x real) (y real))
   "Set scroll offsets; layout clamps them to the content extent."
+  (setf (context-scroll-motion *context*) nil)
   (let ((offset (cons (max 0 x) (max 0 y))))
     (setf (gethash id (context-scroll *context*)) offset)
     (let ((node (gethash id (context-ids *context*))))
@@ -314,6 +395,8 @@ Clear focus/hover for removed controls and return the completed root element."
       (funcall (context-overlay context) (context-previous-root context))))
   (solve (context-root context) (context-width context)
          (context-height context))
+  (dolist (decorate (nreverse (context-after-layout context)))
+    (funcall decorate))
   (flet ((interactive-p (id)
            (let ((node (gethash id (context-ids context))))
              (and node (element-interactive-p node)))))
@@ -338,6 +421,11 @@ Clear focus/hover for removed controls and return the completed root element."
      (when (and (element-id node) (element-scroll-p node))
        (setf (gethash (element-id node) (context-scroll context))
              (cons (element-scroll-x node) (element-scroll-y node))))))
+  (let ((motion (context-scroll-motion context)))
+    (when motion
+      (if (gethash (first (scroll-motion-path motion)) (context-ids context))
+          (let ((*context* context)) (request-frame (/ 1 60)))
+          (setf (context-scroll-motion context) nil))))
   (setf (context-building-p context) nil
         (context-previous-root context) nil)
   (context-root context))
