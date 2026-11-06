@@ -20,7 +20,96 @@
 (defun frame (context draw &rest events)
   (with-frame (context 100 40 :events events) (funcall draw)))
 
+(defun node-with-id (context id)
+  (first (nodes context (lambda (node) (equal id (element-id node))))))
+
+(defun test-live-widgets ()
+  (let* ((lui:*unit* 1) (context (make-terminal-context))
+         (draw (lui.docs:make-docs)) (other (lui.docs:make-docs))
+         (second (make-terminal-context)))
+    (labels ((widget (id)
+               (element-content (node-with-id context id)))
+             (activate (id)
+               (frame context draw (make-event :kind :activate :id id))))
+      (frame context draw)
+      ;; Symbols and details each retain an independent tall viewport.
+      (let ((list (element-box (node-with-id context :docs-entries)))
+            (detail (element-box (node-with-id context :docs-detail))))
+        (assert (> (box-height list) 20))
+        (assert (>= (box-x detail) (+ (box-x list) (box-width list)))))
+      (activate '(:docs-guide :previews))
+      (dolist (kind '(:label :button :tab :checkbox :slider :text-field
+                     :cell :list-item :gauge :canvas :panel))
+        (assert (nodes context
+                       (lambda (node)
+                         (let ((widget (element-content node)))
+                           (and (widget-p widget)
+                                (eq kind (widget-kind widget))))))))
+      (assert (has-label context "First child"))
+      (assert (has-label context "Center"))
+      (activate :docs-preview-button)
+      (assert (has-label context "Button clicks: 1"))
+      (activate :docs-preview-checkbox)
+      (assert (null (widget-value (widget :docs-preview-checkbox))))
+      (frame context draw (make-event :kind :change :id :docs-preview-slider
+                                      :value 0.8))
+      (assert (< (abs (- 0.8 (widget-value (widget :docs-preview-gauge))))
+                 0.00001))
+      (frame context draw (make-event :kind :change :id :docs-preview-text
+                                      :value "Changed"))
+      (assert (equal "Changed" (widget-value (widget :docs-preview-text))))
+      (activate '(:docs-preview-tab :two))
+      (frame context draw)
+      (assert (widget-value (widget '(:docs-preview-tab :two))))
+      (activate :docs-preview-cell)
+      (frame context draw)
+      (assert (widget-value (widget :docs-preview-cell)))
+      (activate '(:docs-preview-item :two))
+      (frame context draw)
+      (assert (widget-value (widget '(:docs-preview-item :two))))
+      (activate :docs-preview-panel)
+      (assert (has-label context "Panel actions: 1"))
+      ;; The same live declarations follow every selected collection.
+      (dolist (style '(:motif :garnet :glass))
+        (activate :docs-toolkit)
+        (frame context draw)
+        (assert (eq style (widget-style (widget :docs-preview-checkbox)))))
+      (frame second other (make-event :kind :activate
+                                      :id '(:docs-guide :previews)))
+      (assert (has-label second "Button clicks: 0"))
+      (assert (string= "Edit this example"
+                       (widget-value
+                        (element-content
+                         (node-with-id second :docs-preview-text))))))))
+
+(defun test-narrow-reference ()
+  (let* ((lui:*unit* 1) (context (make-terminal-context))
+         (draw (lui.docs:make-docs
+                :entries '((:package "lui" :name "BUTTON" :kind :function
+                            :signature "(button id text &optional options)"
+                            :documentation "Return activation.")))))
+    (labels ((narrow (&rest events)
+               (with-frame (context 60 40 :events events) (funcall draw))))
+      (narrow)
+      (assert (node-with-id context :docs-search))
+      (assert (node-with-id context :docs-detail))
+      (narrow (make-event :kind :activate :id '(:docs-package "lui")))
+      (assert (null (node-with-id context :docs-detail)))
+      (assert (> (box-height
+                  (element-box (node-with-id context :docs-entries))) 20))
+      (narrow (make-event :kind :activate :id '(:docs-entry 0)))
+      (narrow)
+      (assert (null (node-with-id context :docs-entries)))
+      (assert (node-with-id context :docs-preview-button))
+      (narrow (make-event :kind :activate :id :docs-preview-button))
+      (assert (has-label context "Button clicks: 1"))
+      (narrow (make-event :kind :change :id :docs-search :value "button"))
+      (assert (node-with-id context :docs-entries))
+      (assert (null (node-with-id context :docs-detail))))))
+
 (defun run-tests ()
+  (test-live-widgets)
+  (test-narrow-reference)
   (let* ((lui:*unit* 1)
          (entries
            (loop :for index :below 400
