@@ -797,6 +797,7 @@
     (schedule-deadline app)))
 
 (fn refresh ((app web-app))
+  "Request one redraw of a mounted application, coalescing pending requests."
   (cancel-deadline app)
   (when (and (web-app-alive-p app) (not (web-app-pending-p app)))
     (setf (web-app-pending-p app) t)
@@ -885,6 +886,7 @@
     app))
 
 (fn unmount ((app web-app))
+  "Dispose an application, cancelling scheduled frames and DOM listeners."
   (cancel-deadline app)
   (setf (web-app-alive-p app) nil
         (web-app-events app) nil
