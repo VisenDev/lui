@@ -267,7 +267,9 @@ native graphics; raw terminal input needs only CFFI. No native rendering library
 is bundled. A TrueType font is required for native graphics: common system paths
 are tried automatically, or set `lui.font:*font-path*` after loading the backend.
 To use an installed or bundled font family, set these variables **before**
-opening the window. `*font-directories*` lists directory pathnames (or strings
+opening the window. For a saved executable, set `LUI_FONT` to the base TTF
+path or `LUI_FONT_DIR` to an additional search directory at launch time.
+`*font-directories*` lists directory pathnames (or strings
 ending in a slash); `*font-names*` maps each family and weight to candidate
 filenames. Lookup tries each filename across those directories in order.
 For example, to search your own directory first:

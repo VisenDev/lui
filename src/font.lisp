@@ -41,14 +41,20 @@
 (defun resolve-face (family weight)
   (let ((key (list family weight)))
     (or (cdr (assoc key *font-paths* :test #'equal))
-        (loop :for name :in (cdr (assoc key *font-names* :test #'equal))
-              :thereis (loop :for dir :in *font-directories*
+        (loop :with extra := (uiop:getenvp "LUI_FONT_DIR")
+              :with dirs := (if extra
+                                (cons (uiop:ensure-directory-pathname extra)
+                                      *font-directories*)
+                                *font-directories*)
+              :for name :in (cdr (assoc key *font-names* :test #'equal))
+              :thereis (loop :for dir :in dirs
                              :thereis (probe-file
                                        (merge-pathnames name dir))))
         (error "No TrueType font for ~S. Set LUI.FONT:*FONT-PATHS*." key))))
 
 (defun default-font ()
-  (or *font-path* (resolve-face :sans-serif :normal)))
+  (or *font-path* (uiop:getenvp "LUI_FONT")
+      (resolve-face :sans-serif :normal)))
 
 (fn (open-font font) (&optional path ((size real) 16))
   (make-font :loader (zpb-ttf:open-font-loader (or path (default-font)))
