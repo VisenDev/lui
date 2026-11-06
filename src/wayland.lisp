@@ -827,6 +827,9 @@
       (disconnect-display display))))
 
 (fn run-wayland ((draw function) &key title width height (interactive t))
+  "Run DRAW in a Wayland window using EGL and the shared OpenGL renderer.
+TITLE, WIDTH, and HEIGHT configure the window; INTERACTIVE NIL draws one frame.
+Own and release the display, protocol metadata, input devices, and GPU resources."
   (call-with-interfaces
    (lambda ()
      (run-window draw :title title :width width :height height

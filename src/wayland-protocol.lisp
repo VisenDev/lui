@@ -27,16 +27,27 @@
   (fd :int) (events :short) (revents :short))
 
 (cffi:defcfun ("wl_display_connect" connect-display) :pointer
+  "Connect to NAME (a C string pointer), or the default display for a null pointer.
+Return a display pointer, or a null pointer when the connection fails."
   (name :pointer))
 (cffi:defcfun ("wl_display_disconnect" disconnect-display) :void
+  "Disconnect DISPLAY and release its client-side connection resources."
   (display :pointer))
 (cffi:defcfun ("wl_display_roundtrip" roundtrip) :int
+  "Flush DISPLAY and dispatch callbacks until a synchronization reply arrives.
+Return the dispatched event count, or -1 on error; this call blocks."
   (display :pointer))
 (cffi:defcfun ("wl_display_dispatch" dispatch-display) :int
+  "Read and dispatch DISPLAY callbacks, blocking until events are available.
+Return the dispatched event count, or -1 on error."
   (display :pointer))
 (cffi:defcfun ("wl_display_flush" flush-display) :int
+  "Send buffered DISPLAY requests without blocking for compositor replies.
+Return bytes written, or -1 when the connection is not writable or has failed."
   (display :pointer))
-(cffi:defcfun ("wl_proxy_destroy" destroy-proxy) :void (proxy :pointer))
+(cffi:defcfun ("wl_proxy_destroy" destroy-proxy) :void
+  "Release the client-side PROXY without sending a protocol destructor request."
+  (proxy :pointer))
 (cffi:defcfun ("wl_proxy_add_listener" add-listener) :int
   (proxy :pointer) (listeners :pointer) (data :pointer))
 (cffi:defcfun ("wl_proxy_get_version" proxy-version) :uint32
@@ -59,6 +70,7 @@
     pointer))
 
 (fn interface ((name string))
+  "Return connection-scoped extension metadata or a core interface pointer by NAME."
   (or (gethash name *interfaces*)
       (cffi:foreign-symbol-pointer
        (concatenate 'string name "_interface"))))
@@ -115,6 +127,9 @@
 
 (fn request (proxy (opcode integer) result-interface (args list)
              &optional version (destroy-p nil))
+  "Marshal a Wayland request OPCODE to PROXY with typed argument conses ARGS.
+RESULT-INTERFACE names a created proxy type or is NIL. VERSION defaults to the
+proxy version; DESTROY-P tells libwayland to destroy the sending proxy."
   (let ((strings nil))
     (unwind-protect
          (cffi:with-foreign-object (arguments '(:union argument)
@@ -146,6 +161,8 @@
     listeners))
 
 (fn pump-display (display)
+  "Flush requests, wait briefly for readable input, and dispatch pending callbacks.
+Signal an error when the display disconnects or its read/dispatch operation fails."
   (loop :while
         (not (zerop
               (cffi:foreign-funcall "wl_display_prepare_read"
@@ -256,6 +273,8 @@
     ())))
 
 (fn call-with-interfaces ((function function))
+  "Call FUNCTION with fresh dynamically scoped Wayland extension metadata.
+Free all interface allocations on return or error; proxies must not outlive it."
   (let ((*interfaces* (make-hash-table :test 'equal))
         (*interface-storage* nil))
     (unwind-protect

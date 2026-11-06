@@ -19,6 +19,7 @@
 (in-package #:lui.layout)
 
 (defstruct* (sizing (:constructor %sizing (kind value minimum maximum)))
+  "Axis sizing policy with a kind, value, minimum, and optional maximum."
   (kind :fit :type (member :fit :grow :fixed :percent))
   (value 0 :type real)
   (minimum 0 :type real)
@@ -46,12 +47,15 @@
   (checked-size :percent fraction 0 nil))
 
 (defstruct* box
+  "Axis-aligned bounds in backend coordinates: X, Y, WIDTH, and HEIGHT."
   (x 0 :type real)
   (y 0 :type real)
   (width 0 :type real)
   (height 0 :type real))
 
 (defstruct* element
+  "One layout declaration with children, sizing, solved geometry, and clip state.
+Floating children use offsets; interactive nodes participate in input routing."
   id
   content
   (children (make-array 0 :adjustable t :fill-pointer 0) :type vector)
@@ -79,6 +83,7 @@
   (offset-y 0 :type real))
 
 (fn (append-child element) ((parent element) (child element))
+  "Append CHILD to PARENT in declaration order and return CHILD."
   (vector-push-extend child (element-children parent))
   child)
 
@@ -276,6 +281,9 @@
         (position-elements child)))))
 
 (fn (solve element) ((root element) (width real) (height real))
+  "Measure and position ROOT and its descendants within WIDTH and HEIGHT.
+Update boxes, padded clipping rectangles, and bounded scroll offsets in place.
+Return ROOT; all dimensions use the active backend coordinates."
   (assert (and (>= width 0) (>= height 0)))
   (intrinsic root :x)
   (set-axis-size root :x width)
@@ -290,6 +298,7 @@
   root)
 
 (fn (intersect-boxes box) ((a box) (b box))
+  "Return the axis-aligned intersection of A and B; disjoint boxes have zero size."
   (let ((x (max (box-x a) (box-x b)))
         (y (max (box-y a) (box-y b))))
     (make-box :x x :y y
@@ -342,6 +351,7 @@
                        (+ dy (element-scroll-y node)))))))
 
 (fn visible-elements ((root element) (function function))
+  "Call FUNCTION in tree order for every node with a nonempty solved clip."
   (walk-elements root
                  (lambda (node)
                    (when (and (plusp (box-width (element-clip node)))

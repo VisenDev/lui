@@ -20,12 +20,15 @@
 (defvar *surfaces* (make-hash-table :test 'eq))
 
 (defun register-surface (name surface)
+  "Associate collection NAME with its backend paint family SURFACE."
   (setf (gethash name *surfaces*) surface))
 
 (defun toolkit-surface (name)
+  "Return NAME's registered paint family, or NAME when it has no mapping."
   (gethash name *surfaces* name))
 
 (defstruct* widget
+  "Backend-neutral control content, values, appearance, and extension callbacks."
   (kind :label :type symbol)
   (style :glass :type symbol)
   value
@@ -49,6 +52,8 @@
   (frost 12 :type real))
 
 (fn (widget-terminal-text string) ((widget widget))
+  "Return WIDGET's portable text representation, computing it lazily as needed.
+An optional terminal-label callback overrides the standard kind-based label."
   (or (widget-terminal-cache widget)
       (setf (widget-terminal-cache widget)
             (if (widget-terminal-label widget)
@@ -134,6 +139,10 @@
      ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
      ((opacity real) 0.85) ((accent string) "#258bff") (disabled-p nil)
      painter web-style terminal-label)
+  "Declare a low-level widget in the current frame using STYLE and stable ID.
+Layout, typography, colors, optical effects, and backend extension callbacks
+are supplied as keywords. Return activation for enabled actionable kinds.
+Most applications should use the public LUI controls with LUI:OPT instead."
   (when (eq kind :tab) (navigate-tabs))
   (let ((measure (or (context-measure *context*)
                      (error "A backend text measurer is required.")))
@@ -157,6 +166,7 @@
          (activated-p id))))
 
 (defstruct* edit-state
+  "Persistent text-editor caret, selection anchor, kill buffer, and command history."
   (cursor 0 :type integer)
   (anchor 0 :type integer)
   (kill "" :type string)
@@ -173,17 +183,22 @@
     found))
 
 (fn (text-field-focused-p boolean) ((context context))
+  "Whether CONTEXT focuses an enabled text field in its current completed tree."
   (let ((widget (focused-widget context)))
     (and (widget-p widget) (eq (widget-kind widget) :text-field)
          (not (widget-disabled-p widget)))))
 
 (fn (activation-focused-p boolean) ((context context))
+  "Whether CONTEXT focuses an enabled button, checkbox, tab, list item, or cell.
+Backends use this to activate controls with Space without stealing editor text."
   (let ((widget (focused-widget context)))
     (and (widget-p widget) (not (widget-disabled-p widget))
          (not (null (member (widget-kind widget)
                             '(:button :checkbox :tab :list-item :cell)))))))
 
 (fn (cursor-at symbol) ((context context) (x real) (y real))
+  "Return the cursor kind at X,Y, respecting clipping and topmost widgets.
+Kinds include :DEFAULT, :POINTER, :TEXT, :RESIZE-HORIZONTAL, and :NOT-ALLOWED."
   (let ((cursor :default))
     (when (context-root context)
       (walk-elements
@@ -269,6 +284,9 @@
     (if (minusp direction) (1+ index) index)))
 
 (fn edit-text ((text string) (state edit-state) (events list))
+  "Apply ordered editor EVENTS to TEXT using mutable caret/selection STATE.
+Return the new text; preserve the editor's kill/yank state between frames.
+Events include semantic Readline keys, text insertion, and replacement changes."
   (dolist (event events)
     (setf (edit-state-cursor state)
           (max 0 (min (length text) (edit-state-cursor state)))
@@ -377,6 +395,8 @@
 
 (fn value-widget
     ((kind symbol) (style symbol) id value (text string) (options list))
+  "Declare a value control, apply its current input, and return the updated value.
+KIND is :CHECKBOX, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
   (let ((original value)
         (events (unless (getf options :disabled-p) (events-for id))))
     (ecase kind

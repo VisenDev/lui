@@ -7,12 +7,14 @@
 
 (defstruct* entry node key (depth 0 :type integer))
 (defstruct* state
+  "Inspector state: visibility, selected snapshot node, expansion, and pane width."
   (open-p nil :type boolean) selected
   (width nil :type (or null real)) (grab nil :type (or null real))
   (collapsed (make-hash-table :test 'equal) :type hash-table)
   (nodes (make-hash-table :test 'equal) :type hash-table)
   (rows (make-array 0 :adjustable t :fill-pointer 0) :type vector))
-(defvar *state* (make-state))
+(defvar *state* (make-state)
+  "Default state for the legacy DRAW/WRAP helpers; SET-ENABLED owns context state.")
 
 (fn id (name &optional key) (list :lui.debug name key))
 
@@ -262,6 +264,7 @@
           (resize-handle width))))))
 
 (defun enabled-p (&optional (context *context*))
+  "Whether CONTEXT currently has an open inspector attached to its overlay."
   (let ((state (context-overlay-state context)))
     (and state (state-open-p state))))
 
@@ -286,9 +289,13 @@
     enabled))
 
 (fn draw ((function function) &key ((state state) *state*) (toolkit :glass))
+  "Draw FUNCTION followed by an inspector using STATE and TOOLKIT.
+Compatibility entry point; prefer SET-ENABLED for context-owned inspection."
   (funcall function)
   (draw-inspector state toolkit (context-previous-root *context*)))
 
 (fn (wrap function) ((function function) &key ((state state) *state*)
                                            (toolkit :glass))
+  "Return a drawing closure that calls FUNCTION and then draws STATE's inspector.
+Compatibility helper; SET-ENABLED attaches an inspector without wrapping callbacks."
   (lambda () (draw function :state state :toolkit toolkit)))

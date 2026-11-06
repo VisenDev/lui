@@ -23,6 +23,7 @@
           (t 1))))
 
 (fn (text-width integer) ((text string))
+  "Return TEXT's terminal column width, accounting for wide and combining characters."
   (loop :for character :across text :sum (character-width character)))
 
 (fn (text-lines list) ((text string) width)
@@ -83,6 +84,7 @@
             (length lines))))
 
 (fn (make-terminal-context context) ()
+  "Create a fresh frame context with dependency-free terminal text measurement."
   (make-context :text-mode-p t :measure #'measure-widget))
 
 (fn (cell-edge integer) ((position real))
@@ -345,6 +347,10 @@
           (terpri stream))))))
 
 (fn run-terminal ((draw function) &key title width height (interactive t))
+  "Run DRAW using portable text frames and optional line-oriented input.
+INTERACTIVE NIL writes one plain frame and returns its context. In interactive
+mode, :next moves focus, an empty line activates, and :quit exits. Loading the
+optional raw terminal backend replaces this registered runner."
   (declare (ignore title))
   (let ((context (make-terminal-context))
         (*unit* 1)

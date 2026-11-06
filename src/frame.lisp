@@ -21,6 +21,8 @@
 (in-package #:lui.frame)
 
 (defstruct* event
+  "Backend-neutral input: a kind, target ID, optional key/value, and coordinates.
+Pointer events also carry button, click count, and captured-drag metadata."
   (kind :move :type
         (member :move :press :release :tab :activate :change
                 :key :text :scroll))
@@ -34,6 +36,8 @@
   (y 0 :type real))
 
 (defstruct* context
+  "Per-window frame state: completed tree, focus, events, editing, and scrolling.
+The backend supplies measurement, clipboard, and optional input callbacks."
   (root nil :type (or null element))
   (text-mode-p nil :type boolean)
   overlay-state
@@ -64,8 +68,12 @@
   (measure nil :type (or null function)))
 
 (defvar *context*)
+(setf (documentation '*context* 'variable)
+      "Dynamically bound context for the drawing function currently building a frame.")
 
 (defvar *parent*)
+(setf (documentation '*parent* 'variable)
+      "Dynamically bound layout parent receiving declarations in the current scope.")
 
 (fn (frame-time real) ()
   "Monotonic seconds sampled once for the current frame."
@@ -115,6 +123,9 @@
 (fn (pending-input-context context)
     ((context context) (events list)
      &optional ((width (or null real)) nil) ((height (or null real)) nil))
+  "Predict focus after a newest-first pending EVENTS batch without mutating CONTEXT.
+Return CONTEXT unchanged when no prediction is needed or dimensions changed.
+Native key translators use this to interpret a key after a batched click or Tab."
   ;; Translate keys against earlier pointer/Tab events in the same input batch.
   ;; The completed frame remains untouched until BEGIN-FRAME consumes them.
   (if (and (or (null width) (= width (context-width context)))
@@ -154,6 +165,9 @@
               (cons (element-scroll-x node) new))))))
 
 (fn begin-frame ((context context) (width real) (height real) (events list))
+  "Begin rebuilding CONTEXT at WIDTH and HEIGHT after routing EVENTS.
+Input is resolved against the previous completed tree; this resets the frame
+clock, redraw deadline, declarations, and per-frame activation state."
   (assert (not (context-building-p context)))
   (assert (and (>= width 0) (>= height 0)))
   (setf (context-time context)
@@ -245,6 +259,8 @@
         (context-building-p context) t))
 
 (fn (emit element) ((node element))
+  "Append NODE to the current parent, registering its ID and saved scroll state.
+Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
   (assert (context-building-p *context*))
   (when (element-interactive-p node) (assert (element-id node)))
   (when (element-id node)
@@ -274,18 +290,24 @@
               (element-scroll-y node) (cdr offset))))))
 
 (fn previous-box (id)
+  "Return ID's solved box from the previous completed frame, or NIL."
   (gethash id (context-regions *context*)))
 
 (fn (events-for list) (id)
+  "Return ID's input events in chronological order for the current frame."
   (reverse (gethash id (context-events *context*))))
 
 (fn (hovered-p boolean) (id)
+  "Whether the pointer currently hovers over the non-NIL control ID."
   (and id (equal id (context-hover *context*))))
 
 (fn (activated-p boolean) (id)
+  "Whether ID was activated by this frame's pointer or keyboard input."
   (not (null (gethash id (context-activated *context*)))))
 
 (fn (end-frame element) ((context context))
+  "Complete CONTEXT: draw its overlay, solve layout, and retain input regions.
+Clear focus/hover for removed controls and return the completed root element."
   (assert (context-building-p context))
   (when (context-overlay context)
     (let ((*context* context) (*parent* (context-root context)))
