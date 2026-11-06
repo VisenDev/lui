@@ -38,6 +38,9 @@
   (assert (zerop (filled-area '(nil ((1 . 1)) ((1 . 1) (3 . 1))))))
   (let* ((box (make-box :x 10 :y 20 :width 40 :height 20))
          (rounded (rounded-polygon box 100)))
+    (let ((square (rounded-polygon box 0)))
+      (assert (= 4 (length square)))
+      (assert (= 800 (filled-area (list square)))))
     (assert (= 36 (length rounded)))
     (assert (every (lambda (point)
                      (and (<= 10 (car point) 50)
@@ -657,6 +660,11 @@
       (assert (null (lui.frame::hit context 5 5))))))
 
 (defun run-tests ()
+  (paint-text (make-renderer
+               :text (lambda (&rest arguments)
+                       (declare (ignore arguments))
+                       (error "Empty labels must not call native text drawing.")))
+              "" 0 0 "#000000")
   (let ((font (open-font)))
     (unwind-protect
          (progn

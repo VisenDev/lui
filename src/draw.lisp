@@ -33,6 +33,10 @@
          (w (box-width box))
          (h (box-height box))
          (r (max 0 (min radius (/ w 2) (/ h 2)))))
+    (when (zerop r)
+      (return-from rounded-polygon
+        (list (cons (+ x w) y) (cons (+ x w) (+ y h))
+              (cons x (+ y h)) (cons x y))))
     (loop :for (cx cy base)
             :in (list (list (+ x w (- r)) (+ y r) -90)
                       (list (+ x w (- r)) (+ y h (- r)) 0)
@@ -113,6 +117,7 @@
 
 (fn paint-text
     ((renderer renderer) (text string) (x real) (y real) (color string))
+  (when (zerop (length text)) (return-from paint-text nil))
   (when (renderer-text renderer)
     (return-from paint-text
       (funcall (renderer-text renderer) (renderer-font renderer)
