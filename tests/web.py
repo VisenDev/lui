@@ -1230,6 +1230,56 @@ class WebTests(unittest.TestCase):
             expect(fixed).to_have_css("height", "24px")
         self.lisp('(lui.web:unmount *wrap-row-app*)')
 
+    def test_motif_text_fields_stay_recessed_while_buttons_are_raised(self):
+        self.lisp('''
+          (lui:register-toolkit :motif-field-child :parent :motif)
+          (defvar *motif-field-value* "Recessed editor")
+          (defvar *motif-field-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *motif-field-host* "id") #j"motif-field-host"
+                (jscl/ffi:oget *motif-field-host* "style" "width") #j"320px"
+                (jscl/ffi:oget *motif-field-host* "style" "height") #j"120px")
+          (#j:document:body:appendChild *motif-field-host*)
+          (defvar *motif-field-app*
+            (lui.web:mount *motif-field-host*
+              (lambda ()
+                (lui:with-toolkit (:motif-field-child)
+                  (lui.frame:column (:width (lui.layout:grow) :gap 8)
+                    (setf *motif-field-value*
+                          (lui:text-field :motif-editor *motif-field-value*
+                            (lui:opt :width (lui.layout:grow))))
+                    (lui:button :motif-raised "Raised button"))))))
+        ''')
+        host = self.page.locator("#motif-field-host")
+        field = host.get_by_role("textbox")
+        button = host.get_by_role("button", name="Raised button")
+        expect(field).to_have_attribute("data-lui-surface", "motif")
+        expect(field).to_have_css("border-top-style", "inset")
+        expect(field).to_have_css("border-bottom-style", "inset")
+        expect(field).to_have_css("border-top-width", "2px")
+        expect(field).to_have_css("border-radius", "0px")
+        field.hover()
+        expect(field).to_have_css("border-top-style", "inset")
+        expect(field).to_have_css("filter", "none")
+        field.focus()
+        expect(field).to_have_css("border-top-style", "inset")
+        expect(field).to_have_css("outline-style", "solid")
+        expect(field).to_have_css("outline-offset", "-3px")
+        field.fill("Edited Motif field")
+        expect(field).to_have_value("Edited Motif field")
+        field.hover()
+        self.page.mouse.down()
+        expect(field).to_have_css("border-top-style", "inset")
+        expect(field).to_have_css("transform", "none")
+        self.page.mouse.up()
+        expect(button).to_have_css("border-top-style", "outset")
+        button.hover()
+        expect(button).to_have_css("border-top-style", "outset")
+        button.focus()
+        expect(button).to_have_css("border-top-style", "outset")
+        field.focus()
+        host.screenshot(path=str(ROOT / "build/web-motif-recessed-field.png"))
+        self.lisp('(lui.web:unmount *motif-field-app*)')
+
     def test_custom_toolkit_styles_inherit_and_widget_hook_runs_last(self):
         self.lisp('''
           (lui:register-toolkit :web-parent :parent :motif
