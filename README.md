@@ -116,8 +116,9 @@ terminal/X11/browser integration tests; `cloc` is needed for source reports and
 the test/benchmark targets. Run from the repository directory:
 
 ```sh
-make docs                    # Generate build/docs.html and open native docs
-make docs-html               # Generate the self-contained page without opening a window
+make docs                    # Build and open the native documentation browser
+make docs-html               # Build the standalone page at build/docs.html
+make docs-pages              # Update docs/index.html for GitHub Pages
 make build                   # Save the native demo executable
 make demo                    # Build and run the same executable
 make terminal-demo           # Build and run in the terminal
@@ -129,11 +130,11 @@ make benchmark               # Throughput/frame-time measurements and log
 
 The documentation browser contains a getting-started guide and a searchable
 reference generated from the library's exported symbols, signatures, and
-docstrings. `make docs` builds the single portable `build/docs.html` and opens
-the same documentation UI in a native window. Use `make docs-html` for hosting
-or CI: copy just that HTML file to a static server or open it directly from
-disk. Both the JSCL runtime and the application are embedded. Make reuses the
-generated files until their sources, build scripts, or runtime change.
+docstrings. `make docs` opens the native browser using SBCL. For an offline
+HTML copy, run `make docs-html`. It embeds the JSCL runtime and application
+in a single file. Run `make docs-pages` to build the HTML if needed and copy
+it to `docs/index.html` when the contents differ. Commit that file to update
+a GitHub Pages site configured to serve the repository’s `/docs` folder.
 
 The reference covers application controls, layout and interaction helpers,
 toolkit customization, inspection, browser embedding, and native painter/font

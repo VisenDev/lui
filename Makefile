@@ -33,11 +33,12 @@ DOC_SOURCES := $(wildcard src/*.lisp) examples/docs.lisp lui.asd
 DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
-.PHONY: docs docs-html test-docs help check-platform build demo test test-platform \
+.PHONY: docs docs-html docs-pages test-docs help check-platform build demo test test-platform \
 	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform
 help:
-	@echo 'make docs                 Build standalone docs.html and open the documentation window'
-	@echo 'make docs-html            Only build build/docs.html for hosting'
+	@echo 'make docs                 Build and open the native documentation browser'
+	@echo 'make docs-html            Build standalone build/docs.html with JSCL'
+	@echo 'make docs-pages           Refresh docs/index.html from the standalone page'
 	@echo 'make demo                 Build and run the tabbed demo executable'
 	@echo 'make build                Save the demo executable in build/bin/'
 	@echo 'make test                 Test platform; progress/results in build/logs/'
@@ -67,7 +68,7 @@ $(DEMO): $(SOURCES) | check-platform
 	@mkdir -p build/bin
 	LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build.lisp
 
-docs: build/docs.html $(DOC_BIN)
+docs: $(DOC_BIN)
 	$(RUNNER) "$(DOC_BIN)" $(RUN_ARGS)
 
 test-docs: build/docs.html
@@ -80,6 +81,10 @@ test-docs: build/docs.html
 	$(PYTHON) -u tests/docs-web.py
 
 docs-html: build/docs.html
+
+docs-pages: build/docs.html
+	@mkdir -p docs
+	@cmp -s "$<" docs/index.html || cp "$<" docs/index.html
 
 $(DOC_DATA): scripts/docs-data.lisp scripts/setup.lisp $(DOC_SOURCES)
 	@mkdir -p build
