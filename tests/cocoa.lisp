@@ -198,6 +198,20 @@
     (assert (null (lui.cocoa::input-for-window-p 15 target target)))
     (assert (null (lui.cocoa::input-for-window-p 10 null null)))))
 
+(fn test-pointer-state ()
+  (assert (= 1 (lui.cocoa::cocoa-pointer-buttons 6 0)))
+  (assert (= 0 (lui.cocoa::cocoa-pointer-buttons 5 1)))
+  (assert (= 0 (lui.cocoa::cocoa-pointer-buttons 2 1)))
+  (assert (= 1 (lui.cocoa::cocoa-pointer-buttons 9 1)))
+  (let ((lui.cocoa::*app* (lui.cocoa::make-cocoa-app :focused-p t :buttons 1)))
+    (let ((event (lui.cocoa::cocoa-focus-event nil)))
+      (assert (eq :cancel (event-kind event)))
+      (assert (zerop (event-buttons event)))
+      (assert (zerop (lui.cocoa::cocoa-app-buttons lui.cocoa::*app*))))
+    (assert (null (lui.cocoa::cocoa-focus-event nil)))
+    (assert (null (lui.cocoa::cocoa-focus-event t)))
+    (assert (lui.cocoa::cocoa-focus-event nil))))
+
 (fn test-key-input ()
   (assert (eq :backward
               (event-key (lui.cocoa::cocoa-key-input 48 #x20000 ""))))
@@ -310,6 +324,7 @@
   (test-struct-call-abi)
   (test-callback-boundary)
   (test-key-input)
+  (test-pointer-state)
   (test-window-routing)
   (test-float-boundaries)
   (test-frame-pacing)

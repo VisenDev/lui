@@ -164,7 +164,8 @@
   (width 0 :type integer) (height 0 :type integer)
   (events nil :type list)
   quit error surrogate context suppress-system-char tracking-p
-  (suppressed-spaces 0 :type integer))
+  (suppressed-spaces 0 :type integer)
+  (capture-p nil :type boolean))
 
 (defvar *windows* (make-hash-table))
 (defvar *class-counter* 0)
@@ -264,9 +265,18 @@
            (progn (update-cursor window) (return-from window-message 1))
            (return-from window-message
              (default-procedure handle message wparam lparam))))
+      ((#x8 #x1f #x215)
+       (let ((owned (win-window-capture-p window)))
+         (when (or (/= message #x215) owned)
+           (setf (win-window-capture-p window) nil)
+           (when (and owned (/= message #x215)) (release-capture))
+           (queue-input window (make-event :kind :cancel :buttons 0)))))
       (#x2a3
        (setf (win-window-tracking-p window) nil)
-       (queue-input window (make-event :kind :move :x -1 :y -1)))
+       ;; Captured WM_MOUSEMOVE retains real out-of-window drag coordinates.
+       (unless (win-window-capture-p window)
+         (queue-input window (make-event :kind :move :x -1 :y -1
+                                         :buttons 0))))
       ((#x200 #x201 #x202 #x204 #x205)
         (when (and (= message #x200) (not (win-window-tracking-p window)))
           (cffi:with-foreign-object (tracking '(:struct mouse-tracking))
@@ -277,15 +287,26 @@
                     flags 2 window handle hover-time 0))
             (setf (win-window-tracking-p window)
                   (not (zerop (track-mouse-event tracking))))))
-        (when (= message #x201) (set-capture handle))
-        (when (= message #x202) (release-capture))
+        (when (and (= message #x200) (win-window-capture-p window)
+                   (not (logbitp 0 wparam)))
+          (setf (win-window-capture-p window) nil)
+          (release-capture))
+        (when (= message #x201)
+          (setf (win-window-capture-p window) t)
+          (set-capture handle))
+        (when (= message #x202)
+          ;; ReleaseCapture synchronously sends WM_CAPTURECHANGED. This is a
+          ;; normal button-up, so do not turn that notification into :CANCEL.
+          (let ((owned (win-window-capture-p window)))
+            (setf (win-window-capture-p window) nil)
+            (when owned (release-capture))))
         (queue-input window
           (make-event :kind
             (case message ((#x201 #x204) :press)
                           ((#x202 #x205) :release) (t :move))
             :button (if (member message '(#x204 #x205))
                         :secondary :primary)
-            :x x :y y)))
+            :buttons (logand wparam 3) :x x :y y)))
       (#x20a
         (cffi:with-foreign-object (point :int 2)
           (setf (cffi:mem-aref point :int 0) x

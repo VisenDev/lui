@@ -87,7 +87,9 @@
 (defstruct cocoa-app
   window view renderer context error
   (text-paths (make-hash-table :test 'equal) :type hash-table)
-  (pointer-x -1 :type real) (pointer-y -1 :type real))
+  (pointer-x -1 :type real) (pointer-y -1 :type real)
+  (focused-p nil :type boolean)
+  (buttons 0 :type integer))
 (defvar *app* nil)
 
 (fn null-object-p (object)
@@ -339,6 +341,21 @@
        (not (null-object-p target))
        (same-object-p window target)))
 
+(fn cocoa-pointer-buttons ((type integer) (previous integer))
+  ;; Dragged/down events retain their historical state even if the current
+  ;; physical button was released before AppKit's queue was drained.
+  (case type
+    ((1 6) (logior previous 1)) (2 (logand previous (lognot 1)))
+    ((3 7) (logior previous 2)) (4 (logand previous (lognot 2)))
+    (5 0) (otherwise previous)))
+
+(fn cocoa-focus-event ((focused boolean))
+  (let ((lost (and (cocoa-app-focused-p *app*) (not focused))))
+    (setf (cocoa-app-focused-p *app*) focused)
+    (when lost
+      (setf (cocoa-app-buttons *app*) 0)
+      (make-event :kind :cancel :buttons 0))))
+
 (fn cocoa-event (event view)
   (let ((type (message sb-alien:unsigned-long event "type"))
         (window (message object view "window")))
@@ -348,7 +365,9 @@
       (return-from cocoa-event nil))
     (when (= type 9)
       (setf (cocoa-app-pointer-x *app*) -1 (cocoa-app-pointer-y *app*) -1)
-      (return-from cocoa-event (make-event :kind :move :x -1 :y -1)))
+      (return-from cocoa-event
+        (when (zerop (cocoa-app-buttons *app*))
+          (make-event :kind :move :x -1 :y -1 :buttons 0))))
     (when (= type 10)
       (let ((characters (message object event "characters")))
         (return-from cocoa-event
@@ -381,6 +400,10 @@
                                   (otherwise :move))
                       :button (if (member type '(3 4 7))
                                   :secondary :primary)
+                      :buttons
+                      (setf (cocoa-app-buttons *app*)
+                            (cocoa-pointer-buttons
+                             type (cocoa-app-buttons *app*)))
                       :x x :y y)))))
 
 (fn poll-cocoa-events (application view)
@@ -402,6 +425,19 @@
                                             event "type")))
                   (message sb-alien:void application "sendEvent:"
                            object event))))
+    ;; Sample physical state only after draining historical drag events.
+    (when (and (logbitp 0 (cocoa-app-buttons *app*))
+               (not (logbitp 0 (message sb-alien:unsigned-long
+                                       (objc-class "NSEvent")
+                                       "pressedMouseButtons"))))
+      (setf (cocoa-app-buttons *app*) 0)
+      (push (make-event :kind :cancel :buttons 0) events))
+    (let ((cancel
+            (cocoa-focus-event
+             (and (not (zerop (message objc-bool application "isActive")))
+                  (not (zerop (message objc-bool (cocoa-app-window *app*)
+                                       "isKeyWindow")))))))
+      (when cancel (push cancel events)))
     (nreverse events)))
 
 (fn install-pointer-tracking (view frame)

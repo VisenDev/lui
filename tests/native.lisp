@@ -463,6 +463,13 @@
              (make-event :kind :release :x 300 :y 1))
       (frame (make-event :kind :key :key :copy))
       (assert (equal "Alpha beta" copied))
+      ;; A label owns its selection gesture without an interactive capture.
+      (frame (make-event :kind :press :x 0 :y 1 :buttons 1))
+      (let* ((selection (context-selection context))
+             (before (lui.draw::text-selection-focus selection)))
+        (frame (make-event :kind :move :x 300 :y 1 :buttons 0))
+        (assert (not (lui.draw::text-selection-dragging-p selection)))
+        (assert (equal before (lui.draw::text-selection-focus selection))))
       ;; Multi-label drag copies text in document order.
       (frame (make-event :kind :press :x 0 :y 1)
              (make-event :kind :release :x 300

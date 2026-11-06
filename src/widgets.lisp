@@ -501,7 +501,7 @@ KIND is :CHECKBOX, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
                (setf handled t offset
                      (* limit (/ (- (event-y event) (box-y track)
                                      (scrollbar-state-grab state)) travel)))))
-            (:release (setf (scrollbar-state-grab state) nil))
+            ((:release :cancel) (setf (scrollbar-state-grab state) nil))
             (:key
              (when (member (event-key event)
                            '(:up :left :down :right :page-up :page-down

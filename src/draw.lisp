@@ -739,6 +739,8 @@
                         (setf (context-selection context)
                               (make-text-selection)))))
     (dolist (event events)
+      (when (lui.frame::pointer-cancel-p event)
+        (setf (text-selection-dragging-p selection) nil))
       (let* ((kind (event-kind event))
              (x (event-x event)) (y (event-y event))
              (target

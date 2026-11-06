@@ -6,7 +6,7 @@
            #:with-frame
            #:row #:column #:event #:event-kind #:event-x #:event-y #:event-id
            #:event-value #:event-key #:event-button #:event-clicks
-           #:event-dragging-p #:event-scroll-mode
+           #:event-dragging-p #:event-buttons #:event-scroll-mode
            #:context-events #:events-for
            #:previous-box
            #:context-state #:context-width #:context-height #:emit
@@ -23,13 +23,17 @@
 
 (defstruct* event
   "Backend-neutral input: a kind, target ID, optional key/value, and coordinates.
-Pointer events also carry button, click count, and captured-drag metadata."
+BUTTONS is NIL when unknown; otherwise bit 0 means primary and bit 1 secondary,
+with zero meaning no buttons held. :CANCEL ends capture without activation.
+DRAGGING-P is resolved from capture and the supplied physical button state."
   (kind :move :type
         (member :move :press :release :tab :activate :change
-                :key :text :scroll))
+                :key :text :scroll :cancel))
   (button :primary :type (member :primary :secondary))
   (clicks 1 :type integer)
   (dragging-p nil :type boolean)
+  ;; NIL means unknown; otherwise bit0=primary, bit1=secondary, 0=unpressed.
+  (buttons nil :type (or null integer))
   ;; Precise OS inertia uses :IMMEDIATE; :AUTO keeps plain text contexts direct.
   (scroll-mode :auto :type (member :auto :smooth :immediate))
   id
@@ -244,6 +248,11 @@ Native key translators use this to interpret a key after a batched click or Tab.
             (lambda (id) (gethash id (context-activated context)))
             (context-activation-order context))))
 
+(fn (pointer-cancel-p boolean) ((event event))
+  (or (eq (event-kind event) :cancel)
+      (and (eq (event-kind event) :move) (event-buttons event)
+           (not (logbitp 0 (event-buttons event))))))
+
 (fn begin-frame ((context context) (width real) (height real) (events list))
   "Begin rebuilding CONTEXT at WIDTH and HEIGHT after routing EVENTS.
 Input is resolved against the previous completed tree; this resets the frame
@@ -270,7 +279,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
               (some (lambda (event)
                       (member (event-kind event)
                               '(:press :release :tab :key :text
-                                :activate :change))) events))
+                                :activate :change :cancel))) events))
       (setf (context-scroll-motion context) nil))
     (unless resized (advance-scroll context (context-time context)))
     (dolist (event events)
@@ -282,7 +291,27 @@ clock, redraw deadline, declarations, and per-frame activation state."
         (when (member (event-kind event)
                       '(:press :release :tab :key :text :activate :change))
           (setf (context-scroll-motion context) nil))
-        (setf (event-dragging-p event) (not (null captured)))
+        (when (and captured
+                   (or (and (eq (event-kind event) :press)
+                            (eq (event-button event) :primary))
+                       (and (eq (event-kind event) :move)
+                            (pointer-cancel-p event))))
+          ;; A replacement press or a known unpressed motion ends the old drag.
+          (push (make-event :kind :cancel :id captured :buttons 0)
+                (gethash captured (context-events context)))
+          (setf (context-active context) nil
+                (context-last-click context) nil
+                (context-scroll-motion context) nil
+                captured nil))
+        (when (eq (event-kind event) :cancel)
+          (setf (context-active context) nil (context-hover context) nil
+                (context-last-click context) nil
+                (context-scroll-motion context) nil))
+        (setf (event-dragging-p event)
+              (and (not (null captured))
+                   (not (eq (event-kind event) :cancel))
+                   (or (null (event-buttons event))
+                       (logbitp 0 (event-buttons event)))))
         (when (member (event-kind event) '(:move :press :release))
           (setf (context-hover context) target))
         (case (event-kind event)
@@ -323,9 +352,11 @@ clock, redraw deadline, declarations, and per-frame activation state."
                (record-activation context id))))
           (otherwise nil))
         (let ((id (or (event-id event)
-                      (if (member (event-kind event) '(:press :move :release))
-                          (or (context-active context) captured target)
-                          (context-focus context)))))
+                      (case (event-kind event)
+                        ((:press :move :release)
+                         (or (context-active context) captured target))
+                        (:cancel captured)
+                        (otherwise (context-focus context))))))
           (when id (push event (gethash id (context-events context)))))))
     (unless resized (advance-scroll context (context-time context))))
   ;; Native selection still needs the focused input after a composite editor

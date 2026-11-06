@@ -5,6 +5,7 @@
 
 (cffi:defcfun ("GetPixel" get-pixel :convention :stdcall) :uint32
   (dc :pointer) (x :int) (y :int))
+(cffi:defcfun ("GetCapture" capture-window :convention :stdcall) :pointer)
 (cffi:defcfun ("PostMessageW" post-message :convention :stdcall) :int
   (window :pointer) (message :uint32) (wparam :uintptr) (lparam :intptr))
 (cffi:defcfun ("SetWindowPos" set-window-position :convention :stdcall) :int
@@ -79,6 +80,42 @@
       (lui.win32::close-clipboard))))
 
 
+(lui.fn:fn test-pointer-state (window)
+  (let ((saved (lui.win32::win-window-events window)))
+    (unwind-protect
+         (progn
+           (setf (lui.win32::win-window-events window) nil)
+           (lui.win32::window-message window #x201 1 #x140014)
+           (lui.win32::window-message window #x200 0 #x150015)
+           (assert (not (lui.win32::win-window-capture-p window)))
+           (assert (zerop (event-buttons
+                           (first (lui.win32::win-window-events window)))))
+           (lui.win32::window-message window #x202 0 #x150015)
+           (assert (not (find :cancel (lui.win32::win-window-events window)
+                                   :key #'event-kind)))
+           ;; Losing focus in another window must not release our capture.
+           (lui.win32::window-message window #x201 1 #x140014)
+           (let ((other (lui.win32::make-win-window)))
+             (dolist (message '(#x8 #x1f #x202))
+               (lui.win32::window-message other message 0 0)
+               (assert (cffi:pointer-eq (capture-window)
+                                        (lui.win32::win-window-handle
+                                         window)))))
+           (lui.win32::window-message window #x202 0 #x140014)
+           (dolist (message '(#x215 #x8 #x1f))
+             (lui.win32::window-message window #x201 1 #x140014)
+             (assert (lui.win32::win-window-capture-p window))
+             (if (= message #x215)
+                 (lui.win32::release-capture)
+                 (lui.win32::window-message window message 0 0))
+             (assert (eq :cancel
+                         (event-kind
+                          (first (lui.win32::win-window-events window)))))
+             (assert (not (lui.win32::win-window-capture-p window)))))
+      (setf (lui.win32::win-window-capture-p window) nil)
+      (lui.win32::release-capture)
+      (setf (lui.win32::win-window-events window) saved))))
+
 (lui.fn:fn test-navigation-and-cursors ()
   (assert (eq :backward
               (event-key (lui.win32::key-input 9 nil nil t nil))))
@@ -135,6 +172,7 @@
               (lambda ()
                 (incf frames)
                 (test-copy window)
+                (test-pointer-state window)
                 (lui.example:draw gallery)
                 (let ((graphics (lui.win32::win-window-graphics window)))
                   (lui.win32::checked
