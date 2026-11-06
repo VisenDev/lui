@@ -3,6 +3,33 @@
   (:export #:collect-entries #:write-data #:main))
 (in-package #:lui.docs.generator)
 
+;; DEFPACKAGE exports also connect implementation modules. The reference is
+;; deliberately an application/extension API, not an inventory of those links.
+;; Keep public reexports here even when their definitions live in hidden modules.
+(defparameter *public-api*
+  '(("lui" "RUN" "REGISTER-BACKEND" "AVAILABLE-BACKENDS" "UNITS" "*BACKEND*"
+     "*UNIT*" "WITH-TOOLKIT" "CURRENT-TOOLKIT" "TOOLKIT-DEFAULTS"
+     "REGISTER-TOOLKIT" "TOOLKIT-SURFACE" "CONTROL" "TOOLKIT-WEB-STYLE"
+     "DEFINE-COLLECTION" "OPT" "PANEL" "LABEL" "BUTTON" "TAB" "CHECKBOX"
+     "SLIDER" "TEXT-FIELD" "CELL" "LIST-ITEM" "GAUGE" "CANVAS")
+    ("lui.layout" "SIZING" "FIT" "GROW" "FIXED" "PERCENT" "BOX" "MAKE-BOX"
+     "BOX-X" "BOX-Y" "BOX-WIDTH" "BOX-HEIGHT" "ELEMENT-BOX")
+    ("lui.frame" "ROW" "COLUMN" "FRAME-TIME" "REQUEST-FRAME" "PREVIOUS-BOX"
+     "SCROLL-POSITION" "SCROLL-TO" "ACTIVATED-P" "HOVERED-P" "EVENT"
+     "EVENT-KIND" "EVENT-X" "EVENT-Y" "EVENT-ID" "EVENT-VALUE" "EVENT-KEY"
+     "EVENT-BUTTON" "EVENT-CLICKS" "EVENT-DRAGGING-P")
+    ("lui.interaction" . :all)
+    ("lui.glass" . :all) ("lui.motif" . :all) ("lui.garnet" . :all)
+    ("lui.debug" "SET-ENABLED" "ENABLED-P" "STATE" "MAKE-STATE"
+     "STATE-OPEN-P" "STATE-SELECTED" "STATE-WIDTH")
+    ("lui.font" "FONT" "OPEN-FONT" "CLOSE-FONT" "FONT-SIZE" "FONT-FACE"
+     "TEXT-WIDTH" "LINE-HEIGHT" "BASELINE" "WRAP-TEXT" "GLYPH-POLYGONS"
+     "*FONT-PATH*" "*FONT-PATHS*" "*FONT-DIRECTORIES*" "*FONT-NAMES*")
+    ("lui.draw" "RENDERER" "RENDERER-FONT" "RENDERER-POLYGONS"
+     "RENDERER-CLIP" "RENDERER-GLASS" "RENDERER-TEXT" "ROUNDED-POLYGON"
+     "COLOR-COMPONENTS" "PAINT-TEXT")
+    ("lui.web" . :all)))
+
 ;; Read syntax, never evaluate application forms or load foreign libraries.
 (defun token-end-p (character)
   (or (null character)
@@ -92,6 +119,11 @@
   (let* ((name (string symbol)) (colon (position #\: name :from-end t)))
     (if colon (subseq name (1+ colon)) name)))
 
+(defun reference-symbol-p (package name policy)
+  (let ((symbols (cdr (assoc package policy :test #'string=))))
+    (or (eq symbols :all)
+        (member (local-name name) symbols :test #'string=))))
+
 (defun named-p (symbol name)
   (and (symbolp symbol) (string= (local-name symbol) name)))
 
@@ -120,8 +152,11 @@
                 (t argument)))
             arguments)))
 
-(defun collect-entries (&optional (paths (directory "src/*.lisp")))
-  "Extract exported source APIs, including conditional and generated forms."
+(defun collect-entries (&optional (paths (directory "src/*.lisp"))
+                       (policy *public-api*))
+  "Extract curated application/extension exports, resolving internal reexports.
+POLICY maps package names to symbol-name lists or :ALL. All source declarations
+are read for resolution; only explicitly selected exports enter the reference."
   (let ((packages (make-hash-table :test 'equal))
         (definitions (make-hash-table :test 'equal))
         (setters (make-hash-table :test 'equal))
@@ -293,7 +328,10 @@
          (lambda (package options)
            (dolist (option options)
              (when (eq (car option) :export)
-               (dolist (name (cdr option))
+               (dolist (name (remove-if-not
+                              (lambda (name)
+                                (reference-symbol-p package name policy))
+                              (cdr option)))
                  (let* ((definition (resolve package name))
                         (entry (copy-list definition)))
                    (unless entry

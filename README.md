@@ -134,6 +134,14 @@ or CI: copy just that HTML file to a static server or open it directly from
 disk. Both the JSCL runtime and the application are embedded. Make reuses the
 generated files until their sources, build scripts, or runtime change.
 
+The reference covers application controls, layout and interaction helpers,
+collection customization, inspection, browser embedding, and native painter/font
+extensions. Its explicit symbol allowlist omits backend plumbing, raw context
+and layout-tree management, wire protocols, compiler helpers, and adapter
+runners; use `lui:run` to select a backend. Exports used only between implementation
+modules are not public reference entries. Public reexports remain documented
+under their application-facing package.
+
 Native builds invoke SBCL with `--load scripts/build.lisp`, load the backend and
 shared demo, then use `sb-ext:save-lisp-and-die` to save
 `build/bin/demo-PLATFORM` (`.exe` on Windows). `make demo` runs that executable;

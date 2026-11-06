@@ -33,16 +33,31 @@
 (defvar *setting*)
 (setf (documentation '*setting* 'variable) \"Setting documentation.\")
 (defun private () nil)
-(defpackage #:docs-reexport (:use #:docs-fixture) (:export #:typed))
+(defpackage #:docs-internal (:use #:cl) (:export #:shared))
+(in-package #:docs-internal)
+(defun shared (value) \"Public reexport from an internal module.\" value)
+(defpackage #:docs-reexport
+  (:use #:docs-fixture) (:import-from #:docs-internal #:shared)
+  (:export #:typed #:shared))
 " stream))
            (let* ((paths (list (pathname fixture)))
-                  (entries (lui.docs.generator:collect-entries paths))
+                  (policy '(("docs-fixture" . :all)
+                            ("docs-reexport" . :all)))
+                  (entries (lui.docs.generator:collect-entries
+                            paths policy))
                   (typed (entry entries "docs-fixture" "TYPED"))
                   (access (entry entries "docs-fixture" "ACCESS")))
-             (assert (= 10 (length entries)))
+             (assert (= 11 (length entries)))
+             (assert (notany (lambda (item)
+                               (string= "docs-internal"
+                                        (getf item :package))) entries))
+             (assert (string= "Public reexport from an internal module."
+                              (getf (entry entries "docs-reexport" "SHARED")
+                                    :documentation)))
              (assert (null (find-package :docs-fixture)))
              (assert (equal entries
-                            (lui.docs.generator:collect-entries paths)))
+                            (lui.docs.generator:collect-entries
+                             paths policy)))
              (assert (string= "(typed value &key (limit 10))"
                               (getf typed :signature)))
              (assert (string= "Typed documentation."
@@ -80,14 +95,26 @@
       (when (probe-file output) (delete-file output))))
   (let* ((entries (lui.docs.generator:collect-entries))
          (button (entry entries "lui" "BUTTON")))
-    (assert (> (length entries) 250))
+    (assert (> (length entries) 100))
     (assert (string= "(button id text &optional options)"
                      (getf button :signature)))
     (assert (plusp (length (getf button :documentation))))
-    (dolist (pair '(("lui.web" "MOUNT") ("lui.cocoa" "RUN-COCOA")
-                    ("lui.win32" "RUN-WIN32")
-                    ("lui.wayland-protocol" "DESTROY-PROXY")))
+    (dolist (pair '(("lui.web" "MOUNT") ("lui.font" "*FONT-PATH*")
+                    ("lui.draw" "RENDERER-POLYGONS")
+                    ("lui" "TOOLKIT-SURFACE")))
       (assert (entry entries (first pair) (second pair))))
+    (dolist (package '("lui.fn" "lui.widgets" "lui.gl"
+                       "lui.wayland-protocol" "lui.web.style"
+                       "lui.wayland" "lui.x11" "lui.win32" "lui.cocoa"))
+      (assert (notany (lambda (item)
+                        (string= package (getf item :package))) entries)))
+    (dolist (pair '(("lui" "TOOLKIT-REVISION")
+                    ("lui.layout" "ELEMENT-CHILDREN")
+                    ("lui.frame" "BEGIN-FRAME")
+                    ("lui.frame" "CONTEXT-STATE")
+                    ("lui.draw" "PAINT-FRAME")
+                    ("lui.font" "FONT-LOADER")))
+      (assert (null (entry entries (first pair) (second pair)))))
     (assert (null (find-package :lui.cocoa)))
     (assert (null (find-package :lui.win32)))
     (assert (null (find-package :lui.web))))
