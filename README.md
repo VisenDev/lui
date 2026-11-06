@@ -49,6 +49,20 @@ activation; fields, sliders, and checkboxes return the current value and a
 second value indicating a change. Store application values outside the draw
 function. The library keeps focus, capture, and caret state between frames.
 
+`lui:searchable-combobox` takes a stable ID, the selected string (or NIL), and
+a list of string choices. It starts collapsed; activate its trigger to open the
+search field and matching options. Use Arrow Up/Down to move through matches,
+Enter to choose the highlighted option, and Escape to close. Pointer selection
+also commits a choice. `:max-results` limits the displayed options, and
+`:disabled-p` disables the control.
+
+```lisp
+(setf country
+      (lui:searchable-combobox :country country
+                               '("Canada" "Japan" "United States")
+                               (lui:opt :max-results 10)))
+```
+
 Radio controls share one model value. Each `lui:radio` receives the current
 value and its own choice, then returns the updated value and a change flag:
 

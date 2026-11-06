@@ -9,7 +9,7 @@
            #:opt #:panel #:label
            #:button #:tab #:checkbox #:radio #:slider
            #:text-field #:cell #:list-item #:gauge #:canvas
-           #:date-time-picker))
+           #:date-time-picker #:searchable-combobox))
 
 (in-package #:lui)
 
@@ -133,7 +133,7 @@ CONTROLS maps control names to functions taking the public arguments and options
                foreground background radius frost minimum maximum step
                font-size font-family font-weight opacity accent disabled-p
                painter terminal-label accessible-name
-               selected-p text)
+               max-results selected-p text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align
                    id direction mode
@@ -143,7 +143,7 @@ CONTROLS maps control names to functions taking the public arguments and options
                    radius frost minimum maximum step font-size font-family
                    font-weight opacity accent disabled-p painter
                    terminal-label accessible-name
-                   selected-p text))
+                   max-results selected-p text))
   `(list ,@forms))
 
 (defmacro panel (options &body body)
@@ -263,6 +263,70 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
   (year 2000 :type integer) (month 1 :type integer)
   (open-p nil :type boolean)
   (draft "" :type string) value)
+
+(defstruct combobox-state
+  (query "" :type string) (open-p nil :type boolean) (highlight 0 :type integer))
+
+(defun combobox-matches (query choices limit)
+  ;; Keep the source index for IDs so filtering never retargets a pointer event.
+  (let ((index 0) (count 0) matches)
+    (block collect
+      (map nil (lambda (choice)
+                 (when (search query choice :test #'char-equal)
+                   (push (cons index choice) matches)
+                   (when (= (incf count) limit) (return-from collect)))
+                 (incf index))
+           choices))
+    (nreverse matches)))
+
+(defun searchable-combobox (id value choices &optional options)
+  "Pick a string from CHOICES by typing a case-insensitive substring.
+Return the selected value and a change flag. Up/Down highlight a match,
+Enter selects it, and Escape closes the list. :MAX-RESULTS defaults to 20."
+  (let* ((state (or (gethash id (context-state *context*))
+                    (setf (gethash id (context-state *context*)) (make-combobox-state))))
+         (trigger (list id :trigger)) (editor (list id :search))
+         (limit (getf options :max-results 20)) (disabled (getf options :disabled-p))
+         (result value))
+    (check-type limit (integer 1 *))
+    (labels ((dismiss ()
+               (setf (combobox-state-open-p state) nil (context-focus *context*) trigger)
+               (request-frame))
+             (choose (match)
+               (when match (setf result (cdr match)) (dismiss))))
+      (panel (list* :id id (append (without-option :disabled-p
+                                                  (without-option :max-results options))
+                                  (opt :padding (units 1))))
+        (when disabled (setf (combobox-state-open-p state) nil))
+        (when (button trigger (or value "Choose…")
+                      (opt :width (lui.layout:grow) :disabled-p disabled
+                           :accessible-name (getf options :accessible-name)))
+          (if (combobox-state-open-p state) (dismiss)
+              (setf (combobox-state-open-p state) t (combobox-state-query state) ""
+                    (combobox-state-highlight state) 0 (context-focus *context*) editor)))
+        (when (combobox-state-open-p state)
+          (let* ((query (text-field editor (combobox-state-query state)
+                                    (opt :width (lui.layout:grow) :accessible-name "Search options")))
+                 (matches (combobox-matches query choices limit))
+                 (last (max 0 (1- (length matches))))
+                 (index (if (equal query (combobox-state-query state))
+                            (min last (combobox-state-highlight state)) 0)))
+            (dolist (event (events-for editor))
+              (case (event-kind event)
+                (:key (case (event-key event)
+                        (:down (setf index (min last (1+ index))))
+                        (:up (setf index (max 0 (1- index))))
+                        (:escape (dismiss))))
+                (:activate (choose (nth index matches))))
+              (unless (combobox-state-open-p state) (return)))
+            (setf (combobox-state-query state) query (combobox-state-highlight state) index)
+            (when (combobox-state-open-p state)
+              (unless matches (label "No matches"))
+              (loop for match in matches for i from 0
+                    when (list-item (list id :choice (car match)) (cdr match)
+                                    (opt :width (lui.layout:grow) :selected-p (= i index)))
+                      do (choose match)))))))
+    (values result (not (equal result value)))))
 
 (defun month-days (year month)
   (if (= month 2)
