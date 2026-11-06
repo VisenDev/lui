@@ -111,7 +111,11 @@ PROFILE = r"""({count, warmup}) => new Promise(resolve => {
 WebTests.setUpClass()
 results = []
 try:
-    page = WebTests.browser.new_page(viewport={"width": 900, "height": 700})
+    viewport = {"width": int(os.environ.get("BENCH_WIDTH", "900")),
+                "height": int(os.environ.get("BENCH_HEIGHT", "700"))}
+    if min(viewport.values()) <= 0:
+        raise ValueError("BENCH_WIDTH and BENCH_HEIGHT must be positive")
+    page = WebTests.browser.new_page(viewport=viewport)
     page.set_default_timeout(60000)
     if os.environ.get("BENCH_BUNDLE"):
         bundle = Path(os.environ["BENCH_BUNDLE"]).resolve()
@@ -122,6 +126,7 @@ try:
     page.goto(f"http://127.0.0.1:{WebTests.server.server_port}/examples/web.html")
     page.get_by_role("tab", name="Controls", exact=True).wait_for()
     detail = bool(os.environ.get("BENCH_DETAIL"))
+    print(f"Viewport: {viewport['width']}x{viewport['height']}")
     print("Active completed frames: Lisp/layout/DOM elapsed time + browser layout flush; excludes GPU raster")
     print("Diagnostic per-function instrumentation" if detail else
           "Raw timing: only draw entry/exit and one browser layout flush")

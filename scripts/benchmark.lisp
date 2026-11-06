@@ -26,6 +26,24 @@
   (parse-integer (or (uiop:getenv "BENCH_FRAMES") "240")))
 (defparameter *warmup* (parse-integer (or (uiop:getenv "WARMUP") "30")))
 (defparameter *samples* (make-hash-table :test 'equal))
+(defparameter *allocations* (make-hash-table :test 'equal))
+(defstruct allocation bytes gc-time)
+(defparameter *width*
+  (parse-integer (or (uiop:getenv "BENCH_WIDTH")
+                     (if (member *platform* '("core" "terminal")
+                                 :test #'string=)
+                         "100" "720"))))
+(defparameter *height*
+  (parse-integer (or (uiop:getenv "BENCH_HEIGHT")
+                     (if (member *platform* '("core" "terminal")
+                                 :test #'string=)
+                         "40" "520"))))
+(assert (and (plusp *width*) (plusp *height*)))
+
+(defun counters ()
+  #+sbcl (values (sb-ext:get-bytes-consed) sb-ext:*gc-run-time*)
+  #-sbcl (values nil nil))
+
 (assert (>= *frames* (length *cases*)) ()
         "BENCH_FRAMES must be at least ~D to cover every case."
         (length *cases*))
@@ -57,44 +75,53 @@
     (setf lui.example::*toolkit* (first case)
           lui.example::*page* (second case))
     (when (third case)
-      (setf (lui.example.seven:state-task lui.example.seven:*state*) (third case)))
+      (setf (lui.example.seven:state-task lui.example.seven:*state*)
+            (third case)))
     case))
 
-(defun sample (case ticks)
-  (push ticks (gethash case *samples*)))
+(defun sample-since (case duration bytes gc-time)
+  ;; Read counters before recording samples, so bookkeeping stays outside.
+  (multiple-value-bind (end-bytes end-gc-time) (counters)
+    (push duration (gethash case *samples*))
+    (when bytes
+      (push (make-allocation :bytes (- end-bytes bytes)
+                             :gc-time (- end-gc-time gc-time))
+            (gethash case *allocations*)))))
 
 (defun benchmark-window ()
-  ;; Consecutive callback entries enclose drawing, layout, rendering, swap,
-  ;; and backend event pumping/pacing. The final interval is observed before
-  ;; throwing out of RUN, whose cleanup closes only this benchmark's window.
-  (let ((index 0) (previous nil) (started 0))
+  ;; Callback intervals include presentation and event pumping/pacing.
+  (let ((index 0) (previous nil) (started 0) (bytes nil) (gc-time nil))
     (catch 'complete
       (lui:run
        (lambda ()
          (let ((now (ticks)))
-           (when previous (sample previous (- now started)))
+           (when previous
+             (sample-since previous (- now started) bytes gc-time))
            (when (= index (+ *warmup* *frames*)) (throw 'complete nil))
            (let ((case (select-case index)))
              (setf previous (when (>= index *warmup*) case)
                    started now))
            (incf index)
+           ;; Case selection and previous-sample storage are excluded.
+           (multiple-value-setq (bytes gc-time) (counters))
            (lui.example:draw)))
        :backend (intern (string-upcase *platform*) :keyword)
-       :title "LUI benchmark" :width 720 :height 520))))
+       :title "LUI benchmark" :width *width* :height *height*))))
 
 (defun benchmark-loop (frame)
   (dotimes (index (+ *warmup* *frames*))
     (let* ((case (select-case index))
            (started (ticks)))
-      (funcall frame)
-      (when (>= index *warmup*)
-        (sample case (- (ticks) started))))))
+      (multiple-value-bind (bytes gc-time) (counters)
+        (funcall frame)
+        (when (>= index *warmup*)
+          (sample-since case (- (ticks) started) bytes gc-time))))))
 
 (defun benchmark-terminal ()
   (let ((context (lui.terminal:make-terminal-context)) (lui:*unit* 1))
     (benchmark-loop
      (lambda ()
-       (lui.frame:with-frame (context 100 40) (lui.example:draw))
+       (lui.frame:with-frame (context *width* *height*) (lui.example:draw))
        (lui.terminal:render-terminal context)))))
 
 (defun benchmark-gl ()
@@ -102,7 +129,7 @@
          (gpu nil) (lui:*unit* 8))
     (unwind-protect
          (progn
-           (setf gpu (call :lui.gl :open-gpu nil nil font 720 520))
+           (setf gpu (call :lui.gl :open-gpu nil nil font *width* *height*))
            (let* ((renderer (call :lui.gl :gpu-renderer gpu))
                   (context
                     (lui.frame:make-context
@@ -116,7 +143,8 @@
                                 "glFinish" :void)))))
              (benchmark-loop
               (lambda ()
-                (lui.frame:with-frame (context 720 520) (lui.example:draw))
+                (lui.frame:with-frame (context *width* *height*)
+                  (lui.example:draw))
                 (call :lui.gl :begin-gpu-frame gpu)
                 (call :lui.draw :paint-frame renderer context)
                 (call :lui.gl :present-gpu gpu)
@@ -141,26 +169,52 @@
             (* ms (percentile sorted 0.5d0))
             (* ms (percentile sorted 0.95d0)) (* ms (car (last sorted))))))
 
-(let ((mode (cond ((member *platform* '("core" "terminal") :test #'string=)
-                   "layout+terminal-render microbenchmark")
-                  ((string= *platform* "gl") "offscreen pipeline + glFinish")
-                  (t "paced window loop; not raw GPU speed"))))
-  (format t "BENCH backend=~A mode=~S frames=~D warmup=~D requested_size=~A timer_hz=~D~%"
-          *platform* mode *frames* *warmup*
-          (if (member *platform* '("core" "terminal") :test #'string=)
-              "100x40" "720x520")
-          +timer-hz+)
-  (cond ((member *platform* '("core" "terminal") :test #'string=)
-         (benchmark-terminal))
-        ((string= *platform* "gl") (benchmark-gl))
-        (t (benchmark-window)))
-  (assert (= *frames* (loop :for values :being :the :hash-values :of *samples*
-                           :sum (length values)))
-          () "Benchmark ended before every measured frame completed.")
-  (dolist (case *cases*)
-    (report-row (first case)
-                (if (third case) (format nil "seven/~A" (third case))
-                    (second case))
-                (gethash case *samples*)))
-  (report-row :all :all
-              (loop :for case :in *cases* :append (gethash case *samples*))))
+(defun report-allocation (toolkit page records)
+  (if records
+      (let* ((bytes (sort (mapcar #'allocation-bytes records) #'<))
+             (total (reduce #'+ bytes)))
+        (format t "ALLOC toolkit=~(~A~) page=~(~A~) frames=~D bytes_total=~D bytes_mean=~,2F bytes_p95=~D gc_count=unsupported gc_cpu_ms=~,3F~%"
+                toolkit page (length bytes) total (/ total (length bytes))
+                (percentile bytes 0.95d0)
+                (* (/ 1000.0d0 internal-time-units-per-second)
+                   (reduce #'+ records :key #'allocation-gc-time))))
+      (format t "ALLOC toolkit=~(~A~) page=~(~A~) status=unsupported~%"
+              toolkit page)))
+
+(defun run-benchmarks ()
+  (let ((mode (cond ((member *platform* '("core" "terminal") :test #'string=)
+                     "layout+terminal-render microbenchmark")
+                    ((string= *platform* "gl")
+                     "offscreen pipeline + glFinish")
+                    (t "paced window loop; not raw GPU speed"))))
+    (format t "BENCH backend=~A mode=~S frames=~D warmup=~D requested_size=~A timer_hz=~D~%"
+            *platform* mode *frames* *warmup*
+            (format nil "~Dx~D" *width* *height*)
+            +timer-hz+)
+    (format t "ALLOCATION counters=~A scope=process gc_time=cpu sample_storage=excluded~%"
+            #+sbcl "SBCL" #-sbcl "unsupported")
+    (cond ((member *platform* '("core" "terminal") :test #'string=)
+           (benchmark-terminal))
+          ((string= *platform* "gl") (benchmark-gl))
+          (t (benchmark-window)))
+    (assert (= *frames*
+               (loop :for values :being :the :hash-values :of *samples*
+                     :sum (length values)))
+            () "Benchmark ended before every measured frame completed.")
+    #+sbcl
+    (assert (= *frames*
+               (loop :for values :being :the :hash-values :of *allocations*
+                     :sum (length values))))
+    (dolist (case *cases*)
+      (let ((page (if (third case) (format nil "seven/~A" (third case))
+                      (second case))))
+        (report-row (first case) page (gethash case *samples*))
+        (report-allocation (first case) page (gethash case *allocations*))))
+    (report-row :all :all
+                (loop :for case :in *cases*
+                      :append (gethash case *samples*)))
+    (report-allocation :all :all
+                      (loop :for case :in *cases*
+                            :append (gethash case *allocations*)))))
+
+(unless (uiop:getenv "LUI_BENCH_LIBRARY_ONLY") (run-benchmarks))

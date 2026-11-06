@@ -119,6 +119,43 @@ make benchmark PLATFORM=core BENCH_FRAMES=240 WARMUP=30
 make benchmark PLATFORM=gl
 ```
 
+SBCL runs also print separate `ALLOC` rows per case and for `all/all`:
+`bytes_total`, `bytes_mean`, and `bytes_p95` measure Lisp bytes allocated per
+measured frame; `gc_cpu_ms` reports GC CPU time inside those frame intervals.
+`gc_count=unsupported` is explicit: SBCL's public asynchronous GC hooks do not
+provide an exact per-frame collection count. This applies to Cocoa when
+benchmarking with SBCL on macOS. Existing `RESULT` timing rows retain their format.
+
+The counters are process-wide, using SBCL's documented `get-bytes-consed`
+and `*gc-run-time*`. Warmup, case selection, sample storage, and reporting are
+excluded from allocation samples;
+small counter overhead can remain. Windowed samples include backend event
+handling and presentation. GC CPU time is not a wall-clock pause measurement,
+and unrelated threads can contribute to process-wide counters. Foreign/GPU
+memory, including AppKit/C allocations, is outside the Lisp allocation counter.
+Other Lisp implementations report `status=unsupported`, rather than a
+misleading zero.
+Browser reports currently measure frame work, not total JavaScript allocations;
+a heap-size delta would describe retained heap, not allocated bytes.
+
+`BENCH_WIDTH` and `BENCH_HEIGHT` reproduce the application size, including
+large-window workloads. Defaults are 720×520 for native/GL, 900×700 for web,
+and 100×40 cells for core/terminal; explicit settings override these defaults.
+For example, on a Mac:
+
+```sh
+make benchmark PLATFORM=cocoa BENCH_WIDTH=1920 BENCH_HEIGHT=1000 \
+  BENCH_FRAMES=720 WARMUP=144
+```
+
+Allocation accounting regression checks can be run independently:
+
+```sh
+LUI_BENCH_LIBRARY_ONLY=1 sbcl --noinform --non-interactive \
+  --load scripts/benchmark.lisp --load tests/benchmark.lisp \
+  --eval '(lui.tests.benchmark:run-tests)'
+```
+
 Override `SBCL` for its executable or command prefix and `SBCL_FLAGS` for its
 flags (default `--noinform --non-interactive`). The POSIX terminal PTY and X11
 harnesses launch installed SBCL themselves; those subprocesses do not use a
@@ -333,6 +370,12 @@ Applications can opt in without changing their drawing code:
 (let ((debug (lui.debug:make-state :open-p t)))
   (lui:run (lui.debug:wrap #'draw :state debug :toolkit :glass)))
 ```
+
+Drag the inspector's left edge to resize its sidebar; the width persists.
+Focus the separator and use Left/Right or Home/End to resize from the keyboard.
+`lui.debug:state-width` can also set its optional width in LUI spacing units.
+The terminal tree uses one dense line per row, and floating inspector panes
+cover the underlying borders.
 
 The inspector reads the previous completed frame. Stable IDs preserve selection;
 anonymous elements use paths below the closest ID, so reordered identical
