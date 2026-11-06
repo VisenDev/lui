@@ -142,9 +142,9 @@
                             :opacity (if (= i *selection*) 0.85 0.3))
                 (setf *selection* i)))))
 
-(defun styles-page ()
+(defun styles-content ()
   (widget :label "Customize the active collection without mixing toolkits.")
-  (when (eq *toolkit* :glass)
+  (when (and (eq *toolkit* :glass) (/= *unit* 1))
     (widget :label (format nil "Opacity: ~D%" (round (* 100 *opacity*))))
     (setf *opacity* (widget :slider :opacity *opacity* :width (grow)))
     (widget :label (format nil "Frost: ~D; corner radius: ~D"
@@ -184,7 +184,7 @@
                (incf *preview-count*))
              (widget :label (format nil "Activated ~D times" *preview-count*)
                      :foreground "#ffffff"))))
-    (if (eq *toolkit* :glass)
+    (if (and (eq *toolkit* :glass) (/= *unit* 1))
         (progn
           (widget :label "Frost softens stripes; lower opacity reveals more backdrop.")
           (column (:width (grow) :height (fixed (units 14)) :clip-p t)
@@ -198,6 +198,13 @@
                      :width (percent 0.95))
               (preview))))
         (preview))))
+
+(defun styles-page ()
+  (if (= *unit* 1)
+      (let ((*opacity* 1) (*frost* 0) (*radius* 0))
+        (widget :label "Terminal preview uses solid colors; no blur or transparency.")
+        (styles-content))
+      (styles-content)))
 
 (defun modal-p ()
   (let ((package (find-package "LUI.EXAMPLE.SEVEN.CIRCLES")))
