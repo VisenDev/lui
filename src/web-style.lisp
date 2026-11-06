@@ -47,7 +47,7 @@
       (setf result ((jscl/ffi:oget result "concat") (cdr entry))))))
 
 (fn (framed-p boolean) ((widget widget))
-  "Return whether WIDGET uses its collection's normal control frame."
+  "Return whether WIDGET uses its toolkit's normal control frame."
   (not (member (widget-kind widget)
                '(:label :highlight :splitter :list-item :cell :canvas :gauge
                  :scrollbar))))

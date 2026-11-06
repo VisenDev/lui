@@ -159,7 +159,55 @@
       (assert (null (lui.frame::context-scroll-motion context)))
       (assert (null (context-next-frame context))))))
 
+(defparameter *macro-defaults*
+  '(:background "#123456" :foreground "#ffffff"))
+
+(lui:define-toolkit :test-modern *macro-defaults* modern-panel
+  modern-label modern-button)
+(lui:define-collection :test-legacy *macro-defaults* legacy-panel
+  legacy-label legacy-button)
+
+(defun test-toolkit-definitions ()
+  (assert (eq 'lui:define-toolkit
+              (car (macroexpand-1
+                    '(lui:define-collection :alias *macro-defaults*
+                       alias-panel alias-label alias-button)))))
+  (let ((context (make-terminal-context))
+        (*macro-defaults* '(:background "#abcdef" :foreground "#010203")))
+    (with-frame (context 40 20)
+      (modern-panel (lui:opt :id :modern-panel :padding 1)
+        (modern-label "Modern")
+        (modern-button :modern "Action" (lui:opt :width (fixed 11))))
+      ;; The compatibility macro preserves keyword-tail calls and panels too.
+      (legacy-panel (:id :legacy-panel :padding 1)
+        (legacy-label "Legacy")
+        (legacy-button :legacy "Action" :width (fixed 7))))
+    (dolist (pair '((:modern . :test-modern) (:legacy . :test-legacy)))
+      (let* ((node (gethash (car pair) (lui.frame::context-ids context)))
+             (widget (element-content node)))
+        (assert (eq (cdr pair) (lui.widgets:widget-style widget)))
+        (assert (string= "#abcdef" (lui.widgets:widget-background widget)))))
+    (assert (= 11 (box-width (element-box
+                             (gethash :modern
+                                      (lui.frame::context-ids context))))))
+    (assert (= 7 (box-width (element-box
+                            (gethash :legacy
+                                     (lui.frame::context-ids context))))))
+    (assert (equal *macro-defaults* (lui:toolkit-defaults :test-modern)))
+    (assert (equal *macro-defaults* (lui:toolkit-defaults :test-legacy))))
+  ;; Public defaults/style APIs must not collide with metadata slot accessors.
+  (let ((callback (lambda (dom widget node)
+                    (declare (ignore dom widget node))))
+        (generation (lui:toolkit-revision)))
+    (setf (lui:toolkit-web-style :test-modern) callback)
+    (assert (> (lui:toolkit-revision) generation))
+    (assert (eq callback (lui:toolkit-web-style :test-modern)))
+    (assert (null (lui:toolkit-web-style :test-legacy)))
+    (assert (equal *macro-defaults* (lui:toolkit-defaults :test-modern)))
+    (setf (lui:toolkit-web-style :test-modern) nil)))
+
 (defun run-tests ()
+  (test-toolkit-definitions)
   (test-shared-helpers)
   (test-wheel-momentum)
   (let ((outer (lui:current-toolkit)))
@@ -219,7 +267,7 @@
           (assert checked)
           (assert (= 7 number))
           (assert (equal "edited" text)))))
-    ;; An explicit NIL option overrides a true collection default.
+    ;; An explicit NIL option overrides a true toolkit default.
     (let ((lui.glass:*defaults*
             (append '(:disabled-p t) lui.glass:*defaults*))
           (context (make-terminal-context)))

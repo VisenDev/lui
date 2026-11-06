@@ -4,7 +4,8 @@
            #:*unit* #:with-toolkit #:current-toolkit #:toolkit-defaults
            #:register-toolkit #:toolkit-revision #:toolkit-surface
            #:control #:map-toolkit-web-styles
-           #:toolkit-web-style #:define-collection #:opt #:panel #:label
+           #:toolkit-web-style #:define-toolkit #:define-collection
+           #:opt #:panel #:label
            #:button #:tab #:checkbox #:slider
            #:text-field #:cell #:list-item #:gauge #:canvas))
 
@@ -51,82 +52,85 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
     (funcall runner draw :title title :width width :height height
              :interactive interactive)))
 
-(defvar *collection* :glass)
-(defvar *definition* nil)
+(defvar *toolkit* :glass)
+(defvar *toolkit-definition* nil)
 
-(defstruct collection parent defaults controls web-style)
-(defvar *collections* (make-hash-table :test 'eq))
+(defstruct (toolkit (:conc-name %toolkit-))
+  parent defaults controls web-style)
+(defvar *toolkits* (make-hash-table :test 'eq))
 
 (defvar *toolkit-revision* 0)
 (defun toolkit-revision ()
   "Return the generation used to invalidate cached toolkit styles."
   *toolkit-revision*)
 
-(defun collection (name)
-  (or (gethash name *collections*) (error "Unknown toolkit ~S." name)))
+(defun find-toolkit (name)
+  (or (gethash name *toolkits*) (error "Unknown toolkit ~S." name)))
 
 (defun register-toolkit (name &key parent defaults controls web-style
                                    (surface (if parent
                                                 (toolkit-surface parent)
                                                 :glass)))
-  "Register a collection. DEFAULTS is a plist or a zero-argument function.
+  "Register a toolkit. DEFAULTS is a plist or a zero-argument function.
 CONTROLS maps control names to functions taking the public arguments and options.
 WEB-STYLE, when provided, takes the DOM node, widget and layout element."
   (loop :for ancestor := parent
-          :then (collection-parent (collection ancestor))
+          :then (%toolkit-parent (find-toolkit ancestor))
         :while ancestor :when (eq ancestor name)
           :do (error "Circular toolkit inheritance at ~S." name))
   (incf *toolkit-revision*)
   (register-surface name surface)
-  (setf (gethash name *collections*)
-        (make-collection :parent parent :defaults defaults
-                         :controls controls :web-style web-style))
+  (setf (gethash name *toolkits*)
+        (make-toolkit :parent parent :defaults defaults
+                      :controls controls :web-style web-style))
   name)
 
 (defun current-toolkit ()
   "Return the toolkit name active in this drawing scope."
-  *collection*)
+  *toolkit*)
 
 (defun defaults-of (entry)
-  (let* ((parent (collection-parent entry))
-         (source (collection-defaults entry))
+  (let* ((parent (%toolkit-parent entry))
+         (source (%toolkit-defaults entry))
          (defaults (if (functionp source) (funcall source) source)))
-    (if parent (append defaults (defaults-of (collection parent))) defaults)))
+    (if parent (append defaults (defaults-of (find-toolkit parent)))
+        defaults)))
 
-(defun toolkit-defaults (&optional (name *collection*))
+(defun toolkit-defaults (&optional (name *toolkit*))
   "Return appearance defaults with child overrides before inherited values."
-  (defaults-of (collection name)))
+  (defaults-of (find-toolkit name)))
 
 (defun toolkit-web-style (name)
   "Read or replace a toolkit’s DOM styling callback. Inherited callbacks run first."
-  (collection-web-style (collection name)))
+  (%toolkit-web-style (find-toolkit name)))
 
 (defun (setf toolkit-web-style) (callback name)
   (incf *toolkit-revision*)
-  (setf (collection-web-style (collection name)) callback))
+  (setf (%toolkit-web-style (find-toolkit name)) callback))
 
 (defun map-toolkit-web-styles (name function)
   "Call FUNCTION on each registered DOM styling callback, from parent to child."
-  (let* ((entry (collection name)) (parent (collection-parent entry))
-         (style (collection-web-style entry)))
+  (let* ((entry (find-toolkit name)) (parent (%toolkit-parent entry))
+         (style (%toolkit-web-style entry)))
     (when parent (map-toolkit-web-styles parent function))
     (when style (funcall function style))))
 
 (defun override (kind entry)
-  (or (cdr (assoc kind (collection-controls entry)))
-      (let ((parent (collection-parent entry)))
-        (when parent (override kind (collection parent))))))
+  (or (cdr (assoc kind (%toolkit-controls entry)))
+      (let ((parent (%toolkit-parent entry)))
+        (when parent (override kind (find-toolkit parent))))))
 
 (defun control (kind &rest arguments)
   "Invoke a user-defined control from the current toolkit or its ancestors."
-  (apply (or (override kind (or *definition* (collection *collection*)))
-             (error "No ~S control in toolkit ~S." kind *collection*))
+  (apply (or (override kind (or *toolkit-definition*
+                                (find-toolkit *toolkit*)))
+             (error "No ~S control in toolkit ~S." kind *toolkit*))
          arguments))
 
 (defmacro with-toolkit ((designator) &body body)
-  "Draw BODY with the named collection; nested bindings restore on exit."
-  `(let* ((*collection* ,designator)
-          (*definition* (collection *collection*)))
+  "Draw BODY with the named toolkit; nested bindings restore on exit."
+  `(let* ((*toolkit* ,designator)
+          (*toolkit-definition* (find-toolkit *toolkit*)))
      ,@body))
 
 (defmacro opt (&rest forms &key width height padding gap align cross-align
@@ -135,7 +139,8 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
                interactive-p keyboard-focus-p pointer-focus-p
                foreground background radius frost minimum maximum step
                font-size font-family font-weight opacity accent disabled-p
-               painter web-style terminal-label selected-p text)
+               painter web-style terminal-label accessible-name
+               selected-p text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align id direction
                    clip-p scroll-p scrollbar-p scrollbar-width
@@ -143,7 +148,7 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
                    keyboard-focus-p pointer-focus-p foreground background
                    radius frost minimum maximum step font-size font-family
                    font-weight opacity accent disabled-p painter web-style
-                   terminal-label
+                   terminal-label accessible-name
                    selected-p text))
   `(list ,@forms))
 
@@ -151,17 +156,17 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
   "Draw a styled container and attach widgets declared in BODY as children."
   `(let ((lui.frame:*parent*
            (lui.widgets:declare-panel
-            *collection* (append ,options (toolkit-defaults)))))
+            *toolkit* (append ,options (toolkit-defaults)))))
      ,@body))
 
 (defmacro define-control (name args doc &body body)
   (let ((kind (intern (symbol-name name) :keyword)))
     `(defun ,name (,@args &optional options)
        ,doc
-       (let* ((entry (or *definition* (collection *collection*)))
+       (let* ((entry (or *toolkit-definition* (find-toolkit *toolkit*)))
               (custom (override ,kind entry)))
          (if custom (funcall custom ,@args options)
-             (let ((style *collection*) (defaults (defaults-of entry)))
+             (let ((style *toolkit*) (defaults (defaults-of entry)))
                ,@body))))))
 
 (define-control label (text)
@@ -219,8 +224,11 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
   (apply #'declare-widget :canvas style id "" :value commands
          (append options defaults)))
 
-(defmacro define-collection (name defaults panel-name &rest names)
-  "Retain collection-qualified entry points for existing callers."
+(defmacro define-toolkit (name defaults panel-name &rest names)
+  "Define a named toolkit and its toolkit-qualified control entry points.
+DEFAULTS is evaluated while drawing. PANEL-NAME names the container macro;
+NAMES follows the standard label/button/tab/checkbox/slider/text-field/cell/
+list-item/gauge/canvas order."
   (let ((functions '(label button tab checkbox slider text-field cell
                      list-item gauge canvas))
         (args '((text) (id text) (id text) (id value text) (id value)
@@ -236,3 +244,7 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
          (let ((form (if (and (consp options) (keywordp (car options)))
                          (cons 'opt options) options)))
            (list 'with-toolkit (list ,name) (list* 'panel form body)))))))
+
+(defmacro define-collection (name defaults panel-name &rest names)
+  "Compatibility alias for DEFINE-TOOLKIT with the same arguments."
+  `(define-toolkit ,name ,defaults ,panel-name ,@names))

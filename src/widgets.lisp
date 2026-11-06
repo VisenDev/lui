@@ -20,7 +20,7 @@
 (defvar *surfaces* (make-hash-table :test 'eq))
 
 (defun register-surface (name surface)
-  "Associate collection NAME with its backend paint family SURFACE."
+  "Associate toolkit NAME with its backend paint family SURFACE."
   (setf (gethash name *surfaces*) surface))
 
 (defun toolkit-surface (name)
