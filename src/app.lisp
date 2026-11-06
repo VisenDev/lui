@@ -546,7 +546,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     (let* ((input (list id :input))
            (field-click (or (activated-p input) (activated-p (list id :field))))
            (icon-click (calendar-item trigger "▦" :icon :calendar :accessible-name "Choose date"
-                                     :width (lui.layout:fixed (if terminal 3 26)))))
+                                     :height (lui.layout:grow) :width (lui.layout:fixed (if terminal 3 26)))))
       (cond ((and icon-click (picker-state-open-p state))
              (setf (picker-state-open-p state) nil (context-focus *context*) trigger))
             ((or icon-click field-click)
