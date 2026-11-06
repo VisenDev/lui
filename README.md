@@ -433,9 +433,12 @@ These effects are approximations, not identical implementations of a single
 physical glass model.
 
 The gallery and docs display the measured frame rate and frame interval.
-The browser draws custom widgets with their shared toolkit painter. A single
-hidden text field handles keyboard composition and exposes the focused label
-and value. Screen readers currently lack a navigable tree of canvas widgets.
+The browser positions read-only labels as native HTML text. You can select and
+copy them with the browser, and screen readers can read them in layout order.
+Canvas paints the controls and any label that a later surface overlaps. A
+shared text field handles keyboard composition. Buttons, list items, tabs,
+checkboxes, and radio buttons expose named HTML controls that screen readers
+can activate. Sliders and editable fields use the toolkit’s focus handling.
 
 ## Local performance evidence
 

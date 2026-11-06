@@ -123,7 +123,7 @@
               (lambda (event)
                 (unless pointer (pointer-event event :move))))
       (listen canvas "contextmenu" #'stop)
-      (listen canvas "wheel"
+      (listen host "wheel"
               (lambda (event)
                 (stop event)
                 (let* ((mode (jscl/ffi:oget event "deltaMode"))
@@ -287,9 +287,10 @@
          (widget (when node (lui.layout:element-content node))))
     (unless (eq sink #j:null)
       (let* ((label (if (and widget (widget-p widget))
-                        (let ((text (widget-text widget)))
-                          (if (plusp (length text)) text
-                              (princ-to-string (context-focus context))))
+                        (or (widget-accessible-name widget)
+                            (let ((text (widget-text widget)))
+                              (if (plusp (length text)) text
+                                  (princ-to-string (context-focus context)))))
                         "Canvas application"))
              (value (if (and widget (widget-p widget)
                              (eq (widget-kind widget) :text-field))

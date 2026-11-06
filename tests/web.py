@@ -178,10 +178,15 @@ class WebTests(unittest.TestCase):
             (lui.frame:context-focus (lui.web::web-app-context {app}))))))''')
         return self.page.evaluate("window.testFocus")
 
-    def test_canvas_rendering_has_no_per_widget_dom(self):
+    def test_canvas_rendering_has_selectable_native_labels(self):
         expect(self.page.locator("main canvas")).to_have_count(1)
-        expect(self.page.locator("main button, main input, main select, main div")).to_have_count(0)
         expect(self.page.locator("main textarea")).to_have_count(1)
+        # Labels are native, read-only DOM text layered over the canvas. They
+        # expose the rendered content to accessibility APIs and browser text
+        # selection while control graphics stay on the canvas.
+        label = self.page.get_by_text("Toolkit: Glass", exact=True)
+        expect(label).to_be_visible()
+        self.assertTrue(label.evaluate("n => n.isContentEditable === false"))
         colors = self.page.locator("main canvas").evaluate("""c => {
           const p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
           const colors=new Set();
@@ -189,6 +194,98 @@ class WebTests(unittest.TestCase):
           return colors.size;
         }""")
         self.assertGreater(colors, 50)
+
+    def test_screen_reader_activation_uses_toolkit_actions(self):
+        button = self.page.get_by_role("button", name="Say hello", exact=True)
+        button.evaluate("element => element.click()")
+        expect(self.page.get_by_text("Hello Common Lisp (1)", exact=True)).to_be_visible()
+        check = self.page.get_by_role("checkbox", name="Enabled")
+        expect(check).to_have_attribute("aria-checked", "true")
+        check.evaluate("element => element.click()")
+        expect(check).to_have_attribute("aria-checked", "false")
+
+    def test_native_label_selection_survives_frames_and_copies(self):
+        host = self.fixture('''
+          (lui.frame:column (:width (lui.layout:grow) :gap 8)
+            (lui.glass:label "Selectable native label")
+            (lui.glass:label "Read only and accessible"))''')
+        label = self.page.get_by_text("Selectable native label", exact=True)
+        expect(label).to_be_visible()
+        expect(self.page.get_by_text("Read only and accessible", exact=True)).to_be_visible()
+        self.assertFalse(label.evaluate("n => n.isContentEditable"))
+        box = label.bounding_box()
+        self.assertIsNotNone(box)
+        # A native double-click selects the word under the pointer.
+        label.dblclick(position={"x": box["width"] * 0.55,
+                                 "y": box["height"] / 2})
+        self.assertEqual(self.page.evaluate("getSelection().toString()"), "native")
+        self.lisp('(lui.web:refresh *web-test-app*)')
+        self.frames()
+        self.assertEqual(self.page.evaluate("getSelection().toString()"), "native")
+        self.page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+        self.page.keyboard.press("Control+c")
+        copied = self.page.evaluate("navigator.clipboard.readText()")
+        self.assertEqual(copied, "native")
+        self.lisp('(lui.web:unmount *web-test-app*)')
+        expect(self.page.locator(host + " > *")).to_have_count(0)
+
+    def test_floating_control_covers_native_text(self):
+        host = self.fixture('''
+          (lui.frame:column (:width (lui.layout:fixed 240))
+            (lui:label "Under the popup")
+            (when (zerop *web-test-clicks*)
+              (when (lui:button :popup "Dismiss"
+                      (lui:opt :floating-p t :width (lui.layout:grow)))
+                (incf *web-test-clicks*))))''')
+        label = self.page.locator(host).get_by_text("Under the popup", exact=True)
+        expect(label).to_have_count(0)
+        self.click_widget(id=":POPUP", host=host)
+        expect(label).to_be_visible()
+
+    def test_mobile_long_press_selects_native_label(self):
+        page = self.browser.new_page(viewport={"width": 390, "height": 844},
+                                     device_scale_factor=2, is_mobile=True,
+                                     has_touch=True)
+        try:
+            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+            page.wait_for_function("""() => {
+              const c=document.querySelector('main canvas');
+              return c && c.luiApp && document.body.innerText.includes('Toolkit: Glass');
+            }""")
+            label = page.get_by_text("Toolkit: Glass", exact=True)
+            expect(label).to_be_visible()
+            cdp = page.context.new_cdp_session(page)
+            def long_press(element):
+                # Target an actual glyph, including when the label wraps.
+                point = element.evaluate("""n => {
+                  const r = document.createRange();
+                  r.setStart(n.firstChild, 0); r.setEnd(n.firstChild, 1);
+                  const b = r.getBoundingClientRect();
+                  const x = b.x + b.width/2, y = b.y + b.height/2;
+                  return {x, y, hit: document.elementFromPoint(x,y) === n};
+                }""")
+                self.assertTrue(point.pop("hit"))
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [point]})
+                page.wait_for_timeout(850)
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+                return page.evaluate("getSelection().toString()")
+
+            snapshot = label.aria_snapshot()
+            self.assertIn("Toolkit: Glass", snapshot)
+            self.assertEqual(label.evaluate("n => getComputedStyle(n).userSelect"), "text")
+            # Some headless engines never synthesize Android's selection UI.
+            # Check an ordinary paragraph before judging the mounted app.
+            page.evaluate("""() => {
+              const p = document.createElement('p'); p.id='long-press-control';
+              p.style.cssText='position:fixed;bottom:10px;left:10px;background:white';
+              p.textContent='Reference paragraph'; document.body.appendChild(p);
+            }""")
+            if not long_press(page.locator("#long-press-control")):
+                self.skipTest("This engine does not select an ordinary HTML paragraph on long press")
+            page.evaluate("() => { document.querySelector('#long-press-control').remove(); getSelection().removeAllRanges(); }")
+            self.assertIn("Toolkit", long_press(label))
+        finally:
+            page.close()
 
     def test_demo_buttons_text_checkbox_and_slider(self):
         self.click_widget(text="Say hello")

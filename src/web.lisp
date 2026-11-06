@@ -4,7 +4,8 @@
 (in-package #:lui.web)
 
 (defstruct* web-app
-  host canvas graphics renderer context callback cleanup observer resize
+  host stage overlay canvas graphics renderer context callback cleanup observer resize
+  (overlay-cache (make-hash-table :test 'equal))
   animation-frame deadline-timer events pending-p (alive-p t))
 
 (fn rounded-path (g (box box) radius &optional (inset 0))
@@ -123,6 +124,116 @@
                 (#j:setTimeout (lambda () (refresh app))
                                (ceiling (* delay 1000))))))))
 
+(defstruct dom-widget element text css state)
+
+(defun overlay-candidates (root)
+  ;; Visit front to back. A later-painted surface must still cover text below
+  ;; it (including when a floating popup overlaps only part of a label).
+  (let ((bands (make-hash-table)) entries)
+    (labels ((visit (node path interactive)
+               (let* ((key (if (element-id node) (list :id (element-id node)) path))
+                      (children (element-children node))
+                      (clip (element-clip node))
+                      (widget (element-content node)))
+                 (loop for i downfrom (1- (length children)) to 0 do
+                   (visit (aref children i) (cons i key)
+                          (or interactive (element-interactive-p node))))
+                 (when (and (plusp (box-width clip)) (plusp (box-height clip))
+                            (or (lui.widgets:widget-p widget) (element-interactive-p node)))
+                   (let* ((first (floor (box-y clip) 64))
+                          (last (1- (ceiling (+ (box-y clip) (box-height clip)) 64))))
+                     (when (and (lui.widgets:widget-p widget)
+                                (member (lui.widgets:widget-kind widget)
+                                        '(:label :button :tab :list-item :checkbox :radio :cell))
+                                (not (lui.widgets:widget-painter widget))
+                                (loop for band from first to last never
+                                  (some (lambda (other)
+                                          (let ((overlap (intersect-boxes clip other)))
+                                            (and (plusp (box-width overlap))
+                                                 (plusp (box-height overlap)))))
+                                        (gethash band bands))))
+                       (push (list node (cons (lui.widgets:widget-kind widget) key) interactive) entries))
+                     (loop for band from first to last do (push clip (gethash band bands))))))))
+      (visit root nil nil))
+    entries))
+
+(defun label-css (node font interactive)
+  (let* ((widget (element-content node)) (box (element-box node)) (clip (element-clip node))
+         (top (- (box-y clip) (box-y box))) (left (- (box-x clip) (box-x box))))
+    (flet ((px (n) (jscl/ffi:clstring (#j:String n))))
+      (format nil "position:absolute;display:block;margin:0;padding:0;border:0;white-space:pre-wrap;overflow:hidden;pointer-events:~A;user-select:text;-webkit-user-select:text;cursor:text;left:~Apx;top:~Apx;width:~Apx;height:~Apx;clip-path:inset(~Apx ~Apx ~Apx ~Apx);font:~A;line-height:~Apx;color:~A"
+              (if interactive "none" "auto") (px (box-x box)) (px (box-y box))
+              (px (box-width box)) (px (box-height box)) (px top)
+              (px (- (box-width box) left (box-width clip)))
+              (px (- (box-height box) top (box-height clip))) (px left)
+              (lui.font:font-css font) (px (lui.font:line-height font))
+              (lui.widgets:widget-foreground widget)))))
+
+(defun make-semantic-button (app node kind)
+  ;; The canvas keeps pointer capture and toolkit keyboard navigation. Native
+  ;; button activation also lets assistive technology invoke the same action.
+  (let ((button (#j:document:createElement #j"button")) (id (element-id node)))
+    (setf (jscl/ffi:oget button "type") #j"button"
+          (jscl/ffi:oget button "tabIndex") -1
+          (jscl/ffi:oget button "onclick")
+          (lambda (event)
+            (declare (ignore event))
+            (queue-event app (make-event :kind :activate :id id))))
+    (when (member kind '(:checkbox :radio))
+      ((jscl/ffi:oget button "setAttribute") #j"role"
+       (jscl/ffi:jsstring (string-downcase (symbol-name kind)))))
+    button))
+
+(defun sync-overlay (app)
+  (let* ((layer (web-app-overlay app)) (cache (web-app-overlay-cache app))
+         (entries (overlay-candidates (context-root (web-app-context app))))
+         (next (make-hash-table :test 'equal)) (external (make-hash-table :test 'eq)))
+    (dolist (entry entries) (setf (gethash (second entry) next) t))
+    ;; Remove stale siblings first so an insertion or removal before a
+    ;; selected label doesn't move its DOM node and invalidate the selection.
+    (maphash (lambda (key record)
+               (unless (gethash key next) ((jscl/ffi:oget (dom-widget-element record) "remove"))))
+             cache)
+    (let ((cursor (jscl/ffi:oget layer "firstChild")))
+      (dolist (entry entries)
+        (destructuring-bind (node key interactive) entry
+          (let* ((widget (element-content node)) (kind (lui.widgets:widget-kind widget))
+                 (label (eq kind :label))
+                 (record (or (gethash key cache)
+                             (make-dom-widget :element
+                                (if label (#j:document:createElement #j"span")
+                                    (make-semantic-button app node kind)))))
+                 (element (dom-widget-element record))
+                 (text (if label (lui.widgets:widget-text widget)
+                           (or (lui.widgets:widget-accessible-name widget)
+                               (lui.widgets:widget-text widget))))
+                 (font (lui.draw::widget-font (web-app-renderer app) widget))
+                 (css (label-css node font (or interactive (not label)))))
+            (unless label
+              (setf css (concatenate 'string css ";opacity:0;user-select:none"))
+              (let ((state (list (not (null (lui.widgets:widget-value widget)))
+                                 (lui.widgets:widget-disabled-p widget))))
+                (unless (equal state (dom-widget-state record))
+                  (setf (dom-widget-state record) state
+                        (jscl/ffi:oget element "disabled") (if (second state) #j:true #j:false))
+                  (when (member kind '(:checkbox :radio :tab))
+                    ((jscl/ffi:oget element "setAttribute")
+                     (if (eq kind :tab) #j"aria-pressed" #j"aria-checked")
+                     (if (first state) #j"true" #j"false"))))))
+            (unless (equal text (dom-widget-text record))
+              (if label (setf (jscl/ffi:oget element "textContent") (jscl/ffi:jsstring text))
+                  ((jscl/ffi:oget element "setAttribute") #j"aria-label" (jscl/ffi:jsstring text)))
+              (setf (dom-widget-text record) text))
+            (unless (equal css (dom-widget-css record))
+              (setf (jscl/ffi:oget element "style" "cssText") (jscl/ffi:jsstring css)
+                    (dom-widget-css record) css))
+            (unless (eq element cursor)
+              ((jscl/ffi:oget layer "insertBefore") element cursor))
+            (setf cursor (jscl/ffi:oget element "nextSibling") (gethash key next) record)
+            (when label (setf (gethash node external) t))))))
+    (setf (web-app-overlay-cache app) next)
+    external))
+
 (fn draw-frame ((app web-app))
   (let* ((canvas (web-app-canvas app)) (g (web-app-graphics app))
          (context (web-app-context app)) (*unit* 8)
@@ -141,7 +252,7 @@
     (setf (jscl/ffi:oget g "fillStyle") #j"#202432")
     ((jscl/ffi:oget g "fillRect") 0 0 width height)
     ((jscl/ffi:oget g "save"))
-    (unwind-protect (paint-frame (web-app-renderer app) context)
+    (unwind-protect (paint-frame (web-app-renderer app) context (sync-overlay app))
       ((jscl/ffi:oget g "restore")))
     (when (some (lambda (e) (not (eq :move (event-kind e)))) events)
       (refresh app))
@@ -175,14 +286,16 @@
            (max-fps lui.frame::*max-fps*))
   "Mount a Canvas 2D application inside HOST and return its lifetime handle."
   (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
-  (let* ((canvas (#j:document:createElement #j"canvas"))
+  (let* ((stage (#j:document:createElement #j"div"))
+         (labels (#j:document:createElement #j"div"))
+         (canvas (#j:document:createElement #j"canvas"))
          (g ((jscl/ffi:oget canvas "getContext") #j"2d"))
          (renderer (canvas-renderer canvas g))
          (context (make-context
                    :min-fps min-fps :max-fps max-fps
                    :measure (lambda (widget width)
                               (measure-widget renderer widget width))))
-         (app (make-web-app :host host :canvas canvas :graphics g
+         (app (make-web-app :host host :stage stage :overlay labels :canvas canvas :graphics g
                             :renderer renderer :context context
                             :callback callback))
          (resize (lambda (&rest ignored)
@@ -190,10 +303,16 @@
     (setf (jscl/ffi:oget canvas "style" "cssText")
           #j"display:block;width:100%;height:100%;touch-action:none"
           (jscl/ffi:oget canvas "luiApp") app)
-    ((jscl/ffi:oget host "appendChild") canvas)
+    (setf (jscl/ffi:oget stage "style" "cssText")
+          #j"position:relative;width:100%;height:100%;overflow:hidden"
+          (jscl/ffi:oget labels "style" "cssText")
+          #j"position:absolute;inset:0;pointer-events:none")
+    ((jscl/ffi:oget stage "appendChild") canvas)
+    ((jscl/ffi:oget stage "appendChild") labels)
+    ((jscl/ffi:oget host "appendChild") stage)
     (setf (web-app-cleanup app)
           (lui.web.input:install-input
-           host canvas context (lambda (event) (queue-event app event)))
+           stage canvas context (lambda (event) (queue-event app event)))
           (web-app-resize app) resize
           (web-app-observer app) (jscl/ffi:new #j:ResizeObserver resize))
     ((jscl/ffi:oget (web-app-observer app) "observe") host)
@@ -212,7 +331,8 @@
     (#j:window:removeEventListener #j"resize" (web-app-resize app))
     (funcall (web-app-cleanup app))
     (lui.font:close-font (renderer-font (web-app-renderer app)))
-    ((jscl/ffi:oget (web-app-canvas app) "remove"))))
+    (clrhash (web-app-overlay-cache app))
+    ((jscl/ffi:oget (web-app-stage app) "remove"))))
 
 (fn css-size (value fallback)
   (if value ((jscl/ffi:oget (#j:String value) "concat") #j"px") fallback))
