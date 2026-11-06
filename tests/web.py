@@ -229,6 +229,41 @@ class WebTests(unittest.TestCase):
         self.lisp('(lui.web:unmount *web-test-app*)')
         expect(self.page.locator(host + " > *")).to_have_count(0)
 
+    def test_recently_hidden_native_label_reuses_its_dom_node(self):
+        self.lisp('(defvar *web-test-show-label* t)')
+        self.fixture('''
+          (when *web-test-show-label*
+            (lui.glass:label "Briefly hidden label"))''')
+        label = self.page.get_by_text("Briefly hidden label", exact=True)
+        expect(label).to_be_visible()
+        label.evaluate("n => window.savedNativeLabel = n")
+        self.lisp('(setf *web-test-show-label* nil) (lui.web:refresh *web-test-app*)')
+        self.frames()
+        self.assertEqual(self.page.evaluate("window.savedNativeLabel.style.visibility"), "hidden")
+        self.lisp('(setf *web-test-show-label* t) (lui.web:refresh *web-test-app*)')
+        self.frames()
+        label = self.page.get_by_text("Briefly hidden label", exact=True)
+        expect(label).to_be_visible()
+        self.assertTrue(label.evaluate("n => n === window.savedNativeLabel"))
+
+    def test_hiding_preceding_label_preserves_selection_and_sibling_node(self):
+        self.lisp('(defvar *web-test-show-first-label* t)')
+        self.fixture('''
+          (when *web-test-show-first-label*
+            (lui.widgets:declare-widget :label :glass :first "First label"))
+          (lui.widgets:declare-widget :label :glass :second "Selected sibling")''')
+        sibling = self.page.get_by_text("Selected sibling", exact=True)
+        sibling.evaluate("""node => {
+            window.savedSibling = node;
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            getSelection().addRange(range);
+        }""")
+        self.lisp('(setf *web-test-show-first-label* nil) (lui.web:refresh *web-test-app*)')
+        self.frames()
+        self.assertEqual(self.page.evaluate("getSelection().toString()"), "Selected sibling")
+        self.assertTrue(sibling.evaluate("n => n === window.savedSibling"))
+
     def test_floating_control_covers_native_text(self):
         host = self.fixture('''
           (lui.frame:column (:width (lui.layout:fixed 240))

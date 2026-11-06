@@ -5,7 +5,7 @@
 
 (defstruct* web-app
   host stage overlay canvas graphics renderer context callback cleanup observer resize
-  overlay-order
+  overlay-order overlay-geometry overlay-cache
   animation-frame deadline-timer events pending-p (alive-p t))
 
 (fn rounded-path (g (box box) radius &optional (inset 0))
@@ -124,51 +124,87 @@
                 (#j:setTimeout (lambda () (refresh app))
                                (ceiling (* delay 1000))))))))
 
-(defstruct* dom-widget key element text style state)
+(defstruct* dom-widget key element text style state geometry)
 
-(defun overlay-candidates (root)
-  ;; Visit front to back. A later-painted surface must still cover text below
-  ;; it (including when a floating popup overlaps only part of a label).
-  (let ((bands (make-hash-table)) entries)
-    (labels ((visit (node path interactive)
+(defparameter *overlay-cache-limit* 32)
+
+(defstruct* overlay-region x y right bottom candidate visible)
+
+(defun overlay-candidates (app root)
+  ;; Earlier regions in this walk paint in front of later ones. An unchanged
+  ;; prefix therefore has exactly the same occlusion as on the previous frame.
+  (let ((previous (web-app-overlay-geometry app)) seen bands entries)
+    (labels ((index-region (region)
+               (loop for band from (floor (overlay-region-y region) 64)
+                       below (ceiling (overlay-region-bottom region) 64)
+                     do (push region (gethash band bands))))
+             (region-visible-p (clip candidate)
+               (let* ((x (box-x clip)) (y (box-y clip))
+                      (right (+ x (box-width clip))) (bottom (+ y (box-height clip)))
+                      (old (pop previous)))
+                 (if (and old (= x (overlay-region-x old)) (= y (overlay-region-y old))
+                          (= right (overlay-region-right old)) (= bottom (overlay-region-bottom old))
+                          (eq candidate (overlay-region-candidate old)))
+                     (progn (push old seen) (overlay-region-visible old))
+                     (progn
+                       (unless bands
+                         (setf previous nil bands (make-hash-table))
+                         (mapc #'index-region seen))
+                       (let* ((visible
+                                (and candidate
+                                     (loop for band from (floor y 64) below (ceiling bottom 64)
+                                           never (some (lambda (other)
+                                                         (and (< x (overlay-region-right other))
+                                                              (< (overlay-region-x other) right)
+                                                              (< y (overlay-region-bottom other))
+                                                              (< (overlay-region-y other) bottom)))
+                                                       (gethash band bands)))))
+                              (region (make-overlay-region :x x :y y :right right :bottom bottom
+                                                           :candidate candidate :visible visible)))
+                         (push region seen)
+                         (index-region region)
+                         visible)))))
+             (visit (node path interactive)
                (let* ((key (if (element-id node) (list :id (element-id node)) path))
-                      (children (element-children node))
-                      (clip (element-clip node))
+                      (children (element-children node)) (clip (element-clip node))
                       (widget (element-content node)))
                  (loop for i downfrom (1- (length children)) to 0 do
                    (visit (aref children i) (cons i key)
                           (or interactive (element-interactive-p node))))
                  (when (and (plusp (box-width clip)) (plusp (box-height clip))
                             (or (lui.widgets:widget-p widget) (element-interactive-p node)))
-                   (let* ((first (floor (box-y clip) 64))
-                          (last (1- (ceiling (+ (box-y clip) (box-height clip)) 64))))
-                     (when (and (lui.widgets:widget-p widget)
-                                (member (lui.widgets:widget-kind widget)
-                                        '(:label :button :tab :list-item :checkbox :radio :cell))
-                                (not (lui.widgets:widget-painter widget))
-                                (loop for band from first to last never
-                                  (some (lambda (other)
-                                          (and (< (box-x clip) (+ (box-x other) (box-width other)))
-                                               (< (box-x other) (+ (box-x clip) (box-width clip)))
-                                               (< (box-y clip) (+ (box-y other) (box-height other)))
-                                               (< (box-y other) (+ (box-y clip) (box-height clip)))))
-                                        (gethash band bands))))
-                       (push (list node (cons (lui.widgets:widget-kind widget) key) interactive) entries))
-                     (loop for band from first to last do (push clip (gethash band bands))))))))
+                   (let ((kind (and (lui.widgets:widget-p widget) (lui.widgets:widget-kind widget))))
+                     (when (region-visible-p clip
+                             (and (member kind '(:label :button :tab :list-item :checkbox :radio :cell))
+                                  (not (lui.widgets:widget-painter widget))))
+                       (push (list node (cons kind key) interactive) entries)))))))
       (visit root nil nil))
+    (setf (web-app-overlay-geometry app) (nreverse seen))
     entries))
 
-(defun label-css (node font interactive)
-  (let* ((widget (element-content node)) (box (element-box node)) (clip (element-clip node))
-         (top (- (box-y clip) (box-y box))) (left (- (box-x clip) (box-x box))))
-    (flet ((px (n) (jscl/ffi:clstring (#j:String n))))
-      (format nil "position:absolute;display:block;margin:0;padding:0;border:0;white-space:pre-wrap;overflow:hidden;pointer-events:~A;user-select:text;-webkit-user-select:text;cursor:text;left:~Apx;top:~Apx;width:~Apx;height:~Apx;clip-path:inset(~Apx ~Apx ~Apx ~Apx);font:~A;line-height:~Apx;color:~A"
-              (if interactive "none" "auto") (px (box-x box)) (px (box-y box))
-              (px (box-width box)) (px (box-height box)) (px top)
-              (px (- (box-width box) left (box-width clip)))
-              (px (- (box-height box) top (box-height clip))) (px left)
-              (lui.font:font-css font) (px (lui.font:line-height font))
-              (lui.widgets:widget-foreground widget)))))
+(defun css-pixels (n)
+  ((jscl/ffi:oget (#j:String n) "concat") #j"px"))
+
+(defun position-dom-widget (record box clip)
+  (let* ((x (box-x box)) (y (box-y box)) (w (box-width box)) (h (box-height box))
+         (left (- (box-x clip) x)) (top (- (box-y clip) y))
+         (right (- w left (box-width clip))) (bottom (- h top (box-height clip)))
+         (old (dom-widget-geometry record)))
+    (destructuring-bind (&optional ox oy ow oh otop oright obottom oleft) old
+      (unless (and (eql x ox) (eql y oy) (eql w ow) (eql h oh)
+                   (eql top otop) (eql right oright) (eql bottom obottom) (eql left oleft))
+        (let ((style (jscl/ffi:oget (dom-widget-element record) "style")))
+          (unless (eql x ox) (setf (jscl/ffi:oget style "left") (css-pixels x)))
+          (unless (eql y oy) (setf (jscl/ffi:oget style "top") (css-pixels y)))
+          (unless (eql w ow) (setf (jscl/ffi:oget style "width") (css-pixels w)))
+          (unless (eql h oh) (setf (jscl/ffi:oget style "height") (css-pixels h)))
+          (unless (and (eql top otop) (eql right oright) (eql bottom obottom) (eql left oleft))
+            (flet ((px (n) (jscl/ffi:clstring (css-pixels n))))
+              (setf (jscl/ffi:oget style "clipPath")
+                    (if (= 0 top right bottom left) #j"none"
+                        (jscl/ffi:jsstring (format nil "inset(~A ~A ~A ~A)"
+                                                   (px top) (px right) (px bottom) (px left)))))))
+          (setf (dom-widget-geometry record) (list x y w h top right bottom left)))))))
 
 (defun make-semantic-button (app node kind)
   ;; The canvas keeps pointer capture and toolkit keyboard navigation. Native
@@ -192,8 +228,10 @@
                (every (lambda (record entry) (equal (dom-widget-key record) (second entry)))
                       order entries))
       (return-from reconcile-overlay order))
-    (let ((old (make-hash-table :test 'equal)) (layer (web-app-overlay app)) next)
+    (let ((old (make-hash-table :test 'equal)) (layer (web-app-overlay app)) next
+          (cache (web-app-overlay-cache app)) hidden)
       (dolist (record order) (setf (gethash (dom-widget-key record) old) record))
+      (dolist (record cache) (setf (gethash (dom-widget-key record) old) record))
       (dolist (entry entries)
         (destructuring-bind (node key interactive) entry
           (declare (ignore interactive))
@@ -203,20 +241,34 @@
                                (if (eq kind :label) (#j:document:createElement #j"span")
                                    (make-semantic-button app node kind))))))
             (remhash key old)
+            (when (member record cache :test #'eq)
+              (setf (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"visible"))
             (push record next))))
-      ;; Remove stale siblings before moving survivors to preserve text selection.
-      (maphash (lambda (key record) (declare (ignore key))
-                 ((jscl/ffi:oget (dom-widget-element record) "remove"))) old)
+      ;; Prefer newly hidden nodes over older cached entries when evicting.
+      (dolist (record order)
+        (when (gethash (dom-widget-key record) old)
+          (setf (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"hidden")
+          (push record hidden)))
+      (setf hidden (nconc hidden (loop for record in cache
+                                       when (gethash (dom-widget-key record) old) collect record)))
+      (loop for record in (nthcdr *overlay-cache-limit* hidden)
+            do ((jscl/ffi:oget (dom-widget-element record) "remove")))
+      (when (nthcdr *overlay-cache-limit* hidden)
+        (setf (cdr (nthcdr (1- *overlay-cache-limit*) hidden)) nil))
+      (setf (web-app-overlay-cache app) hidden)
       (setf order (nreverse next))
       (let ((cursor (jscl/ffi:oget layer "firstChild")))
         (dolist (record order)
           (let ((element (dom-widget-element record)))
+            (loop while (and (not (eq cursor #j:null))
+                             (equal (jscl/ffi:oget cursor "style" "visibility") #j"hidden"))
+                  do (setf cursor (jscl/ffi:oget cursor "nextSibling")))
             (unless (eq element cursor) ((jscl/ffi:oget layer "insertBefore") element cursor))
             (setf cursor (jscl/ffi:oget element "nextSibling")))))
       (setf (web-app-overlay-order app) order))))
 
 (defun sync-overlay (app)
-  (let* ((entries (overlay-candidates (context-root (web-app-context app))))
+  (let* ((entries (overlay-candidates app (context-root (web-app-context app))))
          (records (reconcile-overlay app entries))
          (external (make-hash-table :test 'eq)))
     (loop for (node key interactive) in entries for record in records do
@@ -224,20 +276,24 @@
              (element (dom-widget-element record))
              (text (if label (lui.widgets:widget-text widget)
                        (or (lui.widgets:widget-accessible-name widget) (lui.widgets:widget-text widget))))
-             (box (element-box node)) (clip (element-clip node))
-             (style (list (box-x box) (box-y box) (box-width box) (box-height box)
-                          (box-x clip) (box-y clip) (box-width clip) (box-height clip)
-                          (and label interactive)
-                          (and label (lui.widgets:widget-font-size widget))
-                          (and label (lui.widgets:widget-font-family widget))
-                          (and label (lui.widgets:widget-font-weight widget))
-                          (and label (lui.widgets:widget-foreground widget)))))
-        (unless (equal style (dom-widget-style record))
-          (let* ((font (lui.draw::widget-font (web-app-renderer app) widget))
-                 (css (label-css node font (or interactive (not label)))))
-            (setf (jscl/ffi:oget element "style" "cssText")
-                  (jscl/ffi:jsstring (if label css (concatenate 'string css ";opacity:0;user-select:none")))
-                  (dom-widget-style record) style)))
+             (appearance (and label (list interactive (lui.widgets:widget-font-size widget)
+                                          (lui.widgets:widget-font-family widget)
+                                          (lui.widgets:widget-font-weight widget)
+                                          (lui.widgets:widget-foreground widget)))))
+        (unless (dom-widget-geometry record)
+          (setf (jscl/ffi:oget element "style" "cssText")
+                (if label
+                    #j"position:absolute;display:block;margin:0;padding:0;border:0;white-space:pre-wrap;overflow:hidden;user-select:text;-webkit-user-select:text;cursor:text"
+                    #j"position:absolute;display:block;margin:0;padding:0;border:0;opacity:0;pointer-events:none;user-select:none")))
+        (position-dom-widget record (element-box node) (element-clip node))
+        (unless (equal appearance (dom-widget-style record))
+          (let ((font (lui.draw::widget-font (web-app-renderer app) widget))
+                (style (jscl/ffi:oget element "style")))
+            (setf (jscl/ffi:oget style "pointerEvents") (if interactive #j"none" #j"auto")
+                  (jscl/ffi:oget style "font") (jscl/ffi:jsstring (lui.font:font-css font))
+                  (jscl/ffi:oget style "lineHeight") (css-pixels (lui.font:line-height font))
+                  (jscl/ffi:oget style "color") (jscl/ffi:jsstring (lui.widgets:widget-foreground widget))
+                  (dom-widget-style record) appearance)))
         (if label (setf (gethash node external) t)
             (let ((state (list (not (null (lui.widgets:widget-value widget)))
                                (lui.widgets:widget-disabled-p widget))))
@@ -351,7 +407,9 @@
     (#j:window:removeEventListener #j"resize" (web-app-resize app))
     (funcall (web-app-cleanup app))
     (lui.font:close-font (renderer-font (web-app-renderer app)))
-    (setf (web-app-overlay-order app) nil)
+    (setf (web-app-overlay-order app) nil
+          (web-app-overlay-cache app) nil
+          (web-app-overlay-geometry app) nil)
     ((jscl/ffi:oget (web-app-stage app) "remove"))))
 
 (fn css-size (value fallback)
