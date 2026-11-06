@@ -31,6 +31,8 @@
   "Backend-neutral control content, values, appearance, and extension callbacks."
   (kind :label :type symbol)
   (style :glass :type symbol)
+  icon
+  (center-text-p nil :type boolean)
   (orientation :vertical :type (member :vertical :horizontal))
   (accessible-name nil :type (or null string))
   value
@@ -77,7 +79,7 @@ An optional terminal-label callback overrides the standard kind-based label."
                          (round (* 100 (/ (- value (widget-minimum widget))
                                            (- (widget-maximum widget)
                                               (widget-minimum widget)))))))
-                (:text-field (format nil "[~A]" value))
+                (:text-field (format nil "[~A]" (if (zerop (length value)) text value)))
                 (:tab (format nil (if value "[ ~A ]" "  ~A  ") text))
                 (otherwise
                  (format nil (if (member (toolkit-surface
@@ -140,7 +142,7 @@ An optional terminal-label callback overrides the standard kind-based label."
      ((maximum real) 1) ((step real) 0.01) ((font-size real) 16)
      ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
      ((opacity real) 0.85) ((accent string) "#258bff") (disabled-p nil)
-     painter terminal-label accessible-name)
+     painter terminal-label accessible-name icon center-text-p)
   "Declare a low-level widget in the current frame using STYLE and stable ID.
 Layout, typography, colors, optical effects, and backend extension callbacks
 are supplied as keywords. Return activation for enabled actionable kinds.
@@ -156,7 +158,7 @@ Most applications should use the public LUI controls with LUI:OPT instead."
            :font-family font-family :font-weight font-weight
            :opacity opacity :accent accent
            :disabled-p (not (null disabled-p)) :painter painter
-           :terminal-label terminal-label
+           :icon icon :center-text-p center-text-p :terminal-label terminal-label
            :accessible-name accessible-name)))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding

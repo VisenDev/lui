@@ -313,7 +313,10 @@ Floating children use offsets; interactive nodes participate in input routing."
              (set-axis-size child axis (bounded rule available)))
             (otherwise nil))))
       (when (and (element-popup-anchor child) (eq axis :x))
-        (set-axis-size child :x (min available (axis-size (element-popup-anchor child) :x))))
+        (set-axis-size child :x (min available
+                     (if (eq :fixed (sizing-kind (element-width child)))
+                         (sizing-value (element-width child))
+                         (axis-size (element-popup-anchor child) :x)))))
       (resolve-axis child axis))))
 
 (fn (alignment-offset real) ((alignment symbol) (space real))

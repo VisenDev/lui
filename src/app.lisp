@@ -133,7 +133,7 @@ CONTROLS maps control names to functions taking the public arguments and options
                foreground background radius frost minimum maximum step
                font-size font-family font-weight opacity accent disabled-p
                painter terminal-label accessible-name
-               max-results selected-p text)
+               placeholder max-results selected-p text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align
                    id direction mode
@@ -143,7 +143,7 @@ CONTROLS maps control names to functions taking the public arguments and options
                    radius frost minimum maximum step font-size font-family
                    font-weight opacity accent disabled-p painter
                    terminal-label accessible-name
-                   max-results selected-p text))
+                   placeholder max-results selected-p text))
   `(list ,@forms))
 
 (defmacro panel (options &body body)
@@ -224,7 +224,8 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
 
 (define-control text-field (id value)
   "Return the edited string and a change flag. Keep the returned string in your model."
-  (value-widget :text-field style id value "" (append options defaults)))
+  (value-widget :text-field style id value (getf options :placeholder "")
+                (append (without-option :placeholder options) defaults)))
 
 (define-control gauge (id fraction)
   "Display a read-only progress fraction, clamped to the range zero to one."
@@ -261,7 +262,7 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
 
 (defstruct picker-state
   (year 2000 :type integer) (month 1 :type integer)
-  (open-p nil :type boolean)
+  (open-p nil :type boolean) months-p
   (draft "" :type string) value)
 
 (defstruct (combobox-state (:include edit-state))
@@ -279,18 +280,20 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
            choices))
     (nreverse matches)))
 
-(defun combobox-popup (id matches index anchor reveal)
-  ;; Retain toolkit bindings while building the pane. END-FRAME places it
-  ;; above ordinary content and below the debugger.
+(defun anchored-popup (id anchor options)
   (let* ((*parent* (lui.layout:make-element))
          (pane (declare-panel *toolkit*
-                 (append (opt :id (list id :popup) :floating-p t :opacity 1
-                              :scroll-p t :scrollbar-p nil :clip-p t
-                              :interactive-p t :keyboard-focus-p nil :padding (units 1))
-                         (toolkit-defaults))))
-         (*parent* pane))
+                 (append options (opt :id id :floating-p t :opacity 1
+                                      :scroll-p t :scrollbar-p nil :clip-p t
+                                      :interactive-p t :keyboard-focus-p nil :padding (units 1))
+                         (toolkit-defaults)))))
     (setf (lui.layout:element-popup-anchor pane) anchor)
     (push pane (lui.frame::context-popups *context*))
+    pane))
+
+(defun combobox-popup (id matches index anchor reveal)
+  (let* ((pane (anchored-popup (list id :popup) anchor nil))
+         (*parent* pane))
     (loop for match in matches for i from 0
           for row-id = (list id :choice (car match))
           do (list-item row-id (cdr match)
@@ -425,107 +428,200 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     (loop :for m :from 1 :below month :do (incf days (month-days year m)))
     (mod (1+ days) 7)))
 
-(defun picker-calendar (id state parts)
-  (row (:width (lui.layout:grow) :gap (units 0.5))
-    (when (button (list id :previous-month) "<"
-                  (opt :accessible-name "Previous month"
-                       :disabled-p (and (= (picker-state-year state) 1)
-                                        (= (picker-state-month state) 1))))
-      (if (= (picker-state-month state) 1)
-          (setf (picker-state-month state) 12
-                (picker-state-year state) (1- (picker-state-year state)))
-          (decf (picker-state-month state))))
-    (label (format nil "~4,'0D-~2,'0D" (picker-state-year state)
-                   (picker-state-month state)) (opt :width (lui.layout:grow)))
-    (when (button (list id :next-month) ">"
-                  (opt :accessible-name "Next month"
-                       :disabled-p (and (= (picker-state-year state) 9999)
-                                        (= (picker-state-month state) 12))))
-      (if (= (picker-state-month state) 12)
-          (setf (picker-state-month state) 1
-                (picker-state-year state) (1+ (picker-state-year state)))
-          (incf (picker-state-month state)))))
-  (row (:width (lui.layout:grow))
-    (dolist (day '("Su" "Mo" "Tu" "We" "Th" "Fr" "Sa"))
-      (label day (opt :width (lui.layout:percent (/ 1 7))))))
+(defparameter *month-names*
+  #("January" "February" "March" "April" "May" "June" "July" "August"
+    "September" "October" "November" "December"))
+
+(defun local-today ()
+  (multiple-value-bind (s m h day month year) (get-decoded-time)
+    (declare (ignore s m h))
+    (list year month day 0 0)))
+
+(defun shift-month (year month delta)
+  (multiple-value-bind (year-offset index) (floor (+ month -1 delta) 12)
+    (values (+ year year-offset) (1+ index))))
+
+(defun calendar-item (id text &rest options)
+  (list-item id text (append options (opt :background "#ffffff" :foreground "#171717"
+                                          :accent "#0878ed" :font-size 14))))
+
+(defun calendar-arrow-focus (id state)
+  (let ((focus (context-focus *context*)))
+    (when (and (consp focus) (equal (first focus) id) (eq (second focus) :day))
+      (let ((day (third focus)))
+        (dolist (event (events-for focus))
+          (let ((step (and (eq (event-kind event) :key)
+                           (case (event-key event)
+                             (:left -1) (:right 1) (:up -7) (:down 7)))))
+            (when step
+              (let* ((year (picker-state-year state)) (month (picker-state-month state))
+                     (count (month-days year month)) (next (+ day step))
+                     (offset (cond ((< next 1) -1) ((> next count) 1) (t 0))))
+                (multiple-value-bind (y m) (shift-month year month offset)
+                  (when (<= 1 y 9999)
+                    (setf day (case offset (-1 (+ next (month-days y m))) (1 (- next count)) (t next))
+                          (picker-state-year state) y (picker-state-month state) m
+                          (context-focus *context*) (list id :day day))))))))))))
+
+(defun picker-calendar (id state selected)
+  "Return the selected date parts (or NIL for Clear) and an action flag."
+  (calendar-arrow-focus id state)
   (let* ((year (picker-state-year state)) (month (picker-state-month state))
-         (start (calendar-start year month)) (count (month-days year month)))
-    (dotimes (week (ceiling (+ start count) 7))
-      (row (:width (lui.layout:grow))
-        (dotimes (column 7)
-          (let ((day (+ 1 (- (+ (* week 7) column) start))))
-            (if (<= 1 day count)
-                (when (tab (list id :day day) (format nil "~D" day)
-                           (opt :width (lui.layout:percent (/ 1 7))
-                                :selected-p
-                                (and (= year (first parts))
-                                     (= month (second parts))
-                                     (= day (third parts)))))
-                  (setf (first parts) year (second parts) month
-                        (third parts) day
-                        (picker-state-open-p state) nil))
-                (label "" (opt :width (lui.layout:percent (/ 1 7))))))))))
-  parts)
+         (months (picker-state-months-p state))
+         (width (lui.layout:percent (/ 1 7)))
+         (ink "#076ed1"))
+    (row (:width (lui.layout:grow))
+      (when (calendar-item (list id :month-menu)
+                           (format nil "~A ~4,'0D ▼" (aref *month-names* (1- month)) year)
+                           :width (lui.layout:grow) :font-weight :bold)
+        (setf (picker-state-months-p state) (not months)))
+      (dolist (step '(-1 1))
+        (multiple-value-bind (y m) (shift-month year month (* step (if months 12 1)))
+          (when (calendar-item (list id (if (minusp step) :previous-month :next-month))
+                               (if (minusp step) "↑" "↓") :font-size 19 :center-text-p t
+                               :width (lui.layout:fixed (if (context-text-mode-p *context*) 3 28))
+                               :disabled-p (not (<= 1 y 9999))
+                               :accessible-name (if months (if (minusp step) "Previous year" "Next year")
+                                                    (if (minusp step) "Previous month" "Next month")))
+            (setf (picker-state-year state) y (picker-state-month state) m)))))
+    (setf year (picker-state-year state) month (picker-state-month state))
+    (if (picker-state-months-p state)
+        (dotimes (r 4)
+          (row (:width (lui.layout:grow))
+            (dotimes (c 3)
+              (let ((m (+ 1 (* r 3) c)))
+                (when (calendar-item (list id :month m) (subseq (aref *month-names* (1- m)) 0 3)
+                                     :width (lui.layout:percent 1/3) :selected-p (= m month))
+                  (setf (picker-state-month state) m (picker-state-months-p state) nil))))))
+        (let* ((start (calendar-start year month)) (count (month-days year month)))
+          (row (:width (lui.layout:grow))
+            (loop for name across "SMTWTFS" do
+              (row (:width width :align :center)
+                (label (string name) (opt :font-size 13 :foreground "#222222")))))
+          (dotimes (week 6)
+            (row (:width (lui.layout:grow))
+              (dotimes (column 7)
+                (let* ((n (- (+ 1 (* week 7) column) start))
+                       (offset (cond ((< n 1) -1) ((> n count) 1) (t 0))))
+                  (multiple-value-bind (y m) (shift-month year month offset)
+                    (let ((day (case offset (-1 (+ n (month-days y m))) (1 (- n count)) (t n))))
+                      (when (calendar-item (if (zerop offset) (list id :day day)
+                                               (list id :adjacent y m day))
+                                           (princ-to-string day) :width width :center-text-p t
+                                           :disabled-p (not (<= 1 y 9999))
+                                           :foreground (if (zerop offset) "#171717" "#747474")
+                                           :selected-p (and selected (equal (list y m day) (subseq selected 0 3))))
+                        (return-from picker-calendar (values (list y m day) t)))))))))))
+    (row (:width (lui.layout:grow))
+      (when (calendar-item (list id :clear) "Clear" :foreground ink)
+        (return-from picker-calendar (values nil t)))
+      (column (:width (lui.layout:grow)))
+      (when (calendar-item (list id :today) "Today" :foreground ink)
+        (return-from picker-calendar (values (subseq (local-today) 0 3) t))))
+    (values nil nil)))
+
+(defun picker-display (parts mode)
+  (if (eq mode :time) (picker-string parts mode)
+      (format nil "~2,'0D/~2,'0D/~4,'0D~A" (second parts) (third parts) (first parts)
+              (if (eq mode :datetime) (concatenate 'string " " (picker-string parts :time)) ""))))
+
+(defun parse-picker-input (draft mode)
+  (or (picker-parts draft mode)
+      (when (and (member mode '(:date :datetime))
+                 (= (length draft) (if (eq mode :date) 10 16))
+                 (char= #\/ (char draft 2)) (char= #\/ (char draft 5))
+                 (or (eq mode :date) (char= #\Space (char draft 10))))
+        (picker-parts (concatenate 'string (subseq draft 6 10) "-" (subseq draft 0 2)
+                                   "-" (subseq draft 3 5)
+                                   (if (eq mode :date) ""
+                                       (concatenate 'string "T" (subseq draft 11))))
+                      mode))))
+
+(defun calendar-popup (id state parts)
+  (let* ((trigger (list id :calendar)) (popup (list id :popup))
+         (focus (context-focus *context*))
+         (terminal (context-text-mode-p *context*)))
+    (when (calendar-item trigger "▦" :icon :calendar :accessible-name "Choose date"
+                         :width (lui.layout:fixed (if terminal 3 26)))
+      (let ((initial (or parts (local-today))))
+        (setf (picker-state-open-p state) (not (picker-state-open-p state))
+              (picker-state-months-p state) nil
+              (picker-state-year state) (first initial)
+              (picker-state-month state) (second initial)
+              (context-focus *context*) (if (picker-state-open-p state)
+                                            (list id :day (third initial)) trigger))))
+    (when (picker-state-open-p state)
+      (let ((press (lui.frame::context-pointer-press *context*))
+            (bounds (previous-box popup)))
+        (cond ((and press bounds
+                    (not (find :press (events-for trigger) :key #'event-kind))
+                    (not (lui.frame::contains-p bounds (event-x press) (event-y press))))
+               (setf (picker-state-open-p state) nil))
+              ((find :escape (events-for focus) :key #'event-key)
+               (setf (picker-state-open-p state) nil (context-focus *context*) trigger))
+              ((and bounds focus (not (and (consp focus) (equal (first focus) id))))
+               (setf (picker-state-open-p state) nil))
+              (t
+               (let ((*parent* (anchored-popup popup *parent*
+                                 (opt :width (lui.layout:fixed (if terminal 32 260))
+                                      :background "#ffffff" :radius 1))))
+                 (multiple-value-bind (date action) (picker-calendar id state (or parts (local-today)))
+                   (when action
+                     (pop (lui.frame::context-popups *context*))
+                     (setf (picker-state-open-p state) nil (context-focus *context*) trigger)
+                     (return-from calendar-popup (values date t)))))))))
+    (values nil nil)))
 
 (defun date-time-picker (id value &optional options)
-  "Pick a local date/time as YYYY-MM-DDTHH:MM, returning the current value.
-Use :MODE :DATE or :TIME in OPT for YYYY-MM-DD or HH:MM. VALUE may be NIL.
-Text accepts valid Gregorian dates and 24-hour times; invalid drafts remain
-editable without replacing VALUE. The calendar initially shows January 2000
-when VALUE is NIL. No timezone conversion is performed."
-  (let* ((mode (getf options :mode :datetime))
-         (parts (picker-parts value mode))
+  "Edit a local date, time, or datetime. The field displays MM/DD/YYYY and
+returns ISO strings. The calendar opens at the selected date or today's month."
+  (let* ((mode (getf options :mode :datetime)) (parts (picker-parts value mode))
          (state (or (gethash id (context-state *context*))
-                    (setf (gethash id (context-state *context*))
-                          (make-picker-state))))
+                    (setf (gethash id (context-state *context*)) (make-picker-state))))
+         (input (list id :input))
          (result value))
     (unless (equal value (picker-state-value state))
-      (setf (picker-state-draft state) (or value "")
-            (picker-state-value state) value)
-      (when parts
-        (setf (picker-state-year state) (first parts)
-              (picker-state-month state) (second parts))))
-    (panel (append (without-option :mode options)
-                   (opt :id id :padding (units 1) :gap (units 0.5)))
-      (let* ((draft (text-field (list id :input) (picker-state-draft state)
-                                (opt :width (lui.layout:grow)
-                                     :accessible-name
-                                     (ecase mode (:date "Date") (:time "Time")
-                                                 (:datetime
-                                                  "Date and time")))))
-             (parsed (picker-parts draft mode)))
-        (when parsed
-          (unless (equal draft (picker-state-draft state))
-            (setf (picker-state-year state) (first parsed)
-                  (picker-state-month state) (second parsed)))
-          (setf parts parsed result draft))
-        (setf (picker-state-draft state) draft)
-        (when (and (plusp (length draft)) (not parsed))
-          (label (ecase mode
-                   (:date "Use YYYY-MM-DD")
-                   (:time "Use HH:MM")
-                   (:datetime "Use YYYY-MM-DDTHH:MM")))))
-      (unless parts (setf parts (list 2000 1 1 0 0)))
-      (unless (eq mode :time)
-        (when (button (list id :calendar) "Choose date")
-          (setf (picker-state-open-p state)
-                (not (picker-state-open-p state))))
-        (when (picker-state-open-p state)
-          (picker-calendar id state parts)
-          (unless (picker-state-open-p state)
-            (setf result (picker-string parts mode)))))
-      (unless (eq mode :date)
+      (setf (picker-state-value state) value
+            (picker-state-draft state) (if parts (picker-display parts mode) (or value ""))))
+    (column (:id id :width (getf options :width (lui.layout:fit)))
+      (panel (append (without-option :mode options)
+                     (opt :direction :row :padding 1 :gap 0 :radius 1
+                          :background "#a0a0a0" :opacity 1))
+        (let* ((old (picker-state-draft state))
+               (draft (text-field input old
+                        (opt :width (lui.layout:grow) :foreground "#171717" :background "#ffffff"
+                             :radius 1 :opacity 1 :accessible-name
+                             (ecase mode (:date "Date") (:time "Time") (:datetime "Date and time"))
+                             :placeholder (ecase mode (:date "mm/dd/yyyy") (:time "hh:mm")
+                                                 (:datetime "mm/dd/yyyy hh:mm")))))
+               (parsed (parse-picker-input draft mode)))
+          (unless (equal old draft)
+            (setf (picker-state-draft state) draft)
+            (cond (parsed (setf parts parsed result (picker-string parsed mode)
+                                (picker-state-year state) (first parts)
+                                (picker-state-month state) (second parts)))
+                  ((zerop (length draft)) (setf result nil parts nil)))))
+        (unless (eq mode :time)
+          (multiple-value-bind (date action) (calendar-popup id state parts)
+            (when action
+              (let ((next (and date (append date (or (nthcdr 3 parts) '(0 0))))))
+                (setf result (and next (picker-string next mode))
+                      (picker-state-draft state) (if next (picker-display next mode) ""))
+                (request-frame))))))
+      (when (eq mode :time)
+        (unless parts (setf parts (list 2000 1 1 0 0)))
         (dolist (field '((:hour "Hour" 3 23) (:minute "Minute" 4 59)))
           (destructuring-bind (key title index maximum) field
             (label title)
             (let ((next (round (slider (list id key) (nth index parts)
-                                      (opt :minimum 0 :maximum maximum
-                                           :step 1 :accessible-name title)))))
+                                 (opt :minimum 0 :maximum maximum :step 1
+                                      :accessible-name title)))))
               (unless (= next (nth index parts))
-                (setf (nth index parts) next
-                      result (picker-string parts mode))))))))
+                (setf (nth index parts) next result (picker-string parts mode))))))))
     (unless (equal result value)
-      (setf (picker-state-value state) result
-            (picker-state-draft state) result)
-      (request-frame))
+      (let ((parsed (picker-parts result mode)))
+        (setf (picker-state-draft state) (if parsed (picker-display parsed mode) "")
+              (picker-state-value state) result)))
+    (when (or (picker-state-open-p state) (not (equal result value)))
+      (when (or (activated-ids) (not (equal result value))) (request-frame)))
     result))

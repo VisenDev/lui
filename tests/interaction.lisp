@@ -197,34 +197,97 @@
     (assert (equal *macro-defaults* (lui:toolkit-defaults :test-legacy)))))
 
 (defun test-date-time-picker ()
-  (assert (lui::picker-parts "2024-02-29T23:59" :datetime))
-  (dolist (text '("2023-02-29T12:00" "2024-04-31T12:00"
-                  "2024-01-01T24:00" "0000-01-01T00:00"))
-    (assert (null (lui::picker-parts text :datetime))))
+  ;; The displayed value is localized and editable; the model stays ISO.
+  (assert (equal '(2024 2 29 23 59)
+                 (lui::parse-picker-input "02/29/2024 23:59" :datetime)))
+  (assert (equal '(2024 2 29 0 0)
+                 (lui::parse-picker-input "02/29/2024" :date)))
+  (dolist (text '("02/29/2023 12:00" "04/31/2024 12:00"
+                  "01/01/2024 24:00" "00/01/2024 00:00"))
+    (assert (null (lui::parse-picker-input text :datetime))))
   (let ((context (lui.terminal:make-terminal-context)))
     (with-frame (context 56 22)
       (lui:date-time-picker :appointment "2026-11-06T12:30"))
-    (assert (null (lui.frame::hit context 0 0)))
     (assert (equal '(:appointment :input) (lui.frame::hit context 1 1)))
     (let ((screen (lui.terminal:render-terminal context)))
-      (dolist (text '("2026-11-06T12:30" "( Choose date )" "Hour" "Minute"))
+      (dolist (text '("11/06/2026 12:30" "▦"))
         (assert (search text screen)))))
   (assert (= 4 (lui::calendar-start 2026 1)))
   (let ((context (lui.terminal:make-terminal-context))
-        (value "2024-02-28"))
+        (value "2024-02-28T12:00"))
     (flet ((draw ()
-             (setf value (lui:date-time-picker
-                          :date value (lui:opt :mode :date)))))
+             (column (:gap 1)
+               (setf value (lui:date-time-picker :date-time value))
+               (lui:button :following "Following control"))))
       (with-frame (context 80 40) (draw))
+      (let* ((picker (gethash :date-time (lui.frame::context-ids context)))
+             (following (gethash :following (lui.frame::context-ids context)))
+             (following-y (lui.layout:box-y (lui.layout:element-box following))))
+        ;; Opening the calendar paints over the space below the field; layout
+        ;; keeps the following control at its original position.
+        (with-frame (context 80 40
+                     :events (list (make-event :kind :activate
+                                               :id '(:date-time :calendar))))
+          (draw))
+        (assert (= following-y
+                   (lui.layout:box-y
+                    (lui.layout:element-box
+                     (gethash :following (lui.frame::context-ids context))))))
+        (assert picker)
+        (assert (search "February 2024" (render-terminal context)))
+        (let ((days 0))
+          (walk-elements (context-root context)
+            (lambda (node)
+              (let ((id (element-id node)))
+                (when (and (consp id) (member (second id) '(:day :adjacent))) (incf days)))))
+          (assert (= days 42))))
       (with-frame (context 80 40
                    :events (list (make-event :kind :activate
-                                             :id '(:date :calendar))))
+                                             :id '(:date-time :day 29))))
+        (draw))
+      (assert (equal value "2024-02-29T12:00"))
+      ;; Editable drafts update the model only when the full date/time is valid.
+      (with-frame (context 80 40
+                   :events (list (make-event :kind :change
+                                             :id '(:date-time :input)
+                                             :value "03/01/2024 08:45")))
+        (draw))
+      (assert (equal value "2024-03-01T08:45"))
+      (with-frame (context 80 40
+                   :events (list (make-event :kind :change
+                                             :id '(:date-time :input)
+                                             :value "02/30/2024 08:45")))
+        (draw))
+      (assert (equal value "2024-03-01T08:45"))
+      (with-frame (context 80 40
+                   :events (list (make-event :kind :activate
+                                             :id '(:date-time :calendar))))
         (draw))
       (with-frame (context 80 40
                    :events (list (make-event :kind :activate
-                                             :id '(:date :day 29))))
+                                             :id '(:date-time :clear))))
         (draw))
-      (assert (equal value "2024-02-29")))))
+      (assert (null value))
+      (with-frame (context 80 40
+                   :events (list (make-event :kind :activate
+                                             :id '(:date-time :calendar))))
+        (draw))
+      (with-frame (context 80 40
+                   :events (list (make-event :kind :activate
+                                             :id '(:date-time :today))))
+        (draw))
+      (assert (equal (subseq (lui::picker-parts value :datetime) 0 3)
+                     (subseq (lui::local-today) 0 3)))
+      (setf value "2024-12-31T15:30")
+      (with-frame (context 80 40) (draw))
+      (with-frame (context 80 40 :events
+                   (list (make-event :kind :activate :id '(:date-time :calendar))))
+        (draw))
+      (with-frame (context 80 40 :events (list (make-event :kind :key :key :right)))
+        (draw))
+      (assert (equal (context-focus context) '(:date-time :day 1)))
+      (with-frame (context 80 40 :events (list (make-event :kind :activate))) (draw))
+      (assert (equal value "2025-01-01T15:30")))))
 
 (defun test-panel-input-style ()
   (let ((context (make-terminal-context)))
