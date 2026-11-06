@@ -137,6 +137,25 @@ void main() {
       (setf (gethash contours (gpu-geometry gpu)) display-list))
     (call-gl "glCallList" :uint display-list :void)))
 
+(fn gl-shape ((gpu gpu) (contours list) (color string) (alpha real))
+  ;; Cache the shape, not every screen position of a cell or inspector row.
+  (let ((origin (first (find-if #'consp contours))))
+    (when origin
+      (let* ((x (car origin)) (y (cdr origin))
+             (local (mapcar (lambda (contour)
+                              (mapcar (lambda (point)
+                                        (cons (- (car point) x)
+                                              (- (cdr point) y)))
+                                      contour))
+                            contours)))
+        (call-gl "glPushMatrix" :void)
+        (unwind-protect
+             (progn
+               (call-gl "glTranslatef" :float (float x 1.0)
+                        :float (float y 1.0) :float 0.0 :void)
+               (gl-polygons gpu local color alpha))
+          (call-gl "glPopMatrix" :void))))))
+
 (fn gl-text ((gpu gpu) (font font) (text string)
             (x real) (y real) (color string))
   (let ((scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
@@ -307,7 +326,7 @@ void main() {
                  (make-renderer
                   :font font
                   :polygons (lambda (contours color alpha)
-                              (gl-polygons gpu contours color alpha))
+                              (gl-shape gpu contours color alpha))
                   :text (lambda (font text x y color)
                           (gl-text gpu font text x y color))
                   :clip (lambda (box) (gl-clip gpu box))
