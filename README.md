@@ -49,12 +49,11 @@ activation; fields, sliders, and checkboxes return the current value and a
 second value indicating a change. Store application values outside the draw
 function. The library keeps focus, capture, and caret state between frames.
 
-`lui:searchable-combobox` takes a stable ID, the selected string (or NIL), and
-a list of string choices. It starts collapsed; activate its trigger to open the
-search field and matching options. Use Arrow Up/Down to move through matches,
-Enter to choose the highlighted option, and Escape to close. Pointer selection
-also commits a choice. `:max-results` limits the displayed options, and
-`:disabled-p` disables the control.
+`lui:searchable-combobox` is an editable text field. Store its returned string
+just as you would for `lui:text-field`. Focusing the field shows suggestions in
+an overlay, and typing filters them. Click a suggestion or highlight it with
+Up/Down and press Enter to complete the field. Enter without a highlight,
+Escape, and Tab keep the text you typed. `:max-results` limits suggestions.
 
 ```lisp
 (setf country

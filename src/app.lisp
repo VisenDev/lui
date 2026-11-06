@@ -264,8 +264,8 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
   (open-p nil :type boolean)
   (draft "" :type string) value)
 
-(defstruct combobox-state
-  (query "" :type string) (open-p nil :type boolean) (highlight 0 :type integer))
+(defstruct (combobox-state (:include edit-state))
+  open-p focused-p filter-p highlight)
 
 (defun combobox-matches (query choices limit)
   ;; Keep the source index for IDs so filtering never retargets a pointer event.
@@ -279,53 +279,98 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
            choices))
     (nreverse matches)))
 
+(defun combobox-popup (id matches index anchor reveal)
+  ;; Retain toolkit bindings while building the pane. END-FRAME places it
+  ;; above ordinary content and below the debugger.
+  (let* ((*parent* (lui.layout:make-element))
+         (pane (declare-panel *toolkit*
+                 (append (opt :id (list id :popup) :floating-p t :opacity 1
+                              :scroll-p t :scrollbar-p nil :clip-p t
+                              :interactive-p t :keyboard-focus-p nil :padding (units 1))
+                         (toolkit-defaults))))
+         (*parent* pane))
+    (setf (lui.layout:element-popup-anchor pane) anchor)
+    (push pane (lui.frame::context-popups *context*))
+    (loop for match in matches for i from 0
+          for row-id = (list id :choice (car match))
+          do (list-item row-id (cdr match)
+                        (opt :width (lui.layout:grow) :selected-p (eql i index)))
+             (let ((row (gethash row-id (lui.frame::context-ids *context*))))
+               (setf (lui.layout:element-keyboard-focus-p row) nil)
+               (when (and reveal (eql index i))
+                 (setf (lui.layout:element-popup-reveal pane) row))))))
+
+(defun combobox-completion (id state text choices limit events anchor)
+  (let ((navigate (find-if (lambda (event)
+                             (and (eq :key (event-kind event))
+                                  (member (event-key event) '(:up :down)))) events)))
+    (when (or navigate (combobox-state-open-p state))
+      (let* ((matches (combobox-matches (if (combobox-state-filter-p state) text "")
+                                        choices limit))
+             (last (1- (length matches)))
+             (old (and (combobox-state-open-p state) (combobox-state-highlight state)))
+             (index (and matches old (min old last))))
+        (dolist (event events)
+          (case (event-kind event)
+            (:key (case (event-key event)
+                    ((:up :down)
+                     (setf (combobox-state-open-p state) t
+                           index (when matches
+                                   (if (eq :down (event-key event))
+                                       (min last (1+ (or index -1)))
+                                       (max 0 (1- (or index (1+ last))))))))
+                    (:escape (setf (combobox-state-open-p state) nil))))
+            (:activate
+             (when (combobox-state-open-p state)
+               (setf (combobox-state-open-p state) nil)
+               (return-from combobox-completion (and index (cdr (nth index matches))))))))
+        (setf (combobox-state-highlight state) index)
+        (when (and matches (combobox-state-open-p state))
+          (let ((clicked (find-if (lambda (match) (activated-p (list id :choice (car match))))
+                                  matches)))
+            (when clicked
+              (setf (combobox-state-open-p state) nil)
+              (return-from combobox-completion (cdr clicked))))
+          (combobox-popup id matches index anchor navigate)))))
+  nil)
+
 (defun searchable-combobox (id value choices &optional options)
-  "Pick a string from CHOICES by typing a case-insensitive substring.
-Return the selected value and a change flag. Up/Down highlight a match,
-Enter selects it, and Escape closes the list. :MAX-RESULTS defaults to 20."
-  (let* ((state (or (gethash id (context-state *context*))
-                    (setf (gethash id (context-state *context*)) (make-combobox-state))))
-         (trigger (list id :trigger)) (editor (list id :search))
-         (limit (getf options :max-results 20)) (disabled (getf options :disabled-p))
-         (result value))
+  "Edit a string, returning the text and a change flag just like TEXT-FIELD.
+Suggestions open on focus or typing. Up/Down highlight a suggestion and
+Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
+  (let* ((text (or value ""))
+         (state (or (gethash id (context-state *context*))
+                    (setf (gethash id (context-state *context*))
+                          (make-combobox-state :cursor (length text) :anchor (length text)))))
+         (limit (getf options :max-results 20))
+         (focused (and (not (getf options :disabled-p)) (equal id (context-focus *context*))))
+         (events (events-for id))
+         (press (lui.frame::context-pointer-press *context*))
+         (popup-box (previous-box (list id :popup)))
+         (edited (text-field id text (without-option :max-results options)))
+         (anchor (gethash id (lui.frame::context-ids *context*)))
+         (result (if (string= edited text) value edited)))
     (check-type limit (integer 1 *))
-    (labels ((dismiss ()
-               (setf (combobox-state-open-p state) nil (context-focus *context*) trigger)
-               (request-frame))
-             (choose (match)
-               (when match (setf result (cdr match)) (dismiss))))
-      (panel (list* :id id (append (without-option :disabled-p
-                                                  (without-option :max-results options))
-                                  (opt :padding (units 1))))
-        (when disabled (setf (combobox-state-open-p state) nil))
-        (when (button trigger (or value "Choose…")
-                      (opt :width (lui.layout:grow) :disabled-p disabled
-                           :accessible-name (getf options :accessible-name)))
-          (if (combobox-state-open-p state) (dismiss)
-              (setf (combobox-state-open-p state) t (combobox-state-query state) ""
-                    (combobox-state-highlight state) 0 (context-focus *context*) editor)))
-        (when (combobox-state-open-p state)
-          (let* ((query (text-field editor (combobox-state-query state)
-                                    (opt :width (lui.layout:grow) :accessible-name "Search options")))
-                 (matches (combobox-matches query choices limit))
-                 (last (max 0 (1- (length matches))))
-                 (index (if (equal query (combobox-state-query state))
-                            (min last (combobox-state-highlight state)) 0)))
-            (dolist (event (events-for editor))
-              (case (event-kind event)
-                (:key (case (event-key event)
-                        (:down (setf index (min last (1+ index))))
-                        (:up (setf index (max 0 (1- index))))
-                        (:escape (dismiss))))
-                (:activate (choose (nth index matches))))
-              (unless (combobox-state-open-p state) (return)))
-            (setf (combobox-state-query state) query (combobox-state-highlight state) index)
-            (when (combobox-state-open-p state)
-              (unless matches (label "No matches"))
-              (loop for match in matches for i from 0
-                    when (list-item (list id :choice (car match)) (cdr match)
-                                    (opt :width (lui.layout:grow) :selected-p (= i index)))
-                      do (choose match)))))))
+    (cond ((not focused) (setf (combobox-state-open-p state) nil))
+          ((or (not (combobox-state-focused-p state)) (find :press events :key #'event-kind))
+           (setf (combobox-state-open-p state) t (combobox-state-filter-p state) nil
+                 (combobox-state-highlight state) nil))
+          ((and press (not (and popup-box (lui.frame::contains-p popup-box
+                                               (event-x press) (event-y press)))))
+           (setf (combobox-state-open-p state) nil)))
+    (setf (combobox-state-focused-p state) focused)
+    (when (and focused (not (string= edited text)))
+      (setf (combobox-state-open-p state) t (combobox-state-filter-p state) t
+            (combobox-state-highlight state) nil))
+    (when focused
+      (let ((choice (combobox-completion id state edited choices limit events anchor)))
+        (when choice
+          (setf result choice (edit-state-anchor state) (length choice)
+                (edit-state-cursor state) (length choice))
+          (let ((widget (lui.layout:element-content anchor)))
+            (when (and (widget-p widget) (eq :text-field (widget-kind widget)))
+              (setf (widget-value widget) choice)))
+          (request-frame))))
     (values result (not (equal result value)))))
 
 (defun month-days (year month)

@@ -57,6 +57,8 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
 The backend supplies measurement, clipboard, and optional input callbacks."
   (root nil :type (or null element))
   (text-mode-p nil :type boolean)
+  popups
+  pointer-press
   overlay-state
   (overlay nil :type (or null function))
   (after-layout nil :type list)
@@ -309,6 +311,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
         (funcall (context-input-handler context) context events)
         (setf (context-selection context) nil)))
   (setf (context-activation-order context) nil)
+  (setf (context-pointer-press context) nil (context-popups context) nil)
   (clrhash (context-activated context))
   (clrhash (context-events context))
   ;; Old hit regions are invalid after resizing. Establish new geometry first.
@@ -360,6 +363,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
            (unless resized
              (wheel-scroll context event)))
           (:press
+           (setf (context-pointer-press context) event)
            (let ((previous (context-last-click context)))
              (when (and previous (equal target (second previous))
                         (eq (event-button event) (third previous))
@@ -476,6 +480,8 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
   "Complete CONTEXT: draw its overlay, solve layout, and retain input regions.
 Clear focus/hover for removed controls and return the completed root element."
   (assert (context-building-p context))
+  (dolist (popup (nreverse (context-popups context)))
+    (append-child (context-root context) popup))
   (when (context-overlay context)
     (let ((*context* context) (*parent* (context-root context)))
       (funcall (context-overlay context) (context-previous-root context))))

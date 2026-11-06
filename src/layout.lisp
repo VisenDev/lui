@@ -5,7 +5,7 @@
            #:element-id #:element-children #:element-box #:element-content
            #:element-measure #:element-width #:element-height
            #:element-padding
-           #:element-direction #:element-gap #:element-align
+           #:element-popup-anchor #:element-popup-reveal #:element-direction #:element-gap #:element-align
            #:element-cross-align #:element-pointer-focus-p
            #:element-interactive-p #:element-keyboard-focus-p
            #:append-child #:solve #:walk-elements
@@ -85,6 +85,7 @@ Floating children use offsets; interactive nodes participate in input routing."
   (scroll-x 0 :type real)
   (scroll-y 0 :type real)
   (scroll-limit-y 0 :type real)
+  popup-anchor popup-reveal
   (floating-p nil :type boolean)
   (offset-x 0 :type real)
   (offset-y 0 :type real))
@@ -311,6 +312,8 @@ Floating children use offsets; interactive nodes participate in input routing."
             (:grow
              (set-axis-size child axis (bounded rule available)))
             (otherwise nil))))
+      (when (and (element-popup-anchor child) (eq axis :x))
+        (set-axis-size child :x (min available (axis-size (element-popup-anchor child) :x))))
       (resolve-axis child axis))))
 
 (fn (alignment-offset real) ((alignment symbol) (space real))
@@ -382,9 +385,32 @@ Return ROOT; all dimensions use the active backend coordinates."
                                      (+ (box-y b) (box-height b)))
                                 y)))))
 
+(defun position-popup (popup viewport)
+  ;; The anchor has already been positioned and clipped by its scroll parents.
+  (let* ((anchor (element-clip (element-popup-anchor popup)))
+         (box (element-box popup))
+         (above (box-y anchor))
+         (top (+ above (box-height anchor)))
+         (below (max 0 (- (box-height viewport) top)))
+         (up (and (> (box-height box) below) (> above below))))
+    (setf (box-height box)
+          (if (and (plusp (box-height anchor)) (plusp (box-width anchor)))
+              (min (box-height box) (if up above below)) 0)
+          (box-x box) (min (box-x anchor) (- (box-width viewport) (box-width box)))
+          (box-y box) (if up (- above (box-height box)) top))
+    (position-elements popup)
+    (when (element-popup-reveal popup)
+      (let* ((row (element-box (element-popup-reveal popup)))
+             (top (- (box-y row) (box-y box) (element-padding popup)))
+             (page (- (box-height box) (* 2 (element-padding popup)))))
+        (setf (element-scroll-y popup)
+              (max 0 (min top (max (element-scroll-y popup)
+                                    (- (+ top (box-height row)) page)))))))))
+
 (fn clip-elements ((node element) (clip box) (dx real) (dy real))
   (let* ((box (element-box node))
          (padding (element-padding node)))
+    (when (element-popup-anchor node) (position-popup node clip))
     (decf (box-x box) dx)
     (decf (box-y box) dy)
     (setf (element-clip node) (intersect-boxes clip box))
