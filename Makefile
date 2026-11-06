@@ -41,7 +41,7 @@ help:
 	@echo 'make docs-pages           Refresh docs/index.html from the standalone page'
 	@echo 'make demo                 Build and run the tabbed demo executable'
 	@echo 'make build                Save the demo executable in build/bin/'
-	@echo 'make pdf                  Generate the PDF example at build/pdf-demo.pdf'
+	@echo 'make pdf                  Build and open build/pdf-demo.pdf'
 	@echo 'make test                 Test platform; progress/results in build/logs/'
 	@echo 'make test-macos           Run Cocoa checks and saved executable smoke'
 	@echo 'make benchmark            Measure throughput and frame times'
@@ -65,9 +65,16 @@ demo: $(DEMO)
 	$(RUNNER) "$(DEMO)" $(RUN_ARGS)
 endif
 
-pdf: pdf-demo
+pdf pdf-demo: build/pdf-demo.pdf
+ifeq ($(OS),Windows_NT)
+	MSYS2_ARG_CONV_EXCL='*' cmd.exe /d /c start "" "build\pdf-demo.pdf"
+else ifeq ($(shell uname -s),Darwin)
+	open "$<"
+else
+	xdg-open "$<"
+endif
 
-pdf-demo:
+build/pdf-demo.pdf: examples/pdf-demo.lisp scripts/setup.lisp lui.asd $(wildcard src/*.lisp)
 	@mkdir -p build
 	$(SBCL) $(SBCL_FLAGS) --load examples/pdf-demo.lisp
 

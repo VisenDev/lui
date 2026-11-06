@@ -376,8 +376,8 @@ be selected or searched.
 
 For existing `lui:run` callers, bind `lui.pdf:*output*` (default `lui.pdf`) and
 pass `:backend :pdf`. Run `(asdf:test-system "lui/pdf")` to test the backend.
-Generate the worked example with `make pdf`; it writes
-`build/pdf-demo.pdf`. The source in `examples/pdf-demo.lisp` shows a composed
+Run `make pdf` to open the worked example in your default PDF viewer.
+For generation only, run `make build/pdf-demo.pdf`. The source in `examples/pdf-demo.lisp` shows a composed
 one-page brief with panels, labels, and a table.
 
 Text inputs share GNU Readline-style commands across backends:
