@@ -455,6 +455,12 @@ its bounds and clipping rectangle, and select it for sizing, alignment, spacing,
 scrolling, and widget details. Tree rows are virtualized. The highlight preserves
 pointer input and terminal text; the inspector is excluded from its own tree.
 
+Selecting a tree row gives its properties more vertical space. **Expand details**
+uses the full sidebar height. **Restore tree** brings the hierarchy back. Bounds shows
+the allocated rectangle, while Clip shows the part visible through its
+ancestors. Compare these with the widget’s width and height rules to diagnose
+truncated text or a control that grows unexpectedly.
+
 The debugger attaches to the current frame context. A menu item or key handler
 can toggle it once; subsequent frames draw the inspector automatically:
 

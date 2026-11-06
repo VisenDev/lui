@@ -41,6 +41,13 @@ class DocsWebTests(unittest.TestCase):
                 page.get_by_role("button", name="Open inspector").click()
                 expect(page.get_by_role("separator", name="Inspector width")
                        ).to_be_visible()
+                root_row = page.get_by_role("option", name=re.compile(
+                    r"^:?COLUMN$")).first
+                root_row.click()
+                page.get_by_role("button", name="Expand details").click()
+                expect(root_row).to_have_count(0)
+                page.get_by_role("button", name="Restore tree").click()
+                expect(root_row).to_be_visible()
                 page.get_by_role("button", name="Close", exact=True).click()
                 expect(inspector.filter(visible=True)).to_have_count(0)
                 page.get_by_role("option", name="Getting started",
