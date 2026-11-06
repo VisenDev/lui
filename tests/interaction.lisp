@@ -206,7 +206,30 @@
     (assert (equal *macro-defaults* (lui:toolkit-defaults :test-modern)))
     (setf (lui:toolkit-web-style :test-modern) nil)))
 
+(defun test-date-time-picker ()
+  (assert (lui::picker-parts "2024-02-29T23:59" :datetime))
+  (dolist (text '("2023-02-29T12:00" "2024-04-31T12:00"
+                  "2024-01-01T24:00" "0000-01-01T00:00"))
+    (assert (null (lui::picker-parts text :datetime))))
+  (assert (= 4 (lui::calendar-start 2026 1)))
+  (let ((context (lui.terminal:make-terminal-context))
+        (value "2024-02-28"))
+    (flet ((draw ()
+             (setf value (lui:date-time-picker
+                          :date value (lui:opt :mode :date)))))
+      (with-frame (context 80 40) (draw))
+      (with-frame (context 80 40
+                   :events (list (make-event :kind :activate
+                                             :id '(:date :calendar))))
+        (draw))
+      (with-frame (context 80 40
+                   :events (list (make-event :kind :activate
+                                             :id '(:date :day 29))))
+        (draw))
+      (assert (equal value "2024-02-29")))))
+
 (defun run-tests ()
+  (test-date-time-picker)
   (test-toolkit-definitions)
   (test-shared-helpers)
   (test-wheel-momentum)

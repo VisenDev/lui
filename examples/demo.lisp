@@ -13,6 +13,7 @@
   (enabled t)
   (count 0)
   (editor "The quick brown fox jumps over the lazy dog.")
+  (date-time "2026-11-05T12:30")
   (filter "")
   (selection 1)
   (split 0.35)
@@ -81,6 +82,10 @@
   (lui:label "Hover, press, and use Tab to compare interaction states."))
 
 (defun editing-page (g)
+  (lui:label "Date and time")
+  (setf (gallery-date-time g)
+        (lui:date-time-picker :appointment (gallery-date-time g)
+                              (lui:opt :width (grow))))
   (lui:label "Readline-style editing")
   (setf (gallery-editor g) (lui:text-field :editor (gallery-editor g)
                                            (lui:opt :width (grow))))

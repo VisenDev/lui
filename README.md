@@ -602,3 +602,11 @@ This writes timing results to `build/logs/` without manually capturing output.
 An earlier `Component "zpb-ttf" not found` error means the font dependency is not
 installed or visible to ASDF; install/register it before building. A compiled
 executable and passing Linux ABI checks do not establish a passing macOS runtime.
+
+
+Use `(lui:date-time-picker :appointment value (lui:opt :mode :datetime))`
+for a calendar and 24-hour time picker. Store its returned ISO local value
+(`YYYY-MM-DDTHH:MM`). Modes `:date` and `:time` return `YYYY-MM-DD` and
+`HH:MM`. Invalid typed drafts stay editable while the last valid value is
+retained. NIL starts an empty editor with the calendar at January 2000.
+The gallery’s Editing page includes an example.

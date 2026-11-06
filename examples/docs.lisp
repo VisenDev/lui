@@ -87,6 +87,7 @@
 
 (defstruct browser
   (clicks 0 :type integer) (panel-clicks 0 :type integer)
+  (date-time "2026-11-05T12:30" :type string)
   (checked-p t :type boolean) (cell-p nil :type boolean)
   (text "Edit this example" :type string) (value 0.4 :type real)
   (tab :one :type symbol) (item :one :type symbol)
@@ -278,7 +279,8 @@
       (when (zerop count) (lui:label "No matching entries.")))))
 
 (defparameter *preview-kinds*
-  '(("LABEL" . :label) ("BUTTON" . :button) ("TAB" . :tab)
+  '(("DATE-TIME-PICKER" . :date-time-picker)
+    ("LABEL" . :label) ("BUTTON" . :button) ("TAB" . :tab)
     ("CHECKBOX" . :checkbox) ("SLIDER" . :slider)
     ("TEXT-FIELD" . :text-field) ("CELL" . :cell)
     ("LIST-ITEM" . :list-item) ("GAUGE" . :gauge) ("CANVAS" . :canvas)
@@ -306,6 +308,10 @@
                                              (symbol-name kind)))
              (lui:opt :width (grow) :font-weight :bold))
   (case kind
+    (:date-time-picker
+     (setf (browser-date-time state)
+           (lui:date-time-picker :docs-date-time (browser-date-time state)
+                                 (lui:opt :width (grow)))))
     (:label (lui:label "A label wraps naturally as the window narrows."
                        (lui:opt :width (grow))))
     (:button

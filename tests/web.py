@@ -1512,6 +1512,105 @@ class WebTests(unittest.TestCase):
             expect(fixed).to_have_css("height", "24px")
         self.lisp('(lui.web:unmount *wrap-row-app*)')
 
+    def test_date_time_picker_calendar_and_validation(self):
+        self.lisp('''
+          (defvar *picker-value* "2024-02-28T12:30")
+          (defvar *picker-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *picker-host* "id") #j"picker-test"
+                (jscl/ffi:oget *picker-host* "style" "width") #j"400px"
+                (jscl/ffi:oget *picker-host* "style" "height") #j"700px")
+          (#j:document:body:appendChild *picker-host*)
+          (defvar *picker-app*
+            (lui.web:mount *picker-host*
+              (lambda ()
+                (setf *picker-value*
+                      (lui:date-time-picker :pick *picker-value*
+                        (lui:opt :width (lui.layout:grow)))))))
+        ''')
+        host = self.page.locator("#picker-test")
+        field = host.get_by_role("textbox", name="Date and time")
+        field.fill("2024-02-30T12:30")
+        expect(host.get_by_text("Use YYYY-MM-DDTHH:MM").filter(visible=True)).to_be_visible()
+        field.fill("2024-02-28T12:30")
+        host.get_by_role("button", name="Choose date").click()
+        host.get_by_role("tab", name="29", exact=True).click()
+        expect(field).to_have_value("2024-02-29T12:30")
+        hour = host.get_by_role("slider", name="Hour", exact=True)
+        hour.press("Home")
+        for _ in range(18):
+            hour.press("ArrowRight")
+        expect(field).to_have_value("2024-02-29T18:30")
+        self.lisp("(lui.web:unmount *picker-app*)")
+
+    def test_wrapped_buttons_fit_content_across_toolkits(self):
+        self.lisp('''
+          (defvar *wrap-button-toolkit* :glass)
+          (defvar *wrap-button-width* 120)
+          (defvar *wrap-button-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *wrap-button-host* "id") #j"wrapped-buttons"
+                (jscl/ffi:oget *wrap-button-host* "style" "width") #j"260px"
+                (jscl/ffi:oget *wrap-button-host* "style" "height") #j"420px")
+          (#j:document:body:appendChild *wrap-button-host*)
+          (defvar *wrap-button-app*
+            (lui.web:mount *wrap-button-host*
+              (lambda ()
+                (lui:with-toolkit (*wrap-button-toolkit*)
+                  (lui:panel (lui:opt :width (lui.layout:fixed *wrap-button-width*)
+                                      :height (lui.layout:grow) :opacity 1)
+                    (dolist (text '("Controls and options"
+                                    "Layout and scrolling"
+                                    "Input and inspection"
+                                    "Backends and running"))
+                      (lui:button text text
+                        (lui:opt :width (lui.layout:grow))))
+                    (lui:button :fixed "Explicitly fixed clipped row"
+                      (lui:opt :width (lui.layout:grow)
+                               :height (lui.layout:fixed 24))))))))
+        ''')
+        host = self.page.locator("#wrapped-buttons")
+        for toolkit in ("glass", "motif", "garnet"):
+            self.lisp(f'''
+              (setf *wrap-button-toolkit* :{toolkit} *wrap-button-width* 120)
+              (lui.web:refresh *wrap-button-app*)
+            ''')
+            rows = host.get_by_role("button")
+            expect(rows.first).to_have_attribute("data-lui-style", toolkit)
+            self.assertLessEqual(rows.first.bounding_box()["width"], 120)
+            narrow_heights = []
+            for row in rows.all()[:-1]:
+                metrics = row.evaluate("""node => {
+                    const range = document.createRange();
+                    range.selectNodeContents(node);
+                    const css = getComputedStyle(node);
+                    return {height:node.clientHeight, scroll:node.scrollHeight,
+                        text:range.getBoundingClientRect().height,
+                        padding:parseFloat(css.paddingTop)+parseFloat(css.paddingBottom)};
+                }""")
+                self.assertLessEqual(metrics["scroll"], metrics["height"])
+                self.assertLessEqual(metrics["text"] + metrics["padding"],
+                                     metrics["height"] + 1)
+                self.assertGreater(metrics["text"], 25)
+                narrow_heights.append(metrics["height"])
+            fixed = rows.last
+            self.assertAlmostEqual(fixed.bounding_box()["height"],
+                                   20 if toolkit == "garnet" else 24, delta=1)
+            self.assertTrue(fixed.evaluate("n => n.scrollHeight > n.clientHeight"))
+            if toolkit == "garnet":
+                host.screenshot(
+                    path=str(ROOT / "build/web-wrapped-list-rows.png"))
+            self.lisp('''
+              (setf *wrap-button-width* 240)
+              (lui.web:refresh *wrap-button-app*)
+            ''')
+            expect(rows.first).to_have_css(
+                "width", "236px" if toolkit == "garnet" else "240px")
+            for row, narrow in zip(rows.all()[:-1], narrow_heights):
+                self.assertLess(row.bounding_box()["height"], narrow)
+                self.assertTrue(row.evaluate("n => n.scrollHeight <= n.clientHeight"))
+            self.assertAlmostEqual(fixed.bounding_box()["height"],
+                                   20 if toolkit == "garnet" else 24, delta=1)
+        self.lisp('(lui.web:unmount *wrap-button-app*)')
+
     def test_motif_text_fields_stay_recessed_while_buttons_are_raised(self):
         self.lisp('''
           (lui:register-toolkit :motif-field-child :parent :motif)

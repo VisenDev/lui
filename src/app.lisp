@@ -7,7 +7,8 @@
            #:toolkit-web-style #:define-toolkit #:define-collection
            #:opt #:panel #:label
            #:button #:tab #:checkbox #:slider
-           #:text-field #:cell #:list-item #:gauge #:canvas))
+           #:text-field #:cell #:list-item #:gauge #:canvas
+           #:date-time-picker))
 
 (in-package #:lui)
 
@@ -137,7 +138,7 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
      ,@body))
 
 (defmacro opt (&rest forms &key width height padding gap align cross-align
-               id direction clip-p scroll-p scrollbar-p scrollbar-width
+               id direction clip-p scroll-p scrollbar-p scrollbar-width mode
                floating-p offset-x offset-y
                interactive-p keyboard-focus-p pointer-focus-p
                foreground background radius frost minimum maximum step
@@ -145,7 +146,8 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
                painter web-style terminal-label accessible-name
                selected-p text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
-  (declare (ignore width height padding gap align cross-align id direction
+  (declare (ignore width height padding gap align cross-align
+                   id direction mode
                    clip-p scroll-p scrollbar-p scrollbar-width
                    floating-p offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
@@ -251,3 +253,166 @@ list-item/gauge/canvas order."
 (defmacro define-collection (name defaults panel-name &rest names)
   "Compatibility alias for DEFINE-TOOLKIT with the same arguments."
   `(define-toolkit ,name ,defaults ,panel-name ,@names))
+
+(defstruct picker-state
+  (year 2000 :type integer) (month 1 :type integer)
+  (open-p nil :type boolean)
+  (draft "" :type string) value)
+
+(defun month-days (year month)
+  (if (= month 2)
+      (if (and (zerop (mod year 4))
+               (or (not (zerop (mod year 100))) (zerop (mod year 400))))
+          29 28)
+      (if (member month '(4 6 9 11)) 30 31)))
+
+(defun picker-parts (text mode)
+  (let ((date-p (not (eq mode :time)))
+        (time-p (not (eq mode :date))))
+    (when (and (stringp text)
+               (= (length text) (ecase mode (:date 10) (:time 5)
+                                                  (:datetime 16))))
+      (labels ((number-at (start end)
+                 (when (every #'digit-char-p (subseq text start end))
+                   (parse-integer text :start start :end end))))
+        (let* ((year (if date-p (number-at 0 4) 2000))
+               (month (if date-p (number-at 5 7) 1))
+               (day (if date-p (number-at 8 10) 1))
+               (offset (if date-p 11 0))
+               (hour (if time-p (number-at offset (+ offset 2)) 0))
+               (minute (if time-p (number-at (+ offset 3) (+ offset 5)) 0)))
+          (when (and year month day hour minute
+                     (<= 1 year 9999) (<= 1 month 12)
+                     (<= 1 day (month-days year month))
+                     (<= 0 hour 23) (<= 0 minute 59)
+                     (or (not date-p)
+                         (and (char= (char text 4) #\-)
+                              (char= (char text 7) #\-)))
+                     (or (not time-p)
+                         (char= (char text (+ offset 2)) #\:))
+                     (or (not (eq mode :datetime))
+                         (char= (char text 10) #\T)))
+            (list year month day hour minute)))))))
+
+(defun picker-string (parts mode)
+  (destructuring-bind (year month day hour minute) parts
+    (concatenate 'string
+                 (if (eq mode :time) ""
+                     (format nil "~4,'0D-~2,'0D-~2,'0D" year month day))
+                 (if (eq mode :datetime) "T" "")
+                 (if (eq mode :date) ""
+                     (format nil "~2,'0D:~2,'0D" hour minute)))))
+
+(defun calendar-start (year month)
+  ;; Gregorian weekday, Sunday = 0, independent of time zones and OS clocks.
+  (let* ((previous (1- year))
+         (days (+ (* 365 previous) (floor previous 4)
+                  (- (floor previous 100)) (floor previous 400))))
+    (loop :for m :from 1 :below month :do (incf days (month-days year m)))
+    (mod (1+ days) 7)))
+
+(defun picker-calendar (id state parts)
+  (row (:width (lui.layout:grow) :gap (units 0.5))
+    (when (button (list id :previous-month) "<"
+                  (opt :accessible-name "Previous month"
+                       :disabled-p (and (= (picker-state-year state) 1)
+                                        (= (picker-state-month state) 1))))
+      (if (= (picker-state-month state) 1)
+          (setf (picker-state-month state) 12
+                (picker-state-year state) (1- (picker-state-year state)))
+          (decf (picker-state-month state))))
+    (label (format nil "~4,'0D-~2,'0D" (picker-state-year state)
+                   (picker-state-month state)) (opt :width (lui.layout:grow)))
+    (when (button (list id :next-month) ">"
+                  (opt :accessible-name "Next month"
+                       :disabled-p (and (= (picker-state-year state) 9999)
+                                        (= (picker-state-month state) 12))))
+      (if (= (picker-state-month state) 12)
+          (setf (picker-state-month state) 1
+                (picker-state-year state) (1+ (picker-state-year state)))
+          (incf (picker-state-month state)))))
+  (row (:width (lui.layout:grow))
+    (dolist (day '("Su" "Mo" "Tu" "We" "Th" "Fr" "Sa"))
+      (label day (opt :width (lui.layout:percent (/ 1 7))))))
+  (let* ((year (picker-state-year state)) (month (picker-state-month state))
+         (start (calendar-start year month)) (count (month-days year month)))
+    (dotimes (week (ceiling (+ start count) 7))
+      (row (:width (lui.layout:grow))
+        (dotimes (column 7)
+          (let ((day (+ 1 (- (+ (* week 7) column) start))))
+            (if (<= 1 day count)
+                (when (tab (list id :day day) (format nil "~D" day)
+                           (opt :width (lui.layout:percent (/ 1 7))
+                                :selected-p
+                                (and (= year (first parts))
+                                     (= month (second parts))
+                                     (= day (third parts)))))
+                  (setf (first parts) year (second parts) month
+                        (third parts) day
+                        (picker-state-open-p state) nil))
+                (label "" (opt :width (lui.layout:percent (/ 1 7))))))))))
+  parts)
+
+(defun date-time-picker (id value &optional options)
+  "Pick a local date/time as YYYY-MM-DDTHH:MM, returning the current value.
+Use :MODE :DATE or :TIME in OPT for YYYY-MM-DD or HH:MM. VALUE may be NIL.
+Text accepts valid Gregorian dates and 24-hour times; invalid drafts remain
+editable without replacing VALUE. The calendar initially shows January 2000
+when VALUE is NIL. No timezone conversion is performed."
+  (let* ((mode (getf options :mode :datetime))
+         (parts (picker-parts value mode))
+         (state (or (gethash id (context-state *context*))
+                    (setf (gethash id (context-state *context*))
+                          (make-picker-state))))
+         (result value))
+    (unless (equal value (picker-state-value state))
+      (setf (picker-state-draft state) (or value "")
+            (picker-state-value state) value)
+      (when parts
+        (setf (picker-state-year state) (first parts)
+              (picker-state-month state) (second parts))))
+    (panel (append (without-option :mode options)
+                   (opt :id id :interactive-p t :keyboard-focus-p nil
+                        :gap (units 0.5)))
+      (let* ((draft (text-field (list id :input) (picker-state-draft state)
+                                (opt :width (lui.layout:grow)
+                                     :accessible-name
+                                     (ecase mode (:date "Date") (:time "Time")
+                                                 (:datetime
+                                                  "Date and time")))))
+             (parsed (picker-parts draft mode)))
+        (when parsed
+          (unless (equal draft (picker-state-draft state))
+            (setf (picker-state-year state) (first parsed)
+                  (picker-state-month state) (second parsed)))
+          (setf parts parsed result draft))
+        (setf (picker-state-draft state) draft)
+        (when (and (plusp (length draft)) (not parsed))
+          (label (ecase mode
+                   (:date "Use YYYY-MM-DD")
+                   (:time "Use HH:MM")
+                   (:datetime "Use YYYY-MM-DDTHH:MM")))))
+      (unless parts (setf parts (list 2000 1 1 0 0)))
+      (unless (eq mode :time)
+        (when (button (list id :calendar) "Choose date")
+          (setf (picker-state-open-p state)
+                (not (picker-state-open-p state))))
+        (when (picker-state-open-p state)
+          (picker-calendar id state parts)
+          (unless (picker-state-open-p state)
+            (setf result (picker-string parts mode)))))
+      (unless (eq mode :date)
+        (dolist (field '((:hour "Hour" 3 23) (:minute "Minute" 4 59)))
+          (destructuring-bind (key title index maximum) field
+            (label title)
+            (let ((next (round (slider (list id key) (nth index parts)
+                                      (opt :minimum 0 :maximum maximum
+                                           :step 1 :accessible-name title)))))
+              (unless (= next (nth index parts))
+                (setf (nth index parts) next
+                      result (picker-string parts mode))))))))
+    (unless (equal result value)
+      (setf (picker-state-value state) result
+            (picker-state-draft state) result)
+      (request-frame))
+    result))
