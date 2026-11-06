@@ -42,26 +42,11 @@
                        :do (visit child anchor (cons index path) (1+ depth)
                                   (and shown
                                        (not (gethash key
-                                               (state-collapsed
-                                                state))))))))))
+                                                     (state-collapsed
+                                                      state))))))))))
     (visit root nil nil 0 t))
   (unless (gethash (state-selected state) (state-nodes state))
     (setf (state-selected state) nil)))
-
-(fn package-name-for ((toolkit symbol))
-  (ecase toolkit (:glass "LUI.GLASS") (:motif "LUI.MOTIF")
-         (:garnet "LUI.GARNET")))
-
-(fn control ((toolkit symbol) (kind symbol) &rest arguments)
-  (apply (symbol-function
-          (find-symbol (symbol-name kind) (package-name-for toolkit)))
-         arguments))
-
-(fn pane ((toolkit symbol) &rest options)
-  (declare-panel toolkit
-    (append options
-            (symbol-value (find-symbol "*DEFAULTS*"
-                                        (package-name-for toolkit))))))
 
 (fn box-label ((box box))
   (format nil "(~,2F, ~,2F) ~,2F x ~,2F"
@@ -98,34 +83,33 @@
           (lui.layout::sizing-value rule) (lui.layout::sizing-minimum rule)
           (or (lui.layout::sizing-maximum rule) "none")))
 
-(fn details ((toolkit symbol) (node element))
-  (control toolkit :label (caption node) :width (grow))
+(fn details ((node element))
+  (lui:label (caption node)
+             (lui:opt :width (grow)))
   (dolist (line (list (format nil "Bounds: ~A" (box-label (element-box node)))
-                     (format nil "Clip: ~A" (box-label (element-clip node)))
-                     (format nil "Width: ~A"
-                             (sizing-label (element-width node)))
-                     (format nil "Height: ~A"
-                             (sizing-label (element-height node)))
-                     (format nil "~A; padding ~A; gap ~A"
-                             (element-direction node) (element-padding node)
-                             (element-gap node))
-                     (format nil "Align ~A / ~A" (element-align node)
-                             (element-cross-align node))
-                     (format nil "Scroll ~,2F / ~,2F; limit ~,2F"
-                             (element-scroll-x node) (element-scroll-y node)
-                             (element-scroll-limit-y node))))
-    (control toolkit :label line))
+                      (format nil "Clip: ~A" (box-label (element-clip node)))
+                      (format nil "Width: ~A"
+                              (sizing-label (element-width node)))
+                      (format nil "Height: ~A"
+                              (sizing-label (element-height node)))
+                      (format nil "~A; padding ~A; gap ~A"
+                              (element-direction node) (element-padding node)
+                              (element-gap node))
+                      (format nil "Align ~A / ~A" (element-align node)
+                              (element-cross-align node))
+                      (format nil "Scroll ~,2F / ~,2F; limit ~,2F"
+                              (element-scroll-x node) (element-scroll-y node)
+                              (element-scroll-limit-y node))))
+    (lui:label line))
   (let ((widget (element-content node)))
     (when (widget-p widget)
-      (control toolkit :label
-               (format nil "~A / ~A; ~A ~A ~A"
-                       (widget-kind widget) (widget-style widget)
-                       (widget-font-family widget) (widget-font-weight widget)
-                       (widget-font-size widget)))
-      (control toolkit :label
-               (format nil "Disabled ~A; focus ~A" (widget-disabled-p widget)
-                       (equal (element-id node) (context-focus *context*))))
-      (control toolkit :label (preview (widget-text widget))))))
+      (lui:label (format nil "~A / ~A; ~A ~A ~A"
+                         (widget-kind widget) (widget-style widget)
+                         (widget-font-family widget) (widget-font-weight widget)
+                         (widget-font-size widget)))
+      (lui:label (format nil "Disabled ~A; focus ~A" (widget-disabled-p widget)
+                         (equal (element-id node) (context-focus *context*))))
+      (lui:label (preview (widget-text widget))))))
 
 (fn highlight ((box box) (name symbol) (opacity real) (accent string))
   (when (and (plusp (box-width box)) (plusp (box-height box)))
@@ -133,62 +117,65 @@
            :id (id name) :floating-p t :offset-x (box-x box)
            :offset-y (box-y box) :width (fixed (box-width box))
            :height (fixed (box-height box))
-           :content (make-widget :kind :highlight :background "#ffb347"
+           :content (make-widget :kind :highlight :style (lui:current-toolkit)
+                                 :background "#ffb347"
                                  :accent accent :opacity opacity)))))
 
-(fn tree ((state state) (toolkit symbol) (width real))
-  (let* ((*parent* (pane toolkit :id (id :tree) :width (grow) :height (grow)
-                        :scroll-p t :padding (units 1) :opacity 1
-                        :radius 0 :frost 0))
-         (rows (state-rows state)) (step (units (if (= *unit* 1) 1 3)))
-         (viewport (previous-box (id :tree)))
-         (height (if viewport (box-height viewport)
-                     (/ (context-height *context*) 2)))
-         (offset (nth-value 1 (scroll-position (id :tree))))
-         (first (max 0 (floor (min offset
-                                  (max 0 (- (* step (length rows)) height)))
-                              step)))
-         (end (min (length rows) (+ first (ceiling height step) 1))))
-    (let ((*parent*
-            (emit (make-element :width (grow)
-                                :height (fixed (* step (length rows)))))))
-      (loop :for index :from first :below end
-            :for entry := (aref rows index)
-            :for node := (entry-node entry)
-            :for key := (entry-key entry)
-            :do (row (:floating-p t :offset-y (* index step)
-                      :width (grow) :height (fixed step)
-                      :gap (units 0.25) :cross-align :center)
-                  (emit (make-element
-                         :width
-                         (fixed (min (/ width 3)
-                                     (units (* 2 (entry-depth entry)))))))
-                  (if (plusp (length (element-children node)))
-                      (when (control toolkit :list-item (id :collapse key)
-                                     (if (gethash key (state-collapsed state))
-                                         "+" "-")
-                                     :width (fixed (units 3))
-                                     :height (fixed step))
-                        (setf (gethash key (state-collapsed state))
-                              (not (gethash key (state-collapsed state))))
-                        (request-frame))
-                      (emit (make-element :width (fixed (units 3)))))
-                  (when (control toolkit :list-item (id :row key)
-                                 (caption node) :width (grow)
-                                 :height (fixed step)
-                                 :selected-p
-                                 (equal key (state-selected state)))
-                    (setf (state-selected state) key)
-                    (request-frame)))))))
+(fn tree ((state state) (width real))
+  (lui:panel (lui:opt :id (id :tree) :width (grow) :height (grow)
+                      :scroll-p t :padding (units 1) :opacity 1
+                      :radius 0 :frost 0)
+    (let* ((rows (state-rows state))
+           (step (units (if (= *unit* 1) 1 3)))
+           (viewport (previous-box (id :tree)))
+           (height (if viewport (box-height viewport)
+                       (/ (context-height *context*) 2)))
+           (offset (nth-value 1 (scroll-position (id :tree))))
+           (first (max 0 (floor (min offset
+                                     (max 0 (- (* step (length rows)) height)))
+                                step)))
+           (end (min (length rows) (+ first (ceiling height step) 1))))
+      (column (:width (grow) :height (fixed (* step (length rows))))
+        (loop :for index :from first :below end
+              :for entry := (aref rows index)
+              :for node := (entry-node entry)
+              :for key := (entry-key entry)
+              :do (row (:floating-p t :offset-y (* index step)
+                                    :width (grow) :height (fixed step)
+                                    :gap (units 0.25) :cross-align :center)
+                    (emit (make-element
+                           :width
+                           (fixed (min (/ width 3)
+                                       (units (* 2 (entry-depth entry)))))))
+                    (if (plusp (length (element-children node)))
+                        (when (lui:list-item
+                               (id :collapse key)
+                               (if (gethash key (state-collapsed state))
+                                   "+" "-")
+
+                               (lui:opt :width (fixed (units 3))
+                                        :height (fixed step)))
+                          (setf (gethash key (state-collapsed state))
+                                (not (gethash key (state-collapsed state))))
+                          (request-frame))
+                        (emit (make-element :width (fixed (units 3)))))
+                    (when (lui:list-item
+                           (id :row key) (caption node)
+
+                           (lui:opt :width (grow) :height (fixed step)
+                                    :selected-p
+                                    (equal key (state-selected state))))
+                      (setf (state-selected state) key)
+                      (request-frame))))))))
 
 (fn inspector-width ((state state))
   (let* ((window (context-width *context*))
          (minimum (min window (units 25)))
          (maximum (max minimum (- window (units 12))))
          (width (min maximum (max minimum
-                                   (if (state-width state)
-                                       (units (state-width state))
-                                       (* window 0.4))))))
+                                  (if (state-width state)
+                                      (units (state-width state))
+                                      (* window 0.4))))))
     (dolist (event (events-for (id :resize)))
       (when (or (and (eq (event-kind event) :press)
                      (eq (event-button event) :primary))
@@ -214,46 +201,45 @@
         (request-frame)))
     width))
 
-(fn resize-handle ((width real) (toolkit symbol))
+(fn resize-handle ((width real))
   (let ((size (units 1)))
     (emit (make-element
            :id (id :resize) :interactive-p t :pointer-focus-p t
            :floating-p t
            :offset-x (max 0 (- (context-width *context*) width (/ size 2)))
            :width (fixed size) :height (fixed (context-height *context*))
-           :content (apply #'make-widget :kind :splitter :style toolkit
+           :content (apply #'make-widget :kind :splitter
+                           :style (lui:current-toolkit)
                            :value (/ width
                                      (max 1 (context-width *context*)))
                            :text "Inspector width"
-                           (symbol-value
-                            (find-symbol "*DEFAULTS*"
-                                         (package-name-for toolkit))))))))
+                           (lui:toolkit-defaults))))))
 
-(fn inspector ((state state) (toolkit symbol) (width real))
-  (let ((*parent* (pane toolkit :id (id :inspector) :interactive-p t
-                        :keyboard-focus-p nil
-                        :floating-p t
-                        :offset-x (- (context-width *context*) width)
-                        :width (fixed width)
-                        :height (fixed (context-height *context*))
-                        :padding (units 1) :gap (units 0.5) :opacity 1
-                        :radius 0 :frost 0)))
+(fn inspector ((state state) (width real))
+  (lui:panel (lui:opt :id (id :inspector) :interactive-p t
+                      :keyboard-focus-p nil :floating-p t
+                      :offset-x (- (context-width *context*) width)
+                      :width (fixed width)
+                      :height (fixed (context-height *context*))
+                      :padding (units 1) :gap (units 0.5) :opacity 1
+                      :radius 0 :frost 0)
     (row (:width (grow) :gap (units 0.5))
-      (control toolkit :label "Layout inspector" :width (grow))
-      (when (control toolkit :button (id :close) "Close")
+      (lui:label "Layout inspector"
+                 (lui:opt :width (grow)))
+      (when (lui:button (id :close) "Close")
         (setf (state-open-p state) nil)
         (request-frame)))
-    (tree state toolkit width)
-    (let ((*parent* (pane toolkit :id (id :details) :width (grow)
-                         :height (fixed (min (units 18)
-                                             (* (context-height *context*)
-                                                0.4)))
-                         :scroll-p t :padding (units 1) :opacity 1
-                         :radius 0 :frost 0)))
+    (tree state width)
+    (lui:panel (lui:opt :id (id :details) :width (grow)
+                        :height (fixed (min (units 18)
+                                            (* (context-height *context*)
+                                               0.4)))
+                        :scroll-p t :padding (units 1) :opacity 1
+                        :radius 0 :frost 0)
       (let ((node (gethash (state-selected state) (state-nodes state))))
-        (if node (details toolkit node)
-            (control toolkit :label
-                     "Select a row for details. Offscreen/clipped are informational; duplicate IDs remain errors."))))))
+        (if node (details node)
+            (lui:label
+             "Select a row for details. Offscreen/clipped are informational; duplicate IDs remain errors."))))))
 
 (fn draw ((function function) &key ((state state) *state*) (toolkit :glass))
   ;; App tab navigation may consume CONTEXT-PREVIOUS-ROOT during declaration.
@@ -262,20 +248,20 @@
     (when (and (state-open-p state) (null previous)) (request-frame))
     (when (and (state-open-p state) previous)
       (snapshot state previous)
-      (let* ((*parent* (context-root *context*))
-             (hover (context-hover *context*))
-             (key (when (and (consp hover) (eq (first hover) :lui.debug)
-                             (member (second hover) '(:row :collapse)))
-                    (third hover)))
-             (node (gethash key (state-nodes state))))
-        (when node
-          (highlight (element-box node) :bounds 0.18 "#ff8c00")
-          (when (clipped-p node)
-            (highlight (element-clip node) :clip 0 "#00c0ff")))
-        (let ((width (inspector-width state)))
-          (inspector state toolkit width)
-          (resize-handle width toolkit))))))
+      (lui:with-toolkit (toolkit)
+        (let* ((hover (context-hover *context*))
+               (key (when (and (consp hover) (eq (first hover) :lui.debug)
+                               (member (second hover) '(:row :collapse)))
+                      (third hover)))
+               (node (gethash key (state-nodes state))))
+          (when node
+            (highlight (element-box node) :bounds 0.18 "#ff8c00")
+            (when (clipped-p node)
+              (highlight (element-clip node) :clip 0 "#00c0ff")))
+          (let ((width (inspector-width state)))
+            (inspector state width)
+            (resize-handle width)))))))
 
 (fn (wrap function) ((function function) &key ((state state) *state*)
-                    (toolkit :glass))
+                                           (toolkit :glass))
   (lambda () (draw function :state state :toolkit toolkit)))
