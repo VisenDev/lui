@@ -82,6 +82,13 @@
              (if (widget-value widget) (widget-accent widget) "transparent"))
       (when (and (widget-value widget) (not (widget-disabled-p widget)))
         (style dom "color" "#ffffff")))
+    (when (eq kind :scrollbar)
+      (style dom "border-radius" "0")
+      (let ((thumb (jscl/ffi:oget dom "firstElementChild")))
+        (style thumb "box-sizing" "border-box")
+        (style thumb "left" "0")
+        (style thumb "border" "none")
+        (style thumb "border-radius" "0")))
     (when (eq kind :cell)
       (style dom "background"
              (if (widget-value widget) "#e7effa" (widget-background widget)))

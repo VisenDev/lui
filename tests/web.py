@@ -1067,8 +1067,8 @@ class WebTests(unittest.TestCase):
         bar.scroll_into_view_if_needed()
         track = bar.bounding_box()
         thumb = bar.locator("div").bounding_box()
-        self.assertAlmostEqual(thumb["height"], track["height"] * 164 / 560,
-                               delta=1)
+        self.assertAlmostEqual(thumb["height"] + 4,
+                               track["height"] * 164 / 560, delta=1)
         self.page.mouse.move(track["x"] + 5, thumb["y"] + 5)
         self.page.mouse.down()
         self.page.mouse.move(track["x"] + 50, track["y"] + track["height"] + 40)
@@ -1092,6 +1092,77 @@ class WebTests(unittest.TestCase):
         ''')
         expect(bar).to_have_count(0)
         self.lisp('(lui.web:unmount *scrollbar-app*)')
+
+    def test_scrollbar_collection_appearance_and_inheritance(self):
+        self.lisp('''
+          (lui:register-toolkit :garnet-scroll-child :parent :garnet)
+          (defvar *scroll-style* :glass)
+          (defvar *scroll-style-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *scroll-style-host* "id") #j"scroll-style-host"
+                (jscl/ffi:oget *scroll-style-host* "style" "width") #j"280px"
+                (jscl/ffi:oget *scroll-style-host* "style" "height") #j"200px")
+          (#j:document:body:appendChild *scroll-style-host*)
+          (defvar *scroll-style-app*
+            (lui.web:mount *scroll-style-host*
+              (lambda ()
+                (lui:with-toolkit (*scroll-style*)
+                  (lui:panel (lui:opt :id :style-viewport
+                                      :width (lui.layout:grow)
+                                      :height (lui.layout:grow)
+                                      :padding 8 :scroll-p t)
+                    (dotimes (index 15)
+                      (lui:button (list :styled-row index) "Scrollbar sample"
+                        (lui:opt :width (lui.layout:grow)
+                                 :height (lui.layout:fixed 30)))))))))
+        ''')
+        host = self.page.locator("#scroll-style-host")
+        bar = host.get_by_role("scrollbar")
+        thumb = bar.locator("div")
+        bar.scroll_into_view_if_needed()
+        self.page.mouse.move(0, 0)
+        expect(bar).to_have_css("background-color", re.compile(r" / 0\.08\)"))
+        expect(thumb).to_have_css("background-color", re.compile(r" / 0\.32\)"))
+        expect(thumb).to_have_css("border-radius", "4px")
+        self.assertAlmostEqual(thumb.bounding_box()["width"],
+                               bar.bounding_box()["width"] - 4)
+        bar.hover()
+        expect(thumb).to_have_css("background-color", re.compile(r" / 0\.5\)"))
+        host.screenshot(path=str(ROOT / "build/web-glass-scrollbar.png"))
+        self.lisp('''
+          (setf *scroll-style* :garnet-scroll-child)
+          (lui.web:refresh *scroll-style-app*)
+        ''')
+        expect(bar).to_have_attribute("data-lui-surface", "garnet")
+        expect(bar).to_have_css("background-image", re.compile("conic-gradient"))
+        expect(thumb).to_have_css("background-color", "rgb(255, 255, 255)")
+        expect(thumb).to_have_css("border-radius", "0px")
+        expect(thumb).to_have_css("border-top-color", "rgb(0, 0, 0)")
+        expect(thumb).to_have_css("border-top-width", "1px")
+        self.assertAlmostEqual(thumb.bounding_box()["width"],
+                               bar.bounding_box()["width"] - 2)
+        bar.press("End")
+        self.page.wait_for_function("""() => {
+            const bar = document.querySelector('#scroll-style-host [role=scrollbar]');
+            return bar.getAttribute('aria-valuenow') === bar.getAttribute('aria-valuemax');
+        }""")
+        host.screenshot(path=str(ROOT / "build/web-garnet-scrollbar.png"))
+        self.lisp('''
+          (lui:register-toolkit :garnet-scroll-child :parent :garnet
+            :defaults '(:background "#fff1c8"))
+          (lui.web:refresh *scroll-style-app*)
+        ''')
+        expect(thumb).to_have_css("background-color", "rgb(255, 241, 200)")
+        self.lisp('''
+          (setf *scroll-style* :motif)
+          (lui.web:refresh *scroll-style-app*)
+        ''')
+        expect(bar).to_have_attribute("data-lui-surface", "motif")
+        expect(bar).to_have_css("background-image", "none")
+        expect(thumb).to_have_css("border-top-width", "0px")
+        expect(thumb).to_have_css("border-radius", "0px")
+        self.assertAlmostEqual(thumb.bounding_box()["width"],
+                               bar.bounding_box()["width"])
+        self.lisp('(lui.web:unmount *scroll-style-app*)')
 
     def test_custom_toolkit_styles_inherit_and_widget_hook_runs_last(self):
         self.lisp('''
