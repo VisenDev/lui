@@ -62,7 +62,7 @@
     (:input "Input and inspection"
      "Tab and Shift-Tab move keyboard focus. Enter and Space activate a focused button, checkbox, or tab; Space inserts a space in an editor. Pointer clicks do not display a keyboard focus ring. Arrow keys navigate tabs."
      "Text editing uses Readline shortcuts: Ctrl-A/E move to the beginning/end, Ctrl-B/F move by character, Alt-B/F move by word, Ctrl-D deletes, Ctrl-H backspaces, Ctrl-K/U/W kill text, and Ctrl-Y yanks it. Ctrl-Shift-A or Command-A selects all where supported. Ctrl-D does not quit."
-     "Load the optional lui/debug system and call (lui.debug:set-enabled t) from your drawing function to attach an inspector to the current context. It displays the completed application tree, bounds, clipping, sizing, style, and text. Call (lui.debug:set-enabled nil) to close it. Inspector nodes are excluded from its own tree."
+     "Load the optional lui/debug system and call (lui.debug:set-enabled t) on a toggle action in your drawing function to attach an inspector to the current context. It displays the completed application tree, bounds, clipping, sizing, style, and text. Call (lui.debug:set-enabled nil) to close it. Inspector nodes are excluded from its own tree."
      "Clipboard and IME completeness vary by backend; full text shaping is not implemented. Native Wayland, X11, Windows, Cocoa, browser DOM, and raw terminal input use their own platform facilities. Check the project's current test matrix before assuming an untested platform configuration is verified.")
     (:backends "Backends and running"
      "Native: load lui/wayland or lui/x11 on Linux, lui/win32 on Windows, or lui/cocoa on macOS. X11 uses GLX and Wayland uses EGL with the shared OpenGL renderer; Windows and macOS use their native drawing/compositing APIs. Fonts are loaded from the system. OpenGL's offscreen system is useful for rendering tests and is not a separate interactive window backend."
@@ -110,7 +110,14 @@
                       :gap (units 0.5) :opacity 1 :frost 0)
     (lui:label "Guides")
     (dolist (guide *guides*)
-      (when (lui:list-item (list :docs-guide (first guide)) (second guide)
+      (when (lui:list-item (list :docs-guide (first guide))
+                           (if (< (context-width *context*) (units 90))
+                               (case (first guide)
+                                 (:start "Start") (:frames "Frames")
+                                 (:widgets "Controls") (:layout "Layout")
+                                 (:toolkits "Styles") (:input "Input")
+                                 (:backends "Backends"))
+                               (second guide))
                            (lui:opt :width (grow)
                                     :selected-p
                                     (eq (browser-guide state) (first guide))))
@@ -143,7 +150,9 @@
       (loop :for index :in (subseq matches (min start (length matches)) end)
             :for entry := (aref (browser-entries state) index)
             :do (when (lui:list-item
-                       (list :docs-entry index) (getf entry :name)
+                       (list :docs-entry index)
+                       (if (browser-package state) (getf entry :name)
+                           (entry-title entry))
                        (lui:opt :width (grow) :height (fixed size)
                                 :selected-p (= index
                                                (browser-selected state))))
@@ -211,14 +220,20 @@
 
 (defun make-docs (&key (toolkit :glass) (entries *entries*))
   "Return a fresh documentation browser drawing function for ENTRIES."
-  (let ((state (make-browser
-                :toolkit toolkit :entries (coerce entries 'vector)
-                :packages (sort (remove-duplicates
-                                 (mapcar (lambda (entry)
-                                           (getf entry :package))
-                                         entries)
-                                 :test #'string=)
-                                #'string<))))
+  (let* ((entries (append (remove-if-not
+                           (lambda (entry)
+                             (string= (getf entry :package) "lui")) entries)
+                          (remove-if
+                           (lambda (entry)
+                             (string= (getf entry :package) "lui")) entries)))
+         (state (make-browser
+                 :toolkit toolkit :entries (coerce entries 'vector)
+                 :packages (sort (remove-duplicates
+                                  (mapcar (lambda (entry)
+                                            (getf entry :package))
+                                          entries)
+                                  :test #'string=)
+                                 #'string<))))
     (setf (browser-matches state)
           (loop :for index :below (length entries) :collect index)
           (browser-selected state) (when entries 0))
