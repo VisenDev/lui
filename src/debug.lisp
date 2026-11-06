@@ -1,7 +1,7 @@
 (defpackage #:lui.debug
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets)
-  (:export #:set-enabled #:enabled-p #:wrap #:draw #:state #:make-state #:*state*
-           #:state-open-p
+  (:export #:set-enabled #:enabled-p #:wrap #:draw #:state #:make-state
+           #:*state* #:state-open-p
            #:state-selected #:state-width))
 (in-package #:lui.debug)
 
@@ -244,22 +244,22 @@
              "Select a row for details. Offscreen/clipped are informational; duplicate IDs remain errors."))))))
 
 (defun draw-inspector (state toolkit previous)
-    (when (and (state-open-p state) (null previous)) (request-frame))
-    (when (and (state-open-p state) previous)
-      (snapshot state previous)
-      (lui:with-toolkit (toolkit)
-        (let* ((hover (context-hover *context*))
-               (key (when (and (consp hover) (eq (first hover) :lui.debug)
-                               (member (second hover) '(:row :collapse)))
-                      (third hover)))
-               (node (gethash key (state-nodes state))))
-          (when node
-            (highlight (element-box node) :bounds 0.18 "#ff8c00")
-            (when (clipped-p node)
-              (highlight (element-clip node) :clip 0 "#00c0ff")))
-          (let ((width (inspector-width state)))
-            (inspector state width)
-            (resize-handle width))))))
+  (when (and (state-open-p state) (null previous)) (request-frame))
+  (when (and (state-open-p state) previous)
+    (snapshot state previous)
+    (lui:with-toolkit (toolkit)
+      (let* ((hover (context-hover *context*))
+             (key (when (and (consp hover) (eq (first hover) :lui.debug)
+                             (member (second hover) '(:row :collapse)))
+                    (third hover)))
+             (node (gethash key (state-nodes state))))
+        (when node
+          (highlight (element-box node) :bounds 0.18 "#ff8c00")
+          (when (clipped-p node)
+            (highlight (element-clip node) :clip 0 "#00c0ff")))
+        (let ((width (inspector-width state)))
+          (inspector state width)
+          (resize-handle width))))))
 
 (defun enabled-p (&optional (context *context*))
   (let ((state (context-overlay-state context)))
@@ -282,8 +282,7 @@
                 (draw-inspector state style previous)
                 (unless (state-open-p state)
                   (setf (context-overlay context) nil))))))
-    (when (boundp '*context*)
-      (when (eq context *context*) (request-frame)))
+    (let ((*context* context)) (request-frame))
     enabled))
 
 (fn draw ((function function) &key ((state state) *state*) (toolkit :glass))

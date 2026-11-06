@@ -44,6 +44,7 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
              :interactive interactive)))
 
 (defvar *collection* :glass)
+(defvar *definition* nil)
 
 (defstruct collection parent defaults controls web-style)
 (defvar *collections* (make-hash-table :test 'eq))
@@ -74,11 +75,14 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
 
 (defun current-toolkit () *collection*)
 
-(defun toolkit-defaults (&optional (name *collection*))
-  (let* ((entry (collection name)) (parent (collection-parent entry))
+(defun defaults-of (entry)
+  (let* ((parent (collection-parent entry))
          (source (collection-defaults entry))
          (defaults (if (functionp source) (funcall source) source)))
-    (if parent (append defaults (toolkit-defaults parent)) defaults)))
+    (if parent (append defaults (defaults-of (collection parent))) defaults)))
+
+(defun toolkit-defaults (&optional (name *collection*))
+  (defaults-of (collection name)))
 
 (defun toolkit-web-style (name)
   (collection-web-style (collection name)))
@@ -93,21 +97,21 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
     (when parent (map-toolkit-web-styles parent function))
     (when style (funcall function style))))
 
-(defun override (kind)
-  (loop :for name := *collection* :then (collection-parent entry)
-        :while name :for entry := (collection name)
-        :thereis (cdr (assoc kind (collection-controls entry)))))
+(defun override (kind entry)
+  (or (cdr (assoc kind (collection-controls entry)))
+      (let ((parent (collection-parent entry)))
+        (when parent (override kind (collection parent))))))
 
 (defun control (kind &rest arguments)
   "Invoke a user-defined control from the current toolkit or its ancestors."
-  (apply (or (override kind)
+  (apply (or (override kind (or *definition* (collection *collection*)))
              (error "No ~S control in toolkit ~S." kind *collection*))
          arguments))
 
 (defmacro with-toolkit ((designator) &body body)
   "Draw BODY with the named collection; nested bindings restore on exit."
-  `(let ((*collection* ,designator))
-     (collection *collection*)
+  `(let* ((*collection* ,designator)
+          (*definition* (collection *collection*)))
      ,@body))
 
 (defmacro opt (&rest forms &key width height padding gap align cross-align
@@ -135,9 +139,10 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
 (defmacro define-control (name args &body body)
   (let ((kind (intern (symbol-name name) :keyword)))
     `(defun ,name (,@args &optional options)
-       (let ((custom (override ,kind)))
+       (let* ((entry (or *definition* (collection *collection*)))
+              (custom (override ,kind entry)))
          (if custom (funcall custom ,@args options)
-             (let ((style *collection*) (defaults (toolkit-defaults)))
+             (let ((style *collection*) (defaults (defaults-of entry)))
                ,@body))))))
 
 (define-control label (text)
