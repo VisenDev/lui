@@ -497,6 +497,17 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.number("*web-test-draws*"), before)
         expect(self.page.locator("#test-host > *")).to_have_count(0)
 
+    def test_native_label_color_updates_at_fixed_geometry(self):
+        host = self.fixture('''
+          (lui.widgets:declare-widget :label :glass :tint "Tinted"
+            :foreground (if (zerop *web-test-clicks*) "#112233" "#445566"))''')
+        label = self.page.locator(host).get_by_text("Tinted", exact=True)
+        expect(label).to_have_css("color", "rgb(17, 34, 51)")
+        before = label.bounding_box()
+        self.lisp('(setf *web-test-clicks* 1) (lui.web:refresh *web-test-app*)')
+        expect(label).to_have_css("color", "rgb(68, 85, 102)")
+        self.assertEqual(label.bounding_box(), before)
+
     def test_font_measurement_changes_solved_geometry(self):
         host = self.fixture('''
           (lui.widgets:declare-widget :label :glass :font "iiiiiiii"

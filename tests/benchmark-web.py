@@ -51,7 +51,7 @@ RAW_PROFILE = r"""({count, warmup}) => new Promise(resolve => {
 
 PROFILE = r"""({count, warmup}) => new Promise(resolve => {
     const names = ['lui.web::draw-frame', 'lui.layout:solve',
-                   'lui.draw::measure-widget', 'lui.draw::paint-frame'];
+                   'lui.draw::measure-widget', 'lui.draw::paint-frame', 'lui.web::sync-overlay'];
     const original = Object.fromEntries(names.map(name => [name,
         jscl.evaluateString(`(symbol-function '${name})`)]));
     const refresh = jscl.evaluateString("(symbol-function 'lui.web:refresh)");
@@ -64,7 +64,7 @@ PROFILE = r"""({count, warmup}) => new Promise(resolve => {
     }
     for (const [name, metric] of [[names[1], 'layout_ms'],
                                 [names[2], 'measure_ms'],
-                                [names[3], 'paint_ms']]) {
+                                [names[3], 'paint_ms'], [names[4], 'overlay_ms']]) {
         patch(name, function(...args) {
             const start = performance.now();
             const result = original[name](...args);
@@ -74,7 +74,7 @@ PROFILE = r"""({count, warmup}) => new Promise(resolve => {
     }
     patch(names[0], function(...args) {
         window.__luiBenchmarkApp = args[0];
-        current = {layout_ms:0, measure_ms:0, paint_ms:0,
+        current = {layout_ms:0, measure_ms:0, paint_ms:0, overlay_ms:0,
                    start:performance.now()};
         const result = original[names[0]](...args);
         current.draw_ms = performance.now() - current.start;
@@ -247,7 +247,7 @@ try:
                   "scroll_model_observed_ms": model_latency if name == "Scroll" else None,
                   "scroll_visible_observed_ms": visible_latency if name == "Scroll" else None}
         if detail:
-            for metric in ("layout_ms", "measure_ms", "paint_ms"):
+            for metric in ("layout_ms", "measure_ms", "paint_ms", "overlay_ms"):
                 result[metric] = statistics.fmean(sample[metric] for sample in samples)
         results.append(result)
         numbers = [result[key] for key in ("draw_ms", "flush_ms", "mean_ms", "p50_ms", "p95_ms", "max_ms",
