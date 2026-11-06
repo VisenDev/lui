@@ -19,7 +19,7 @@
      "SCROLL-POSITION" "SCROLL-TO" "ACTIVATED-P" "ACTIVATED-IDS"
      "HOVERED-P" "EVENT"
      "EVENT-KIND" "EVENT-X" "EVENT-Y" "EVENT-ID" "EVENT-VALUE" "EVENT-KEY"
-     "EVENT-BUTTON" "EVENT-CLICKS" "EVENT-DRAGGING-P")
+     "EVENT-BUTTON" "EVENT-BUTTONS" "EVENT-CLICKS" "EVENT-DRAGGING-P")
     ("lui.interaction" . :all)
     ("lui.glass" . :all) ("lui.motif" . :all) ("lui.garnet" . :all)
     ("lui.debug" "SET-ENABLED" "ENABLED-P" "STATE" "MAKE-STATE"
