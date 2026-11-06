@@ -147,36 +147,36 @@ Floating children use offsets; interactive nodes participate in input routing."
               (not (and (element-measure node) (flow-children node)))))
   (do-children (child node)
     (intrinsic child axis))
-  (let* ((rule (axis-rule node axis))
-         (children (unless (element-measure node) (flow-children node)))
-         (content
-           (if (element-measure node)
-               (multiple-value-bind (width height)
-                   (funcall (element-measure node)
-                            (when (eq axis :y)
-                              (max 0 (- (axis-size node :x)
-                                        (* 2 (element-padding node))))))
-                 (assert (and (realp width) (>= width 0)
-                              (realp height) (>= height 0)))
-                 (if (eq axis :x) width height))
-               (if (along-p node axis)
-                   (+ (gaps node)
-                      (loop :for child :in children
-                            :sum (axis-size child axis)))
-                   (loop :for child :in children
-                         :maximize (axis-size child axis) :into size
-                         :finally (return (or size 0)))))))
-    (set-axis-size
-     node axis
-     (case (sizing-kind rule)
-       (:fixed (sizing-value rule))
-       (:percent 0)
-       (otherwise
-        (bounded rule
-                 (+ content (* 2 (element-padding node))
-                    (if (and (eq axis :x) (element-scroll-p node)
-                             (element-scrollbar-p node))
-                        (max 0 (element-scrollbar-width node)) 0))))))))
+  (let ((rule (axis-rule node axis)))
+    ;; Only fit and grow use intrinsic content on this axis.
+    (case (sizing-kind rule)
+      (:fixed (return-from intrinsic
+                (set-axis-size node axis (sizing-value rule))))
+      (:percent (return-from intrinsic (set-axis-size node axis 0))))
+    (let ((content 0) (count 0) (along (along-p node axis)))
+      (if (element-measure node)
+          (multiple-value-bind (width height)
+              (funcall (element-measure node)
+                       (when (eq axis :y)
+                         (max 0 (- (axis-size node :x)
+                                   (* 2 (element-padding node))))))
+            (assert (and (realp width) (>= width 0)
+                         (realp height) (>= height 0)))
+            (setf content (if (eq axis :x) width height)))
+          (do-children (child node)
+            (unless (element-floating-p child)
+              (incf count)
+              (let ((size (axis-size child axis)))
+                (setf content (if along (+ content size)
+                                  (max content size)))))))
+      (set-axis-size
+       node axis
+       (bounded rule
+                (+ content (* 2 (element-padding node))
+                   (if along (* (max 0 (1- count)) (element-gap node)) 0)
+                   (if (and (eq axis :x) (element-scroll-p node)
+                            (element-scrollbar-p node))
+                       (max 0 (element-scrollbar-width node)) 0)))))))
 
 (fn distribute ((children list) (axis symbol) (amount real) (growing boolean))
   "Water-fill the smallest growing or largest shrinking elements, respecting bounds."

@@ -214,6 +214,8 @@
   (let ((context (lui.terminal:make-terminal-context)))
     (with-frame (context 56 22)
       (lui:date-time-picker :appointment "2026-11-06T12:30"))
+    (assert (null (lui.frame::hit context 0 0)))
+    (assert (equal '(:appointment :input) (lui.frame::hit context 1 1)))
     (let ((screen (lui.terminal:render-terminal context)))
       (dolist (text '("2026-11-06T12:30" "( Choose date )" "Hour" "Minute"))
         (assert (search text screen)))))

@@ -124,9 +124,10 @@ class WebTests(unittest.TestCase):
             "aria-selected", "true")
         self.page.get_by_role("textbox").fill("Persistent name")
         self.page.get_by_role("tab", name="Editing", exact=True).click()
-        expect(self.page.get_by_role("textbox")).to_have_value(
+        editor = self.page.get_by_role("textbox", name=":EDITOR", exact=True)
+        expect(editor).to_have_value(
             "The quick brown fox jumps over the lazy dog.")
-        self.page.get_by_role("textbox").fill("Persistent editor")
+        editor.fill("Persistent editor")
         for name in ("Layout", "Scroll", "Styles"):
             self.page.get_by_role("tab", name=name, exact=True).click()
             expect(self.page.get_by_role("tab", name=name, exact=True)).to_have_attribute(
@@ -143,17 +144,17 @@ class WebTests(unittest.TestCase):
         self.assertTrue(self.page.locator("main button").evaluate_all(
             "nodes => nodes.every(n => getComputedStyle(n).borderTopLeftRadius === '0px')"))
         self.page.get_by_role("tab", name="Editing", exact=True).click()
-        expect(self.page.get_by_role("textbox")).to_have_value("Persistent editor")
+        expect(editor).to_have_value("Persistent editor")
         self.page.get_by_role("button", name="Cycle toolkit", exact=True).click()
         expect(self.page.get_by_text("Toolkit: Garnet", exact=True).filter(visible=True)).to_be_visible()
-        expect(self.page.get_by_role("textbox")).to_have_value("Persistent editor")
+        expect(editor).to_have_value("Persistent editor")
         self.assertEqual(self.page.locator("main").evaluate(
             "n => getComputedStyle(n).backgroundColor"), "rgb(255, 255, 255)")
         self.assertTrue(self.page.locator("main button").evaluate_all(
             "nodes => nodes.every(n => n.dataset.luiStyle === 'garnet' && getComputedStyle(n).fontWeight === '700')"))
         self.page.get_by_role("button", name="Cycle toolkit", exact=True).click()
         expect(self.page.get_by_text("Toolkit: Glass", exact=True).filter(visible=True)).to_be_visible()
-        expect(self.page.get_by_role("textbox")).to_have_value("Persistent editor")
+        expect(editor).to_have_value("Persistent editor")
         expect(self.page.locator("canvas")).to_have_count(0)
 
     def test_native_shift_tab_order_and_stable_label_measurement(self):
