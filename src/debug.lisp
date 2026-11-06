@@ -403,45 +403,66 @@
                          :value (/ height (max 1 (context-height *context*)))
                          (toolkit-defaults)))))
 
+(fn inspector-header-height ((header element) (width real))
+  (let* ((children (element-children header))
+         (title (aref children 0)) (close (aref children 1))
+         (title-padding (* 2 (element-padding title)))
+         (close-padding (* 2 (element-padding close))))
+    (multiple-value-bind (close-width close-height)
+        (funcall (element-measure close) nil)
+      (max (+ close-height close-padding)
+           (+ title-padding
+              (nth-value 1
+                (funcall (element-measure title)
+                         (max 0 (- width close-width close-padding
+                                   (element-gap header)
+                                   title-padding)))))))))
+
 (fn inspector ((state state) (width real))
   (when (activated-p (id :close-details)) (close-details state))
-  (let ((height (details-height state
-                                (max 0 (- (context-height *context*)
-                                          (units (if (context-text-mode-p
-                                                      *context*) 6 9)))))))
-    (lui:panel (lui:opt :id (id :inspector) :interactive-p t
-                        :keyboard-focus-p nil :floating-p t
-                        :offset-x (- (context-width *context*) width)
-                        :width (fixed width)
-                        :height (fixed (context-height *context*))
-                        :padding (units 1) :gap (units 0.5) :opacity 1
-                        :radius 0 :frost 0)
-      (row (:width (grow) :gap (units 0.5))
+  (lui:panel (lui:opt :id (id :inspector) :interactive-p t
+                      :keyboard-focus-p nil :floating-p t
+                      :offset-x (- (context-width *context*) width)
+                      :width (fixed width)
+                      :height (fixed (context-height *context*))
+                      :padding (units 1) :gap (units 0.5) :opacity 1
+                      :radius 0 :frost 0)
+    (let ((header nil))
+      (row (:id (id :header) :width (grow) :gap (units 0.5))
+        (setf header *parent*)
         (lui:label "Layout inspector" (lui:opt :width (grow)))
         (when (lui:button (id :close) "Close")
           (setf (state-open-p state) nil)
           (request-frame)))
-      (tree state width)
-      (let ((node (gethash (state-selected state) (state-nodes state))))
-        (if node
-            (progn
-              (details-divider height)
-              (column (:id (id :property-pane) :width (grow)
-                       :height (fixed height))
-                (row (:width (grow) :gap (units 0.5) :cross-align :center)
-                  (lui:label "Properties" (lui:opt :width (grow)))
-                  (lui:button (id :close-details) "×"
-                               (lui:opt :width (fixed (units 5)) :font-size 14
-                                        :accessible-name "Close details")))
-                (lui:panel (lui:opt :id (id :details)
-                                    :width (grow) :height (grow)
-                                    :scroll-p t :padding (units 1)
-                                    :gap (if (context-text-mode-p *context*)
-                                             0 (units 0.25))
-                                    :opacity 1 :radius 0 :frost 0)
-                  (details node width))))
-            (lui:label "Select a tree row for properties."
-                       (lui:opt :width (grow) :font-size 14)))))))
+      (let* ((header-height
+               (inspector-header-height header (- width (units 2))))
+             ;; Root/tree padding, three gaps and the divider also need room.
+             (maximum (max 0 (- (context-height *context*) header-height
+                                (units 6.5))))
+             (height (details-height state maximum)))
+        (setf (element-height header) (fit header-height))
+        (tree state width)
+        (let ((node (gethash (state-selected state) (state-nodes state))))
+          (if node
+              (progn
+                (details-divider height)
+                (column (:id (id :property-pane) :width (grow)
+                         :height (fixed height))
+                  (row (:width (grow) :gap (units 0.5) :cross-align :center)
+                    (lui:label "Properties" (lui:opt :width (grow)))
+                    (lui:button (id :close-details) "×"
+                                 (lui:opt :width (fixed (units 5))
+                                          :font-size 14
+                                          :accessible-name "Close details")))
+                  (lui:panel (lui:opt :id (id :details)
+                                      :width (grow) :height (grow)
+                                      :scroll-p t :padding (units 1)
+                                      :gap (if (context-text-mode-p *context*)
+                                               0 (units 0.25))
+                                      :opacity 1 :radius 0 :frost 0)
+                    (details node width))))
+              (lui:label "Select a tree row for properties."
+                         (lui:opt :width (grow) :font-size 14))))))))
 
 (defun draw-inspector (state toolkit previous)
   (when (and (state-open-p state) (null previous)) (request-frame))

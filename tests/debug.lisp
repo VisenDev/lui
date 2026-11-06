@@ -360,7 +360,66 @@
       (assert (null (node :details)))
       (assert (null (lui.debug:state-selected state))))))
 
+(fn test-header-clipping ()
+  (dolist (terminal '(nil t))
+    (dolist (style '(:glass :motif :garnet))
+      (let* ((lui:*unit* (if terminal 1 8))
+             (width (if terminal 100 800))
+             (height (if terminal 48 520))
+             (context
+               (if terminal (make-terminal-context)
+                   (make-context
+                    :measure
+                    (lambda (widget available)
+                      ;; Deliberately tall controls catch fixed chrome guesses.
+                      (let* ((label (eq :label (widget-kind widget)))
+                             (extra (if label 0 24))
+                             (text-width (* 8 (length (widget-text widget))))
+                             (line-width (max 1 (- (or available
+                                                       (+ text-width extra))
+                                                   extra)))
+                             (lines (max 1 (ceiling text-width line-width)))
+                             (line-height (if (eq style :garnet) 26 20)))
+                        (values (+ text-width extra)
+                                (+ (* lines line-height)
+                                   (if label 0 16))))))))
+             (state (lui.debug:make-state :open-p t)))
+        (labels ((frame (&rest events)
+                   (with-frame (context width height :events events)
+                     (lui.debug:draw (lambda () (lui:button :item "Item"))
+                                     :state state :toolkit style)))
+                 (node (name)
+                   (gethash (lui.debug::id name)
+                            (lui.frame::context-ids context)))
+                 (fully-visible (node)
+                   (let ((box (element-box node))
+                         (clip (element-clip node)))
+                     (assert (>= (box-height clip) (box-height box)))
+                     (assert (>= (box-width clip) (box-width box)))
+                     (assert
+                      (<= (nth-value 1
+                            (funcall (element-measure node) (box-width box)))
+                          (box-height box))))))
+          (frame) (frame)
+          (frame (make-event :kind :activate
+                             :id (lui.debug::id :row '(:id :item))))
+          ;; Check the reported width and the narrow, wrapped-title variant.
+          (dolist (sidebar-width '(40 25))
+            (setf (lui.debug:state-width state) sidebar-width)
+            (frame (make-event :kind :key :key :home
+                               :id (lui.debug::id :details-resize)))
+            (fully-visible (node :close))
+            (fully-visible (aref (element-children (node :header)) 0))
+            (let ((pane (element-box (node :property-pane))))
+              (assert (<= (+ (box-y pane) (box-height pane))
+                          (- height (units 1)))))
+            (when terminal
+              (assert (search "Close" (render-terminal context)))))
+          (frame (make-event :kind :activate :id (lui.debug::id :close)))
+          (assert (not (lui.debug:state-open-p state))))))))
+
 (fn run-tests ()
+  (test-header-clipping)
   (test-details-drag)
   (test-selection-reveal)
   (test-properties)
