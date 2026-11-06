@@ -40,7 +40,16 @@
       (frame)
       (assert (context-next-frame context))
       (frame)
-      (assert (node (lui.debug::id :inspector)))
+      (assert (node (lui.debug::id :debugger)))
+      (assert
+       (string= "Layout debugger"
+                (widget-text
+                 (element-content
+                  (aref (element-children (node (lui.debug::id :header)))
+                        0)))))
+      (assert (string= "Debugger width"
+                       (widget-text
+                        (element-content (node (lui.debug::id :resize))))))
       (assert (< 1 (row-count) (1+ (context-height context))))
       (assert (search "- " (render-terminal context)))
       (let* ((rows (lui.debug::state-rows state))
@@ -49,7 +58,7 @@
       (let ((rows (length (lui.debug::state-rows state))))
         (frame)
         (assert (= rows (length (lui.debug::state-rows state)))))
-      ;; Own inspector descendants are never included in the app snapshot.
+      ;; Own debugger descendants are never included in the app snapshot.
       (maphash (lambda (key node)
                  (declare (ignore key))
                  (assert (not (lui.debug::own-node-p node))))
@@ -71,20 +80,20 @@
         (frame)
         (frame)
         (assert (null (lui.debug:state-selected state))))
-      ;; Empty inspector area captures input instead of clicking the app behind.
+      ;; Empty debugger area captures input instead of clicking the app behind.
       (setf show t)
       (frame)
-      (let* ((pane (node (lui.debug::id :inspector)))
+      (let* ((pane (node (lui.debug::id :debugger)))
              (box (element-box pane)))
         (frame (make-event :kind :press :x (+ (box-x box) 0.25) :y 0)
                (make-event :kind :release :x (+ (box-x box) 0.25) :y 0))
         (assert (= 1 count))
         (assert (not (equal (context-hover context) :action))))
-      ;; App tab navigation consumes the frame root; the inspector must persist.
+      ;; App tab navigation consumes the frame root; the debugger must persist.
       (setf (context-focus context) :tab-a)
       (frame (make-event :kind :key :key :right))
       (assert (eq page :b))
-      (assert (node (lui.debug::id :inspector)))
+      (assert (node (lui.debug::id :debugger)))
       ;; Background capture must not introduce a keyboard focus stop.
       (setf (context-focus context) :tab-b)
       (frame (make-event :kind :tab))
@@ -111,7 +120,7 @@
       (assert (plusp (row-count)))
       (setf (lui.debug:state-open-p state) nil)
       (frame)
-      (assert (null (node (lui.debug::id :inspector)))))))
+      (assert (null (node (lui.debug::id :debugger)))))))
 
 (fn test-overlay ()
   (let ((context (make-terminal-context)) (plain nil) (ansi nil))
@@ -152,7 +161,7 @@
              (width ()
                (box-width
                 (element-box
-                 (gethash (lui.debug::id :inspector)
+                 (gethash (lui.debug::id :debugger)
                           (lui.frame::context-ids context))))))
       (frame) (frame)
       (assert (= 32 (width)))
@@ -235,6 +244,8 @@
         (assert (labels-named title)))
       (assert (labels-named "Actual editor value"))
       (assert (labels-named "#d0e0f0"))
+      (assert (labels-named "Toolkit:"))
+      (assert (null (labels-named "Collection:")))
       (assert (labels-named "Idle"))
       (assert (null (labels-named "Position:")))
       (assert (null (labels-named "Scroll:")))

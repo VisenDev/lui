@@ -7,7 +7,7 @@
 
 (defstruct* entry node key (depth 0 :type integer))
 (defstruct* state
-  "Inspector state: visibility, selected snapshot node, expansion, and pane width."
+  "Debugger state: visibility, selected snapshot node, expansion, and pane width."
   (open-p nil :type boolean) selected
   (details-height nil :type (or null real))
   (details-grab nil :type (or null cons))
@@ -28,7 +28,7 @@
 (fn snapshot ((state state) (root element))
   ;; IDs survive redraws. Anonymous nodes use positions below the closest ID;
   ;; identical anonymous siblings cannot be distinguished after a reorder.
-  ;; Duplicate IDs remain core errors rather than recoverable inspector warnings.
+  ;; Duplicate IDs remain core errors rather than recoverable debugger warnings.
   (setf (fill-pointer (state-rows state)) 0)
   (clrhash (state-nodes state))
   (labels ((visit (node anchor path depth shown)
@@ -189,7 +189,7 @@
                                        (element-scroll-limit-y node)))))
     (when (widget-p widget)
       (properties "Appearance" width
-                  (list "Collection" (widget-style widget))
+                  (list "Toolkit" (widget-style widget))
                   (list "Foreground" (widget-foreground widget))
                   (list "Background" (widget-background widget))
                   (list "Accent" (widget-accent widget))
@@ -311,7 +311,7 @@
                                 (state-reveal-selection-p state) t))
                       (request-frame))))))))
 
-(fn inspector-width ((state state))
+(fn debugger-width ((state state))
   (let* ((window (context-width *context*))
          (minimum (min window (units 25)))
          (maximum (max minimum (- window (units 12))))
@@ -355,7 +355,7 @@
                            :style (lui:current-toolkit)
                            :value (/ width
                                      (max 1 (context-width *context*)))
-                           :text "Inspector width"
+                           :text "Debugger width"
                            (lui:toolkit-defaults))))))
 
 (defun details-height (state maximum)
@@ -403,7 +403,7 @@
                          :value (/ height (max 1 (context-height *context*)))
                          (toolkit-defaults)))))
 
-(fn inspector-header-height ((header element) (width real))
+(fn debugger-header-height ((header element) (width real))
   (let* ((children (element-children header))
          (title (aref children 0)) (close (aref children 1))
          (title-padding (* 2 (element-padding title)))
@@ -418,9 +418,9 @@
                                    (element-gap header)
                                    title-padding)))))))))
 
-(fn inspector ((state state) (width real))
+(fn debugger ((state state) (width real))
   (when (activated-p (id :close-details)) (close-details state))
-  (lui:panel (lui:opt :id (id :inspector) :interactive-p t
+  (lui:panel (lui:opt :id (id :debugger) :interactive-p t
                       :keyboard-focus-p nil :floating-p t
                       :offset-x (- (context-width *context*) width)
                       :width (fixed width)
@@ -430,12 +430,12 @@
     (let ((header nil))
       (row (:id (id :header) :width (grow) :gap (units 0.5))
         (setf header *parent*)
-        (lui:label "Layout inspector" (lui:opt :width (grow)))
+        (lui:label "Layout debugger" (lui:opt :width (grow)))
         (when (lui:button (id :close) "Close")
           (setf (state-open-p state) nil)
           (request-frame)))
       (let* ((header-height
-               (inspector-header-height header (- width (units 2))))
+               (debugger-header-height header (- width (units 2))))
              ;; Root/tree padding, three gaps and the divider also need room.
              (maximum (max 0 (- (context-height *context*) header-height
                                 (units 6.5))))
@@ -464,7 +464,7 @@
               (lui:label "Select a tree row for properties."
                          (lui:opt :width (grow) :font-size 14))))))))
 
-(defun draw-inspector (state toolkit previous)
+(defun draw-debugger (state toolkit previous)
   (when (and (state-open-p state) (null previous)) (request-frame))
   (when (and (state-open-p state) previous)
     (snapshot state previous)
@@ -478,17 +478,17 @@
           (highlight (element-box node) :bounds 0.18 "#ff8c00")
           (when (clipped-p node)
             (highlight (element-clip node) :clip 0 "#00c0ff")))
-        (let ((width (inspector-width state)))
-          (inspector state width)
+        (let ((width (debugger-width state)))
+          (debugger state width)
           (resize-handle width))))))
 
 (defun enabled-p (&optional (context *context*))
-  "Whether CONTEXT currently has an open inspector attached to its overlay."
+  "Whether CONTEXT currently has an open debugger attached to its overlay."
   (let ((state (context-overlay-state context)))
     (and state (state-open-p state))))
 
 (defun set-enabled (enabled &key (context *context*) state toolkit)
-  "Enable the context's inspector. Call on a toggle, not on every draw."
+  "Enable the context's debugger. Call on a toggle, not on every draw."
   (let ((state (or state (context-overlay-state context) (make-state))))
     (setf (state-open-p state) enabled
           (context-overlay-state context) state
@@ -501,20 +501,20 @@
                      (style (or toolkit (and (widget-p first)
                                              (widget-style first))
                                 (current-toolkit))))
-                (draw-inspector state style previous)
+                (draw-debugger state style previous)
                 (unless (state-open-p state)
                   (setf (context-overlay context) nil))))))
     (let ((*context* context)) (request-frame))
     enabled))
 
 (fn draw ((function function) &key ((state state) *state*) (toolkit :glass))
-  "Draw FUNCTION followed by an inspector using STATE and TOOLKIT.
+  "Draw FUNCTION followed by an debugger using STATE and TOOLKIT.
 Compatibility entry point; prefer SET-ENABLED for context-owned inspection."
   (funcall function)
-  (draw-inspector state toolkit (context-previous-root *context*)))
+  (draw-debugger state toolkit (context-previous-root *context*)))
 
 (fn (wrap function) ((function function) &key ((state state) *state*)
                                            (toolkit :glass))
-  "Return a drawing closure that calls FUNCTION and then draws STATE's inspector.
-Compatibility helper; SET-ENABLED attaches an inspector without wrapping callbacks."
+  "Return a drawing closure that calls FUNCTION and then draws STATE's debugger.
+Compatibility helper; SET-ENABLED attaches an debugger without wrapping callbacks."
   (lambda () (draw function :state state :toolkit toolkit)))
