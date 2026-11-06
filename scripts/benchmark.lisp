@@ -24,6 +24,14 @@
                                   :in lui.example.seven::*tasks*
                                 :collect (list toolkit page task))
                           (list (list toolkit page))))))
+(let ((name (uiop:getenvp "BENCH_CASE")))
+  (when name
+    (setf *cases*
+          (remove-if-not (lambda (case)
+                           (string-equal name (format nil "~{~A~^/~}" case)))
+                         *cases*))
+    (unless *cases* (error "Unknown BENCH_CASE ~S." name))))
+
 (defparameter *frames*
   (parse-integer (or (uiop:getenv "BENCH_FRAMES") "240")))
 (defparameter *warmup* (parse-integer (or (uiop:getenv "WARMUP") "30")))
@@ -77,7 +85,8 @@
     (setf (lui.example::gallery-toolkit *gallery*) (first case)
           (lui.example::gallery-page *gallery*) (second case))
     (when (third case)
-      (setf (lui.example.seven:state-task (lui.example::gallery-seven *gallery*))
+      (setf (lui.example.seven:state-task
+             (lui.example::gallery-seven *gallery*))
             (third case)))
     case))
 
@@ -123,7 +132,8 @@
   (let ((context (lui.terminal:make-terminal-context)) (lui:*unit* 1))
     (benchmark-loop
      (lambda ()
-       (lui.frame:with-frame (context *width* *height*) (lui.example:draw *gallery*))
+       (lui.frame:with-frame (context *width* *height*)
+         (lui.example:draw *gallery*))
        (lui.terminal:render-terminal context)))))
 
 (defun benchmark-gl ()

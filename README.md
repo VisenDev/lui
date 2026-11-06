@@ -171,7 +171,12 @@ toolkit/page rows:
 ```sh
 make benchmark PLATFORM=core BENCH_FRAMES=240 WARMUP=30
 make benchmark PLATFORM=gl
+make benchmark PLATFORM=x11 BENCH_CASE=glass/controls
 ```
+
+Native and core benchmarks accept `BENCH_CASE` to repeat just one page,
+for example `glass/controls` or `garnet/seven/cells`. X11 timings include
+waiting for the X server to finish rendering each frame.
 
 SBCL runs also print separate `ALLOC` rows per case and for `all/all`:
 `bytes_total`, `bytes_mean`, and `bytes_p95` measure Lisp bytes allocated per
