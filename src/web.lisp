@@ -273,7 +273,7 @@
     (style node "width"
            (if width (px (max 0 (- width extra))) "max-content"))
     (style node "white-space"
-           (if (member kind '(:label :list-item)) "pre-wrap" "pre"))
+           (if (member kind '(:label :list-item :button :tab)) "pre-wrap" "pre"))
     (let ((rect ((jscl/ffi:oget node "getBoundingClientRect"))))
       (values
        (max (case kind (:slider 160) (:text-field 160) (otherwise 0))
