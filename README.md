@@ -49,6 +49,14 @@ activation; fields, sliders, and checkboxes return the current value and a
 second value indicating a change. Store application values outside the draw
 function. The library keeps focus, capture, and caret state between frames.
 
+Radio controls share one model value. Each `lui:radio` receives the current
+value and its own choice, then returns the updated value and a change flag:
+
+```lisp
+(setf size (lui:radio :small size :small "Small"))
+(setf size (lui:radio :large size :large "Large"))
+```
+
 Use the optional final `lui:opt` form for widget customization. Its keyword
 lambda list is visible to SLIME; layout keys such as `:gap` apply to panels,
 whereas `:step` configures a slider. To change toolkit defaults, bind

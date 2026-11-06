@@ -112,7 +112,7 @@
   (let* ((font (widget-font renderer widget))
          (kind (widget-kind widget))
          (extra (case kind (:label 0) (:cell 8) (:list-item 12)
-                       (:checkbox 48)
+                       ((:checkbox :radio) 48)
                        (otherwise 24))))
     (let ((lines (wrap-text font
                             (if (eq kind :text-field)
@@ -404,6 +404,21 @@
                                 :width (max 0 (- (box-width box) 48))
                                 :height (max 0 (- (box-height box) 12)))
                       ink)))
+      (:radio
+       (let* ((indicator (make-box :x (- (+ (box-x box) (box-width box)) 22)
+                                  :y (+ (box-y box)
+                                        (max 0 (/ (- (box-height box) 18) 2)))
+                                  :width 18 :height 18)))
+         (shape renderer indicator 9 "#ffffff" 1)
+         (outline renderer indicator 9 ink 1 1)
+         (when (widget-value widget)
+           (shape renderer (inset-box indicator 5) 4 ink 1))
+         (when hover (garnet-outline renderer indicator 2))
+         (garnet-text renderer (widget-text widget)
+                      (make-box :x (+ (box-x box) 12) :y (+ (box-y box) 6)
+                                :width (max 0 (- (box-width box) 48))
+                                :height (max 0 (- (box-height box) 12)))
+                      ink)))
       (:slider
        (let* ((track (make-box :x (+ (box-x box) 8)
                                :y (+ (box-y box) (/ (box-height box) 2) -6)
@@ -546,12 +561,12 @@
          (if glass
              (outline renderer box radius "#ffffff"
                       (if disabled 0.15f0 0.4f0) 1)
-             (unless (eq kind :checkbox)
+             (unless (member kind '(:checkbox :radio))
                (motif-bevel renderer box
                            (or (eq kind :text-field)
                                (and pressed (member kind '(:button :tab))))
                            disabled))))
-       (when (and (member kind '(:button :tab :checkbox))
+       (when (and (member kind '(:button :tab :checkbox :radio))
                   (not (widget-disabled-p widget)))
          (cond
            ((and (hovered-p (element-id node))
@@ -610,6 +625,24 @@
                   :by (line-height font)
                 :do (paint-text renderer line (+ x 24) baseline
                                 foreground)))
+         (:radio
+          (let ((indicator (make-box :x x :y (+ y 1)
+                                     :width 16 :height 16)))
+            (shape renderer indicator 8
+                   (if glass "#ffffff" (widget-background widget)) 1)
+            (outline renderer indicator 8
+                     (if disabled "#777777" foreground) 1 1)
+            (when (widget-value widget)
+              (shape renderer (inset-box indicator 5) 3
+                     (if disabled "#777777"
+                         (if glass (widget-accent widget) foreground)) 1))
+            (loop :for line :in (wrap-text
+                                font (widget-text widget)
+                                (max 0 (- (box-width box) 48)))
+                  :for baseline :from (+ y (baseline font))
+                    :by (line-height font)
+                  :do (paint-text renderer line (+ x 24) baseline
+                                  foreground))))
          (:text-field
           (paint-text-field renderer node x y
                             (max 0 (- (box-width box) (* 2 inset)))))

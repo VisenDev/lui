@@ -1,7 +1,7 @@
 (defpackage #:lui.motif
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
-  (:export #:label #:button #:checkbox #:slider #:text-field #:panel #:tab
+  (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel #:tab
            #:canvas #:gauge #:list-item #:cell
            #:*defaults*))
 
@@ -14,4 +14,4 @@
 Bind this plist to adjust the surface, text, or selection accent colors.")
 
 (define-toolkit :motif *defaults* panel
-  label button tab checkbox slider text-field cell list-item gauge canvas)
+  label button tab checkbox slider text-field cell list-item gauge canvas radio)

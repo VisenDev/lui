@@ -71,6 +71,7 @@ An optional terminal-label callback overrides the standard kind-based label."
                            (make-string (- 10 filled) :initial-element #\.)
                            (round (* 100 (min 1 (max 0 value)))))))
                 (:checkbox (format nil "[~A] ~A" (if value "x" " ") text))
+                (:radio (format nil "(~A) ~A" (if value "*" " ") text))
                 (:slider
                  (format nil "~A [~D%]" text
                          (round (* 100 (/ (- value (widget-minimum widget))
@@ -196,7 +197,7 @@ Backends use this to activate controls with Space without stealing editor text."
   (let ((widget (focused-widget context)))
     (and (widget-p widget) (not (widget-disabled-p widget))
          (not (null (member (widget-kind widget)
-                            '(:button :checkbox :tab :list-item :cell)))))))
+                            '(:button :checkbox :radio :tab :list-item :cell)))))))
 
 (fn (cursor-at symbol) ((context context) (x real) (y real))
   "Return the cursor kind at X,Y, respecting clipping and topmost widgets.
@@ -223,7 +224,7 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
                          ((member (widget-kind widget) '(:label :text-field))
                           :text)
                          ((member (widget-kind widget)
-                                  '(:button :checkbox :tab :slider
+                                  '(:button :checkbox :radio :tab :slider
                                     :list-item :cell)) :pointer)
                          (t :default))))))))
     cursor))
@@ -399,7 +400,7 @@ Events include semantic Readline keys, text insertion, and replacement changes."
 (fn value-widget
     ((kind symbol) (style symbol) id value (text string) (options list))
   "Declare a value control, apply its current input, and return the updated value.
-KIND is :CHECKBOX, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
+KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
   (let ((original value)
         (events (unless (getf options :disabled-p) (events-for id))))
     (ecase kind
@@ -409,6 +410,12 @@ KIND is :CHECKBOX, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
        (dolist (event events)
          (when (eq (event-kind event) :change)
            (setf value (not (null (event-value event)))))))
+      (:radio
+       (when (and (not (getf options :disabled-p)) (activated-p id))
+         (setf value (getf options :choice)))
+       (dolist (event events)
+         (when (eq (event-kind event) :change)
+           (setf value (event-value event)))))
       (:slider
        (let ((minimum (getf options :minimum 0))
              (maximum (getf options :maximum 1))
@@ -450,7 +457,13 @@ KIND is :CHECKBOX, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
                         (make-edit-state :cursor (length value)
                                          :anchor (length value))))))
          (setf value (edit-text value state events)))))
-    (apply #'declare-widget kind style id text :value value options)
+    (apply #'declare-widget kind style id text
+           :value (if (eq kind :radio)
+                      (equal value (getf options :choice)) value)
+           (if (eq kind :radio)
+               (loop for (key option) on options by #'cddr
+                     unless (eq key :choice) append (list key option))
+               options))
     (values value (not (equal original value)))))
 
 

@@ -192,7 +192,7 @@
                        (not (widget-disabled-p widget))))
          (hover (and enabled
                      (member (widget-kind widget)
-                             '(:button :tab :checkbox :list-item :cell))
+                             '(:button :tab :checkbox :radio :list-item :cell))
                      (equal (element-id node) (context-hover context))))
          (selected (and enabled (member (widget-kind widget)
                                        '(:tab :list-item :cell))

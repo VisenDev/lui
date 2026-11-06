@@ -1,7 +1,7 @@
 (defpackage #:lui.glass
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
-  (:export #:label #:button #:checkbox #:slider #:text-field #:panel #:tab
+  (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel #:tab
            #:canvas #:gauge #:list-item #:cell
            #:*defaults*))
 
@@ -14,4 +14,4 @@
 tint, corner radius, opacity, or frost for a group of controls.")
 
 (define-toolkit :glass *defaults* panel
-  label button tab checkbox slider text-field cell list-item gauge canvas)
+  label button tab checkbox slider text-field cell list-item gauge canvas radio)

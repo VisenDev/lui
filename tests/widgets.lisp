@@ -158,6 +158,26 @@
       (frame (make-event :kind :text :value " "))
       (assert (string= text "x ")))))
 
+(defun test-radio-group ()
+  (let ((context (make-terminal-context)) (value :first))
+    (labels ((draw ()
+               (setf value (lui:radio :first-radio value :first "First")
+                     value (lui:radio :second-radio value :second "Second"))))
+      (with-frame (context 40 4) (draw))
+      (assert (eq :first value))
+      (setf (lui.frame:context-focus context) :first-radio)
+      (assert (lui.widgets:activation-focused-p context))
+      (with-frame (context 40 4 :events
+                           (list (make-event :kind :activate
+                                             :id :second-radio)))
+        (draw))
+      (assert (eq :second value))
+      (with-frame (context 40 4 :events
+                           (list (make-event :kind :activate
+                                             :id :first-radio)))
+        (draw))
+      (assert (eq :first value)))))
+
 (defun test-nested-scroll ()
   (let ((context (make-terminal-context)))
     (labels ((draw (bounded)
@@ -254,6 +274,7 @@
   (test-scrollbar)
   (test-readline)
   (test-tabs-and-hover)
+  (test-radio-group)
   (test-keyboard-activation)
   (let ((context (make-terminal-context)))
     (with-frame (context 10 4)

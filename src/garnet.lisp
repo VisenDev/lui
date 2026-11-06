@@ -1,7 +1,7 @@
 (defpackage #:lui.garnet
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
-  (:export #:label #:button #:checkbox #:slider #:text-field #:panel #:tab
+  (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel #:tab
            #:canvas #:gauge #:list-item #:cell
            #:*defaults*))
 
@@ -15,4 +15,4 @@
 Bind this plist to change its colors or typography for a group of controls.")
 
 (define-toolkit :garnet *defaults* panel
-  label button tab checkbox slider text-field cell list-item gauge canvas)
+  label button tab checkbox slider text-field cell list-item gauge canvas radio)

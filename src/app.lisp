@@ -7,7 +7,7 @@
            #:define-toolkit #:define-collection
            #:table #:table-row #:table-cell
            #:opt #:panel #:label
-           #:button #:tab #:checkbox #:slider
+           #:button #:tab #:checkbox #:radio #:slider
            #:text-field #:cell #:list-item #:gauge #:canvas
            #:date-time-picker))
 
@@ -212,6 +212,11 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
   "Return the new boolean and a second value indicating a change."
   (value-widget :checkbox style id value text (append options defaults)))
 
+(define-control radio (id value choice text)
+  "Return the selected choice and a change flag; keep the returned value in your model."
+  (value-widget :radio style id value text
+                (list* :choice choice (append options defaults))))
+
 (define-control slider (id value)
   "Return the new number and a change flag. OPT accepts :minimum, :maximum and :step."
   (value-widget :slider style id value (getf options :text "")
@@ -232,14 +237,12 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
          (append options defaults)))
 
 (defmacro define-toolkit (name defaults panel-name &rest names)
-  "Define a named toolkit and its toolkit-qualified control entry points.
-DEFAULTS is evaluated while drawing. PANEL-NAME names the container macro;
-NAMES follows the standard label/button/tab/checkbox/slider/text-field/cell/
-list-item/gauge/canvas order."
+  "Define toolkit controls in the standard order; RADIO may be appended to NAMES."
   (let ((functions '(label button tab checkbox slider text-field cell
-                     list-item gauge canvas))
+                     list-item gauge canvas radio))
         (args '((text) (id text) (id text) (id value text) (id value)
-                (id value) (id text) (id text) (id fraction) (id commands))))
+                (id value) (id text) (id text) (id fraction) (id commands)
+                (id value choice text))))
     `(progn
        (register-toolkit ,name :surface ,name :defaults (lambda () ,defaults))
        ,@(loop :for local :in names :for fn :in functions :for a :in args
