@@ -74,7 +74,7 @@ test-docs: build/docs.html
 	LUI_DOCS_LIBRARY_ONLY=1 $(SBCL) $(SBCL_FLAGS) --load scripts/setup.lisp \
 		--load scripts/docs-data.lisp --load tests/docs-data.lisp \
 		--eval '(lui.tests.docs-data:run-tests)' \
-		--eval '(asdf:load-system "lui")' \
+		--eval '(asdf:load-system "lui/debug")' \
 		--load examples/docs.lisp --load tests/docs.lisp \
 		--eval '(lui.tests.docs:run-tests)'
 	$(PYTHON) -u tests/docs-web.py

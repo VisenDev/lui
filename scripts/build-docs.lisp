@@ -4,6 +4,7 @@
 (load "scripts/setup.lisp")
 (defparameter *platform* (uiop:getenv "PLATFORM"))
 (asdf:load-system (concatenate 'string "lui/" *platform*))
+(asdf:load-system "lui/debug")
 (load "examples/docs.lisp")
 (load "build/docs-data.lisp")
 
