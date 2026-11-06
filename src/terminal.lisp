@@ -249,6 +249,16 @@
                              :do (setf (aref borders row column) nil))))
            (let* ((highlight-p (eq (widget-kind widget) :highlight))
                   (splitter-p (eq (widget-kind widget) :splitter))
+                  (horizontal-p (eq (widget-orientation widget) :horizontal))
+                  (rail-style
+                    (when splitter-p
+                      (if (and (context-focus-visible-p context)
+                               (equal (element-id node)
+                                      (context-focus context)))
+                          (list (widget-background widget)
+                                (widget-accent widget) t)
+                          (list (widget-accent widget)
+                                (widget-background widget) t))))
                   (thumb (when (eq (widget-kind widget) :scrollbar)
                            (scrollbar-thumb node)))
                   (thumb-top (when thumb (cell-edge (box-y thumb))))
@@ -299,6 +309,15 @@
                                                       :garnet)
                                                   "░" "│"))
                                           (aref colors row column) style))
+                                   ((and splitter-p
+                                         (if horizontal-p
+                                             (= row (floor (+ y bottom) 2))
+                                             (= column
+                                                (floor (+ x right) 2))))
+                                    (setf (aref cells row column)
+                                          (if horizontal-p "─" "│")
+                                          (aref colors row column)
+                                          rail-style))
                                    (highlight-p
                                     (when (or (plusp (widget-opacity widget))
                                               (= row y) (= row (1- bottom))
@@ -311,21 +330,6 @@
                                              (aref borders row column)))
                                     (setf (aref cells row column) " "
                                           (aref colors row column) style)))))
-             (when splitter-p
-               (let ((column (floor (+ x right) 2)))
-                 (loop :for row :from (max 0 y) :below (min height bottom)
-                       :when (and (<= 0 column) (< column width)
-                                  (cell-visible-p clip column row 1))
-                         :do (setf (aref cells row column) "│"
-                                   (aref colors row column)
-                                   (if (and (context-focus-visible-p context)
-                                            (equal (element-id node)
-                                                   (context-focus context)))
-                                       (list (widget-background widget)
-                                             (widget-accent widget) t)
-                                       (list (widget-accent widget)
-                                             (widget-background widget)
-                                             t))))))
              (when (eq (widget-kind widget) :panel)
                (paint-panel cells colors borders style node widget))
              (when (eq (widget-kind widget) :canvas)
