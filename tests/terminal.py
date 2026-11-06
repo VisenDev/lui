@@ -209,7 +209,14 @@ def script(error=False, debug=False):
     (assert (= visible 0.5))
     (batch "0;1;2M" "32;30;1M" "0;30;1m")
     (assert (= visible 1))
-    (assert (= behind 0.5))))
+    (assert (= behind 0.5))
+    (batch "0;1;2M")
+    (assert (zerop visible))
+    (batch "35;30;1M" "32;30;1M")
+    (assert (zerop visible))
+    (assert (null (lui.frame:context-active context)))
+    (batch "0;1;2M" "32;30;1M" "0;30;1m")
+    (assert (= visible 1))))
 ;; Shared gauge/canvas values have useful plain and colored representations.
 (let ((context (lui.terminal:make-terminal-context)))
   (lui.frame:with-frame (context 20 1)
@@ -240,6 +247,15 @@ def script(error=False, debug=False):
   (lui.terminal.io::mouse-event input "35;3;4M")
   (assert (not (lui.frame:event-dragging-p
                 (first (lui.terminal.io::input-events input))))))
+;; Physical SGR state distinguishes released motion from a retained capture.
+(dolist (entry '(("0;3;4M" 1) ("32;3;4M" 1) ("0;3;4m" 0)
+                 ("35;3;4M" 0) ("2;3;4M" 2) ("34;3;4M" 2)
+                 ("64;3;4M" nil)))
+  (let ((input (lui.terminal.io::make-input)))
+    (lui.terminal.io::mouse-event input (first entry))
+    (assert (eql (second entry)
+                 (lui.frame:event-buttons
+                   (first (lui.terminal.io::input-events input)))))))
 ;; Fractional cell boundaries must agree for painting and clipping.
 (let ((context (lui.terminal:make-terminal-context)))
   (lui.frame:with-frame (context 10 4)
@@ -416,8 +432,10 @@ def text_position(frame, text, last=True):
 
 def divider_position(frame):
     """Find the long accent rail, excluding the surrounding panel borders."""
+    properties = frame.find(b"Properties")
+    rail_frame = frame[:properties] if properties >= 0 else frame
     for match in reversed(list(re.finditer(b"(?:" + "─".encode() + b"){8,}",
-                                          frame))):
+                                          rail_frame))):
         prefix = frame[:match.end()]
         foreground, background, _ = text_style(prefix, match[0])
         if (37, 139, 255) in (foreground, background):
@@ -595,6 +613,31 @@ def exercise_debugger(lisp, path):
         assert b"Geometry" not in frame
         assert b"Layout debugger" in frame
         assert b"PANEL WINDOW" in frame
+        # A no-button SGR move cancels a missed release without changing width.
+        terminal.send(b"\x1b[<0;59;4M")
+        terminal.send(b"\x1b[<35;30;4M\x1b[<35;20;4M")
+        terminal.send(b"\x1b[<0;59;4M\x1b[<32;64;4M\x1b[<0;64;4m")
+        terminal.send(b"\x1b[<0;64;4M\x1b[<32;59;4M\x1b[<0;59;4m")
+        frame = last_frame(terminal.output)
+        x, y = text_position(frame, b"PANEL WINDOW", last=False)
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        x, y = divider_position(last_frame(terminal.output))
+        terminal.send(f"\x1b[<0;{x};{y}M".encode())
+        terminal.send(f"\x1b[<35;{x};{y + 4}M".encode())
+        assert divider_position(last_frame(terminal.output))[1] == y, (
+            y, divider_position(last_frame(terminal.output)), "cancel moved rail")
+        terminal.send(f"\x1b[<35;{x};{y + 6}M".encode())
+        assert divider_position(last_frame(terminal.output))[1] == y, (
+            y, divider_position(last_frame(terminal.output)), "cancel moved rail")
+        terminal.send(f"\x1b[<0;{x};{y}M".encode())
+        terminal.send(f"\x1b[<32;{x};{y - 2}M\x1b[<0;{x};{y - 2}m".encode())
+        frame = last_frame(terminal.output)
+        assert divider_position(frame)[1] < y
+        cross = "×".encode()
+        close_end = frame.index(cross, frame.index(b"Properties")) + len(cross)
+        x, y = text_position(frame[:close_end], cross)
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        assert b"Geometry" not in last_frame(terminal.output)
         terminal.send(b"\x11")
         terminal.until(b"@@DEBUG")
         terminal.restored()

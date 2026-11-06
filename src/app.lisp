@@ -29,10 +29,13 @@
   (setf (gethash name *backends*) runner))
 
 (fn (available-backends list) ()
-  "List the backends loaded in this Lisp image, in default selection order."
-  (loop :for name :in '(:web :win32 :cocoa :wayland :x11 :terminal)
-        :when (gethash name *backends*)
-          :collect name))
+  "List every backend registered in this Lisp image."
+  (let (results)
+    (maphash (lambda (name runner)
+               (declare (ignore runner))
+               (push name results))
+             *backends*)
+    results))
 
 (fn run
     ((draw function) &key (backend *backend*) ((title string) "LUI") width

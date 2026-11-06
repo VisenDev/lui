@@ -16,11 +16,12 @@
   (nodes (make-hash-table :test 'equal) :type hash-table)
   (tablists (make-hash-table :test 'equal) :type hash-table)
   (measurements (make-hash-table :test 'equal) :type hash-table)
-  hover-id
+  hover-id pointer-node
+  (pointer-id nil :type (or null integer))
   (events nil :type list)
   (pending-p nil :type boolean)
   (alive-p t :type boolean)
-  resize-handler
+  resize-handler blur-handler
   resize-observer
   animation-frame
   deadline-timer
@@ -34,11 +35,32 @@
   (#j:document:createElementNS #j"http://www.w3.org/2000/svg"
                               (jscl/ffi:jsstring tag)))
 
+(fn release-dom-pointer ((app web-app))
+  (let ((node (web-app-pointer-node app)) (id (web-app-pointer-id app)))
+    ;; Clear ownership before release emits lostpointercapture.
+    (setf (web-app-pointer-node app) nil (web-app-pointer-id app) nil)
+    (when (and node id
+               (jscl/ffi:clbool
+                ((jscl/ffi:oget node "hasPointerCapture") id)))
+      ((jscl/ffi:oget node "releasePointerCapture") id))))
+
+(fn cancel-dom-pointer ((app web-app))
+  (release-dom-pointer app)
+  (queue-event app (make-event :kind :cancel :buttons 0)))
+
+(fn dom-buttons (event)
+  (let ((buttons (jscl/ffi:oget event "buttons")))
+    (unless (eq buttons #j:undefined) buttons)))
+
+(fn current-pointer-p ((app web-app) event)
+  (or (null (web-app-pointer-id app))
+      (eql (web-app-pointer-id app) (jscl/ffi:oget event "pointerId"))))
+
 (fn queue-pointer ((app web-app) event kind &optional id)
   (let ((rect ((jscl/ffi:oget (web-app-host app)
                              "getBoundingClientRect"))))
     (queue-event
-     app (make-event :kind kind :id id
+     app (make-event :kind kind :id id :buttons (dom-buttons event)
                      :button (if (= 2 (jscl/ffi:oget event "button"))
                                  :secondary :primary)
                      :clicks (max 1 (jscl/ffi:oget event "detail"))
@@ -72,6 +94,12 @@
   (push (list node name function capture) (web-app-listeners app)))
 
 (fn remove-node ((app web-app) node)
+  (when (and (web-app-pointer-node app)
+             (or (eq node (web-app-pointer-node app))
+                 (jscl/ffi:clbool
+                  ((jscl/ffi:oget node "contains")
+                   (web-app-pointer-node app)))))
+    (cancel-dom-pointer app))
   (setf (web-app-listeners app)
         (delete-if
          (lambda (listener)
@@ -341,18 +369,25 @@
           (listen app dom "pointerdown"
                   (lambda (event)
                     ((jscl/ffi:oget event "preventDefault"))
+                    (when (web-app-pointer-node app) (cancel-dom-pointer app))
+                    (setf (web-app-pointer-node app) dom
+                          (web-app-pointer-id app)
+                          (jscl/ffi:oget event "pointerId"))
                     ((jscl/ffi:oget dom "setPointerCapture")
-                     (jscl/ffi:oget event "pointerId"))
+                     (web-app-pointer-id app))
                     (queue-pointer app event :press)))
-          (dolist (name '("pointerup" "pointercancel"))
+          (listen app dom "pointerup"
+                  (lambda (event)
+                    (when (and (eq dom (web-app-pointer-node app))
+                               (current-pointer-p app event))
+                      (queue-pointer app event :release)
+                      (release-dom-pointer app))))
+          (dolist (name '("pointercancel" "lostpointercapture"))
             (listen app dom name
                     (lambda (event)
-                      (queue-pointer app event :release)
-                      (let ((id (jscl/ffi:oget event "pointerId")))
-                        (when (jscl/ffi:clbool
-                               ((jscl/ffi:oget dom "hasPointerCapture") id))
-                          ((jscl/ffi:oget dom "releasePointerCapture")
-                           id)))))))
+                      (when (and (eq dom (web-app-pointer-node app))
+                                 (current-pointer-p app event))
+                        (cancel-dom-pointer app))))))
         (case kind
           ((:button :tab :list-item :cell)
            (attribute dom "type" "button")
@@ -914,6 +949,11 @@
             (declare (ignore event))
             (refresh app)))
     (#j:window:addEventListener #j"resize" (web-app-resize-handler app))
+    (setf (web-app-blur-handler app)
+          (lambda (event)
+            (declare (ignore event))
+            (cancel-dom-pointer app)))
+    (#j:window:addEventListener #j"blur" (web-app-blur-handler app))
     (setf (web-app-wheel-handler app)
           (lambda (event)
             (when (web-app-alive-p app)
@@ -950,35 +990,46 @@
     (listen app host "wheel" (web-app-wheel-handler app) t)
     (listen app host "pointermove"
             (lambda (event)
-              (let* ((target ((jscl/ffi:oget event "target" "closest")
-                              #j"[data-lui-interactive='true']"))
-                     (id (unless (eq target #j:null)
-                           (jscl/ffi:oget target "luiId"))))
-                (when (or (not (equal id (web-app-hover-id app)))
-                          (and (not (eq target #j:null))
-                               (jscl/ffi:clbool
-                                (jscl/ffi:oget target "luiContinuousMove"))))
-                  (setf (web-app-hover-id app) id)
-                  (let ((rect ((jscl/ffi:oget host "getBoundingClientRect"))))
-                    (queue-event
-                     app (make-event
-                          :kind :move
-                          :x (- (jscl/ffi:oget event "clientX")
-                                (jscl/ffi:oget rect "left"))
-                          :y (- (jscl/ffi:oget event "clientY")
-                                (jscl/ffi:oget rect "top")))))))))
+              (when (current-pointer-p app event)
+                (let* ((captured (web-app-pointer-node app))
+                       (buttons (dom-buttons event))
+                       (target ((jscl/ffi:oget event "target" "closest")
+                                #j"[data-lui-interactive='true']"))
+                       (id (unless (eq target #j:null)
+                             (jscl/ffi:oget target "luiId"))))
+                  (when (and captured buttons (not (logbitp 0 buttons)))
+                    (release-dom-pointer app))
+                  (when (or captured
+                            (not (equal id (web-app-hover-id app)))
+                            (and (not (eq target #j:null))
+                                 (jscl/ffi:clbool
+                                  (jscl/ffi:oget
+                                   target "luiContinuousMove"))))
+                    (setf (web-app-hover-id app) id)
+                    (queue-pointer app event :move))))))
+    (listen app host "pointerenter"
+            (lambda (event)
+              (when (current-pointer-p app event)
+                (queue-pointer app event :move))))
     (listen app host "pointerleave"
             (lambda (event)
-              (declare (ignore event))
-              (when (web-app-hover-id app)
+              (when (current-pointer-p app event)
                 (setf (web-app-hover-id app) nil)
-                (queue-event app (make-event :kind :move :x -1 :y -1)))))
+                (let ((buttons (dom-buttons event)))
+                  (if (and (web-app-pointer-node app) buttons
+                           (logbitp 0 buttons))
+                      (queue-pointer app event :move)
+                      (progn
+                        (cancel-dom-pointer app)
+                        (queue-event app (make-event :kind :move :buttons 0
+                                                     :x -1 :y -1))))))))
     (refresh app)
     app))
 
 (fn unmount ((app web-app))
   "Dispose an application, cancelling scheduled frames and DOM listeners."
   (cancel-deadline app)
+  (release-dom-pointer app)
   (setf (web-app-alive-p app) nil
         (web-app-events app) nil
         (web-app-pending-p app) nil)
@@ -992,6 +1043,7 @@
        (jscl/ffi:jsstring name) function (jscl/ffi:jsbool capture))))
   (setf (web-app-listeners app) nil)
   (#j:window:removeEventListener #j"resize" (web-app-resize-handler app))
+  (#j:window:removeEventListener #j"blur" (web-app-blur-handler app))
   (maphash
    (lambda (key entry)
      (declare (ignore key))

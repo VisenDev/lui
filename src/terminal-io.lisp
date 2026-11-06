@@ -124,7 +124,11 @@
          (setf capture (or (event-id pending)
                            (lui.frame::hit context (event-x pending)
                                            (event-y pending)))))
-        ((:release :cancel) (setf capture nil))))
+        ((:release :cancel) (setf capture nil))
+        (:move
+         (when (and (event-buttons pending)
+                    (not (logbitp 0 (event-buttons pending))))
+           (setf capture nil)))))
     (let* ((press (eq (event-kind event) :press))
            (id (if press (lui.frame::hit context (event-x event)
                                                (event-y event)) capture))
@@ -171,7 +175,12 @@
              ;; Pick just below cell centers to match painted half-cell edge ties.
              :x (- x 0.500001d0) :y (- y 0.500001d0)
              :button (if (= (logand button 3) 2) :secondary :primary)
-             :dragging-p (and (logbitp 5 button) (/= (logand button 3) 3))
+             :buttons (unless (logbitp 6 button)
+                        (if (char= (char sequence end) #\m) 0
+                            (case (logand button 3)
+                              (0 1) (1 4) (2 2) (otherwise 0))))
+             :dragging-p (and (logbitp 5 button)
+                              (zerop (logand button 3)))
              :scroll-mode :smooth :value (if (logbitp 0 button) 3 -3))
             (input-events input))
       (when (and context (zerop (logand button 3))

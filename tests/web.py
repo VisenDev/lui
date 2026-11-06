@@ -374,7 +374,7 @@ class WebTests(unittest.TestCase):
         self.lisp('(setf *web-test-show* nil) (lui.web:refresh *web-test-app*)')
         self.frames()
         expect(self.page.locator("#test-host input")).to_have_count(0)
-        self.assertEqual(self.number('(length (lui.web::web-app-listeners *web-test-app*))'), 3)
+        self.assertEqual(self.number('(length (lui.web::web-app-listeners *web-test-app*))'), 4)
         draws = self.number('*web-test-draws*')
         self.page.evaluate("window.detachedControl.dispatchEvent(new Event('input'))")
         self.frames()
@@ -386,14 +386,17 @@ class WebTests(unittest.TestCase):
         self.frames()
         expect(self.page.get_by_role("button", name="Replacement")).to_be_visible()
         expect(self.page.locator("#test-host input")).to_have_count(0)
-        self.assertEqual(self.number('(length (lui.web::web-app-listeners *web-test-app*))'), 7)
+        self.assertEqual(self.number('(length (lui.web::web-app-listeners *web-test-app*))'), 8)
         self.lisp('(lui.web:refresh *web-test-app*) (lui.web:unmount *web-test-app*)')
         self.frames()
         expect(self.page.locator("#test-host > *")).to_have_count(0)
         self.assertEqual(self.number('(length (lui.web::web-app-listeners *web-test-app*))'), 0)
         draws = self.number('*web-test-draws*')
         self.page.locator("#test-host").evaluate("node => {node.style.width = '250px'; node.dispatchEvent(new WheelEvent('wheel', {deltaY:20}));}")
-        self.page.evaluate("window.dispatchEvent(new Event('resize'))")
+        self.page.evaluate("""() => {
+            window.dispatchEvent(new Event('resize'));
+            window.dispatchEvent(new Event('blur'));
+        }""")
         self.frames()
         self.assertEqual(self.number('*web-test-draws*'), draws)
         self.lisp('(lui.web:unmount *web-test-app*)')
@@ -480,6 +483,117 @@ class WebTests(unittest.TestCase):
         page.get_by_role("tab", name="Controls", exact=True).click()
         page.get_by_role("button", name="Say hello", exact=True).click()
         expect(page.get_by_text("Hello Common Lisp (1)", exact=True).filter(visible=True)).to_be_visible()
+
+    def test_debugger_divider_lost_release_and_capture(self):
+        self.page.set_viewport_size({"width": 1100, "height": 900})
+        self.lisp('''
+          (defvar *capture-state*
+            (lui.debug:make-state :open-p t :selected '(:id :target)))
+          (defvar *capture-activations* 0)
+          (defvar *capture-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *capture-host* "id") #j"capture-fixture"
+                (jscl/ffi:oget *capture-host* "style" "width") #j"800px"
+                (jscl/ffi:oget *capture-host* "style" "height") #j"520px")
+          (#j:document:body:appendChild *capture-host*)
+          (defvar *capture-app*
+            (lui.web:mount *capture-host*
+              (let ((first t))
+                (lambda ()
+                  (when first
+                    (setf first nil)
+                    (lui.debug:set-enabled t :state *capture-state*))
+                  (when (lui.frame:activated-p
+                         '(:lui.debug :details-resize nil))
+                    (incf *capture-activations*))
+                  (lui:button :target "Outside action"))))))
+        ''')
+        host = self.page.locator("#capture-fixture")
+        divider = host.get_by_role("separator", name="Properties height")
+        expect(divider).to_be_visible()
+        divider.evaluate("""node => node.addEventListener('pointerdown',
+            event => { window.capturePointer = event.pointerId; })""")
+
+        def value():
+            return float(divider.get_attribute("aria-valuenow"))
+
+        def active():
+            return self.number('''(if (lui.frame:context-active
+              (lui.web::web-app-context *capture-app*)) 1 0)''')
+
+        def start():
+            divider.scroll_into_view_if_needed()
+            box = divider.bounding_box()
+            self.page.mouse.move(box["x"] + box["width"] / 2,
+                                 box["y"] + box["height"] / 2)
+            self.page.mouse.down()
+            # Process pending pointer capture before testing real capture loss.
+            self.page.mouse.move(box["x"] + box["width"] / 2 + 1,
+                                 box["y"] + box["height"] / 2)
+            self.frames()
+            self.assertEqual(active(), 1)
+            return box
+
+        def cancelled():
+            self.frames()
+            self.assertEqual(active(), 0)
+            self.assertFalse(divider.evaluate(
+                "n => n.hasPointerCapture(window.capturePointer)"))
+            old = value()
+            # A later unpressed motion must not keep changing the divider.
+            divider.evaluate("""n => n.dispatchEvent(new PointerEvent(
+                'pointermove', {bubbles: true, buttons: 0,
+                pointerId: window.capturePointer, clientX: 650,
+                clientY: n.getBoundingClientRect().y - 20}))""")
+            self.frames()
+            self.assertEqual(value(), old)
+            self.assertEqual(self.number("*capture-activations*"), 0)
+            self.page.mouse.up()
+            self.frames()
+            self.assertEqual(self.number("*capture-activations*"), 0)
+
+        # A missing pointerup is repaired by physical buttons=0 on motion.
+        start()
+        divider.evaluate("""n => n.dispatchEvent(new PointerEvent(
+            'pointermove', {bubbles: true, buttons: 0,
+            pointerId: window.capturePointer, clientX: 650,
+            clientY: n.getBoundingClientRect().y}))""")
+        cancelled()
+
+        start()
+        divider.evaluate("""n => n.dispatchEvent(new PointerEvent(
+            'pointercancel', {bubbles: true, buttons: 0,
+            pointerId: window.capturePointer}))""")
+        cancelled()
+
+        # Exercise the browser's actual lostpointercapture event.
+        start()
+        divider.evaluate("n => n.releasePointerCapture(window.capturePointer)")
+        self.page.mouse.move(650, divider.bounding_box()["y"] - 2)
+        cancelled()
+
+        start()
+        self.page.evaluate("window.dispatchEvent(new Event('blur'))")
+        cancelled()
+
+        # Leave/reenter with no button down must not resurrect a drag.
+        start()
+        divider.evaluate("""n => {
+            const host = n.closest('#capture-fixture');
+            for (const type of ['pointerleave', 'pointerenter'])
+                host.dispatchEvent(new PointerEvent(type, {buttons: 0,
+                    pointerId: window.capturePointer}));
+        }""")
+        cancelled()
+
+        # Cancellation must leave the next real drag fully usable.
+        box = start()
+        old = value()
+        self.page.mouse.move(box["x"] + box["width"] / 2, box["y"] - 20)
+        self.frames()
+        self.assertGreater(value(), old)
+        self.page.mouse.up()
+        self.frames()
+        self.assertEqual(active(), 0)
 
     def test_motif_debugger_divider_drag_keyboard_and_close(self):
         self.page.set_viewport_size({"width": 1100, "height": 900})
