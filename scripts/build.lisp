@@ -13,15 +13,10 @@
 (asdf:load-system "lui/demo")
 
 (defun main ()
-  (let ((package "LUI.EXAMPLE"))
-    (progv (list (find-symbol "*BACKEND*" "LUI"))
-           (list (intern (string-upcase *backend*) :keyword))
-      (if (member "--smoke-test" (uiop:command-line-arguments)
-                  :test #'string=)
-          (uiop:symbol-call :lui :run
-                           (symbol-function (find-symbol "DRAW" package))
-                           :interactive nil)
-          (uiop:symbol-call package :main)))))
+  (let ((lui:*backend* (intern (string-upcase *backend*) :keyword)))
+    (if (member "--smoke-test" (uiop:command-line-arguments) :test #'string=)
+        (lui:run (lui.example:make-demo) :interactive nil)
+        (lui.example:main))))
 
 (sb-ext:save-lisp-and-die (uiop:getenv "LUI_OUTPUT")
                         :toplevel #'main :executable t

@@ -83,7 +83,7 @@
             (length lines))))
 
 (fn (make-terminal-context context) ()
-  (make-context :measure #'measure-widget))
+  (make-context :text-mode-p t :measure #'measure-widget))
 
 (fn (cell-edge integer) ((position real))
   "Snap every box and clip edge to the same nearest terminal-cell boundary."

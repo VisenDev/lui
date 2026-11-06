@@ -58,6 +58,35 @@ font size, `:font-family` (`:sans-serif` or `:monospace`), and `:font-weight`
 (`:normal` or `:bold`). Native
 widgets also support a custom painter callback.
 
+User widgets can be ordinary functions composed from these controls. For
+example, this adds a selectable badge to a collection and inherits the rest
+of its controls from Motif:
+
+```lisp
+(defun badge (id text &optional options)
+  (lui:button id text (append options (lui:opt :foreground "#105030"))))
+
+(lui:register-toolkit :paper :parent :motif
+                      :defaults (lui:opt :background "#fff9ea")
+                      :controls (list (cons :badge #'badge)))
+
+;; Inside a draw function:
+(lui:with-toolkit (:paper)
+  (when (lui:control :badge :publish "Publish")
+    (publish-document)))
+```
+
+Use `badge` directly when all collections share that definition. Use
+`control` for toolkit-specific implementations of a new control; registration
+can also replace standard controls such as `:button`. Overrides of a standard
+control receive its positional arguments plus the options list (possibly NIL).
+Compose another control or explicitly select a parent toolkit to delegate.
+For custom drawing on a semantic control, `:painter` takes a native renderer
+and element, `:web-style` takes a DOM node, widget and element, and
+`:terminal-label` takes a widget and returns its text. Browser callbacks run
+after inherited styling; native and terminal controls retain their input
+semantics. These hooks do not require a new backend.
+
 There is one [demo gallery](examples/demo.lisp), with Controls, Editing, Layout,
 Scroll, Styles, and 7GUIs pages. Its Glass/Motif/Garnet selector changes the collection for
 the whole gallery, so each page uses one toolkit consistently. Style Preview
@@ -221,7 +250,7 @@ Start a Common Lisp implementation in the repository directory:
 (asdf:load-asd (truename "lui.asd"))
 (asdf:load-system "lui/demo")
 (asdf:test-system "lui")
-(lui:run #'lui.example:draw :backend :terminal :interactive nil)
+(lui:run (lui.example:make-demo) :backend :terminal :interactive nil)
 ```
 
 To make LUI discoverable from other directories, put the following in
@@ -401,12 +430,13 @@ its bounds and clipping rectangle, and select it for sizing, alignment, spacing,
 scrolling, and widget details. Tree rows are virtualized. The highlight preserves
 pointer input and terminal text; the inspector is excluded from its own tree.
 
-Applications can opt in without changing their drawing code:
+The debugger attaches to the current frame context. A menu item or key handler
+can toggle it once; subsequent frames draw the inspector automatically:
 
 ```lisp
 (asdf:load-system "lui/debug")
-(let ((debug (lui.debug:make-state :open-p t)))
-  (lui:run (lui.debug:wrap #'draw :state debug :toolkit :glass)))
+(when (lui:button :inspect "Inspect")
+  (lui.debug:set-enabled (not (lui.debug:enabled-p))))
 ```
 
 Drag the inspector's left edge to resize its sidebar; the width persists.

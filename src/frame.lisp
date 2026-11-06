@@ -14,7 +14,7 @@
            #:context-focus-visible-p #:frame-time #:request-frame
            #:context-next-frame #:scroll-position #:scroll-to
            #:pending-input-context #:context-overlay #:context-overlay-state
-           #:context-tabs-handled-p
+           #:context-tabs-handled-p #:context-text-mode-p
            #:context-copy #:context-input-handler #:context-selection))
 
 (in-package #:lui.frame)
@@ -34,6 +34,7 @@
 
 (defstruct* context
   (root nil :type (or null element))
+  (text-mode-p nil :type boolean)
   overlay-state
   (overlay nil :type (or null function))
   (tabs-handled-p nil :type boolean)

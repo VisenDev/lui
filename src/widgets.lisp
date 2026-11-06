@@ -10,7 +10,8 @@
            #:widget-font-size #:widget-font-family #:widget-font-weight
            #:widget-opacity #:widget-accent
            #:widget-disabled-p
-           #:widget-painter #:widget-web-style #:edit-state #:edit-state-cursor
+           #:widget-painter #:widget-web-style
+           #:edit-state #:edit-state-cursor
            #:edit-state-anchor #:make-edit-state #:edit-text #:readline-key
            #:text-field-focused-p #:activation-focused-p #:cursor-at))
 
@@ -52,7 +53,8 @@
       (setf (widget-terminal-cache widget)
             (if (widget-terminal-label widget)
                 (funcall (widget-terminal-label widget) widget)
-                (let ((text (widget-text widget)) (value (widget-value widget)))
+                (let ((text (widget-text widget))
+                      (value (widget-value widget)))
               (case (widget-kind widget)
                 ((:label :list-item :cell) text)
                 ((:panel :canvas) "")
@@ -435,7 +437,8 @@
     (loop :for (key value) :on options :by #'cddr
           :do (if (member key '(:foreground :background :radius :frost
                                :opacity :accent :font-size :font-family
-                               :font-weight :painter :web-style :terminal-label))
+                               :font-weight :painter :web-style
+                               :terminal-label))
                   (setf appearance (append appearance (list key value)))
                   (setf layout (append layout (list key value)))))
     (emit (apply #'make-element

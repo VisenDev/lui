@@ -13,6 +13,8 @@
                      (concatenate 'string "lui/" *platform*)))
 (asdf:load-system "lui/demo")
 
+(defparameter *gallery* (lui.example:make-gallery))
+
 (defparameter *cases*
   (loop :for toolkit :in lui.example::*toolkits*
         :append (loop :for (page title) :in lui.example::*pages*
@@ -72,10 +74,10 @@
                        (floor (* (- index *warmup*) (length *cases*))
                               *frames*))
                    *cases*)))
-    (setf lui.example::*toolkit* (first case)
-          lui.example::*page* (second case))
+    (setf (lui.example::gallery-toolkit *gallery*) (first case)
+          (lui.example::gallery-page *gallery*) (second case))
     (when (third case)
-      (setf (lui.example.seven:state-task lui.example.seven:*state*)
+      (setf (lui.example.seven:state-task (lui.example::gallery-seven *gallery*))
             (third case)))
     case))
 
@@ -104,7 +106,7 @@
            (incf index)
            ;; Case selection and previous-sample storage are excluded.
            (multiple-value-setq (bytes gc-time) (counters))
-           (lui.example:draw)))
+           (lui.example:draw *gallery*)))
        :backend (intern (string-upcase *platform*) :keyword)
        :title "LUI benchmark" :width *width* :height *height*))))
 
@@ -121,7 +123,7 @@
   (let ((context (lui.terminal:make-terminal-context)) (lui:*unit* 1))
     (benchmark-loop
      (lambda ()
-       (lui.frame:with-frame (context *width* *height*) (lui.example:draw))
+       (lui.frame:with-frame (context *width* *height*) (lui.example:draw *gallery*))
        (lui.terminal:render-terminal context)))))
 
 (defun benchmark-gl ()
@@ -144,7 +146,7 @@
              (benchmark-loop
               (lambda ()
                 (lui.frame:with-frame (context *width* *height*)
-                  (lui.example:draw))
+                  (lui.example:draw *gallery*))
                 (call :lui.gl :begin-gpu-frame gpu)
                 (call :lui.draw :paint-frame renderer context)
                 (call :lui.gl :present-gpu gpu)

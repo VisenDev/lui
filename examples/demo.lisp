@@ -1,32 +1,36 @@
 (defpackage #:lui.example
-  (:use #:cl #:lui #:lui.layout #:lui.frame #:lui.debug)
+  (:use #:cl #:lui #:lui.layout #:lui.frame)
   (:shadow #:draw)
-  (:export #:main #:draw))
+  (:export #:main #:draw #:make-gallery #:make-demo))
 (in-package #:lui.example)
 
-(defvar *debug-state* (make-state))
-(defvar *page* :controls)
-(defvar *toolkit* :glass)
+(defstruct gallery
+  (seven (lui.example.seven:make-state))
+  (page :controls)
+  (toolkit :glass)
+  (name "Common Lisp")
+  (volume 0.4)
+  (enabled t)
+  (count 0)
+  (editor "The quick brown fox jumps over the lazy dog.")
+  (filter "")
+  (selection 1)
+  (split 0.35)
+  (alignment :start)
+  (opacity 0.6)
+  (frost 12)
+  (radius 12)
+  (preview "Ocean")
+  (preview-color "#335d91")
+  (preview-count 0)
+  (fps 0.0)
+  (frame-ms 0.0)
+  (frame-count 0)
+  (frame-start nil)
+  (filtered-items nil)
+  (last-filter nil))
+
 (defparameter *toolkits* '(:glass :motif :garnet))
-(defvar *name* "Common Lisp")
-(defvar *volume* 0.4)
-(defvar *enabled* t)
-(defvar *count* 0)
-(defvar *editor* "The quick brown fox jumps over the lazy dog.")
-(defvar *filter* "")
-(defvar *selection* 1)
-(defvar *split* 0.35)
-(defvar *alignment* :start)
-(defvar *opacity* 0.6)
-(defvar *frost* 12)
-(defvar *radius* 12)
-(defvar *preview* "Ocean")
-(defvar *preview-color* "#335d91")
-(defvar *preview-count* 0)
-(defvar *fps* 0.0)
-(defvar *frame-ms* 0.0)
-(defvar *frame-count* 0)
-(defvar *frame-start* nil)
 (defparameter *pages*
   '((:controls "Controls") (:editing "Editing") (:layout "Layout")
     (:scroll "Scroll") (:styles "Styles") (:seven "7GUIs")))
@@ -36,54 +40,53 @@
                 :collect (format nil "Item ~2,'0D — selectable row" i))
           'vector))
 
-(defvar *filtered-items* nil)
-(defvar *last-filter* nil)
 
-(defun filtered-items ()
-  (unless (equal *filter* *last-filter*)
-    (setf *last-filter* (copy-seq *filter*)
-          *filtered-items*
+(defun filtered-items (g)
+  (unless (equal (gallery-filter g) (gallery-last-filter g))
+    (setf (gallery-last-filter g) (copy-seq (gallery-filter g))
+          (gallery-filtered-items g)
           (loop :for title :across *items* :for i :from 1
-                :when (search *filter* title :test #'char-equal)
+                :when (search (gallery-filter g) title :test #'char-equal)
                 :collect i)))
-  *filtered-items*)
+  (gallery-filtered-items g))
 
-(defun update-fps ()
+(defun update-fps (g)
   (let ((now (get-internal-real-time)))
-    (unless *frame-start*
-      (setf *frame-start* now)
+    (unless (gallery-frame-start g)
+      (setf (gallery-frame-start g) now)
       (return-from update-fps nil))
-    (incf *frame-count*)
-    (let ((elapsed (/ (- now *frame-start*)
+    (incf (gallery-frame-count g))
+    (let ((elapsed (/ (- now (gallery-frame-start g))
                       (* 1.0 internal-time-units-per-second))))
       (when (>= elapsed 0.5)
-        (setf *fps* (/ *frame-count* elapsed)
-              *frame-ms* (/ (* elapsed 1000) *frame-count*)
-              *frame-count* 0 *frame-start* now)))))
+        (setf (gallery-fps g) (/ (gallery-frame-count g) elapsed)
+              (gallery-frame-ms g) (/ 1000 (gallery-fps g))
+              (gallery-frame-count g) 0 (gallery-frame-start g) now)))))
 
-(defun controls-page ()
+(defun controls-page (g)
   (lui:label "Buttons, values, disabled controls, and shared state")
-  (setf *name* (lui:text-field :name *name*
-                               (lui:opt :width (grow))))
-  (setf *volume* (lui:slider :volume *volume*
-                             (lui:opt :width (grow))))
-  (lui:label (format nil "Volume: ~D%" (round (* 100 *volume*))))
-  (setf *enabled* (lui:checkbox :enabled *enabled* "Enabled"))
+  (setf (gallery-name g) (lui:text-field :name (gallery-name g)
+                                         (lui:opt :width (grow))))
+  (setf (gallery-volume g) (lui:slider :volume (gallery-volume g)
+                                       (lui:opt :width (grow))))
+  (lui:label (format nil "Volume: ~D%" (round (* 100 (gallery-volume g)))))
+  (setf (gallery-enabled g) (lui:checkbox :enabled (gallery-enabled g)
+                                          "Enabled"))
   (row (:gap (units 1))
-    (when (lui:button :hello "Say hello") (incf *count*))
-    (when (lui:button :reset "Reset") (setf *count* 0))
+    (when (lui:button :hello "Say hello") (incf (gallery-count g)))
+    (when (lui:button :reset "Reset") (setf (gallery-count g) 0))
     (lui:button :disabled "Disabled"
                 (lui:opt :disabled-p t)))
-  (lui:label (format nil "Hello ~A (~D)" *name* *count*))
+  (lui:label (format nil "Hello ~A (~D)" (gallery-name g) (gallery-count g)))
   (lui:label "Hover, press, and use Tab to compare interaction states."))
 
-(defun editing-page ()
+(defun editing-page (g)
   (lui:label "Readline-style editing")
-  (setf *editor* (lui:text-field :editor *editor*
-                                 (lui:opt :width (grow))))
-  (lui:label (format nil "~D characters" (length *editor*)))
+  (setf (gallery-editor g) (lui:text-field :editor (gallery-editor g)
+                                           (lui:opt :width (grow))))
+  (lui:label (format nil "~D characters" (length (gallery-editor g))))
   (when (lui:button :restore-text "Restore sample")
-    (setf *editor* "The quick brown fox jumps over the lazy dog."))
+    (setf (gallery-editor g) "The quick brown fox jumps over the lazy dog."))
   (dolist (line '("Ctrl-A / Ctrl-E: beginning / end of line"
                   "Ctrl-B / Ctrl-F: backward / forward character"
                   "Alt-B / Alt-F: backward / forward word"
@@ -94,118 +97,128 @@
                   "Shift + arrows: select; Ctrl-Shift-A: select all"))
     (lui:label line)))
 
-(defun layout-page ()
+(defun layout-page (g)
   (lui:label "Resize the window: percentages and grow share the space.")
-  (setf *split* (lui:slider :split *split*
-                            (lui:opt :minimum 0.15 :maximum 0.7
-                                     :step 0.05 :width (grow))))
+  (setf (gallery-split g) (lui:slider :split (gallery-split g)
+                                      (lui:opt :minimum 0.15 :maximum 0.7
+                                               :step 0.05 :width (grow))))
   (row (:id :split-panels :width (grow) :gap (units 1)
             :height (fit (units 8)))
-    (lui:panel (lui:opt :id :split-panel :width (percent *split*) :height (grow)
+    (lui:panel (lui:opt :id :split-panel :width (percent (gallery-split g))
+                        :height (grow)
                         :padding (units 1))
-      (lui:label (format nil "~D% width" (round (* 100 *split*))))
+      (lui:label (format nil "~D% width" (round (* 100 (gallery-split g)))))
       (lui:label "Text wraps as this panel becomes narrower."))
     (lui:panel (lui:opt :width (grow) :height (grow) :padding (units 1))
       (lui:label "Grow")
       (lui:label "I take the remaining width, after gaps.")))
-  (when (lui:button :align (format nil "Alignment: ~A" *alignment*))
-    (setf *alignment* (case *alignment*
-                        (:start :center) (:center :end) (otherwise :start))))
+  (when (lui:button :align (format nil "Alignment: ~A" (gallery-alignment g)))
+    (setf (gallery-alignment g) (case (gallery-alignment g)
+                                  (:start :center) (:center :end)
+                                  (otherwise :start))))
   (lui:panel (lui:opt :width (grow) :height (fixed (units 6)) :direction :row
-                      :align *alignment* :cross-align :center :padding (units 1)
+                      :align (gallery-alignment g) :cross-align :center
+                      :padding (units 1)
                       :gap (units 1))
     (lui:button :fit-a "Fit")
     (lui:button :fit-b "Content-sized")
     (lui:button :fit-c "Items")))
 
-(defun scroll-page ()
-  (lui:label "Filter, scroll, and select an item. Values survive page changes.")
-  (setf *filter* (lui:text-field :filter *filter*
-                                 (lui:opt :width (grow))))
-  (lui:label (format nil "Selected item: ~D" *selection*))
+(defun scroll-page (g)
+  (lui:label
+   "Filter, scroll, and select an item. Values survive page changes.")
+  (setf (gallery-filter g) (lui:text-field :filter (gallery-filter g)
+                                           (lui:opt :width (grow))))
+  (lui:label (format nil "Selected item: ~D" (gallery-selection g)))
   (lui:panel (lui:opt :id :results :width (grow) :height (grow) :scroll-p t
                       :padding (units 1) :gap (units 1))
-    (loop :for i :in (filtered-items)
+    (loop :for i :in (filtered-items g)
           :for title := (aref *items* (1- i))
+          :for alpha := (if (= i (gallery-selection g)) 0.85 0.3)
           :do (when (lui:button (list :item i) title
                                 (lui:opt :width (grow)
-                                         :opacity (if (= i *selection*) 0.85 0.3)))
-                (setf *selection* i)))))
+                                         :opacity alpha))
+                (setf (gallery-selection g) i)))))
 
-(defun styles-content ()
+(defun styles-content (g)
   (lui:label "Customize the active collection without mixing toolkits.")
-  (when (and (eq *toolkit* :glass) (/= *unit* 1))
-    (lui:label (format nil "Opacity: ~D%" (round (* 100 *opacity*))))
-    (setf *opacity* (lui:slider :opacity *opacity*
-                                (lui:opt :width (grow))))
+  (when (and (eq (gallery-toolkit g) :glass)
+             (not (context-text-mode-p *context*)))
+    (lui:label (format nil "Opacity: ~D%"
+                       (round (* 100 (gallery-opacity g)))))
+    (setf (gallery-opacity g) (lui:slider :opacity (gallery-opacity g)
+                                          (lui:opt :width (grow))))
     (lui:label (format nil "Frost: ~D; corner radius: ~D"
-                       (round *frost*) (round *radius*)))
-    (setf *frost* (lui:slider :frost *frost*
-                              (lui:opt :maximum 24 :step 1
-                                       :width (grow)))
-          *radius* (lui:slider :radius *radius*
-                               (lui:opt :maximum 24 :step 1
-                                        :width (grow)))))
-  (row (:width (grow) :gap (units 1))
-    (loop :for color :in '("#335d91" "#81456d" "#286e63")
-          :for title :in '("Ocean" "Orchid" "Forest")
-          :do (if (eq *toolkit* :glass)
-                  (when (lui:button (list :sample title) title
-                                    (lui:opt :width (grow) :background color
-                                             :foreground "#ffffff" :opacity *opacity*
-                                             :frost *frost* :radius *radius*))
-                    (setf *preview* title *preview-color* color))
-                  (lui:panel (lui:opt :width (grow) :padding (units 2) :gap (units 1)
-                                      :background color :opacity *opacity*
-                                      :frost *frost* :radius *radius*)
-                    (lui:label title
-                               (lui:opt :foreground "#ffffff"))
-                    (when (lui:button (list :sample title) "Preview"
-                                      (lui:opt :background color :foreground "#ffffff"
-                                               :opacity *opacity* :frost *frost*
-                                               :radius *radius*))
-                      (setf *preview* title *preview-color* color))))))
-  (flet ((preview ()
-           (lui:panel (lui:opt :id :style-preview :width (grow)
-                               :padding (units 1) :gap (units 1)
-                               :background *preview-color* :opacity *opacity*
-                               :frost *frost* :radius *radius*)
-             (lui:label (format nil "Preview: ~A" *preview*)
-                        (lui:opt :foreground "#ffffff"))
-             (when (lui:button :preview-action "Try this style"
-                               (lui:opt :background *preview-color* :foreground "#ffffff"
-                                        :opacity *opacity* :radius *radius* :frost *frost*))
-               (incf *preview-count*))
-             (lui:label (format nil "Activated ~D times" *preview-count*)
-                        (lui:opt :foreground "#ffffff")))))
-    (if (and (eq *toolkit* :glass) (/= *unit* 1))
-        (progn
-          (lui:label "Frost softens stripes; lower opacity reveals more backdrop.")
-          (column (:width (grow) :height (fixed (units 14)) :clip-p t)
-            ;; Opaque detail makes backdrop blur and tint independently visible.
-            (row (:width (grow) :height (grow))
-              (dotimes (stripe 48)
-                (lui:panel (lui:opt :width (grow) :height (grow) :opacity 1
-                                    :radius 0 :frost 0
-                                    :background (if (evenp stripe) "#17304d" "#dbe7ed")))))
-            (column (:floating-p t :offset-x (units 1) :offset-y (units 1)
-                                 :width (percent 0.95))
-              (preview))))
-        (preview))))
+                       (round (gallery-frost g)) (round (gallery-radius g))))
+    (setf (gallery-frost g) (lui:slider :frost (gallery-frost g)
+                                        (lui:opt :maximum 24 :step 1
+                                                 :width (grow)))
+          (gallery-radius g) (lui:slider :radius (gallery-radius g)
+                                         (lui:opt :maximum 24 :step 1
+                                                  :width (grow)))))
+  (let* ((terminal (context-text-mode-p *context*))
+         (opacity (if terminal 1 (gallery-opacity g)))
+         (frost (if terminal 0 (gallery-frost g)))
+         (radius (if terminal 0 (gallery-radius g))))
+    (flet ((sample (id title color)
+             (lui:button id title
+                         (lui:opt :width (grow) :background color
+                                  :foreground "#ffffff" :opacity opacity
+                                  :radius radius :frost frost))))
+      (row (:width (grow) :gap (units 1))
+        (loop :for color :in '("#335d91" "#81456d" "#286e63")
+              :for title :in '("Ocean" "Orchid" "Forest")
+              :for id := (list :sample title)
+              :when
+              (if (eq (gallery-toolkit g) :glass)
+                  (sample id title color)
+                  (lui:panel (lui:opt :width (grow) :padding (units 2)
+                                      :gap (units 1) :background color)
+                    (lui:label title (lui:opt :foreground "#ffffff"))
+                    (sample id "Preview" color)))
+                :do (setf (gallery-preview g) title
+                          (gallery-preview-color g) color)))
+      (flet ((preview ()
+               (let ((color (gallery-preview-color g)))
+                 (lui:panel (lui:opt :id :style-preview :width (grow)
+                                     :padding (units 1) :gap (units 1)
+                                     :background color :opacity opacity
+                                     :frost frost :radius radius)
+                   (lui:label (format nil "Preview: ~A" (gallery-preview g))
+                              (lui:opt :foreground "#ffffff"))
+                   (when (sample :preview-action "Try this style" color)
+                     (incf (gallery-preview-count g)))
+                   (lui:label (format nil "Activated ~D times"
+                                      (gallery-preview-count g))
+                              (lui:opt :foreground "#ffffff"))))))
+        (if (or terminal (not (eq (gallery-toolkit g) :glass)))
+            (preview)
+            (progn
+              (lui:label
+               "Frost softens stripes; lower opacity reveals more backdrop.")
+              (column (:width (grow) :height (fixed (units 14)) :clip-p t)
+                (row (:width (grow) :height (grow))
+                  (dotimes (i 48)
+                    (let ((color (if (evenp i) "#17304d" "#dbe7ed")))
+                      (lui:panel (lui:opt :width (grow) :height (grow)
+                                          :opacity 1 :radius 0 :frost 0
+                                          :background color)))))
+                (column (:floating-p t :offset-x (units 1) :offset-y (units 1)
+                         :width (percent 0.95))
+                  (preview)))))))))
 
-(defun styles-page ()
-  (if (= *unit* 1)
-      (let ((*opacity* 1) (*frost* 0) (*radius* 0))
-        (lui:label "Terminal preview uses solid colors; no blur or transparency.")
-        (styles-content))
-      (styles-content)))
+(defun styles-page (g)
+  (when (context-text-mode-p *context*)
+    (lui:label
+     "Terminal preview uses solid colors; no blur or transparency."))
+  (styles-content g))
 
-(defun modal-p ()
-  (lui.example.seven:modal-p lui.example.seven:*state*))
+(defun modal-p (g)
+  (lui.example.seven:modal-p (gallery-seven g)))
 
-(defun draw-gallery ()
+(defun draw-gallery (g)
   (lui:panel (lui:opt :id :window :width (grow) :height (grow)
-                      :background (ecase *toolkit*
+                      :background (ecase (gallery-toolkit g)
                                     (:glass "#202430") (:motif "#b8b8b8")
                                     (:garnet "#ffffff"))
                       :opacity 1 :radius 0 :frost 0
@@ -214,42 +227,47 @@
       (lui:label "LUI feature gallery"
                  (lui:opt :width (grow)))
       (lui:button :toolkit
-                  (ecase *toolkit*
+                  (ecase (gallery-toolkit g)
                     (:glass "Glass") (:motif "Motif") (:garnet "Garnet"))
-                  (lui:opt :disabled-p (modal-p)))
+                  (lui:opt :disabled-p (modal-p g)))
       (when (lui:button :debugger-toggle "Debug"
-                        (lui:opt :disabled-p (modal-p)))
-        (setf (state-open-p *debug-state*)
-              (not (state-open-p *debug-state*)))
-        (request-frame)))
-    (lui:label (if (= *unit* 1) "Terminal: event-driven rendering"
+                        (lui:opt :disabled-p (modal-p g)))
+        (lui.debug:set-enabled (not (lui.debug:enabled-p)))))
+    (lui:label (if (context-text-mode-p *context*)
+                   "Terminal: event-driven rendering"
                    (format nil "~,1F FPS · ~,2F ms/frame"
-                           *fps* *frame-ms*)))
+                           (gallery-fps g) (gallery-frame-ms g))))
     (row (:width (grow) :gap (units 1))
       (dolist (page *pages*)
         (when (lui:tab (list :page (first page)) (second page)
-                       (lui:opt :selected-p (eq *page* (first page))
-                                :disabled-p (modal-p)))
-          (setf *page* (first page)))))
-    (lui:panel (lui:opt :id (list :body *page*) :width (grow) :height (grow)
-                        :scroll-p (not (member *page* '(:scroll :seven)))
+                       (lui:opt :selected-p (eq (gallery-page g) (first page))
+                                :disabled-p (modal-p g)))
+          (setf (gallery-page g) (first page)))))
+    (lui:panel (lui:opt :id (list :body (gallery-page g)) :width (grow)
+                        :height (grow)
+                        :scroll-p (not (member (gallery-page g)
+                                              '(:scroll :seven)))
                         :padding (units 1) :gap (units 1))
-      (case *page*
-        (:controls (controls-page))
-        (:editing (editing-page))
-        (:layout (layout-page))
-        (:scroll (scroll-page))
-        (:styles (styles-page))
+      (case (gallery-page g)
+        (:controls (controls-page g))
+        (:editing (editing-page g))
+        (:layout (layout-page g))
+        (:scroll (scroll-page g))
+        (:styles (styles-page g))
         (:seven
-         (lui.example.seven:draw-content lui.example.seven:*state*))))))
+         (lui.example.seven:draw-content (gallery-seven g)))))))
 
-(defun draw ()
-  (update-fps)
-  (when (and (not (modal-p)) (activated-p :toolkit))
-    (setf *toolkit* (or (second (member *toolkit* *toolkits*))
-                        (first *toolkits*))))
-  (lui:with-toolkit (*toolkit*)
-    (lui.debug:draw #'draw-gallery :state *debug-state* :toolkit *toolkit*)))
+(defun draw (g)
+  (update-fps g)
+  (when (and (not (modal-p g)) (activated-p :toolkit))
+    (setf (gallery-toolkit g) (or (second (member (gallery-toolkit g)
+                                                  *toolkits*))
+                                  (first *toolkits*))))
+  (lui:with-toolkit ((gallery-toolkit g))
+    (draw-gallery g)))
+
+(defun make-demo (&optional (gallery (make-gallery)))
+  (lambda () (draw gallery)))
 
 (defun main ()
-  (run #'draw :title "LUI feature gallery"))
+  (run (make-demo) :title "LUI feature gallery"))

@@ -1,6 +1,7 @@
 (defpackage #:lui.debug
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets)
-  (:export #:wrap #:draw #:state #:make-state #:*state* #:state-open-p
+  (:export #:set-enabled #:enabled-p #:wrap #:draw #:state #:make-state #:*state*
+           #:state-open-p
            #:state-selected #:state-width))
 (in-package #:lui.debug)
 
@@ -105,9 +106,11 @@
     (when (widget-p widget)
       (lui:label (format nil "~A / ~A; ~A ~A ~A"
                          (widget-kind widget) (widget-style widget)
-                         (widget-font-family widget) (widget-font-weight widget)
+                         (widget-font-family widget)
+                         (widget-font-weight widget)
                          (widget-font-size widget)))
-      (lui:label (format nil "Disabled ~A; focus ~A" (widget-disabled-p widget)
+      (lui:label (format nil "Disabled ~A; focus ~A"
+                         (widget-disabled-p widget)
                          (equal (element-id node) (context-focus *context*))))
       (lui:label (preview (widget-text widget))))))
 
@@ -126,14 +129,13 @@
                       :scroll-p t :padding (units 1) :opacity 1
                       :radius 0 :frost 0)
     (let* ((rows (state-rows state))
-           (step (units (if (= *unit* 1) 1 3)))
+           (step (units (if (context-text-mode-p *context*) 1 3)))
            (viewport (previous-box (id :tree)))
            (height (if viewport (box-height viewport)
                        (/ (context-height *context*) 2)))
            (offset (nth-value 1 (scroll-position (id :tree))))
-           (first (max 0 (floor (min offset
-                                     (max 0 (- (* step (length rows)) height)))
-                                step)))
+           (limit (max 0 (- (* step (length rows)) height)))
+           (first (max 0 (floor (min offset limit) step)))
            (end (min (length rows) (+ first (ceiling height step) 1))))
       (column (:width (grow) :height (fixed (* step (length rows))))
         (loop :for index :from first :below end
@@ -241,10 +243,7 @@
             (lui:label
              "Select a row for details. Offscreen/clipped are informational; duplicate IDs remain errors."))))))
 
-(fn draw ((function function) &key ((state state) *state*) (toolkit :glass))
-  ;; App tab navigation may consume CONTEXT-PREVIOUS-ROOT during declaration.
-  (let ((previous (context-previous-root *context*)))
-    (funcall function)
+(defun draw-inspector (state toolkit previous)
     (when (and (state-open-p state) (null previous)) (request-frame))
     (when (and (state-open-p state) previous)
       (snapshot state previous)
@@ -260,7 +259,36 @@
               (highlight (element-clip node) :clip 0 "#00c0ff")))
           (let ((width (inspector-width state)))
             (inspector state width)
-            (resize-handle width)))))))
+            (resize-handle width))))))
+
+(defun enabled-p (&optional (context *context*))
+  (let ((state (context-overlay-state context)))
+    (and state (state-open-p state))))
+
+(defun set-enabled (enabled &key (context *context*) state toolkit)
+  "Enable the context's inspector. Call on a toggle, not on every draw."
+  (let ((state (or state (context-overlay-state context) (make-state))))
+    (setf (state-open-p state) enabled
+          (context-overlay-state context) state
+          (context-overlay context)
+          (when enabled
+            (lambda (previous)
+              (let* ((children (element-children (context-root context)))
+                     (first (when (plusp (length children))
+                              (element-content (aref children 0))))
+                     (style (or toolkit (and (widget-p first)
+                                             (widget-style first))
+                                (current-toolkit))))
+                (draw-inspector state style previous)
+                (unless (state-open-p state)
+                  (setf (context-overlay context) nil))))))
+    (when (boundp '*context*)
+      (when (eq context *context*) (request-frame)))
+    enabled))
+
+(fn draw ((function function) &key ((state state) *state*) (toolkit :glass))
+  (funcall function)
+  (draw-inspector state toolkit (context-previous-root *context*)))
 
 (fn (wrap function) ((function function) &key ((state state) *state*)
                                            (toolkit :glass))

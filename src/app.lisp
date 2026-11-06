@@ -2,7 +2,8 @@
   (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
   (:export #:run #:register-backend #:available-backends #:units #:*backend*
            #:*unit* #:with-toolkit #:current-toolkit #:toolkit-defaults
-           #:register-toolkit #:toolkit-surface #:map-toolkit-web-styles
+           #:register-toolkit #:toolkit-revision #:toolkit-surface
+           #:control #:map-toolkit-web-styles
            #:toolkit-web-style #:define-collection #:opt #:panel #:label
            #:button #:tab #:checkbox #:slider
            #:text-field #:cell #:list-item #:gauge #:canvas))
@@ -47,6 +48,9 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 (defstruct collection parent defaults controls web-style)
 (defvar *collections* (make-hash-table :test 'eq))
 
+(defvar *toolkit-revision* 0)
+(defun toolkit-revision () *toolkit-revision*)
+
 (defun collection (name)
   (or (gethash name *collections*) (error "Unknown toolkit ~S." name)))
 
@@ -61,6 +65,7 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
           :then (collection-parent (collection ancestor))
         :while ancestor :when (eq ancestor name)
           :do (error "Circular toolkit inheritance at ~S." name))
+  (incf *toolkit-revision*)
   (register-surface name surface)
   (setf (gethash name *collections*)
         (make-collection :parent parent :defaults defaults
@@ -79,6 +84,7 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
   (collection-web-style (collection name)))
 
 (defun (setf toolkit-web-style) (callback name)
+  (incf *toolkit-revision*)
   (setf (collection-web-style (collection name)) callback))
 
 (defun map-toolkit-web-styles (name function)
@@ -91,6 +97,12 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
   (loop :for name := *collection* :then (collection-parent entry)
         :while name :for entry := (collection name)
         :thereis (cdr (assoc kind (collection-controls entry)))))
+
+(defun control (kind &rest arguments)
+  "Invoke a user-defined control from the current toolkit or its ancestors."
+  (apply (or (override kind)
+             (error "No ~S control in toolkit ~S." kind *collection*))
+         arguments))
 
 (defmacro with-toolkit ((designator) &body body)
   "Draw BODY with the named collection; nested bindings restore on exit."
@@ -109,7 +121,8 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
                    clip-p scroll-p floating-p offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
                    radius frost minimum maximum step font-size font-family
-                   font-weight opacity accent disabled-p painter web-style terminal-label
+                   font-weight opacity accent disabled-p painter web-style
+                   terminal-label
                    selected-p text))
   `(list ,@forms))
 
