@@ -18,9 +18,9 @@ work.
 - Width-dependent text wrapping: horizontal sizing precedes measurement of height
   and vertical positioning. Percentage sizes exclude padding and inter-child gaps.
   Fixed sizes and minimum bounds may overflow instead of silently shrinking.
-- Glass, Motif, and Garnet collections with labels, buttons, checkboxes, sliders, text
+- Glass, Motif, and Garnet toolkits with labels, buttons, checkboxes, sliders, text
   fields, tabs, single-selection rows, progress gauges, circle canvases, and
-  styled layout panels. Collections share interaction logic.
+  styled layout panels. Toolkits share interaction logic.
 - Stable IDs, pointer capture, release activation, hover feedback, and keyboard
   navigation. Button clicks preserve existing keyboard focus; focus rings appear
   for keyboard navigation. Text fields acquire editing focus on click.
@@ -52,7 +52,7 @@ function. The library keeps focus, capture, and caret state between frames.
 
 Use the optional final `lui:opt` form for widget customization. Its keyword
 lambda list is visible to SLIME; layout keys such as `:gap` apply to panels,
-whereas `:step` configures a slider. To change collection defaults, bind
+whereas `:step` configures a slider. To change toolkit defaults, bind
 `lui.glass:*defaults*`, `lui.motif:*defaults*`, or `lui.garnet:*defaults*` for a
 group. Options include foreground/background, radius, frost, opacity, accent,
 font size, `:font-family` (`:sans-serif` or `:monospace`), and `:font-weight`
@@ -60,7 +60,7 @@ font size, `:font-family` (`:sans-serif` or `:monospace`), and `:font-weight`
 widgets also support a custom painter callback.
 
 User widgets can be ordinary functions composed from these controls. For
-example, this adds a selectable badge to a collection and inherits the rest
+example, this adds a selectable badge to a toolkit and inherits the rest
 of its controls from Motif:
 
 ```lisp
@@ -77,7 +77,7 @@ of its controls from Motif:
     (publish-document)))
 ```
 
-Use `badge` directly when all collections share that definition. Use
+Use `badge` directly when all toolkits share that definition. Use
 `control` for toolkit-specific implementations of a new control; registration
 can also replace standard controls such as `:button`. Overrides of a standard
 control receive its positional arguments plus the options list (possibly NIL).
@@ -89,7 +89,7 @@ after inherited styling; native and terminal controls retain their input
 semantics. These hooks do not require a new backend.
 
 There is one [demo gallery](examples/demo.lisp), with Controls, Editing, Layout,
-Scroll, Styles, and 7GUIs pages. Its Glass/Motif/Garnet selector changes the collection for
+Scroll, Styles, and 7GUIs pages. Its Glass/Motif/Garnet selector changes the toolkit for
 the whole gallery, so each page uses one toolkit consistently. Style Preview
 buttons select an interactive sample. Motif uses an opaque matching background,
 beveled checkboxes, and visually distinct disabled buttons. Garnet uses bold
@@ -136,7 +136,7 @@ disk. Both the JSCL runtime and the application are embedded. Make reuses the
 generated files until their sources, build scripts, or runtime change.
 
 The reference covers application controls, layout and interaction helpers,
-collection customization, inspection, browser embedding, and native painter/font
+toolkit customization, inspection, browser embedding, and native painter/font
 extensions. Its explicit symbol allowlist omits backend plumbing, raw context
 and layout-tree management, wire protocols, compiler helpers, and adapter
 runners; use `lui:run` to select a backend. Exports used only between implementation
@@ -201,7 +201,7 @@ SBCL runs also print separate `ALLOC` rows per case and for `all/all`:
 `bytes_total`, `bytes_mean`, and `bytes_p95` measure Lisp bytes allocated per
 measured frame; `gc_cpu_ms` reports GC CPU time inside those frame intervals.
 `gc_count=unsupported` is explicit: SBCL's public asynchronous GC hooks do not
-provide an exact per-frame collection count. This applies to Cocoa when
+provide an exact per-frame garbage collection count. This applies to Cocoa when
 benchmarking with SBCL on macOS. Existing `RESULT` timing rows retain their format.
 
 The counters are process-wide, using SBCL's documented `get-bytes-consed`
@@ -395,7 +395,7 @@ physical glass model.
 
 ## Local performance evidence
 
-A November 5 full run covered all 36 collection/page/task combinations with
+A November 5 full run covered all 36 toolkit/page/task combinations with
 720 measured frames and 144 warmup frames per backend. Core layout/terminal
 rendering averaged 0.266 ms; offscreen GL with `glFinish` averaged 2.569 ms
 (389 FPS); the paced Wayland window averaged 6.029 ms (166 FPS, p95 5.946 ms).
@@ -456,11 +456,11 @@ new `make benchmark` runs also record the current cloc source report.
 
 ## Layout debugger
 
-The gallery's **Show debugger** button opens a Clay-style inspector in the current
-widget collection. Expand or collapse the element tree, hover a row to highlight
+The gallery's **Show debugger** button opens a Clay-style debugger in the current
+widget toolkit. Expand or collapse the element tree, hover a row to highlight
 its bounds and clipping rectangle, and select it for sizing, alignment, spacing,
 scrolling, and widget details. Tree rows are virtualized. The highlight preserves
-pointer input and terminal text; the inspector is excluded from its own tree.
+pointer input and terminal text; the debugger is excluded from its own tree.
 
 Select a tree row to inspect its properties. Drag the pane’s top edge up or
 down to resize it. With the divider focused, use Up and Down to adjust the
@@ -472,26 +472,26 @@ ancestors. Compare these with the widget’s width and height rules to diagnose
 truncated text or a control that grows unexpectedly.
 
 The debugger attaches to the current frame context. A menu item or key handler
-can toggle it once; subsequent frames draw the inspector automatically:
+can toggle it once; subsequent frames draw the debugger automatically:
 
 ```lisp
 (asdf:load-system "lui/debug")
-(when (lui:button :inspect "Inspect")
-  (lui.debug:set-enabled (not (lui.debug:enabled-p))))
+(when (lui:button :debug "Show debugger")
+  (lui.debug:set-enabled t))
 ```
 
-Drag the inspector's left edge to resize its sidebar; the width persists.
+Drag the debugger's left edge to resize its sidebar; the width persists.
 Focus the separator and use Left/Right or Home/End to resize from the keyboard.
 `lui.debug:state-width` can also set its optional width in LUI spacing units.
-The terminal tree uses one dense line per row, and floating inspector panes
+The terminal tree uses one dense line per row, and floating debugger panes
 cover the underlying borders.
 
-The inspector reads the previous completed frame. Stable IDs preserve selection;
+The debugger reads the previous completed frame. Stable IDs preserve selection;
 anonymous elements use paths below the closest ID, so reordered identical
 anonymous siblings have positional identity. Removed selections are cleared.
 Clipping/offscreen badges describe geometry, not errors. Duplicate IDs still
 raise the core layout error and cannot be inspected as a completed frame.
-Closing the inspector stops tree collection and formatting.
+Closing the debugger stops tree collection and formatting.
 
 ## Frame contract
 

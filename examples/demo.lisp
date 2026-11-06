@@ -141,7 +141,7 @@
                 (setf (gallery-selection g) i)))))
 
 (defun styles-content (g)
-  (lui:label "Customize the active collection without mixing toolkits.")
+  (lui:label "Customize the active toolkit.")
   (when (and (eq (gallery-toolkit g) :glass)
              (not (context-text-mode-p *context*)))
     (lui:label (format nil "Opacity: ~D%"

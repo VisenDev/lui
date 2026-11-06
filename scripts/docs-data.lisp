@@ -10,7 +10,8 @@
   '(("lui" "RUN" "REGISTER-BACKEND" "AVAILABLE-BACKENDS" "UNITS" "*BACKEND*"
      "*UNIT*" "WITH-TOOLKIT" "CURRENT-TOOLKIT" "TOOLKIT-DEFAULTS"
      "REGISTER-TOOLKIT" "TOOLKIT-SURFACE" "CONTROL" "TOOLKIT-WEB-STYLE"
-     "DEFINE-COLLECTION" "OPT" "PANEL" "LABEL" "BUTTON" "TAB" "CHECKBOX"
+     "DEFINE-TOOLKIT" "DEFINE-COLLECTION" "OPT" "PANEL" "LABEL" "BUTTON"
+     "TAB" "CHECKBOX"
      "SLIDER" "TEXT-FIELD" "CELL" "LIST-ITEM" "GAUGE" "CANVAS")
     ("lui.layout" "SIZING" "FIT" "GROW" "FIXED" "PERCENT" "BOX" "MAKE-BOX"
      "BOX-X" "BOX-Y" "BOX-WIDTH" "BOX-HEIGHT" "ELEMENT-BOX")
@@ -287,9 +288,10 @@ are read for resolution; only explicitly selected exports enter the reference."
                                 (when entry
                                   (setf (getf entry :documentation)
                                         value)))))
-                 ((string= head "DEFINE-COLLECTION")
+                 ((member head '("DEFINE-TOOLKIT" "DEFINE-COLLECTION")
+                          :test #'string=)
                   (record (fourth form) :macro '(options &body body)
-                          "Draw a panel in this collection.")
+                          "Draw a panel in this toolkit.")
                   (loop :for name :in (cddddr form)
                         :for args :in '((text) (id text) (id text)
                                        (id value text) (id value) (id value)

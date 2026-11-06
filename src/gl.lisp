@@ -148,7 +148,7 @@ void main() {
   ;; Submit them directly instead of copying thousands of points per frame.
   (when (nthcdr 8 contours)
     (return-from gl-shape (gl-polygons gpu contours color alpha)))
-  ;; Cache the shape, not every screen position of a cell or inspector row.
+  ;; Cache the shape, not every screen position of a cell or debugger row.
   (let ((origin (first (find-if #'consp contours))))
     (when origin
       (let* ((x (car origin)) (y (cdr origin))

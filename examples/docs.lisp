@@ -19,11 +19,11 @@
      "For portable layout, widgets, and plain terminal output, load lui/core. It has no external dependencies. To load a single backend, use its system, such as lui/x11 or lui/wayland. The browser build uses JSCL. Native graphical backends use CFFI, zpb-ttf, and platform libraries. The raw terminal adds CFFI; plain terminal output remains dependency-free."
      "Use make demo for the gallery, make docs for this browser, and make test for the detected platform. Backend availability depends on which systems are loaded; an explicit :backend argument selects one.")
     (:debug "Debugger"
-     "Show debugger opens this window's layout inspector. Close dismisses it. Each window owns its inspector state."
-     "The tree shows the previous completed application frame. Click a row for details; - / + collapses or expands containers. Tree and details scroll independently. Inspector controls are excluded from their own tree."
+     "Show debugger opens this window's layout debugger. Close dismisses it. Each window owns its debugger state."
+     "The tree shows the previous completed application frame. Click a row for details; - / + collapses or expands containers. Tree and details scroll independently. Debugger controls are excluded from their own tree."
      "Hover a tree row to outline bounds in orange and clipping in cyan. Highlights pass input through. Offscreen and clipped badges describe visibility, rather than errors."
      "Selecting a tree row gives its properties more height. Drag the top edge of the properties pane up or down to resize it. Drag it to the bottom, click ×, or click the selected row again to close the pane. With the divider focused, Up and Down adjust its height, Home enlarges it, and End closes it. Read the property names on the left and their current values on the right. Compare Bounds with Clip to see how much of a widget is visible, or compare Width and Height with Bounds to see the result of its sizing rules."
-     "Drag the left edge to resize the inspector. From the keyboard, Tab to its rail and use Left/Right to adjust the width or Home/End to choose its minimum or maximum."
+     "Drag the left edge to resize the debugger. From the keyboard, Tab to its rail and use Left/Right to adjust the width or Home/End to choose its minimum or maximum."
      "(asdf:load-system \"lui/debug\")
 ;; Inside an ordinary draw callback:
 (when (lui:button :debug \"Show debugger\")
@@ -48,7 +48,7 @@
                     (lui:opt :minimum 0 :maximum 1)))
   (lui:button :save \"Save\"
               (lui:opt :disabled-p (not enabled))))"
-     "Pass optional styling/layout settings in one explicit lui:opt form. An omitted option inherits the collection default; an explicit NIL remains an explicit value. Common settings include :width, :height, :padding, :foreground, :background, :font-size, and :disabled-p."
+     "Pass optional styling/layout settings in one explicit lui:opt form. An omitted option inherits the toolkit default; an explicit NIL remains an explicit value. Common settings include :width, :height, :padding, :foreground, :background, :font-size, and :disabled-p."
      "Canvas commands provide simple shared circles and rectangles. A custom :painter can draw through a native renderer, while :web-style customizes its DOM counterpart. Such extensions must supply equivalent behavior on each backend they support.")
     (:layout "Layout and scrolling"
      "Rows arrange children horizontally; columns arrange them vertically. A fixed size uses backend coordinates, grow distributes available space, and fit measures content. Use lui:units for spacing that adapts to terminal cells and graphical pixels."
@@ -65,18 +65,18 @@
      "Container :padding reserves an inner content area. :gap separates children; :align controls the main axis and :cross-align controls the other axis. :clip-p clips children to the padded content area. :scroll-p adds scrolling with the same clipping rules."
      "Scrolling panels show a scrollbar by default. :scrollbar-p NIL hides it; :scrollbar-width customizes the reserved track width in backend coordinates. The default is 12 graphical pixels or one terminal cell. Drag the thumb to move continuously, or click the track above/below it to page by a viewport. Wheel scrolling supports momentum; nested scrollers pass unused motion to an ancestor."
      "A scrolling viewport needs a bounded size. Nested scrollers pass wheel input to an ancestor when they cannot scroll further. lui.frame:previous-box exposes completed geometry; lui.frame:scroll-position and scroll-to support application-controlled navigation. Virtualize very large lists instead of declaring every row.")
-    (:toolkits "Collections"
+    (:toolkits "Toolkits"
      "Glass, Motif, and Garnet expose the same public controls. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. A window background remains opaque."
      "(lui:with-toolkit (:motif)
   (lui:button :ok \"OK\"))
 (lui:with-toolkit (:garnet)
-  (lui:label \"A different collection\"))"
-     "lui:with-toolkit chooses defaults and control implementations for a lexical drawing scope. Nested scopes restore the previous collection. lui:current-toolkit returns the current name; lui:toolkit-defaults exposes its inherited options."
-     "Custom collections register defaults, a parent, control overrides, and optional web styling. Use lui:define-collection or lui:register-toolkit; the API reference shows their exact signatures. Backend implementations may approximate optical effects differently: X11 and Wayland share the OpenGL renderer through GLX/EGL, while Cocoa uses whole-window material.")
+  (lui:label \"A different toolkit\"))"
+     "lui:with-toolkit chooses defaults and control implementations for a lexical drawing scope. Nested scopes restore the previous toolkit. lui:current-toolkit returns the current name; lui:toolkit-defaults exposes its inherited options."
+     "Custom toolkits register defaults, a parent, control overrides, and optional web styling. Use lui:define-toolkit or lui:register-toolkit; the API reference shows their exact signatures. Backend implementations may approximate optical effects differently: X11 and Wayland share the OpenGL renderer through GLX/EGL, while Cocoa uses whole-window material.")
     (:input "Input and inspection"
      "Tab and Shift-Tab move keyboard focus. Enter and Space activate a focused button, checkbox, or tab; Space inserts a space in an editor. Pointer clicks do not display a keyboard focus ring. Arrow keys navigate tabs."
      "Text editing uses Readline shortcuts: Ctrl-A/E move to the beginning/end, Ctrl-B/F move by character, Alt-B/F move by word, Ctrl-D deletes, Ctrl-H backspaces, Ctrl-K/U/W kill text, and Ctrl-Y yanks it. Ctrl-Shift-A or Command-A selects all where supported. Ctrl-D does not quit."
-     "Load the optional lui/debug system and call (lui.debug:set-enabled t) on a toggle action in your drawing function to attach an inspector to the current context. It displays the completed application tree, bounds, clipping, sizing, style, and text. Call (lui.debug:set-enabled nil) to close it. Inspector nodes are excluded from its own tree."
+     "Load the optional lui/debug system and call (lui.debug:set-enabled t) on a toggle action in your drawing function to attach a debugger to the current context. It displays the completed application tree, bounds, clipping, sizing, style, and text. Call (lui.debug:set-enabled nil) to close it. Debugger nodes are excluded from its own tree."
      "Clipboard and IME completeness vary by backend; full text shaping is not implemented. Native Wayland, X11, Windows, Cocoa, browser DOM, and raw terminal input use their own platform facilities. Check the project's current test matrix before assuming an untested platform configuration is verified.")
     (:backends "Backends and running"
      "Native: load lui/wayland or lui/x11 on Linux, lui/win32 on Windows, or lui/cocoa on macOS. X11 uses GLX and Wayland uses EGL with the shared OpenGL renderer; Windows and macOS use their native drawing/compositing APIs. Fonts are loaded from the system. OpenGL's offscreen system is useful for rendering tests and is not a separate interactive window backend."
@@ -397,7 +397,7 @@
          (lui:label (second guide)
                     (lui:opt :width (grow) :font-weight :bold))
          (when (eq (browser-guide state) :debug)
-           (when (lui:button :docs-open-debug "Open inspector"
+           (when (lui:button :docs-open-debug "Open debugger"
                              (lui:opt :disabled-p (lui.debug:enabled-p)))
              (lui.debug:set-enabled t)))
          (dolist (paragraph (cddr guide))

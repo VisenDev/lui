@@ -69,7 +69,7 @@
         (frame (make-event :kind :activate :id :toolkit)))
       (frame (make-event :kind :activate :id :debugger-toggle))
       (assert (lui.debug:enabled-p context))
-      ;; The named action shows the inspector; repeated activation keeps it open.
+      ;; The named action shows the debugger; repeated activation keeps it open.
       (frame (make-event :kind :activate :id :debugger-toggle))
       (assert (lui.debug:enabled-p context)))))
 
@@ -106,7 +106,7 @@
              (lambda (node)
                (let ((widget (element-content node)))
                  (when (widget-p widget)
-                   ;; A whole page, including navigation, uses one collection.
+                   ;; A whole page, including navigation, uses one toolkit.
                    (assert (eq style (widget-style widget)))
                    (when (and (eq (widget-kind widget) :tab)
                               (consp (element-id node))

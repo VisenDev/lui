@@ -52,7 +52,7 @@
              (page (task)
                (setf (state-task state) task)
                (frame)))
-      ;; Every task uses the selected collection, including controls and gauge.
+      ;; Every task uses the selected toolkit, including controls and gauge.
       (dolist (style '(:glass :motif :garnet))
         (setf (lui.example.seven::state-toolkit state) style)
         (dolist (task '(:counter :temperature :flight :timer :crud))

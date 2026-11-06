@@ -69,7 +69,7 @@
       (assert (widget-value (widget '(:docs-preview-item :two))))
       (activate :docs-preview-panel)
       (assert (has-label context "Panel actions: 1"))
-      ;; The same live declarations follow every selected collection.
+      ;; The same live declarations follow every selected toolkit.
       (dolist (style '(:motif :garnet :glass))
         (activate :docs-toolkit)
         (frame context draw)
@@ -194,7 +194,7 @@
     (assert (not (lui.debug:enabled-p context)))
     (frame context draw (make-event :kind :activate :id :docs-open-debug))
     (assert (lui.debug:enabled-p context))
-    (assert (node-with-id context '(:lui.debug :inspector nil)))
+    (assert (node-with-id context '(:lui.debug :debugger nil)))
     (frame other second)
     (assert (not (lui.debug:enabled-p other)))
     (frame context draw
