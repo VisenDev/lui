@@ -126,7 +126,7 @@
                 :components ((:file "win32")))))
 
 (defsystem "lui/cocoa"
-  :depends-on ("lui/native")
+  :depends-on ("lui/gl")
   :components ((:module "src"
                 :components ((:file "cocoa")))))
 

@@ -255,8 +255,9 @@
           signature))
     (error "Cannot install Cocoa method ~A." name)))
 
-(fn view-class ()
-  (let ((class (objc-class "LuiDrawingView")))
+(fn view-class (&optional accelerated)
+  (let* ((name (if accelerated "LuiOpenGLView" "LuiDrawingView"))
+         (class (objc-class name)))
     (when (null-object-p class)
       (setf class
             (require-object
@@ -264,7 +265,8 @@
               (sb-alien:extern-alien "objc_allocateClassPair"
                 (function object object sb-alien:c-string
                           sb-alien:unsigned-long))
-              (objc-class "NSView") "LuiDrawingView" 0)
+              (objc-class (if accelerated "NSOpenGLView" "NSView"))
+              name 0)
              "view class"))
       (let ((registered nil)
             (bool-signature (if (member :arm64 *features*) "B@:" "c@:")))
@@ -273,8 +275,9 @@
                (install-method class "isFlipped" 'flipped bool-signature)
                (install-method class "acceptsFirstResponder" 'flipped
                                bool-signature)
-               (install-method class "drawRect:" 'draw-view
-                               "v@:{CGRect={CGPoint=dd}{CGSize=dd}}")
+               (unless accelerated
+                 (install-method class "drawRect:" 'draw-view
+                                 "v@:{CGRect={CGPoint=dd}{CGSize=dd}}"))
                (sb-alien:alien-funcall
                 (sb-alien:extern-alien "objc_registerClassPair"
                   (function sb-alien:void object))
@@ -541,9 +544,34 @@
              (message sb-alien:void placeholder "release")))
       (message sb-alien:void pool "drain"))))
 
+(fn pixel-format ()
+  ;; Accelerated, double-buffered RGBA with a legacy compatibility profile.
+  (cffi:with-foreign-object (attrs :uint 7)
+    (loop :for value :in '(73 5 8 24 11 8 0) :for i :from 0
+          :do (setf (cffi:mem-aref attrs :uint i) value))
+    (message object
+             (message object (objc-class "NSOpenGLPixelFormat") "alloc")
+             "initWithAttributes:" object attrs)))
+
+(fn paint-gl-view (view gl gpu context)
+  (let* ((bounds (message rect view "bounds"))
+         (points (sb-alien:slot bounds 'size))
+         (backing (message rect view "convertRectToBacking:" rect bounds))
+         (pixels (sb-alien:slot backing 'size)))
+    (setf (lui.gl:gpu-logical-width gpu) (sb-alien:slot points 'width)
+          (lui.gl:gpu-logical-height gpu) (sb-alien:slot points 'height)
+          (lui.gl:gpu-width gpu) (round (sb-alien:slot pixels 'width))
+          (lui.gl:gpu-height gpu) (round (sb-alien:slot pixels 'height)))
+    (when (and (plusp (lui.gl:gpu-width gpu))
+               (plusp (lui.gl:gpu-height gpu)))
+      (message sb-alien:void gl "makeCurrentContext")
+      (lui.gl:begin-gpu-frame gpu)
+      (paint-frame (lui.gl:gpu-renderer gpu) context)
+      (message sb-alien:void gl "flushBuffer"))))
+
 (fn frame-delay ((started real) (now real)
                  &optional ((ticks real) internal-time-units-per-second))
-  (max 0 (- (/ 1d0 60) (/ (- now started) ticks))))
+  (max 0 (- (/ 1d0 240) (/ (- now started) ticks))))
 
 (fn run-cocoa-window ((draw function) &key title width height (interactive t))
   (with-cocoa-float-mode
@@ -552,6 +580,7 @@
                                    "alloc")
                           "init"))
            (application nil)
+           (format nil) (gl nil) (gpu nil)
            (font nil)
            (renderer nil)
            (context nil)
@@ -588,14 +617,23 @@
                ;; later view initialization fails and cleanup closes the window.
                (message sb-alien:void (cocoa-app-window *app*)
                         "setReleasedWhenClosed:" objc-bool 0)
-               (setf (cocoa-app-view *app*)
-                     (require-object
-                      (message object (message object (view-class) "alloc")
-                               "initWithFrame:" rect frame)
-                      "drawing view"))
+               (setf format (pixel-format))
+               (when (null-object-p format)
+                 (warn "No accelerated Cocoa pixel format; using AppKit."))
+               (let* ((fast (not (null-object-p format)))
+                      (view (message object (view-class fast) "alloc")))
+                 (setf (cocoa-app-view *app*)
+                       (require-object
+                        (if fast
+                            (message object view "initWithFrame:pixelFormat:"
+                                     rect frame object format)
+                            (message object view "initWithFrame:" rect frame))
+                        "drawing view"))
+                 (when fast
+                   (message sb-alien:void (cocoa-app-view *app*)
+                            "setWantsBestResolutionOpenGLSurface:"
+                            objc-bool 1)))
                (install-pointer-tracking (cocoa-app-view *app*) frame)
-               (message sb-alien:void (cocoa-app-view *app*)
-                        "setWantsLayer:" objc-bool 1)
                (message sb-alien:void (cocoa-app-window *app*)
                         "setContentView:" object (cocoa-app-view *app*)))
              (let ((window (cocoa-app-window *app*)))
@@ -611,6 +649,18 @@
              (message sb-alien:void application "finishLaunching")
              (message sb-alien:void application "activateIgnoringOtherApps:"
                       objc-bool 1)
+             (unless (null-object-p format)
+               (setf gl (require-object
+                         (message object (cocoa-app-view *app*)
+                                  "openGLContext")
+                         "OpenGL context"))
+               (message sb-alien:void gl "makeCurrentContext")
+               (cffi:with-foreign-object (interval :int)
+                 (setf (cffi:mem-ref interval :int) 0)
+                 (message sb-alien:void gl "setValues:forParameter:"
+                          object interval sb-alien:int 222))
+               (setf gpu (lui.gl:attach-gpu font 1 1)
+                     renderer (lui.gl:gpu-renderer gpu)))
              (loop :while (not (zerop
                                 (message objc-bool (cocoa-app-window *app*)
                                          "isVisible")))
@@ -640,9 +690,13 @@
                                            (cocoa-app-pointer-y *app*))
                             (message sb-alien:void application
                                      "updateWindows")
-                            (message sb-alien:void view "setNeedsDisplay:"
-                                     objc-bool 1)
-                            (message sb-alien:void view "displayIfNeeded")
+                            (if gpu
+                                (paint-gl-view view gl gpu context)
+                                (progn
+                                  (message sb-alien:void view
+                                           "setNeedsDisplay:" objc-bool 1)
+                                  (message sb-alien:void view
+                                           "displayIfNeeded")))
                             (when (cocoa-app-error *app*)
                               (error (cocoa-app-error *app*))))
                        (message sb-alien:void frame-pool "drain")))
@@ -651,6 +705,12 @@
                                (frame-delay
                                 started (get-internal-real-time))))
                          (when (plusp remaining) (sleep remaining)))))
+        (when gpu
+          (message sb-alien:void gl "makeCurrentContext")
+          (lui.gl:close-gpu gpu)
+          (message sb-alien:void (objc-class "NSOpenGLContext")
+                   "clearCurrentContext"))
+        (when format (message sb-alien:void format "release"))
         (when (cocoa-app-window *app*)
           (message sb-alien:void (cocoa-app-window *app*) "close")
           (message sb-alien:void (cocoa-app-window *app*) "release"))

@@ -295,9 +295,9 @@
 
 (fn test-frame-pacing ()
   (assert (< (abs (- (lui.cocoa::frame-delay 1000 1000 1000)
-                     (/ 1d0 60))) 1d-9))
-  (assert (< (abs (- (lui.cocoa::frame-delay 1000 1005 1000)
-                     (- (/ 1d0 60) 0.005d0))) 1d-9))
+                     (/ 1d0 240))) 1d-9))
+  (assert (< (abs (- (lui.cocoa::frame-delay 1000 1002 1000)
+                     (- (/ 1d0 240) 0.002d0))) 1d-9))
   (assert (zerop (lui.cocoa::frame-delay 1000 1050 1000)))
   (assert (zerop (lui.cocoa::frame-delay 1000 2000 1000))))
 

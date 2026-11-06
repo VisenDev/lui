@@ -173,6 +173,12 @@
          (elapsed (/ (reduce #'+ sorted) +timer-hz+))
          (ms (/ 1000.0d0 +timer-hz+)))
     (assert (plusp count) () "No samples for ~A/~A." toolkit page)
+    (when (string= *platform* "cocoa")
+      (format t "BUDGET toolkit=~(~A~) page=~(~A~) target_fps=170 missed=~D frames=~D~%"
+              toolkit page (count-if (lambda (ticks)
+                                       (> (* 170 ticks) +timer-hz+))
+                                     samples)
+              count))
     (format t "RESULT toolkit=~(~A~) page=~(~A~) frames=~D elapsed_s=~,6F fps=~A mean_ms=~,3F p50_ms=~,3F p95_ms=~,3F max_ms=~,3F~%"
             toolkit page count elapsed
             (if (plusp elapsed) (format nil "~,2F" (/ count elapsed))

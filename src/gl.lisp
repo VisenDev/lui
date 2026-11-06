@@ -8,6 +8,7 @@
 (cffi:define-foreign-library egl
   (:unix (:or "libEGL.so.1" "libEGL.so")))
 (cffi:define-foreign-library opengl
+  (:darwin (:framework "OpenGL"))
   (:unix (:or "libGL.so.1" "libGL.so")))
 (cffi:use-foreign-library opengl)
 
@@ -27,6 +28,8 @@
   (geometry-builds 0 :type integer)
   (program 0 :type integer)
   (texture 0 :type integer)
+  (texture-width 0 :type integer)
+  (texture-height 0 :type integer)
   (width 1 :type integer)
   (height 1 :type integer)
   (logical-width 1 :type real)
@@ -111,12 +114,14 @@ void main() {
            (gpu-geometry gpu))
   (clrhash (gpu-geometry gpu)))
 
-(fn gl-polygons ((gpu gpu) (contours list) (color string) (alpha real))
+(fn gl-color ((color string) (alpha real))
   (destructuring-bind (red green blue opacity)
       (color-components color alpha)
     (call-gl "glColor4f" :float (float red 1.0)
              :float (float green 1.0) :float (float blue 1.0)
-             :float (float opacity 1.0) :void))
+             :float (float opacity 1.0) :void)))
+
+(fn gl-geometry ((gpu gpu) (contours list))
   (let ((display-list (gethash contours (gpu-geometry gpu))))
     (unless display-list
       ;; Keep resize/animation variants bounded; glyphs use font-unit contours.
@@ -143,6 +148,10 @@ void main() {
       (setf (gethash contours (gpu-geometry gpu)) display-list))
     (call-gl "glCallList" :uint display-list :void)))
 
+(fn gl-polygons ((gpu gpu) (contours list) (color string) (alpha real))
+  (gl-color color alpha)
+  (gl-geometry gpu contours))
+
 (fn gl-shape ((gpu gpu) (contours list) (color string) (alpha real))
   ;; Stipples reuse large contour batches in screen coordinates.
   ;; Submit them directly instead of copying thousands of points per frame.
@@ -168,26 +177,27 @@ void main() {
 
 (fn gl-text ((gpu gpu) (font font) (text string)
             (x real) (y real) (color string))
-  (let ((scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
-        (cursor x)
-        (previous nil))
-    (loop :for char :across text
-          :do (when previous
-                (incf cursor (* scale (zpb-ttf:kerning-offset
-                                      previous char (font-loader font)))))
-              (call-gl "glPushMatrix" :void)
-              (unwind-protect
-                   (progn
-                     (call-gl "glTranslatef" :float (float cursor 1.0)
-                              :float (float y 1.0) :float 0.0 :void)
-                     (call-gl "glScalef" :float (float scale 1.0)
-                              :float (float (- scale) 1.0) :float 1.0 :void)
-                     (gl-polygons gpu (glyph-polygons font char) color 1))
-                (call-gl "glPopMatrix" :void))
-              (incf cursor
-                    (* scale (zpb-ttf:advance-width
-                              (zpb-ttf:find-glyph char (font-loader font)))))
-              (setf previous char))))
+  (let* ((loader (font-loader font))
+         (scale (float (/ (font-size font) (zpb-ttf:units/em loader)) 1.0))
+         (advance 0) (previous nil))
+    (gl-color color 1)
+    (call-gl "glPushMatrix" :void)
+    (unwind-protect
+         (progn
+           (call-gl "glTranslatef" :float (float x 1.0)
+                    :float (float y 1.0) :float 0.0 :void)
+           (call-gl "glScalef" :float scale :float (- scale) :float 1.0 :void)
+           (loop :for char :across text
+                 :do (when previous
+                       (incf advance (zpb-ttf:kerning-offset
+                                      previous char loader))
+                       (call-gl "glTranslatef" :float (float advance 1.0)
+                                :float 0.0 :float 0.0 :void))
+                     (gl-geometry gpu (glyph-polygons font char))
+                     (setf advance (zpb-ttf:advance-width
+                                    (zpb-ttf:find-glyph char loader))
+                           previous char)))
+      (call-gl "glPopMatrix" :void))))
 
 (fn pixel-box ((gpu gpu) (box box))
   (let ((sx (/ (gpu-width gpu) (gpu-logical-width gpu)))
@@ -213,9 +223,26 @@ void main() {
 
 (fn gl-glass ((gpu gpu) (box box) (radius real) (frost real))
   (call-gl "glBindTexture" :uint #x0de1 :uint (gpu-texture gpu) :void)
-  (call-gl "glCopyTexImage2D" :uint #x0de1 :int 0 :uint #x1908
-           :int 0 :int 0 :int (gpu-width gpu) :int (gpu-height gpu)
-           :int 0 :void)
+  (let* ((w (gpu-width gpu)) (h (gpu-height gpu))
+         (area (pixel-box gpu box))
+         (scale (/ w (gpu-logical-width gpu)))
+         ;; Refraction, the outer blur taps, and bilinear interpolation.
+         (margin (ceiling (+ 2 (* scale (+ 3 (/ (abs frost) 2))))))
+         (x (max 0 (- (floor (box-x area)) margin)))
+         (top (max 0 (- (floor (box-y area)) margin)))
+         (right (min w (+ (ceiling (+ (box-x area) (box-width area)))
+                          margin)))
+         (bottom (min h (+ (ceiling (+ (box-y area) (box-height area)))
+                           margin)))
+         (y (- h bottom)))
+    (unless (and (< x right) (< top bottom)) (return-from gl-glass nil))
+    (unless (and (= w (gpu-texture-width gpu)) (= h (gpu-texture-height gpu)))
+      (call-gl "glTexImage2D" :uint #x0de1 :int 0 :int #x1908
+               :int w :int h :int 0 :uint #x1908 :uint #x1401
+               :pointer (cffi:null-pointer) :void)
+      (setf (gpu-texture-width gpu) w (gpu-texture-height gpu) h))
+    (call-gl "glCopyTexSubImage2D" :uint #x0de1 :int 0 :int x :int y
+             :int x :int y :int (- right x) :int (- bottom top) :void))
   (call-gl "glUseProgram" :uint (gpu-program gpu) :void)
   (unwind-protect
        (progn

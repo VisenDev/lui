@@ -388,7 +388,7 @@ Appearance is backend-dependent:
 | EGL/OpenGL / Wayland | Backdrop sampling, blur, and an edge refraction approximation |
 | X11/GLX | Uses the same OpenGL glass shader, glyphs, and geometry cache as Wayland. |
 | Win32 | Native filtered downsample/upsample backdrop blur, tint, and rim; no refraction |
-| Cocoa | Whole-window AppKit material, with widget tint and rounded outlines; no per-widget backdrop blur |
+| Cocoa | Shared OpenGL glass shader on accelerated windows; AppKit tint fallback |
 | Terminal | Cell text and square/rounded panel outlines |
 
 These effects are approximations, not identical implementations of a single
@@ -593,11 +593,12 @@ the log includes macOS and Lisp versions. The affected machine's user confirmed
 that the demo now runs with auto-hide enabled (November 5, 2026); no new log was
 provided. The initial reported speed was about 20 FPS.
 
-Cocoa now retains a bounded cache of text paths, reusing their parsed font
-geometry across frames, positions, and colors. Frame pacing sleeps only for the
-unused part of a 60 Hz frame. The performance change requires a fresh Mac
-measurement; run `make benchmark PLATFORM=cocoa BENCH_FRAMES=720 WARMUP=144`.
-This writes timing results to `build/logs/` without manually capturing output.
+Cocoa uses a double-buffered OpenGL view and the shared GL renderer. It
+requests a zero swap interval and targets a 240 Hz application loop. When an
+accelerated pixel format is unavailable, it reports a warning and draws with
+AppKit. Run `make benchmark PLATFORM=cocoa BENCH_FRAMES=720 WARMUP=144`
+to measure the Mac. Each BUDGET row counts frame intervals exceeding 1/170 s,
+including input processing and presentation. Logs are written to `build/logs/`.
 
 An earlier `Component "zpb-ttf" not found` error means the font dependency is not
 installed or visible to ASDF; install/register it before building. A compiled
