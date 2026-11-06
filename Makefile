@@ -33,7 +33,7 @@ DOC_SOURCES := $(wildcard src/*.lisp) examples/docs.lisp lui.asd
 DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
-.PHONY: docs docs-html docs-pages test-docs help check-platform build demo test test-platform \
+.PHONY: docs docs-html docs-pages test-docs help check-platform build demo pdf pdf-demo test test-platform \
 	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform
 help:
 	@echo 'make docs                 Build and open the native documentation browser'
@@ -41,6 +41,7 @@ help:
 	@echo 'make docs-pages           Refresh docs/index.html from the standalone page'
 	@echo 'make demo                 Build and run the tabbed demo executable'
 	@echo 'make build                Save the demo executable in build/bin/'
+	@echo 'make pdf                  Generate the PDF example at build/pdf-demo.pdf'
 	@echo 'make test                 Test platform; progress/results in build/logs/'
 	@echo 'make test-macos           Run Cocoa checks and saved executable smoke'
 	@echo 'make benchmark            Measure throughput and frame times'
@@ -63,6 +64,12 @@ build: $(DEMO)
 demo: $(DEMO)
 	$(RUNNER) "$(DEMO)" $(RUN_ARGS)
 endif
+
+pdf: pdf-demo
+
+pdf-demo:
+	@mkdir -p build
+	$(SBCL) $(SBCL_FLAGS) --load examples/pdf-demo.lisp
 
 $(DEMO): $(SOURCES) | check-platform
 	@mkdir -p build/bin
