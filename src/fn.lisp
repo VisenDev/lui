@@ -129,7 +129,9 @@
          (the ,return-type (progn ,@body))))))
 
 (defmacro defstruct* (name &rest slots)
-  "Keep typed structures; elide JSCL's generic generated slot checks."
+  "Internal hot structures: native DEFSTRUCT, without JSCL's generated checks."
+  ;; JSCL checks even untyped slots in constructors and writers. Retain slot
+  ;; metadata but drop those generated checks; leave user initforms untouched.
   #-jscl `(defstruct ,name ,@slots)
   #+jscl
   (labels ((without-slot-checks (form)
