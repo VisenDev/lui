@@ -102,6 +102,20 @@
                 :components ((:file "font")
                              (:file "draw")))))
 
+(defsystem "lui/pdf"
+  :description "Render a layout to a single vector PDF page"
+  ;; The cl-pdf writer uses EXTENDED-ASCII-P from its parser system.
+  :depends-on ("lui/native" "cl-pdf-parser")
+  :components ((:module "src" :components ((:file "pdf"))))
+  :in-order-to ((test-op (test-op "lui/pdf/tests"))))
+
+(defsystem "lui/pdf/tests"
+  :depends-on ("lui/pdf")
+  :components ((:module "tests" :components ((:file "pdf"))))
+  :perform (test-op (operation component)
+             (declare (ignore operation component))
+             (uiop:symbol-call :lui.tests.pdf :run-tests)))
+
 (defsystem "lui/x11"
   :depends-on ("lui/gl")
   :components ((:module "src"

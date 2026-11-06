@@ -313,6 +313,7 @@ painting use the same CSS family and weight.
 | `lui/core` | Dependency-free layout, widgets, and portable terminal output |
 | `lui/terminal` | Optional raw POSIX terminal input through CFFI and libc |
 | `lui/native` | Shared native measurement and outline painting; CFFI, zpb-ttf |
+| `lui/pdf` | Single-page PDF output through cl-pdf and the native font renderer |
 | `lui/x11` | Xlib and system OpenGL, an X display with GLX |
 | `lui/gl` | EGL/OpenGL renderer; EGL and compatibility OpenGL libraries |
 | `lui/wayland` | Wayland client/EGL, xkbcommon, EGL/OpenGL, a Wayland compositor |
@@ -335,6 +336,24 @@ To load a single graphical backend for the gallery:
 Use `lui/wayland` with `:wayland`, `lui/win32` with `:win32`, or `lui/cocoa` with
 `:cocoa` in the same launcher. `lui:available-backends` lists loaded backends.
 Width and height are backend coordinates; omit them for backend defaults.
+
+### PDF output
+
+Install the optional dependency with `(ql:quickload "cl-pdf")`. A PDF export
+draws one frame without a display. Dimensions are PDF points (72 per inch) and
+default to US Letter, 612 × 792. The native painter draws text as vector
+outlines, preserving the selected font and layout. The resulting text cannot
+be selected or searched.
+
+```lisp
+(asdf:load-system "lui/pdf")
+(lui.pdf:render-pdf (lambda () (lui:label "Quarterly report"
+                                          (lui:opt :foreground "#17212b")))
+                    #p"report.pdf" :width 595 :height 842 :background "#ffffff")
+```
+
+For existing `lui:run` callers, bind `lui.pdf:*output*` (default `lui.pdf`) and
+pass `:backend :pdf`. Run `(asdf:test-system "lui/pdf")` to test the backend.
 
 Text inputs share GNU Readline-style commands across backends:
 
