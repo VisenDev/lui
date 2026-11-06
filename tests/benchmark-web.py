@@ -133,14 +133,15 @@ try:
     print("toolkit page frames draw_mean_ms flush_mean_ms work_mean_ms "
           "work_p50_ms work_p95_ms work_max_ms active_fps scroll_delta_px")
     current_toolkit = "Glass"
+    expect(page.get_by_text("Toolkit: Glass", exact=True)).to_be_visible()
     for case, (toolkit, name) in enumerate(
         (toolkit, name) for toolkit in toolkits for name in pages
     ):
         while current_toolkit != toolkit:
-            page.get_by_role("button", name=current_toolkit, exact=True).click()
+            page.get_by_role("button", name="Cycle toolkit", exact=True).click()
             current_toolkit = {"Glass": "Motif", "Motif": "Garnet",
                                "Garnet": "Glass"}[current_toolkit]
-            expect(page.get_by_role("button", name=current_toolkit,
+            expect(page.get_by_text(f"Toolkit: {current_toolkit}",
                                     exact=True)).to_be_visible()
         for tab_name in name.split("/"):
             tab = page.get_by_role("tab", name=tab_name, exact=True)
