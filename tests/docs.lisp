@@ -179,7 +179,34 @@
     (frame context draw (make-event :kind :move :x 99 :y 39))
     (assert (has-label context "lui:ROW1"))))
 
+(defun test-debugger-guide ()
+  (let* ((lui:*unit* 1) (context (make-terminal-context))
+         (other (make-terminal-context))
+         (draw (lui.docs:make-docs)) (second (lui.docs:make-docs)))
+    (frame context draw)
+    (assert (string= "Debug"
+                     (widget-text
+                      (element-content (node-with-id context :docs-debug)))))
+    (frame context draw
+           (make-event :kind :activate :id '(:docs-guide :debug)))
+    (assert (has-label context "Debugger"))
+    (assert (node-with-id context :docs-open-debug))
+    (assert (not (lui.debug:enabled-p context)))
+    (frame context draw (make-event :kind :activate :id :docs-open-debug))
+    (assert (lui.debug:enabled-p context))
+    (assert (node-with-id context '(:lui.debug :inspector nil)))
+    (frame other second)
+    (assert (not (lui.debug:enabled-p other)))
+    (frame context draw
+           (make-event :kind :activate :id '(:lui.debug :close nil)))
+    (assert (not (lui.debug:enabled-p context)))
+    (frame context draw (make-event :kind :activate :id :docs-debug))
+    (assert (lui.debug:enabled-p context))
+    (frame context draw (make-event :kind :activate :id :docs-debug))
+    (assert (not (lui.debug:enabled-p context)))))
+
 (defun run-tests ()
+  (test-debugger-guide)
   (test-scrolled-selection)
   (test-symbol-wrapping)
   (test-live-widgets)

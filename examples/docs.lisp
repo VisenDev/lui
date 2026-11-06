@@ -18,6 +18,16 @@
        (format t \"Hello ~A!~%\" name)))))"
      "Other optional native systems include lui/x11, lui/win32, lui/cocoa, and lui/terminal. The browser backend is compiled with JSCL rather than loaded as an ASDF system. Core LUI has no dependencies. Native graphical backends use CFFI, zpb-ttf, and platform libraries. The raw terminal adds CFFI; plain terminal output remains dependency-free."
      "Use make demo for the gallery, make docs for this browser, and make test for the detected platform. Backend availability depends on which systems are loaded; an explicit :backend argument selects one.")
+    (:debug "Debugger"
+     "Debug toggles this window's layout inspector; Open inspector also opens it. Close dismisses it. Each window owns its inspector state."
+     "The tree shows the previous completed application frame. Click a row for details; - / + collapses or expands containers. Tree and details scroll independently. Inspector controls are excluded from their own tree."
+     "Hover a tree row to outline bounds in orange and clipping in cyan. Highlights pass input through. Offscreen and clipped badges describe visibility, rather than errors."
+     "Details show the selected ID, bounds/clip, sizing, padding/gaps/alignment, scroll offsets/limit, style/font, disabled/focus state, and a text preview. Drag the left edge to resize, or Tab to its rail and use Left/Right; Home/End choose minimum/maximum width."
+     "(asdf:load-system \"lui/debug\")
+;; Inside an ordinary draw callback:
+(when (lui:button :debug \"Debug\")
+  (lui.debug:set-enabled (not (lui.debug:enabled-p))))"
+     "Call set-enabled on an action, rather than every draw. enabled-p reads the current context; both APIs also accept an explicit context. Stable IDs preserve inspection across frames; anonymous nodes use position-based identity, and vanished selections are cleared.")
     (:frames "Frames and state"
      "Keep application state in ordinary lexical variables or structures. A drawing function declares the current interface on every frame; it does not create a persistent widget object."
      "(defun make-counter ()
@@ -185,7 +195,8 @@
       (when (lui:list-item (list :docs-guide (first guide))
                            (if (< (context-width *context*) (units 105))
                                (case (first guide)
-                                 (:start "Start") (:frames "Frames")
+                                 (:start "Start") (:debug "Debugger")
+                                 (:frames "Frames")
                                  (:widgets "Controls") (:layout "Layout")
                                  (:toolkits "Styles") (:input "Input")
                                  (:backends "Backends"))
@@ -384,6 +395,10 @@
        (let ((guide (assoc (browser-guide state) *guides*)))
          (lui:label (second guide)
                     (lui:opt :width (grow) :font-weight :bold))
+         (when (eq (browser-guide state) :debug)
+           (when (lui:button :docs-open-debug "Open inspector"
+                             (lui:opt :disabled-p (lui.debug:enabled-p)))
+             (lui.debug:set-enabled t)))
          (dolist (paragraph (cddr guide))
            (lui:label paragraph
                       (lui:opt :width (grow)
@@ -444,7 +459,9 @@
           (setf (browser-toolkit state)
                 (case (browser-toolkit state)
                   (:glass :motif) (:motif :garnet) (otherwise :glass)))
-          (request-frame)))
+          (request-frame))
+        (when (lui:button :docs-debug "Debug")
+          (lui.debug:set-enabled (not (lui.debug:enabled-p)))))
       (row (:width (grow) :height (grow) :gap (units 1))
         (navigation state)
         (if (>= (context-width *context*) (units 80))
