@@ -41,6 +41,24 @@ class DocsWebTests(unittest.TestCase):
                                         exact=False).filter(visible=True)).to_be_visible()
                 page.get_by_role("option", name="All packages", exact=True).click()
                 search = page.get_by_role("textbox")
+                # The reference has room for a full-height column of symbols.
+                search_box = search.bounding_box()
+                candidates = page.get_by_role("option").all()
+                rows = [item.bounding_box() for item in candidates
+                        if ":" in (item.text_content() or "")]
+                visible = [box for box in rows if box and
+                           search_box["y"] < box["y"] < 750]
+                self.assertGreater(max(b["y"] for b in visible) -
+                                   min(b["y"] for b in visible), 380)
+                bars = page.get_by_role("scrollbar").all()
+                symbol_bar = next(bar for bar in bars if
+                                  search_box["x"] <= bar.bounding_box()["x"]
+                                  <= search_box["x"] + search_box["width"])
+                symbol_bar.press("End")
+                expect(symbol_bar).to_have_attribute("aria-valuenow",
+                    symbol_bar.get_attribute("aria-valuemax"))
+                symbol_bar.press("Home")
+                expect(symbol_bar).to_have_attribute("aria-valuenow", "0")
                 search.fill("button")
                 expect(search).to_have_value("button")
                 entries = page.get_by_role("option", name="lui:BUTTON", exact=True)
@@ -51,6 +69,23 @@ class DocsWebTests(unittest.TestCase):
                     has_text=re.compile(r"^lui\.garnet:BUTTON$"))).to_be_visible()
                 expect(page.get_by_text("Choose an API entry from the list.",
                                         exact=True)).to_have_count(0)
+                search.fill("checkbox")
+                page.get_by_role("option", name="lui:CHECKBOX",
+                                 exact=True).click()
+                preview = page.get_by_role("checkbox")
+                expect(preview).to_have_count(1)
+                for current, following in (("Glass", "Motif"),
+                                           ("Motif", "Garnet"),
+                                           ("Garnet", "Glass")):
+                    checked = preview.is_checked()
+                    preview.click()
+                    self.assertNotEqual(preview.is_checked(), checked)
+                    page.get_by_role("button", name=current, exact=True).click()
+                    expect(page.get_by_role("button", name=following,
+                                            exact=True)).to_be_visible()
+                    self.assertNotEqual(preview.is_checked(), checked)
+                self.assertEqual(page.get_by_role(
+                    "option", name="lui.wayland-protocol", exact=True).count(), 0)
                 search.fill("no-such-public-lui-entry-123")
                 expect(page.get_by_text("No matching entries.", exact=True)
                        .filter(visible=True)).to_be_visible()
