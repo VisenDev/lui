@@ -657,14 +657,11 @@ installed or visible to ASDF; install/register it before building. A compiled
 executable and passing Linux ABI checks do not establish a passing macOS runtime.
 
 
-Use `(lui:date-time-picker :appointment value (lui:opt :mode :datetime))`
-for a calendar and 24-hour time picker. Store its returned ISO local value
-(`YYYY-MM-DDTHH:MM`). Modes `:date` and `:time` return `YYYY-MM-DD` and
-`HH:MM`. Invalid typed drafts stay editable while the last valid value is
-retained. The field displays month/day/year. Open the calendar icon to pick
-a date, use the month heading to jump between months, or choose Today or
-Clear. An empty field opens at the current local month.
-The gallery’s Editing page includes an example.
+Use `(lui:date-picker :appointment value)` for a date field. Click anywhere
+in the field to open the calendar, or type a date as MM/DD/YYYY. The widget
+returns YYYY-MM-DD or NIL when cleared. The gallery’s Editing page includes
+an example. For appointments that also need a time, `lui:date-time-picker`
+returns YYYY-MM-DDTHH:MM by default and accepts `:mode :time` for HH:MM.
 
 ### Tables
 

@@ -9,7 +9,7 @@
            #:opt #:panel #:label
            #:button #:tab #:checkbox #:radio #:slider
            #:text-field #:cell #:list-item #:gauge #:canvas
-           #:date-time-picker #:searchable-combobox))
+           #:date-picker #:date-time-picker #:searchable-combobox))
 
 (in-package #:lui)
 
@@ -543,20 +543,27 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (let* ((trigger (list id :calendar)) (popup (list id :popup))
          (focus (context-focus *context*))
          (terminal (context-text-mode-p *context*)))
-    (when (calendar-item trigger "▦" :icon :calendar :accessible-name "Choose date"
-                         :width (lui.layout:fixed (if terminal 3 26)))
-      (let ((initial (or parts (local-today))))
-        (setf (picker-state-open-p state) (not (picker-state-open-p state))
-              (picker-state-months-p state) nil
-              (picker-state-year state) (first initial)
-              (picker-state-month state) (second initial)
-              (context-focus *context*) (if (picker-state-open-p state)
-                                            (list id :day (third initial)) trigger))))
+    (let* ((input (list id :input))
+           (field-click (or (activated-p input) (activated-p (list id :field))))
+           (icon-click (calendar-item trigger "▦" :icon :calendar :accessible-name "Choose date"
+                                     :width (lui.layout:fixed (if terminal 3 26)))))
+      (cond ((and icon-click (picker-state-open-p state))
+             (setf (picker-state-open-p state) nil (context-focus *context*) trigger))
+            ((or icon-click field-click)
+             (when (or icon-click (not (picker-state-open-p state)))
+               (let ((initial (or parts (local-today))))
+                 (setf (picker-state-open-p state) t (picker-state-months-p state) nil
+                       (picker-state-year state) (first initial)
+                       (picker-state-month state) (second initial))
+                 (when icon-click
+                   (setf (context-focus *context*) (list id :day (third initial))))))
+             (when field-click (setf (context-focus *context*) input)))))
     (when (picker-state-open-p state)
       (let ((press (lui.frame::context-pointer-press *context*))
             (bounds (previous-box popup)))
         (cond ((and press bounds
-                    (not (find :press (events-for trigger) :key #'event-kind))
+                    (not (some (lambda (target) (find :press (events-for target) :key #'event-kind))
+                               (list trigger (list id :input) (list id :field))))
                     (not (lui.frame::contains-p bounds (event-x press) (event-y press))))
                (setf (picker-state-open-p state) nil))
               ((find :escape (events-for focus) :key #'event-key)
@@ -585,8 +592,9 @@ returns ISO strings. The calendar opens at the selected date or today's month."
       (setf (picker-state-value state) value
             (picker-state-draft state) (if parts (picker-display parts mode) (or value ""))))
     (column (:id id :width (getf options :width (lui.layout:fit)))
-      (panel (append (without-option :mode options)
-                     (opt :direction :row :padding 1 :gap 0))
+      (panel (append (unless (eq mode :time)
+                       (opt :id (list id :field) :interactive-p t :keyboard-focus-p nil))
+                     (without-option :mode options) (opt :direction :row :padding 1 :gap 0))
         (let* ((old (picker-state-draft state))
                (draft (text-field input old
                         (opt :width (lui.layout:grow) :accessible-name
@@ -624,3 +632,7 @@ returns ISO strings. The calendar opens at the selected date or today's month."
     (when (or (picker-state-open-p state) (not (equal result value)))
       (when (or (activated-ids) (not (equal result value))) (request-frame)))
     result))
+
+(defun date-picker (id value &optional options)
+  "Pick a date by typing or clicking the field. Return YYYY-MM-DD, or NIL when cleared."
+  (date-time-picker id value (list* :mode :date options)))

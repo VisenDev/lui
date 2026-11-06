@@ -88,7 +88,8 @@
 (defstruct browser
   (frame-rate (lui.frame::make-frame-rate))
   (clicks 0 :type integer) (panel-clicks 0 :type integer)
-  (date-time "2026-11-05T12:30" :type string)
+  (date nil :type (or null string))
+  (date-time "2026-11-05T12:30" :type (or null string))
   (checked-p t :type boolean) (cell-p nil :type boolean)
   (text "Edit this example" :type string) (value 0.4 :type real)
   (tab :one :type symbol) (item :one :type symbol)
@@ -280,7 +281,7 @@
       (when (zerop count) (lui:label "No matching entries.")))))
 
 (defparameter *preview-kinds*
-  '(("DATE-TIME-PICKER" . :date-time-picker)
+  '(("DATE-PICKER" . :date-picker) ("DATE-TIME-PICKER" . :date-time-picker)
     ("LABEL" . :label) ("BUTTON" . :button) ("TAB" . :tab)
     ("CHECKBOX" . :checkbox) ("SLIDER" . :slider)
     ("TEXT-FIELD" . :text-field) ("CELL" . :cell)
@@ -309,6 +310,8 @@
                                              (symbol-name kind)))
              (lui:opt :width (grow) :font-weight :bold))
   (case kind
+    (:date-picker
+     (setf (browser-date state) (lui:date-picker :docs-date (browser-date state))))
     (:date-time-picker
      (setf (browser-date-time state)
            (lui:date-time-picker :docs-date-time (browser-date-time state)
