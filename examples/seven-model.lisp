@@ -1,5 +1,5 @@
 (defpackage #:lui.seven.model
-  (:use #:cl #:lui.fn)
+  (:use #:cl)
   (:export #:parse-number #:parse-date #:temperature #:flight-valid-p
            #:timer #:make-timer #:timer-elapsed #:timer-duration
            #:advance-timer #:timer-fraction
@@ -19,15 +19,15 @@
 ;; JSCL's source reader does not recognize the named Return character.
 (defparameter *whitespace* (mapcar #'code-char '(9 10 13 32)))
 
-(fn whitespace-p ((char character))
+(defun whitespace-p (char)
   (not (null (find char *whitespace*))))
 
-(fn finite-number-p (value)
+(defun finite-number-p (value)
   (and (realp value)
        (handler-case (zerop (- value value))
          (arithmetic-error () nil))))
 
-(fn parse-number ((source string))
+(defun parse-number (source)
   "Parse a finite decimal/scientific number without invoking the Lisp reader."
   (let* ((text (string-trim *whitespace* source))
          (length (length text)) (at 0) (sign 1)
@@ -40,12 +40,12 @@
         (incf at))
       (loop :while (digit)
             :do (setf mantissa (+ (* mantissa 10) (digit)))
-                (incf digits) (incf at))
+            (incf digits) (incf at))
       (when (eql (peek) #\.)
         (incf at)
         (loop :while (digit)
               :do (setf mantissa (+ (* mantissa 10) (digit)))
-                  (incf digits) (incf fraction) (incf at)))
+              (incf digits) (incf fraction) (incf at)))
       (when (zerop digits) (return-from parse-number nil))
       (when (and (peek) (find (peek) "eE"))
         (incf at)
@@ -53,19 +53,19 @@
           (when (and (peek) (find (peek) "+-")) (incf at))
           (loop :while (digit)
                 :do (setf exponent (+ (* exponent 10) (digit)))
-                    (incf count) (incf at)
-                    (when (> exponent 4096) (return-from parse-number nil)))
+                (incf count) (incf at)
+                (when (> exponent 4096) (return-from parse-number nil)))
           (when (zerop count) (return-from parse-number nil))
           (when negative (setf exponent (- exponent)))))
       (unless (= at length) (return-from parse-number nil))
       (handler-case
           (let ((number (/ (* sign mantissa
-                               (expt 10 (- exponent fraction)))
-                            1.0d0)))
+                              (expt 10 (- exponent fraction)))
+                           1.0d0)))
             (when (finite-number-p number) number))
         (arithmetic-error () nil)))))
 
-(fn parse-date ((text string))
+(defun parse-date (text)
   "Validate DD.MM.YYYY and return an ordered YYYYMMDD integer or NIL."
   (when (and (= 10 (length text)) (char= (char text 2) #\.)
              (char= (char text 5) #\.)
@@ -83,30 +83,30 @@
                                     '(31 28 31 30 31 30 31 31 30 31 30 31)))))
         (+ (* year 10000) (* month 100) day)))))
 
-(fn temperature ((text string) (from symbol))
+(defun temperature (text from)
   (let ((number (parse-number text)))
     (when number
       (handler-case
           (let ((converted
-                  (ecase from
-                    (:celsius (+ (* (/ number 5) 9) 32))
-                    (:fahrenheit (* (/ (- number 32) 9) 5)))))
+                 (ecase from
+                   (:celsius (+ (* (/ number 5) 9) 32))
+                   (:fahrenheit (* (/ (- number 32) 9) 5)))))
             (when (finite-number-p converted) converted))
         (arithmetic-error () nil)))))
 
-(fn flight-valid-p ((start string) (end string) &optional return-p)
+(defun flight-valid-p (start end &optional return-p)
   (let ((departure (parse-date start)) (arrival (parse-date end)))
     (and departure (or (not return-p) (and arrival (>= arrival departure))))))
 
-(defstruct* timer
+(defstruct timer
   (elapsed 0 :type real) (duration 10 :type real)
   (last-time nil :type (or null real)))
 
-(fn advance-timer ((timer timer) (now real) &key duration reset)
+(defun advance-timer (timer now &key duration reset)
   "Integrate the old running state up to NOW, then apply duration/reset input.
 A stopped timer never includes paused wall time when its duration is increased."
   (assert (and (>= now 0) (or (null duration) (and (realp duration)
-                                                  (>= duration 0)))))
+                                                   (>= duration 0)))))
   (when (timer-last-time timer)
     (assert (>= now (timer-last-time timer)))
     (when (< (timer-elapsed timer) (timer-duration timer))
@@ -119,32 +119,32 @@ A stopped timer never includes paused wall time when its duration is increased."
   (values (timer-elapsed timer)
           (< (timer-elapsed timer) (timer-duration timer))))
 
-(fn (timer-fraction real) ((timer timer))
+(defun timer-fraction (timer)
   (if (zerop (timer-duration timer)) 1
       (min 1 (/ (timer-elapsed timer) (timer-duration timer)))))
 
-(defstruct* person (id 0 :type integer) (name "" :type string)
-  (surname "" :type string))
-(defstruct* crud (records nil :type list) selected (next-id 0 :type integer))
+(defstruct person (id 0 :type integer) (name "" :type string)
+           (surname "" :type string))
+(defstruct crud (records nil :type list) selected (next-id 0 :type integer))
 
-(fn crud-select ((model crud) id)
+(defun crud-select (model id)
   (let ((record (find id (crud-records model) :key #'person-id)))
     (setf (crud-selected model) (when record id))
     record))
 
-(fn crud-create ((model crud) (name string) (surname string))
+(defun crud-create (model name surname)
   (let ((record (make-person :id (incf (crud-next-id model))
                              :name name :surname surname)))
     (setf (crud-records model) (append (crud-records model) (list record)))
     record))
 
-(fn crud-update ((model crud) id (name string) (surname string))
+(defun crud-update (model id name surname)
   (let ((record (find id (crud-records model) :key #'person-id)))
     (when record
       (setf (person-name record) name (person-surname record) surname)
       t)))
 
-(fn crud-delete ((model crud) id)
+(defun crud-delete (model id)
   (let ((found (find id (crud-records model) :key #'person-id)))
     (when found
       (setf (crud-records model)
@@ -152,7 +152,7 @@ A stopped timer never includes paused wall time when its duration is increased."
       (when (eql id (crud-selected model)) (setf (crud-selected model) nil))
       t)))
 
-(fn (crud-filter list) ((model crud) (prefix string))
+(defun crud-filter (model prefix)
   (remove-if-not
    (lambda (person)
      (let ((surname (person-surname person)))
@@ -160,22 +160,21 @@ A stopped timer never includes paused wall time when its duration is increased."
             (string= prefix surname :end2 (length prefix)))))
    (crud-records model)))
 
-(defstruct* circle
+(defstruct circle
   (id 0 :type integer) (x 0 :type real) (y 0 :type real)
   (radius 20 :type real))
-(defstruct* circles
+(defstruct circles
   (items nil :type list) (next-id 0 :type integer)
   (undo nil :type list) (redo nil :type list) editing)
 
-(fn circle-find ((model circles) id)
+(defun circle-find (model id)
   (find id (circles-items model) :key #'circle-id))
 
-(fn record-circle-change ((model circles) (change list))
+(defun record-circle-change (model change)
   (push change (circles-undo model))
   (setf (circles-redo model) nil))
 
-(fn circle-add
-    ((model circles) (x real) (y real) &optional ((radius real) 20))
+(defun circle-add (model x y &optional (radius 20))
   (assert (and (null (circles-editing model)) (>= radius 0)))
   (let ((circle (make-circle :id (incf (circles-next-id model))
                              :x x :y y :radius radius)))
@@ -183,7 +182,7 @@ A stopped timer never includes paused wall time when its duration is increased."
     (record-circle-change model (list :create circle))
     circle))
 
-(fn circle-hit ((model circles) (x real) (y real))
+(defun circle-hit (model x y)
   (let ((nearest nil) (distance nil))
     (dolist (circle (circles-items model))
       (let ((d (+ (expt (- x (circle-x circle)) 2)
@@ -193,18 +192,18 @@ A stopped timer never includes paused wall time when its duration is increased."
           (setf nearest circle distance d))))
     nearest))
 
-(fn circle-begin-adjust ((model circles) id)
+(defun circle-begin-adjust (model id)
   (assert (null (circles-editing model)))
   (let ((circle (circle-find model id)))
     (assert circle)
     (setf (circles-editing model) (cons id (circle-radius circle)))))
 
-(fn circle-preview ((model circles) (radius real))
+(defun circle-preview (model radius)
   (assert (and (circles-editing model) (>= radius 0)))
   (setf (circle-radius (circle-find model (car (circles-editing model))))
         radius))
 
-(fn circle-commit ((model circles))
+(defun circle-commit (model)
   (when (circles-editing model)
     (let* ((edit (shiftf (circles-editing model) nil))
            (radius (circle-radius (circle-find model (car edit)))))
@@ -213,12 +212,12 @@ A stopped timer never includes paused wall time when its duration is increased."
          model (list :resize (car edit) (cdr edit) radius))
         t))))
 
-(fn circle-cancel ((model circles))
+(defun circle-cancel (model)
   (when (circles-editing model)
     (circle-preview model (cdr (circles-editing model)))
     (setf (circles-editing model) nil)))
 
-(fn apply-circle-change ((model circles) (change list) forward)
+(defun apply-circle-change (model change forward)
   (ecase (first change)
     (:create
      (let ((circle (second change)))
@@ -230,7 +229,7 @@ A stopped timer never includes paused wall time when its duration is increased."
      (setf (circle-radius (circle-find model (second change)))
            (if forward (fourth change) (third change))))))
 
-(fn circle-undo ((model circles))
+(defun circle-undo (model)
   (assert (null (circles-editing model)))
   (let ((change (pop (circles-undo model))))
     (when change
@@ -238,7 +237,7 @@ A stopped timer never includes paused wall time when its duration is increased."
       (push change (circles-redo model))
       t)))
 
-(fn circle-redo ((model circles))
+(defun circle-redo (model)
   (assert (null (circles-editing model)))
   (let ((change (pop (circles-redo model))))
     (when change
@@ -246,16 +245,16 @@ A stopped timer never includes paused wall time when its duration is increased."
       (push change (circles-undo model))
       t)))
 
-(defstruct* cell
+(defstruct cell
   (text "" :type string) (ast '(:text "")) parse-problem
   (value "") problem
   (dependencies nil :type list) (users nil :type list)
   (revision 0 :type integer))
-(defstruct* sheet
+(defstruct sheet
   (cells (make-hash-table) :type hash-table)
   (recomputed nil :type list))
 
-(fn cell-index (address)
+(defun cell-index (address)
   "Accept a row-major integer or an A0:Z99 address; return NIL if invalid."
   (typecase address
     (integer (when (<= 0 address 2599) address))
@@ -270,22 +269,22 @@ A stopped timer never includes paused wall time when its duration is increased."
            (+ (* row 26)
               (- (char-code (char-upcase (char address 0))) 65))))))))
 
-(fn (cell-address string) ((index integer))
+(defun cell-address (index)
   (assert (<= 0 index 2599))
   (format nil "~C~D" (code-char (+ 65 (mod index 26))) (floor index 26)))
 
-(fn cell-range ((first integer) (last integer))
+(defun cell-range (first last)
   (loop :for row :from (min (floor first 26) (floor last 26))
-          :to (max (floor first 26) (floor last 26))
+        :to (max (floor first 26) (floor last 26))
         :append (loop :for column :from (min (mod first 26) (mod last 26))
-                        :to (max (mod first 26) (mod last 26))
+                      :to (max (mod first 26) (mod last 26))
                       :collect (+ (* row 26) column))))
 
 (defparameter *operations*
   '(("add" . :add) ("sub" . :sub) ("mul" . :mul) ("div" . :div)
     ("mod" . :mod) ("sum" . :sum) ("prod" . :prod)))
 
-(fn parse-formula ((source string))
+(defun parse-formula (source)
   "Return AST, distinct dependency indices, and NIL or an error keyword.
 Numeric/text literals and =function(arguments), references and ranges follow SCells.
 No input is passed to READ, EVAL, or INTERN. Limit text length and nesting."
@@ -300,7 +299,7 @@ No input is passed to READ, EVAL, or INTERN. Limit text length and nesting."
       (labels ((fail (reason) (throw 'formula-error (values nil nil reason)))
                (peek () (when (< at length) (char text at)))
                (space () (loop :while (and (peek) (whitespace-p (peek)))
-                              :do (incf at)))
+                               :do (incf at)))
                (take (char)
                  (space)
                  (when (eql (peek) char) (incf at) t))
@@ -332,13 +331,13 @@ No input is passed to READ, EVAL, or INTERN. Limit text length and nesting."
                       (cond
                         ((take #\()
                          (let ((op (cdr (assoc name *operations*
-                                             :test #'string-equal)))
+                                               :test #'string-equal)))
                                (args nil))
                            (unless op (fail :name))
                            (unless (take #\))
                              (loop (push (expression (1+ depth)) args)
-                                   (when (take #\)) (return))
-                                   (unless (take #\,) (fail :parse))))
+                              (when (take #\)) (return))
+                              (unless (take #\,) (fail :parse))))
                            (cons :call (cons op (nreverse args)))))
                         ((take #\:)
                          (let* ((first (reference name))
@@ -355,13 +354,13 @@ No input is passed to READ, EVAL, or INTERN. Limit text length and nesting."
                                   :collect index) #'<)
                   nil))))))
 
-(fn (sheet-cell cell) ((model sheet) address)
+(defun sheet-cell (model address)
   (let ((index (cell-index address)))
     (assert index () "Invalid cell address ~S." address)
     (or (gethash index (sheet-cells model))
         (setf (gethash index (sheet-cells model)) (make-cell)))))
 
-(fn apply-operation ((operation symbol) (arguments list))
+(defun apply-operation (operation arguments)
   (when (and (member operation '(:add :sub :mul :div :mod))
              (/= (length arguments) 2))
     (return-from apply-operation (values nil :value)))
@@ -369,18 +368,18 @@ No input is passed to READ, EVAL, or INTERN. Limit text length and nesting."
     (return-from apply-operation (values nil :division)))
   (handler-case
       (let ((value
-              (ecase operation
-                (:add (+ (first arguments) (second arguments)))
-                (:sub (- (first arguments) (second arguments)))
-                (:mul (* (first arguments) (second arguments)))
-                (:div (/ (first arguments) (second arguments)))
-                (:mod (rem (first arguments) (second arguments)))
-                (:sum (reduce #'+ arguments :initial-value 0))
-                (:prod (reduce #'* arguments :initial-value 1)))))
+             (ecase operation
+               (:add (+ (first arguments) (second arguments)))
+               (:sub (- (first arguments) (second arguments)))
+               (:mul (* (first arguments) (second arguments)))
+               (:div (/ (first arguments) (second arguments)))
+               (:mod (rem (first arguments) (second arguments)))
+               (:sum (reduce #'+ arguments :initial-value 0))
+               (:prod (reduce #'* arguments :initial-value 1)))))
         (if (finite-number-p value) value (values nil :number)))
     (arithmetic-error () (values nil :number))))
 
-(fn evaluate-formula ((model sheet) ast)
+(defun evaluate-formula (model ast)
   (catch 'evaluation-error
     (labels ((fail (problem) (throw 'evaluation-error (values nil problem)))
              (reference (index)
@@ -397,10 +396,10 @@ No input is passed to READ, EVAL, or INTERN. Limit text length and nesting."
                                      (cell-range (second node) (third node))))
                      (:call
                       (let* ((arguments
-                               (loop :for arg :in (cddr node)
-                                     :for value := (evaluate arg)
-                                     :append (if (listp value) value
-                                                 (list value)))))
+                              (loop :for arg :in (cddr node)
+                                    :for value := (evaluate arg)
+                                    :append (if (listp value) value
+                                                (list value)))))
                         (multiple-value-bind (value problem)
                             (apply-operation (second node) arguments)
                           (when problem (fail problem))
@@ -408,17 +407,17 @@ No input is passed to READ, EVAL, or INTERN. Limit text length and nesting."
       (let ((value (evaluate ast)))
         (if (listp value) (values nil :value) value)))))
 
-(fn affected-cells ((model sheet) (start integer))
+(defun affected-cells (model start)
   (let ((seen (make-hash-table)) (pending (list start)))
     (loop :for index := (pop pending)
           :while index
           :unless (gethash index seen)
-            :do (setf (gethash index seen) t)
-                (dolist (user (cell-users (sheet-cell model index)))
-                  (push user pending)))
+          :do (setf (gethash index seen) t)
+          (dolist (user (cell-users (sheet-cell model index)))
+            (push user pending)))
     seen))
 
-(fn sheet-set ((model sheet) address (text string))
+(defun sheet-set (model address text)
   "Edit one cell and return changed value/error indices. Recompute only affected
 cells whose inputs changed. SHEET-RECOMPUTED exposes evaluation work for tests."
   (let* ((index (cell-index address)) (cell (sheet-cell model address))
@@ -459,18 +458,18 @@ cells whose inputs changed. SHEET-RECOMPUTED exposes evaluation work for tests."
               :for target := (when id (sheet-cell model id))
               :while id
               :do (remhash id remaining)
-                  (when (or (= id index)
-                            (some (lambda (dep) (gethash dep changed))
-                                  (cell-dependencies target)))
-                    (multiple-value-bind (value problem)
-                        (if (cell-parse-problem target)
-                            (values nil (cell-parse-problem target))
-                            (evaluate-formula model (cell-ast target)))
-                      (assign id value problem)))
-                  (dolist (user (cell-users target))
-                    (when (gethash user remaining)
-                      (when (zerop (decf (gethash user remaining)))
-                        (push user queue)))))
+              (when (or (= id index)
+                        (some (lambda (dep) (gethash dep changed))
+                              (cell-dependencies target)))
+                (multiple-value-bind (value problem)
+                    (if (cell-parse-problem target)
+                        (values nil (cell-parse-problem target))
+                        (evaluate-formula model (cell-ast target)))
+                  (assign id value problem)))
+              (dolist (user (cell-users target))
+                (when (gethash user remaining)
+                  (when (zerop (decf (gethash user remaining)))
+                    (push user queue)))))
         (maphash
          (lambda (id degree)
            (declare (ignore degree))
@@ -481,11 +480,11 @@ cells whose inputs changed. SHEET-RECOMPUTED exposes evaluation work for tests."
     (setf (sheet-recomputed model) (sort evaluated #'<))
     (sort (loop :for id :being :the :hash-keys :of changed :collect id) #'<)))
 
-(fn (cell-display string) ((cell cell))
+(defun cell-display (cell)
   (if (cell-problem cell)
       (format nil "#~A!" (case (cell-problem cell)
-                          (:division "DIV/0") (:reference "REF")
-                          (otherwise (symbol-name (cell-problem cell)))))
+                           (:division "DIV/0") (:reference "REF")
+                           (otherwise (symbol-name (cell-problem cell)))))
       (if (stringp (cell-value cell)) (cell-value cell)
           (let ((*read-default-float-format* 'double-float))
             (format nil "~A" (cell-value cell))))))

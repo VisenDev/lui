@@ -1,11 +1,12 @@
 (defpackage #:lui.example.seven.circles
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.seven.model
-        #:lui.example)
+  (:use #:cl #:lui #:lui.layout #:lui.frame #:lui.interaction
+        #:lui.seven.model
+        )
   (:shadow #:draw)
   (:export #:draw #:*state* #:make-state #:state-model #:modal-p))
 (in-package #:lui.example.seven.circles)
 
-(defstruct* state
+(defstruct state
   (model (make-circles) :type circles)
   hover
   (diameter 5 :type real)
@@ -13,12 +14,12 @@
   (focus-visible-p nil :type boolean)
   (restore-focus-p nil :type boolean))
 
-(defvar *state* (make-state))
+(defvar *state* nil)
 
-(fn (modal-p boolean) ()
+(defun modal-p ()
   (not (null (circles-editing (state-model *state*)))))
 
-(fn begin-adjust (id)
+(defun begin-adjust (id)
   (let ((model (state-model *state*)))
     (circle-begin-adjust model id)
     (setf (state-diameter *state*)
@@ -29,7 +30,7 @@
           (context-focus-visible-p *context*) t)
     (request-frame)))
 
-(fn finish-adjust (commit-p)
+(defun finish-adjust (commit-p)
   (if commit-p (circle-commit (state-model *state*))
       (circle-cancel (state-model *state*)))
   (setf (context-focus *context*) (or (state-focus *state*) :circle-canvas)
@@ -37,19 +38,7 @@
         (state-restore-focus-p *state*) t)
   (request-frame))
 
-(fn escape-p ()
-  (let ((escape nil))
-    (maphash (lambda (id events)
-               (declare (ignore id))
-               (when (some (lambda (event)
-                             (and (eq (event-kind event) :key)
-                                  (eq (event-key event) :escape)))
-                           events)
-                 (setf escape t)))
-             (context-events *context*))
-    escape))
-
-(fn canvas-input ()
+(defun canvas-input ()
   (unless (equal (context-hover *context*) :circle-canvas)
     (setf (state-hover *state*) nil))
   (let ((box (previous-box :circle-canvas)) (model (state-model *state*)))
@@ -69,7 +58,7 @@
                      (circle-add model x y 2.5)
                      (request-frame))))))))))
 
-(fn commands ()
+(defun commands ()
   (loop :for circle :in (circles-items (state-model *state*))
         :collect (list :circle (units (circle-x circle))
                        (units (circle-y circle))
@@ -78,39 +67,44 @@
                        (when (eql (circle-id circle) (state-hover *state*))
                          "#c8c8c8"))))
 
-(fn draw-dialog ()
-  (panel (:id :circle-dialog :width (grow) :padding (units 1) :gap (units 1))
-    (widget :label "Adjust circle diameter")
+(defun draw-dialog ()
+  (lui:panel (lui:opt :id :circle-dialog :width (grow)
+                      :padding (units 1) :gap (units 1))
+    (lui:label "Adjust circle diameter")
     (let* ((old (state-diameter *state*))
-           (diameter (widget :slider :circle-diameter old :minimum 1
-                             :maximum 20 :step 0.1 :width (grow))))
+           (diameter (lui:slider :circle-diameter old
+                                 (lui:opt :minimum 1 :maximum 20
+                                          :step 0.1 :width (grow)))))
       (unless (= old diameter)
         (setf (state-diameter *state*) diameter)
         (circle-preview (state-model *state*) (/ diameter 2))
         (request-frame)))
-    (widget :label (format nil "Diameter: ~,1F" (state-diameter *state*)))
+    (lui:label (format nil "Diameter: ~,1F" (state-diameter *state*)))
     (row (:gap (units 1))
-      (when (widget :button :circle-apply "Apply") (finish-adjust t))
-      (when (widget :button :circle-cancel "Cancel") (finish-adjust nil)))))
+      (when (lui:button :circle-apply "Apply") (finish-adjust t))
+      (when (lui:button :circle-cancel "Cancel") (finish-adjust nil)))))
 
-(fn draw ()
+(defun draw ()
   (when (state-restore-focus-p *state*)
     (setf (context-focus *context*) (or (state-focus *state*) :circle-canvas)
           (context-focus-visible-p *context*) (state-focus-visible-p *state*)
           (state-restore-focus-p *state*) nil))
-  (when (and (modal-p) (escape-p)) (finish-adjust nil))
+  (when (and (modal-p) (key-pressed-p :escape)) (finish-adjust nil))
   (unless (modal-p) (canvas-input))
   (let ((model (state-model *state*)))
     (row (:gap (units 1))
-      (when (widget :button :circle-undo "Undo"
-                    :disabled-p (or (modal-p) (null (circles-undo model))))
+      (when (lui:button :circle-undo "Undo"
+                        (lui:opt :disabled-p
+                                 (or (modal-p) (null (circles-undo model)))))
         (circle-undo model)
         (request-frame))
-      (when (widget :button :circle-redo "Redo"
-                    :disabled-p (or (modal-p) (null (circles-redo model))))
+      (when (lui:button :circle-redo "Redo"
+                        (lui:opt :disabled-p
+                                 (or (modal-p) (null (circles-redo model)))))
         (circle-redo model)
         (request-frame)))
-    (widget :label "Click empty space to add; right-click a circle to resize.")
-    (widget :canvas :circle-canvas (commands) :background "#ffffff"
-            :width (grow) :height (grow) :disabled-p (modal-p))
+    (lui:label "Click empty space to add; right-click a circle to resize.")
+    (lui:canvas :circle-canvas (commands)
+                (lui:opt :background "#ffffff" :width (grow)
+                         :height (grow) :disabled-p (modal-p)))
     (when (modal-p) (draw-dialog))))
