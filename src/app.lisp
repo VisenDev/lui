@@ -125,14 +125,16 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
      ,@body))
 
 (defmacro opt (&rest forms &key width height padding gap align cross-align
-               id direction clip-p scroll-p floating-p offset-x offset-y
+               id direction clip-p scroll-p scrollbar-p scrollbar-width
+               floating-p offset-x offset-y
                interactive-p keyboard-focus-p pointer-focus-p
                foreground background radius frost minimum maximum step
                font-size font-family font-weight opacity accent disabled-p
                painter web-style terminal-label selected-p text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align id direction
-                   clip-p scroll-p floating-p offset-x offset-y interactive-p
+                   clip-p scroll-p scrollbar-p scrollbar-width
+                   floating-p offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
                    radius frost minimum maximum step font-size font-family
                    font-weight opacity accent disabled-p painter web-style

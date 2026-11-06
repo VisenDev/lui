@@ -11,6 +11,7 @@
            #:append-child #:solve #:walk-elements
            #:do-children
            #:element-clip #:element-clip-p #:element-scroll-p
+           #:element-scrollbar-p #:element-scrollbar-width #:scroll-gutter
            #:element-scroll-x
            #:element-scroll-y #:element-scroll-limit-y
            #:element-floating-p #:element-offset-x
@@ -75,12 +76,22 @@ Floating children use offsets; interactive nodes participate in input routing."
   (clip-p nil :type boolean)
   (clip (make-box) :type box)
   (scroll-p nil :type boolean)
+  (scrollbar-p nil :type boolean)
+  (scrollbar-width 0 :type real)
   (scroll-x 0 :type real)
   (scroll-y 0 :type real)
   (scroll-limit-y 0 :type real)
   (floating-p nil :type boolean)
   (offset-x 0 :type real)
   (offset-y 0 :type real))
+
+(fn (scroll-gutter real) ((node element))
+  "Return the horizontal space reserved for a visible vertical scrollbar."
+  (if (and (element-scroll-p node) (element-scrollbar-p node))
+      (min (max 0 (element-scrollbar-width node))
+           (max 0 (- (box-width (element-box node))
+                     (* 2 (element-padding node)))))
+      0))
 
 (fn (append-child element) ((parent element) (child element))
   "Append CHILD to PARENT in declaration order and return CHILD."
@@ -160,7 +171,12 @@ Floating children use offsets; interactive nodes participate in input routing."
      (case (sizing-kind rule)
        (:fixed (sizing-value rule))
        (:percent 0)
-       (otherwise (bounded rule (+ content (* 2 (element-padding node)))))))))
+       (otherwise
+        (bounded rule
+                 (+ content (* 2 (element-padding node))
+                    (if (and (eq axis :x) (element-scroll-p node)
+                             (element-scrollbar-p node))
+                        (max 0 (element-scrollbar-width node)) 0))))))))
 
 (fn distribute ((children list) (axis symbol) (amount real) (growing boolean))
   "Water-fill the smallest growing or largest shrinking elements, respecting bounds."
@@ -205,7 +221,8 @@ Floating children use offsets; interactive nodes participate in input routing."
          (along (along-p node axis))
          (available (max 0 (- (axis-size node axis)
                               (* 2 (element-padding node))
-                              (if along (gaps node) 0)))))
+                              (if along (gaps node) 0)
+                              (if (eq axis :x) (scroll-gutter node) 0)))))
     (dolist (child children)
       (let ((rule (axis-rule child axis)))
         (case (sizing-kind rule)
@@ -253,7 +270,8 @@ Floating children use offsets; interactive nodes participate in input routing."
          (axis (if row :x :y))
          (cross (if row :y :x))
          (padding (element-padding node))
-         (inner (- (axis-size node axis) (* 2 padding)))
+         (inner (- (axis-size node axis) (* 2 padding)
+                   (if (eq axis :x) (scroll-gutter node) 0)))
          (used (+ (gaps node)
                   (loop :for child :in (flow-children node)
                         :sum (axis-size child axis))))
@@ -265,6 +283,7 @@ Floating children use offsets; interactive nodes participate in input routing."
                        (alignment-offset
                         (element-cross-align node)
                         (- (axis-size node cross) (* 2 padding)
+                           (if (eq cross :x) (scroll-gutter node) 0)
                            (axis-size child cross))))))
         (setf (box-x box)
               (+ (box-x bounds) (element-offset-x child)
@@ -317,10 +336,12 @@ Return ROOT; all dimensions use the active backend coordinates."
     (setf (element-clip node) (intersect-boxes clip box))
     (let* ((clipping (or (element-scroll-p node) (element-clip-p node)))
            (content
-             (if (and clipping (plusp padding))
+             (if (and clipping (or (plusp padding)
+                                      (plusp (scroll-gutter node))))
                  (make-box :x (+ (box-x box) padding)
                            :y (+ (box-y box) padding)
-                           :width (max 0 (- (box-width box) (* 2 padding)))
+                           :width (max 0 (- (box-width box) (* 2 padding)
+                                          (scroll-gutter node)))
                            :height (max 0 (- (box-height box) (* 2 padding))))
                  box))
            (child-clip (cond ((not clipping) clip)

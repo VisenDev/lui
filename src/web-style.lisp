@@ -49,7 +49,8 @@
 (fn (framed-p boolean) ((widget widget))
   "Return whether WIDGET uses its collection's normal control frame."
   (not (member (widget-kind widget)
-               '(:label :highlight :splitter :list-item :cell :canvas :gauge))))
+               '(:label :highlight :splitter :list-item :cell :canvas :gauge
+                 :scrollbar))))
 
 (fn window-panel-p ((widget widget) (node element))
   "Test whether NODE is a panel covering the active window."
@@ -118,3 +119,6 @@
  #j".lui-cell:focus-visible{outline:2px solid var(--lui-accent);outline-offset:-2px}")
 (add-sheet :splitter
  #j".lui-splitter{opacity:.5}.lui-splitter:hover,.lui-splitter:active,.lui-splitter:focus-visible{opacity:1}.lui-splitter:focus-visible{outline:1px solid var(--lui-accent);outline-offset:-2px}")
+
+(add-sheet :scrollbars
+ #j".lui-scrollbar:focus-visible{outline:2px solid var(--lui-accent);outline-offset:-2px}")

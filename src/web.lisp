@@ -47,6 +47,14 @@
                      :y (- (jscl/ffi:oget event "clientY")
                            (jscl/ffi:oget rect "top"))))))
 
+(defvar *dom-id-counter* 0)
+
+(fn fresh-dom-id ()
+  (loop :for id := (format nil "lui-scroll-~D" (incf *dom-id-counter*))
+        :when (eq #j:null (#j:document:getElementById
+                          (jscl/ffi:jsstring id)))
+          :return id))
+
 (fn property (node (name string) value)
   (unless (eq value (jscl/ffi:oget node name))
     (setf (jscl/ffi:oget node name) value)))
@@ -195,6 +203,18 @@
         (setf (web-app-tab-focus-p app) t)
         (queue-event app (make-event :kind :key :key key :id id))))))
 
+(fn native-scrollbar-key ((app web-app) id event)
+  (let ((key (cdr (assoc
+                   (jscl/ffi:clstring (jscl/ffi:oget event "key"))
+                   '(("ArrowUp" . :up) ("ArrowDown" . :down)
+                     ("ArrowLeft" . :left) ("ArrowRight" . :right)
+                     ("PageUp" . :page-up) ("PageDown" . :page-down)
+                     ("Home" . :home) ("End" . :end)) :test #'string=))))
+    (when key
+      ((jscl/ffi:oget event "preventDefault"))
+      (setf (web-app-tab-focus-p app) t)
+      (queue-event app (make-event :kind :key :key key :id id)))))
+
 (fn css-font-family ((widget widget))
   (if (eq (widget-font-family widget) :monospace)
       "Liberation Mono,Courier New,DejaVu Sans Mono,monospace"
@@ -290,16 +310,19 @@
         (when (eq kind :checkbox)
           ((jscl/ffi:oget dom "appendChild") control)
           ((jscl/ffi:oget dom "appendChild") (create-node "span")))
-        (when (member kind '(:canvas :splitter))
+        (when (member kind '(:canvas :splitter :scrollbar))
           (setf (jscl/ffi:oget dom "luiContinuousMove") #j:true)
-          (attribute dom "role" (if (eq kind :canvas) "img" "separator"))
+          (attribute dom "role" (case kind (:canvas "img")
+                                 (:scrollbar "scrollbar")
+                                 (otherwise "separator")))
           (attribute dom "tabindex" "0")
           (style dom "touch-action" "none")
           (listen app dom "keydown"
                   (lambda (event)
-                    (if (eq kind :canvas)
-                        (native-application-key app id event)
-                        (native-tab-key app id event))))
+                    (case kind
+                      (:canvas (native-application-key app id event))
+                      (:scrollbar (native-scrollbar-key app id event))
+                      (otherwise (native-tab-key app id event)))))
           (listen app dom "contextmenu"
                   (lambda (event)
                     ((jscl/ffi:oget event "preventDefault"))))
@@ -491,6 +514,7 @@
                  (:cell "lui-cell") (:list-item "lui-control lui-option")
                  (:checkbox "lui-check") (:slider "lui-range")
                  (:highlight "lui-highlight") (:splitter "lui-splitter")
+                 (:scrollbar "lui-scrollbar")
                  (otherwise "")))
     (style dom "display" (if (eq kind :checkbox) "flex" "block"))
     (style dom "position" "absolute")
@@ -521,7 +545,7 @@
                                  (+ (box-y clip) (box-height clip)))))
                    (px (- (box-x clip) (box-x box)))))
     (unless (member kind '(:text-field :slider :checkbox :canvas :gauge
-                          :highlight :splitter))
+                          :highlight :splitter :scrollbar))
       (node-text dom (widget-text widget)))
     (unless (member kind '(:label :highlight :splitter))
       (property control "disabled"
@@ -532,6 +556,37 @@
                      (if (eq kind :cell) "Empty cell"
                          (princ-to-string key)))))
     (case kind
+      (:scrollbar
+       (let ((owner (cdr (gethash (second (element-id node))
+                                  (web-app-nodes app)))))
+         (when owner
+           (when (string= "" (jscl/ffi:clstring (jscl/ffi:oget owner "id")))
+             (attribute owner "id" (fresh-dom-id)))
+           (attribute dom "aria-controls"
+                      (jscl/ffi:clstring (jscl/ffi:oget owner "id")))))
+       (destructuring-bind (offset viewport extent) (widget-value widget)
+         (attribute dom "aria-orientation" "vertical")
+         (attribute dom "aria-valuemin" "0")
+         (attribute dom "aria-valuemax"
+                    (jscl/ffi:clstring (#j:String (- extent viewport))))
+         (attribute dom "aria-valuenow"
+                    (jscl/ffi:clstring (#j:String offset))))
+       (style dom "padding" "0")
+       (style dom "border" "none")
+       (style dom "background" (widget-background widget))
+       (style dom "cursor" "default")
+       (style dom "touch-action" "none")
+       (style dom "user-select" "none")
+       (when (eq #j:null (jscl/ffi:oget dom "firstElementChild"))
+         ((jscl/ffi:oget dom "appendChild") (create-node "div")))
+       (let ((thumb (jscl/ffi:oget dom "firstElementChild"))
+             (bounds (scrollbar-thumb node)))
+         (style thumb "pointer-events" "none")
+         (style thumb "position" "absolute")
+         (style thumb "top" (px (- (box-y bounds) (box-y box))))
+         (style thumb "width" "100%")
+         (style thumb "height" (px (box-height bounds)))
+         (style thumb "background" (widget-accent widget))))
       (:splitter
        (attribute dom "aria-orientation" "vertical")
        (attribute dom "aria-label" (if (plusp (length (widget-text widget)))
@@ -848,7 +903,19 @@
                         (jscl/ffi:oget rect "left"))
                   :y (- (jscl/ffi:oget event "clientY")
                         (jscl/ffi:oget rect "top"))
-                  :value (jscl/ffi:oget event "deltaY")))))))
+                  ;; No standardized browser flag distinguishes OS inertia.
+                  ;; Preserve fine/fractional pixel motion; ease coarse notches.
+                  :scroll-mode
+                  (let ((delta (jscl/ffi:oget event "deltaY")))
+                    (if (and (zerop (jscl/ffi:oget event "deltaMode"))
+                             (or (< (abs delta) 20)
+                                 (/= delta (truncate delta))))
+                        :immediate :smooth))
+                  :value (* (jscl/ffi:oget event "deltaY")
+                            (case (jscl/ffi:oget event "deltaMode")
+                              (1 16)
+                              (2 (jscl/ffi:oget host "clientHeight"))
+                              (otherwise 1)))))))))
     (setf (web-app-resize-observer app)
           (jscl/ffi:new
            #j:ResizeObserver

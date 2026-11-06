@@ -202,7 +202,7 @@ class WebTests(unittest.TestCase):
         row.evaluate("n => n.addEventListener('wheel', e => e.stopPropagation())")
         self.page.mouse.wheel(0, 30)
         self.page.wait_for_function("""before => parseFloat(
-            document.querySelector('#scroll-host button').style.top)<before""", arg=before)
+            document.querySelector('#scroll-host button').style.top)<=before-29.99""", arg=before)
         self.assertEqual(self.number(
             '(round (cdr (gethash :outer (lui.frame::context-scroll (lui.web::web-app-context *scroll-test-app*)))))'), 30)
         self.assertEqual(self.number(
@@ -1031,12 +1031,67 @@ class WebTests(unittest.TestCase):
         self.page.wait_for_function("""() => parseFloat(
             document.querySelector('#clip-host button').style.top) < 0""")
         self.assertGreaterEqual(row.evaluate("""n => parseFloat(n.style.top) +
-            parseFloat(getComputedStyle(n).clipPath.slice(6))"""), 8)
+            parseFloat(getComputedStyle(n).clipPath.slice(6))"""), 7.99)
         box = host.bounding_box()
         self.assertFalse(self.page.evaluate("""({x,y}) =>
             !!document.elementFromPoint(x,y).closest('button')""",
             {"x": box["x"] + 20, "y": box["y"] + 2}))
         self.lisp('(lui.web:unmount *clip-app*)')
+
+    def test_scrollbar_extent_drag_keyboard_paging_and_hiding(self):
+        self.lisp('''
+          (defvar *scrollbar-visible* t)
+          (defvar *scrollbar-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *scrollbar-host* "id") #j"scrollbar-fixture"
+                (jscl/ffi:oget *scrollbar-host* "style" "width") #j"300px"
+                (jscl/ffi:oget *scrollbar-host* "style" "height") #j"220px")
+          (#j:document:body:appendChild *scrollbar-host*)
+          (defvar *scrollbar-app*
+            (lui.web:mount *scrollbar-host*
+              (lambda ()
+                (lui:panel (lui:opt :id :scrollbar-viewport
+                                    :width (lui.layout:grow)
+                                    :height (lui.layout:fixed 180)
+                                    :padding 8 :scroll-p t
+                                    :scrollbar-p *scrollbar-visible*)
+                  (dotimes (index 20)
+                    (lui:button (list :scroll-row index) "Row"
+                      (lui:opt :height (lui.layout:fixed 28)
+                               :width (lui.layout:grow))))))))
+        ''')
+        host = self.page.locator("#scrollbar-fixture")
+        bar = host.get_by_role("scrollbar")
+        expect(bar).to_have_attribute("aria-valuemax", "396")
+        expect(bar).to_have_attribute("aria-valuenow", "0")
+        self.assertTrue(bar.evaluate("n => !!document.getElementById(n.getAttribute('aria-controls'))"))
+        bar.scroll_into_view_if_needed()
+        track = bar.bounding_box()
+        thumb = bar.locator("div").bounding_box()
+        self.assertAlmostEqual(thumb["height"], track["height"] * 164 / 560,
+                               delta=1)
+        self.page.mouse.move(track["x"] + 5, thumb["y"] + 5)
+        self.page.mouse.down()
+        self.page.mouse.move(track["x"] + 50, track["y"] + track["height"] + 40)
+        self.page.mouse.up()
+        expect(bar).to_have_attribute("aria-valuenow", "396")
+        bar.press("Home")
+        expect(bar).to_have_attribute("aria-valuenow", "0")
+        bar.click(position={"x": 5, "y": track["height"] - 3})
+        expect(bar).to_have_attribute("aria-valuenow", "164")
+        bar.press("End")
+        expect(bar).to_have_attribute("aria-valuenow", "396")
+        self.lisp('''
+          (let ((lui.frame:*context* (lui.web::web-app-context *scrollbar-app*)))
+            (lui.frame:scroll-to :scrollbar-viewport 0 33))
+          (lui.web:refresh *scrollbar-app*)
+        ''')
+        expect(bar).to_have_attribute("aria-valuenow", "33")
+        self.lisp('''
+          (setf *scrollbar-visible* nil)
+          (lui.web:refresh *scrollbar-app*)
+        ''')
+        expect(bar).to_have_count(0)
+        self.lisp('(lui.web:unmount *scrollbar-app*)')
 
     def test_custom_toolkit_styles_inherit_and_widget_hook_runs_last(self):
         self.lisp('''

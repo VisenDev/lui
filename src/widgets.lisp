@@ -5,7 +5,7 @@
            #:widget-frost
            #:widget-terminal-text #:declare-panel #:declare-widget
            #:toolkit-surface #:register-surface #:value-widget
-           #:make-widget
+           #:scrollbar-thumb #:make-widget
            #:widget-value #:widget-minimum #:widget-maximum #:widget-step
            #:widget-font-size #:widget-font-family #:widget-font-weight
            #:widget-opacity #:widget-accent
@@ -451,6 +451,98 @@ KIND is :CHECKBOX, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
     (values value (not (equal original value)))))
 
 
+(defstruct* scrollbar-state
+  node
+  grab)
+
+(fn (scrollbar-thumb box) ((node element))
+  "Return the scrollbar thumb's solved screen bounds from its true extent."
+  (let* ((track (element-box node))
+         (value (widget-value (element-content node)))
+         (offset (first value)) (viewport (second value))
+         (extent (third value))
+         (height (min (box-height track)
+                      (max (* 2 (box-width track))
+                           (* (box-height track) (/ viewport extent))))))
+    (make-box :x (box-x track) :width (box-width track) :height height
+              :y (+ (box-y track)
+                    (* (- (box-height track) height)
+                       (/ offset (max 1 (- extent viewport))))))))
+
+(fn scrollbar-input (id owner)
+  (let* ((events (events-for id))
+         (state (when events (gethash id (context-state *context*))))
+         (old (when state (scrollbar-state-node state))))
+    (when old
+      (let* ((value (widget-value (element-content old)))
+             (offset (nth-value 1 (scroll-position owner)))
+             (handled nil) (page (second value))
+             (limit (- (third value) page))
+             (track (element-box old)) (thumb (scrollbar-thumb old))
+             (travel (- (box-height track) (box-height thumb))))
+        (dolist (event events)
+          (case (event-kind event)
+            (:press
+             (when (eq (event-button event) :primary)
+               (setf handled t (scrollbar-state-grab state) nil)
+               (if (<= (box-y thumb) (event-y event)
+                       (+ (box-y thumb) (box-height thumb)))
+                   (setf (scrollbar-state-grab state)
+                         (- (event-y event) (box-y thumb)))
+                   (incf offset (if (< (event-y event) (box-y thumb))
+                                    (- page) page)))))
+            (:move
+             (when (and (scrollbar-state-grab state) (plusp travel)
+                        (event-dragging-p event))
+               (setf handled t offset
+                     (* limit (/ (- (event-y event) (box-y track)
+                                     (scrollbar-state-grab state)) travel)))))
+            (:release (setf (scrollbar-state-grab state) nil))
+            (:key
+             (when (member (event-key event)
+                           '(:up :left :down :right :page-up :page-down
+                             :home :end))
+               (setf handled t))
+             (case (event-key event)
+               ((:up :left) (decf offset (max 1 (/ page 10))))
+               ((:down :right) (incf offset (max 1 (/ page 10))))
+               (:page-up (decf offset page))
+               (:page-down (incf offset page))
+               (:home (setf offset 0))
+               (:end (setf offset limit)))))
+          (setf offset (max 0 (min limit offset))))
+        (when handled (scroll-to owner (scroll-position owner) offset))))))
+
+(fn decorate-scrollbar ((owner element) id)
+  (when (plusp (element-scroll-limit-y owner))
+    (let* ((bounds (element-box owner)) (padding (element-padding owner))
+           (width (scroll-gutter owner))
+           (height (max 0 (- (box-height bounds) (* 2 padding))))
+           (widget (element-content owner))
+           (box (make-box :x (- (+ (box-x bounds) (box-width bounds))
+                                padding width)
+                          :y (+ (box-y bounds) padding)
+                          :width width :height height))
+           (node (make-element
+                  :id id :box box :clip (intersect-boxes box
+                                                       (element-clip owner))
+                  :floating-p t :interactive-p t :pointer-focus-p t
+                  :content
+                  (make-widget
+                   :kind :scrollbar :style (widget-style widget)
+                   :text "Scroll" :opacity 1 :radius 0 :frost 0
+                   :background (widget-background widget)
+                   :foreground (widget-foreground widget)
+                   :accent (widget-accent widget)
+                   :value (list (element-scroll-y owner) height
+                                (+ height (element-scroll-limit-y owner))))))
+           (*parent* owner)
+           (state (or (gethash id (context-state *context*))
+                      (setf (gethash id (context-state *context*))
+                            (make-scrollbar-state)))))
+      (setf (scrollbar-state-node state) node)
+      (emit node))))
+
 (fn (declare-panel element) ((style symbol) (options list))
   "Declare a styled layout container without introducing retained widgets."
   (let ((appearance nil) (layout nil))
@@ -461,7 +553,19 @@ KIND is :CHECKBOX, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
                                :terminal-label))
                   (setf appearance (append appearance (list key value)))
                   (setf layout (append layout (list key value)))))
-    (emit (apply #'make-element
-                 :content (apply #'make-widget :kind :panel :style style
-                                 appearance)
-                 layout))))
+    (let* ((node (apply #'make-element
+                        :content (apply #'make-widget :kind :panel
+                                        :style style appearance)
+                        layout))
+           (enabled (and (element-scroll-p node)
+                         (getf options :scrollbar-p t)))
+           (width (getf options :scrollbar-width
+                        (if (context-text-mode-p *context*) 1 12))))
+      (when (and enabled (plusp width))
+        (setf (element-scrollbar-p node) t
+              (element-scrollbar-width node) width)
+        (let ((id (list :lui.scrollbar (element-id node))))
+          (scrollbar-input id (element-id node))
+          (push (lambda () (decorate-scrollbar node id))
+                (lui.frame::context-after-layout *context*))))
+      (emit node))))
