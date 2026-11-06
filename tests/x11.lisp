@@ -57,7 +57,7 @@
                         (pending-input-context
                          context (list (make-event :kind :tab)))))))
          (dolist (kind '(:default :pointer :text :not-allowed
-                         :resize-horizontal))
+                         :resize-horizontal :resize-vertical))
            (assert (plusp (lui.x11::cursor-for window kind))))
          (format t "X11 reverse Tab, Space, and native cursor checks passed.~%"))
     (maphash (lambda (kind cursor)

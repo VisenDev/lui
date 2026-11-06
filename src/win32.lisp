@@ -231,7 +231,8 @@
 
 (fn cursor-id ((kind symbol))
   (case kind (:not-allowed 32648) (:pointer 32649) (:text 32513)
-        (:resize-horizontal 32644) (otherwise 32512)))
+        (:resize-horizontal 32644) (:resize-vertical 32645)
+        (otherwise 32512)))
 
 (fn update-cursor ((window win-window))
   (when (win-window-context window)

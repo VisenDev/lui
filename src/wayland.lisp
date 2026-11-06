@@ -152,7 +152,7 @@
 
 (fn cursor-shape ((kind symbol))
   (case kind (:not-allowed 15) (:pointer 4) (:text 9)
-        (:resize-horizontal 26) (otherwise 1)))
+        (:resize-horizontal 26) (:resize-vertical 27) (otherwise 1)))
 
 (fn cursor-image-for ((window wl-window) (kind symbol))
   (when (and (wl-window-shm window)
@@ -172,6 +172,8 @@
                          (:text '("text" "xterm"))
                          (:resize-horizontal
                           '("ew-resize" "sb_h_double_arrow" "h_double_arrow"))
+                         (:resize-vertical
+                          '("ns-resize" "sb_v_double_arrow" "v_double_arrow"))
                          (otherwise '("default" "left_ptr")))
           :for cursor :=
           (cffi:foreign-funcall "wl_cursor_theme_get_cursor"

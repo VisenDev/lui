@@ -300,6 +300,7 @@
                                    (:not-allowed "not-allowed")
                                    (:pointer "pointer") (:text "text")
                                    (:resize-horizontal "ew-resize")
+                                   (:resize-vertical "ns-resize")
                                    (otherwise "default"))
                          :ulong)
                         0)))
@@ -308,6 +309,7 @@
                    (x-window-display window)
                    (case kind (:not-allowed 0) (:pointer 60)
                          (:text 152) (:resize-horizontal 108)
+                         (:resize-vertical 116)
                          (otherwise 68))))))))
 
 (fn update-cursor ((window x-window))

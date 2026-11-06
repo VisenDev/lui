@@ -217,6 +217,7 @@
           (serial (lui.wayland::wl-window-cursor-serial window)))
       (assert image)
       (assert (lui.wayland::cursor-image-for window :resize-horizontal))
+      (assert (lui.wayland::cursor-image-for window :resize-vertical))
       (assert (plusp (cffi:foreign-slot-value
                       image '(:struct lui.wayland::cursor-image)
                       'lui.wayland::width)))
@@ -227,7 +228,8 @@
              (progn
                (setf (lui.wayland::wl-window-cursor-serial window) 0)
                (assert (lui.wayland::set-themed-cursor :not-allowed))
-               (assert (lui.wayland::set-themed-cursor :resize-horizontal)))
+               (assert (lui.wayland::set-themed-cursor :resize-horizontal))
+               (assert (lui.wayland::set-themed-cursor :resize-vertical)))
           (setf (lui.wayland::wl-window-cursor-serial window) serial))
         (assert (not (minusp
                       (lui.wayland-protocol:roundtrip
@@ -260,7 +262,8 @@
     (assert (null (lui.wayland::wl-window-cursor-serial
                    lui.wayland::*window*)))
     (assert (= 15 (lui.wayland::cursor-shape :not-allowed)))
-    (assert (= 26 (lui.wayland::cursor-shape :resize-horizontal)))))
+    (assert (= 26 (lui.wayland::cursor-shape :resize-horizontal)))
+    (assert (= 27 (lui.wayland::cursor-shape :resize-vertical)))))
 
 (defun test-surface-scaling ()
   (let ((lui.wayland::*window*

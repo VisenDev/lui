@@ -318,6 +318,7 @@
   (case kind (:not-allowed "operationNotAllowedCursor")
         (:pointer "pointingHandCursor") (:text "IBeamCursor")
         (:resize-horizontal "resizeLeftRightCursor")
+        (:resize-vertical "resizeUpDownCursor")
         (otherwise "arrowCursor")))
 
 (fn update-cursor ((x real) (y real))
