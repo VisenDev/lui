@@ -24,6 +24,7 @@
   '("/usr/share/fonts/dejavu-sans-fonts/"
     "/usr/share/fonts/dejavu-sans-mono-fonts/"
     "/usr/share/fonts/truetype/dejavu/"
+    "/usr/share/fonts/liberation-sans-fonts/"
     "/usr/share/fonts/liberation-mono-fonts/"
     "/usr/share/fonts/truetype/liberation2/"
     "/usr/share/fonts/truetype/liberation/"
@@ -31,8 +32,10 @@
   "Ordered font directories, as directory pathnames or namestrings.")
 
 (defvar *font-names*
-  '(((:sans-serif :normal) "DejaVuSans.ttf" "arial.ttf" "Arial.ttf")
-    ((:sans-serif :bold) "DejaVuSans-Bold.ttf" "arialbd.ttf" "Arial Bold.ttf")
+  '(((:sans-serif :normal) "DejaVuSans.ttf" "arial.ttf" "Arial.ttf"
+     "LiberationSans-Regular.ttf")
+    ((:sans-serif :bold) "DejaVuSans-Bold.ttf" "arialbd.ttf" "Arial Bold.ttf"
+     "LiberationSans-Bold.ttf")
     ((:monospace :normal) "LiberationMono-Regular.ttf" "DejaVuSansMono.ttf"
      "cour.ttf" "Courier New.ttf")
     ((:monospace :bold) "LiberationMono-Bold.ttf" "DejaVuSansMono-Bold.ttf"

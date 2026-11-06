@@ -56,15 +56,9 @@ def script(error=False, debug=False):
           (lui.frame:context-width context) (lui.frame:context-height context)))
 
 """
-    return f"""(let ((asdf (merge-pathnames "quicklisp/asdf.lisp"
-                                   (user-homedir-pathname))))
-  (when (probe-file asdf) (load asdf)))
-(require :asdf)
-(let ((setup (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname))))
-  (when (probe-file setup) (load setup)))
+    return f"""(load "scripts/setup.lisp")
 (handler-case (asdf:load-system "cffi")
   (error () (uiop:symbol-call :ql :quickload "cffi" :silent t)))
-(asdf:load-asd (truename "lui.asd"))
 (asdf:load-system "lui/terminal")
 (asdf:load-system "lui/demo")
 (assert (= (lui.terminal:text-width "A界é") 4))
