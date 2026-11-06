@@ -1,12 +1,13 @@
 (defpackage #:lui.debug
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets)
   (:export #:wrap #:draw #:state #:make-state #:*state* #:state-open-p
-           #:state-selected))
+           #:state-selected #:state-width))
 (in-package #:lui.debug)
 
 (defstruct* entry node key (depth 0 :type integer))
 (defstruct* state
   (open-p nil :type boolean) selected
+  (width nil :type (or null real)) (grab nil :type (or null real))
   (collapsed (make-hash-table :test 'equal) :type hash-table)
   (nodes (make-hash-table :test 'equal) :type hash-table)
   (rows (make-array 0 :adjustable t :fill-pointer 0) :type vector))
@@ -139,7 +140,7 @@
   (let* ((*parent* (pane toolkit :id (id :tree) :width (grow) :height (grow)
                         :scroll-p t :padding (units 1) :opacity 1
                         :radius 0 :frost 0))
-         (rows (state-rows state)) (step (units 3))
+         (rows (state-rows state)) (step (units (if (= *unit* 1) 1 3)))
          (viewport (previous-box (id :tree)))
          (height (if viewport (box-height viewport)
                      (/ (context-height *context*) 2)))
@@ -159,17 +160,19 @@
                       :width (grow) :height (fixed step)
                       :gap (units 0.25) :cross-align :center)
                   (emit (make-element
-                         :width (fixed (min (/ width 3)
-                                            (units (entry-depth entry))))))
+                         :width
+                         (fixed (min (/ width 3)
+                                     (units (* 2 (entry-depth entry)))))))
                   (if (plusp (length (element-children node)))
-                      (when (control toolkit :button (id :collapse key)
+                      (when (control toolkit :list-item (id :collapse key)
                                      (if (gethash key (state-collapsed state))
                                          "+" "-")
-                                     :width (fixed (units 5)))
+                                     :width (fixed (units 3))
+                                     :height (fixed step))
                         (setf (gethash key (state-collapsed state))
                               (not (gethash key (state-collapsed state))))
                         (request-frame))
-                      (control toolkit :label "." :width (fixed (units 5))))
+                      (emit (make-element :width (fixed (units 3)))))
                   (when (control toolkit :list-item (id :row key)
                                  (caption node) :width (grow)
                                  :height (fixed step)
@@ -178,10 +181,56 @@
                     (setf (state-selected state) key)
                     (request-frame)))))))
 
-(fn inspector ((state state) (toolkit symbol))
-  (let* ((width (min (context-width *context*)
-                     (max (units 25) (* (context-width *context*) 0.4))))
-         (*parent* (pane toolkit :id (id :inspector) :interactive-p t
+(fn inspector-width ((state state))
+  (let* ((window (context-width *context*))
+         (minimum (min window (units 25)))
+         (maximum (max minimum (- window (units 12))))
+         (width (min maximum (max minimum
+                                   (if (state-width state)
+                                       (units (state-width state))
+                                       (* window 0.4))))))
+    (dolist (event (events-for (id :resize)))
+      (when (or (and (eq (event-kind event) :press)
+                     (eq (event-button event) :primary))
+                (and (state-grab state)
+                     (member (event-kind event) '(:move :release)))
+                (and (eq (event-kind event) :key)
+                     (member (event-key event) '(:left :right :home :end))))
+        (case (event-kind event)
+          (:press
+           (setf (state-grab state) (- (event-x event) (- window width))
+                 (context-focus *context*) (id :resize)))
+          ((:move :release)
+           (setf width (+ (- window (event-x event)) (state-grab state)))
+           (when (eq (event-kind event) :release)
+             (setf (state-grab state) nil)))
+          (:key
+           (case (event-key event)
+             (:left (incf width (units 2)))
+             (:right (decf width (units 2)))
+             (:home (setf width minimum)) (:end (setf width maximum)))))
+        (setf width (min maximum (max minimum width))
+              (state-width state) (/ width *unit*))
+        (request-frame)))
+    width))
+
+(fn resize-handle ((width real) (toolkit symbol))
+  (let ((size (units 1)))
+    (emit (make-element
+           :id (id :resize) :interactive-p t :pointer-focus-p t
+           :floating-p t
+           :offset-x (max 0 (- (context-width *context*) width (/ size 2)))
+           :width (fixed size) :height (fixed (context-height *context*))
+           :content (apply #'make-widget :kind :splitter :style toolkit
+                           :value (/ width
+                                     (max 1 (context-width *context*)))
+                           :text "Inspector width"
+                           (symbol-value
+                            (find-symbol "*DEFAULTS*"
+                                         (package-name-for toolkit))))))))
+
+(fn inspector ((state state) (toolkit symbol) (width real))
+  (let ((*parent* (pane toolkit :id (id :inspector) :interactive-p t
                         :keyboard-focus-p nil
                         :floating-p t
                         :offset-x (- (context-width *context*) width)
@@ -223,7 +272,9 @@
           (highlight (element-box node) :bounds 0.18 "#ff8c00")
           (when (clipped-p node)
             (highlight (element-clip node) :clip 0 "#00c0ff")))
-        (inspector state toolkit)))))
+        (let ((width (inspector-width state)))
+          (inspector state toolkit width)
+          (resize-handle width toolkit))))))
 
 (fn (wrap function) ((function function) &key ((state state) *state*)
                     (toolkit :glass))

@@ -435,6 +435,12 @@
     (cond
       ((widget-painter widget)
        (funcall (widget-painter widget) renderer node))
+      ((eq kind :splitter)
+       (shape renderer
+              (make-box :x (+ (box-x box) (/ (box-width box) 2) -1)
+                        :y (box-y box) :width 2 :height (box-height box))
+              0 (widget-accent widget)
+              (if (or pressed (hovered-p (element-id node))) 1 0.5)))
       ((eq kind :highlight)
        (shape renderer box 0 (widget-accent widget)
               (widget-opacity widget))
