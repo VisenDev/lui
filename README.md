@@ -26,7 +26,32 @@ work.
 - Tabs support Left/Right wrapping and Home/End navigation, skipping disabled
   tabs. Widgets return current-frame values and activation results.
 
-Pass appearance options to individual widgets or dynamically bind
+A draw function describes the current frame. Give interactive controls stable
+IDs so a release, keypress, or edit can find the same control on the next
+frame. For example, this entire application runs with any loaded backend:
+
+```lisp
+(defun counter (&optional (toolkit :glass))
+  (let ((count 0))
+    (lui:run
+     (lambda ()
+       (lui:with-toolkit (toolkit)
+         (lui:panel (lui:opt :padding (lui:units 1))
+           (when (lui:button :increment "Count")
+             (incf count))
+           (lui:label (format nil "Count: ~D" count))))))))
+```
+
+`with-toolkit` evaluates its argument once and scopes ordinary widget calls.
+`panel` attaches its body as children; the layout macros `lui.frame:row` and
+`lui.frame:column` group children without painting a panel. Buttons return
+activation; fields, sliders, and checkboxes return the current value and a
+second value indicating a change. Store application values outside the draw
+function. The library keeps focus, capture, and caret state between frames.
+
+Use the optional final `lui:opt` form for widget customization. Its keyword
+lambda list is visible to SLIME; layout keys such as `:gap` apply to panels,
+whereas `:step` configures a slider. To change collection defaults, bind
 `lui.glass:*defaults*`, `lui.motif:*defaults*`, or `lui.garnet:*defaults*` for a
 group. Options include foreground/background, radius, frost, opacity, accent,
 font size, `:font-family` (`:sans-serif` or `:monospace`), and `:font-weight`
@@ -212,6 +237,19 @@ Quicklisp, `(ql:quickload '("cffi" "zpb-ttf"))` installs the Lisp dependencies f
 native graphics; raw terminal input needs only CFFI. No native rendering library
 is bundled. A TrueType font is required for native graphics: common system paths
 are tried automatically, or set `lui.font:*font-path*` after loading the backend.
+To use an installed or bundled font family, set these variables **before**
+opening the window. `*font-directories*` lists directory pathnames (or strings
+ending in a slash); `*font-names*` maps each family and weight to candidate
+filenames. Lookup tries each filename across those directories in order.
+For example, to search your own directory first:
+
+```lisp
+(push #p"/opt/my-app/fonts/" lui.font:*font-directories*)
+(push '((:sans-serif :normal) "MySans.ttf") lui.font:*font-names*)
+```
+
+An exact face override takes precedence over directory search, and
+`*font-path*` takes precedence for the base face.
 Additional faces are cached and closed with the base font. Override their paths
 with `lui.font:*font-paths*`, for example
 `'(((:monospace :bold) . "/path/to/Mono-Bold.ttf"))`. Browser measurement and

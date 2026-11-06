@@ -2,7 +2,8 @@
   (:use #:cl #:lui.fn)
   (:export #:font #:open-font #:close-font #:font-size #:font-loader
            #:text-width #:line-height #:baseline #:wrap-text #:glyph-polygons
-           #:*font-path* #:*font-paths* #:font-face))
+           #:*font-path* #:*font-paths* #:*font-directories*
+           #:*font-names* #:font-face))
 
 (in-package #:lui.font)
 
@@ -18,14 +19,36 @@
   (size 16 :type real)
   (cache (make-hash-table) :type hash-table))
 
-(fn default-font ()
-  (or *font-path*
-      (find-if #'probe-file
-               '("/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf"
-                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-                 "C:/Windows/Fonts/arial.ttf"
-                 "/System/Library/Fonts/Supplemental/Arial.ttf"))
-      (error "Set LUI.FONT:*FONT-PATH* to a TrueType font.")))
+(defvar *font-directories*
+  '("/usr/share/fonts/dejavu-sans-fonts/"
+    "/usr/share/fonts/dejavu-sans-mono-fonts/"
+    "/usr/share/fonts/truetype/dejavu/"
+    "/usr/share/fonts/liberation-mono-fonts/"
+    "/usr/share/fonts/truetype/liberation2/"
+    "/usr/share/fonts/truetype/liberation/"
+    "C:/Windows/Fonts/" "/System/Library/Fonts/Supplemental/")
+  "Ordered font directories, as directory pathnames or namestrings.")
+
+(defvar *font-names*
+  '(((:sans-serif :normal) "DejaVuSans.ttf" "arial.ttf" "Arial.ttf")
+    ((:sans-serif :bold) "DejaVuSans-Bold.ttf" "arialbd.ttf" "Arial Bold.ttf")
+    ((:monospace :normal) "LiberationMono-Regular.ttf" "DejaVuSansMono.ttf"
+     "cour.ttf" "Courier New.ttf")
+    ((:monospace :bold) "LiberationMono-Bold.ttf" "DejaVuSansMono-Bold.ttf"
+     "courbd.ttf" "Courier New Bold.ttf"))
+  "Candidate filenames in preference order for each (family weight).")
+
+(defun resolve-face (family weight)
+  (let ((key (list family weight)))
+    (or (cdr (assoc key *font-paths* :test #'equal))
+        (loop :for name :in (cdr (assoc key *font-names* :test #'equal))
+              :thereis (loop :for dir :in *font-directories*
+                             :thereis (probe-file
+                                       (merge-pathnames name dir))))
+        (error "No TrueType font for ~S. Set LUI.FONT:*FONT-PATHS*." key))))
+
+(defun default-font ()
+  (or *font-path* (resolve-face :sans-serif :normal)))
 
 (fn (open-font font) (&optional path ((size real) 16))
   (make-font :loader (zpb-ttf:open-font-loader (or path (default-font)))
@@ -47,45 +70,7 @@
                    (ecase weight (:normal 0) (:bold 1)))))
     (if (zerop index) owner
         (or (aref (font-faces owner) index)
-            (let* ((key (list family weight))
-                   (names
-                     (ecase index
-                       (1 '("DejaVuSans-Bold.ttf" "arialbd.ttf"
-                            "Arial Bold.ttf"))
-                       (2 '("DejaVuSansMono.ttf" "cour.ttf"
-                            "Courier New.ttf"))
-                       (3 '("DejaVuSansMono-Bold.ttf" "courbd.ttf"
-                            "Courier New Bold.ttf"))))
-                   (path
-                     (or (cdr (assoc key *font-paths* :test #'equal))
-                         (when (> index 1)
-                           (let ((name (if (= index 2)
-                                           "LiberationMono-Regular.ttf"
-                                           "LiberationMono-Bold.ttf")))
-                             (find-if #'probe-file
-                                      (mapcar
-                                       (lambda (directory)
-                                         (concatenate 'string directory name))
-                                       '("/usr/share/fonts/liberation-mono-fonts/"
-                                         "/usr/share/fonts/truetype/liberation2/"
-                                         "/usr/share/fonts/truetype/liberation/")))))
-                         (find-if
-                          #'probe-file
-                          (list
-                           (concatenate 'string
-                            "/usr/share/fonts/dejavu-sans-mono-fonts/"
-                            (first names))
-                           (concatenate 'string
-                            "/usr/share/fonts/dejavu-sans-fonts/"
-                            (first names))
-                           (concatenate 'string
-                            "/usr/share/fonts/truetype/dejavu/" (first names))
-                           (concatenate 'string "C:/Windows/Fonts/"
-                                        (second names))
-                           (concatenate 'string
-                            "/System/Library/Fonts/Supplemental/"
-                            (third names))))
-                         (error "Set LUI.FONT:*FONT-PATHS* for ~S." key)))
+            (let* ((path (resolve-face family weight))
                    (face (open-font path (font-size owner))))
               (setf (font-owner face) owner
                     (aref (font-faces owner) index) face))))))
