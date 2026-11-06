@@ -442,8 +442,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     (values (+ year year-offset) (1+ index))))
 
 (defun calendar-item (id text &rest options)
-  (list-item id text (append options (opt :background "#ffffff" :foreground "#171717"
-                                          :accent "#0878ed" :font-size 14))))
+  (list-item id text (append options (opt :font-size 14))))
 
 (defun calendar-arrow-focus (id state)
   (let ((focus (context-focus *context*)))
@@ -469,7 +468,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (let* ((year (picker-state-year state)) (month (picker-state-month state))
          (months (picker-state-months-p state))
          (width (lui.layout:percent (/ 1 7)))
-         (ink "#076ed1"))
+         (palette (toolkit-defaults))
+         (foreground (getf palette :foreground "#ffffff"))
+         (muted (lui.widgets::muted-ink foreground (getf palette :background "#303040")))
+         (ink (getf palette :accent foreground)))
     (row (:width (lui.layout:grow))
       (when (calendar-item (list id :month-menu)
                            (format nil "~A ~4,'0D ▼" (aref *month-names* (1- month)) year)
@@ -497,7 +499,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
           (row (:width (lui.layout:grow))
             (loop for name across "SMTWTFS" do
               (row (:width width :align :center)
-                (label (string name) (opt :font-size 13 :foreground "#222222")))))
+                (label (string name) (opt :font-size 13)))))
           (dotimes (week 6)
             (row (:width (lui.layout:grow))
               (dotimes (column 7)
@@ -509,7 +511,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                                (list id :adjacent y m day))
                                            (princ-to-string day) :width width :center-text-p t
                                            :disabled-p (not (<= 1 y 9999))
-                                           :foreground (if (zerop offset) "#171717" "#747474")
+                                           :foreground (if (zerop offset) foreground muted)
                                            :selected-p (and selected (equal (list y m day) (subseq selected 0 3))))
                         (return-from picker-calendar (values (list y m day) t)))))))))))
     (row (:width (lui.layout:grow))
@@ -563,8 +565,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                (setf (picker-state-open-p state) nil))
               (t
                (let ((*parent* (anchored-popup popup *parent*
-                                 (opt :width (lui.layout:fixed (if terminal 32 260))
-                                      :background "#ffffff" :radius 1))))
+                                 (opt :width (lui.layout:fixed (if terminal 32 260))))))
                  (multiple-value-bind (date action) (picker-calendar id state (or parts (local-today)))
                    (when action
                      (pop (lui.frame::context-popups *context*))
@@ -585,12 +586,10 @@ returns ISO strings. The calendar opens at the selected date or today's month."
             (picker-state-draft state) (if parts (picker-display parts mode) (or value ""))))
     (column (:id id :width (getf options :width (lui.layout:fit)))
       (panel (append (without-option :mode options)
-                     (opt :direction :row :padding 1 :gap 0 :radius 1
-                          :background "#a0a0a0" :opacity 1))
+                     (opt :direction :row :padding 1 :gap 0))
         (let* ((old (picker-state-draft state))
                (draft (text-field input old
-                        (opt :width (lui.layout:grow) :foreground "#171717" :background "#ffffff"
-                             :radius 1 :opacity 1 :accessible-name
+                        (opt :width (lui.layout:grow) :accessible-name
                              (ecase mode (:date "Date") (:time "Time") (:datetime "Date and time"))
                              :placeholder (ecase mode (:date "mm/dd/yyyy") (:time "hh:mm")
                                                  (:datetime "mm/dd/yyyy hh:mm")))))

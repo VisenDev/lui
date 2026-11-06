@@ -27,6 +27,18 @@
   "Return NAME's registered paint family, or NAME when it has no mapping."
   (gethash name *surfaces* name))
 
+(defun muted-ink (foreground background)
+  "Soften a foreground color against its surface for secondary text."
+  (if (every (lambda (color) (and (= (length color) 7) (char= (char color 0) #\#)))
+             (list foreground background))
+      (with-output-to-string (stream)
+        (write-char #\# stream)
+        (loop for i in '(1 3 5)
+              for fg = (parse-integer foreground :start i :end (+ i 2) :radix 16)
+              for bg = (parse-integer background :start i :end (+ i 2) :radix 16)
+              do (format stream "~2,'0X" (round (+ (* 2 fg) bg) 3))))
+      foreground))
+
 (defstruct* widget
   "Backend-neutral control content, values, appearance, and extension callbacks."
   (kind :label :type symbol)
