@@ -98,6 +98,7 @@
       (assert (> (box-height
                   (element-box (node-with-id context :docs-entries))) 20))
       (narrow (make-event :kind :activate :id '(:docs-entry 0)))
+      (assert (node-with-id context :docs-preview-button))
       (narrow)
       (assert (null (node-with-id context :docs-entries)))
       (assert (node-with-id context :docs-preview-button))
@@ -152,7 +153,34 @@
           (assert (> (box-width (element-box pane)) previous)))
         (setf previous (box-width (element-box pane))))))))
 
+(defun test-scrolled-selection ()
+  (let* ((lui:*unit* 1) (context (make-terminal-context))
+         (draw (lui.docs:make-docs
+                :entries
+                (loop :for i :below 100
+                      :collect (list :package "lui" :name (format nil "ROW~D" i)
+                                     :kind :function :signature "()"
+                                     :documentation "An entry.")))))
+    (frame context draw)
+    (frame context draw)
+    ;; Input order, rather than row order, decides the latest selection.
+    (frame context draw
+           (make-event :kind :activate :id '(:docs-entry 7))
+           (make-event :kind :activate :id '(:docs-entry 2)))
+    (assert (has-label context "lui:ROW2"))
+    (let ((box (element-box (node-with-id context :docs-entries))))
+      ;; A wheel event batched after a click can virtualize its old row away.
+      (frame context draw
+             (make-event :kind :activate :id '(:docs-entry 1))
+             (make-event :kind :scroll :x (+ (box-x box) 1)
+                         :y (+ (box-y box) 1) :value 100 :scroll-mode :immediate)))
+    (assert (null (node-with-id context '(:docs-entry 1))))
+    (assert (has-label context "lui:ROW1"))
+    (frame context draw (make-event :kind :move :x 99 :y 39))
+    (assert (has-label context "lui:ROW1"))))
+
 (defun run-tests ()
+  (test-scrolled-selection)
   (test-symbol-wrapping)
   (test-live-widgets)
   (test-narrow-reference)

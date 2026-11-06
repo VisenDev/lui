@@ -215,6 +215,18 @@
               (browser-symbols-p state) t)
         (update-matches state)))))
 
+(defun select-reference (state)
+  ;; Apply input before virtualization can omit a row from the new viewport.
+  (dolist (id (lui.frame:activated-ids))
+    (when (and (consp id) (eq (first id) :docs-entry)
+               (integerp (second id)) (null (cddr id))
+               (member (second id) (browser-matches state)))
+      (setf (browser-selected state) (second id)
+            (browser-guide state) nil
+            (browser-symbols-p state) nil)
+      (scroll-to :docs-detail 0 0)
+      (request-frame))))
+
 (defun entry-list (state height)
   (lui:panel (lui:opt :id :docs-entries :width (grow) :height height
                       :scroll-p t :padding (units 0.5) :opacity 1 :frost 0)
@@ -234,26 +246,21 @@
                          (fourth (aref rows (1- count)))) 0)))
       (emit (make-element :height (fixed (if (< start count)
                                              (third (aref rows start))
-                                            total))))
+                                             total))))
       (loop :for i :from start :below end
             :for (index caption top height) := (aref rows i)
-            :do (when (lui:list-item
-                       (list :docs-entry index) caption
-                       (lui:opt :width (grow) :height (fixed height)
-                                :font-family :monospace
-                                :selected-p
-                                (and (null (browser-guide state))
-                                     (= index (browser-selected state)))))
-                  (setf (browser-selected state) index
-                        (browser-guide state) nil
-                        (browser-symbols-p state) nil)
-                  (request-frame)
-                  (scroll-to :docs-detail 0 0)))
+            :do (lui:list-item
+                 (list :docs-entry index) caption
+                 (lui:opt :width (grow) :height (fixed height)
+                          :font-family :monospace
+                          :selected-p
+                          (and (null (browser-guide state))
+                               (= index (browser-selected state))))))
       (emit (make-element
              :height (fixed (- total (if (plusp end)
                                          (+ (third (aref rows (1- end)))
                                             (fourth (aref rows (1- end))))
-                                        0)))))
+                                         0)))))
       (when (zerop count) (lui:label "No matching entries.")))))
 
 (defparameter *preview-kinds*
@@ -418,6 +425,7 @@
     (entry-list state (grow))))
 
 (defun draw-docs (state)
+  (select-reference state)
   (with-toolkit ((browser-toolkit state))
     (lui:panel (lui:opt :width (grow) :height (grow)
                         :background
