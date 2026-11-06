@@ -323,6 +323,17 @@ def text_style(frame, text):
     return foreground, background, underline
 
 
+def text_position(frame, text, last=True):
+    """Locate a visible ASCII caption in the terminal's absolute-row output."""
+    offset = frame.rfind(text) if last else frame.find(text)
+    assert offset >= 0, frame.decode("utf-8", "replace")
+    moves = list(re.finditer(rb"\x1b\[(\d+);(\d+)H", frame[:offset]))
+    assert moves
+    move = moves[-1]
+    prefix = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", frame[move.end():offset])
+    return int(move[2]) + len(prefix.decode("utf-8")), int(move[1])
+
+
 def exercise(lisp, path):
     terminal = Terminal(command(lisp, path))
     try:
@@ -439,6 +450,45 @@ def exercise_debugger(lisp, path):
         assert b"\x1b[7m(" not in frame, "Resize rail repainted as a button"
         assert text_style(frame, "│".encode())[:2] == (
             (48, 48, 64), (37, 139, 255))
+        # Select a real tree row, expand details, and scroll the long property
+        # table without losing the fixed inspector controls.
+        x, y = text_position(frame, b"PANEL WINDOW")
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        frame = last_frame(terminal.output)
+        assert b"Geometry" in frame
+        x, y = text_position(frame, b"Expand details")
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        frame = last_frame(terminal.output)
+        assert b"Restore tree" in frame
+        assert b"TAB (PAGE" not in frame
+        for _ in range(16):
+            if b"Input" in last_frame(terminal.output):
+                break
+            terminal.send(b"\x1b[<65;85;16M")
+        frame = last_frame(terminal.output)
+        assert b"Input" in frame, frame.decode("utf-8", "replace")
+        x, y = text_position(frame, b"Restore tree")
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        frame = last_frame(terminal.output)
+        assert b"Expand details" in frame
+        assert b"PANEL WINDOW" in frame
+        x, y = text_position(frame, b"PANEL WINDOW", last=False)
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        frame = last_frame(terminal.output)
+        assert b"Geometry" not in frame
+        x, y = text_position(frame, b"PANEL WINDOW", last=False)
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        frame = last_frame(terminal.output)
+        x, y = text_position(frame, b"Expand details")
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        frame = last_frame(terminal.output)
+        x, y = text_position(frame, b"Close details")
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        frame = last_frame(terminal.output)
+        assert b"Restore tree" not in frame
+        assert b"Geometry" not in frame
+        assert b"Layout inspector" in frame
+        assert b"PANEL WINDOW" in frame
         terminal.send(b"\x11")
         terminal.until(b"@@DEBUG")
         terminal.restored()

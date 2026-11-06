@@ -464,7 +464,7 @@ class WebTests(unittest.TestCase):
         expect(page.locator(".lui-highlight")).to_have_css("pointer-events", "none")
         options.first.click()
         expect(options.first).to_have_attribute("aria-selected", "true")
-        expect(page.get_by_text("Bounds:", exact=False).filter(visible=True)).to_be_visible()
+        expect(page.get_by_text("Geometry", exact=True).filter(visible=True)).to_be_visible()
         expect(page.get_by_role("option", name="Layout inspector", exact=True)).to_have_count(0)
         page.get_by_role("option", name="-", exact=True).first.click()
         expect(options).to_have_count(1)
@@ -480,6 +480,116 @@ class WebTests(unittest.TestCase):
         page.get_by_role("tab", name="Controls", exact=True).click()
         page.get_by_role("button", name="Say hello", exact=True).click()
         expect(page.get_by_text("Hello Common Lisp (1)", exact=True).filter(visible=True)).to_be_visible()
+
+    def test_motif_inspector_selected_rows_expanded_details_and_scroll(self):
+        self.page.set_viewport_size({"width": 1100, "height": 900})
+        self.lisp('''
+          (defvar *inspector-row-picked* nil)
+          (defvar *inspector-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *inspector-host* "id") #j"inspector-fixture"
+                (jscl/ffi:oget *inspector-host* "style" "width") #j"800px"
+                (jscl/ffi:oget *inspector-host* "style" "height") #j"520px")
+          (#j:document:body:appendChild *inspector-host*)
+          (defvar *inspector-app*
+            (lui.web:mount *inspector-host*
+              (let ((first t))
+                (lambda ()
+                  (when first
+                    (setf first nil)
+                    (lui.debug:set-enabled t :toolkit :motif))
+                  (lui:with-toolkit (:motif)
+                    (lui:panel (lui:opt :id :inspected-app
+                                        :width (lui.layout:grow)
+                                        :height (lui.layout:grow) :padding 8)
+                      (when (lui:list-item :inspected-row
+                              "A Motif selected row with full content beyond forty characters"
+                              (lui:opt :width (lui.layout:fixed 340)
+                                       :selected-p *inspector-row-picked*))
+                        (setf *inspector-row-picked* t))))))))
+        ''')
+        host = self.page.locator("#inspector-fixture")
+        app_row = host.get_by_role("option", name=
+            "A Motif selected row with full content beyond forty characters",
+            exact=True)
+        app_row.click()
+        expect(app_row).to_have_attribute("aria-selected", "true")
+        expect(app_row).to_have_css("background-color", "rgb(64, 80, 160)")
+        expect(app_row).to_have_css("color", "rgb(255, 255, 255)")
+        selected = host.get_by_role("option", name=re.compile(
+            r"^:?LIST-ITEM .*INSPECTED-ROW"))
+        selected.click()
+        expect(selected).to_have_attribute("aria-selected", "true")
+        selected.hover()
+        expect(selected).to_have_css("background-color", "rgb(64, 80, 160)")
+        expect(selected).to_have_css("color", "rgb(255, 255, 255)")
+        expect(selected).to_have_css("border-top-style", "none")
+        expect(selected).to_have_css("opacity", "1")
+        host.screenshot(path=str(ROOT / "build/inspector-motif-selected.png"))
+        host.get_by_role("button", name="Expand details", exact=True).click()
+        restore = host.get_by_role("button", name="Restore tree", exact=True)
+        expect(restore).to_be_visible()
+        expect(selected).to_have_count(0)
+        geometry = host.get_by_text("Geometry", exact=True).filter(visible=True)
+        expect(geometry).to_be_visible()
+        bar = host.get_by_role("scrollbar")
+        expect(bar).to_have_count(1)
+        self.assertGreater(float(bar.get_attribute("aria-valuemax")), 0)
+        bar.press("Home")
+        expect(bar).to_have_attribute("aria-valuenow", "0")
+        labels_fit = host.evaluate("""host => [...host.querySelectorAll(
+            'div[data-lui-style][data-lui-interactive=false]')].filter(node =>
+                node.textContent && node.getBoundingClientRect().height > 0
+                && !node.hasAttribute('role')).every(node => {
+                    const range = document.createRange();
+                    range.selectNodeContents(node);
+                    return range.getBoundingClientRect().height <=
+                        node.getBoundingClientRect().height + 1;
+                })""")
+        self.assertTrue(labels_fit, "Inspector property labels are clipped vertically")
+        host.screenshot(path=str(ROOT / "build/inspector-motif-details.png"))
+        bar.press("End")
+        self.page.wait_for_function("""() => {
+            const bar = document.querySelector('#inspector-fixture [role=scrollbar]');
+            return bar.getAttribute('aria-valuenow') === bar.getAttribute('aria-valuemax');
+        }""")
+        expect(host.get_by_text("Input", exact=True).filter(visible=True)).to_be_visible()
+        self.assertTrue(host.evaluate("""host => [...host.querySelectorAll(
+            'div[data-lui-style][data-lui-interactive=false]:not([role])')]
+            .some(n => n.textContent.includes(
+                'A Motif selected row with full content beyond forty characters'))"""))
+        host.screenshot(path=str(ROOT / "build/inspector-motif-details-bottom.png"))
+        restore.click()
+        expect(selected).to_be_visible()
+        expect(selected).to_have_attribute("aria-selected", "true")
+        selected.click()
+        expect(selected).to_have_attribute("aria-selected", "false")
+        expect(geometry).to_have_count(0)
+        expand = host.get_by_role("button", name="Expand details", exact=True)
+        expect(expand).to_be_disabled()
+        selected.click()
+        expect(selected).to_have_attribute("aria-selected", "true")
+        expand.click()
+        expect(restore).to_be_visible()
+        host.evaluate("node => {node.style.width = '360px';}")
+        self.page.wait_for_function("""() => Math.abs(Number(
+            document.querySelector('#inspector-fixture [role=separator]')
+                .getAttribute('aria-valuenow')) - 200/360) < .001""")
+        close_details = host.get_by_role("button", name="Close details", exact=True)
+        expect(close_details).to_be_visible()
+        close_box, host_box = close_details.bounding_box(), host.bounding_box()
+        self.assertLessEqual(close_box["x"] + close_box["width"],
+                             host_box["x"] + host_box["width"])
+        host.screenshot(path=str(ROOT / "build/inspector-motif-details-narrow.png"))
+        close_details.click()
+        expect(restore).to_have_count(0)
+        expect(selected).to_be_visible()
+        expect(selected).to_have_attribute("aria-selected", "false")
+        expect(host.get_by_text("Layout inspector", exact=True)
+               .filter(visible=True)).to_be_visible()
+        expect(expand).to_be_disabled()
+        host.get_by_role("button", name="Close", exact=True).click()
+        expect(restore).to_have_count(0)
+        self.lisp('(lui.web:unmount *inspector-app*)')
 
     def test_debugger_narrow_style_close_and_disclosures(self):
         page = self.page
