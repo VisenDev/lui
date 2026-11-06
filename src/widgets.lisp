@@ -10,7 +10,7 @@
            #:widget-font-size #:widget-font-family #:widget-font-weight
            #:widget-opacity #:widget-accent
            #:widget-disabled-p #:widget-orientation #:widget-accessible-name
-           #:widget-painter #:widget-web-style
+           #:widget-painter
            #:edit-state #:edit-state-cursor
            #:edit-state-anchor #:make-edit-state #:edit-text #:readline-key
            #:text-field-focused-p #:activation-focused-p #:cursor-at))
@@ -43,7 +43,6 @@
   (opacity 0.85 :type real)
   (accent "#258bff" :type string)
   (disabled-p nil :type boolean)
-  (web-style nil :type (or null function))
   (terminal-label nil :type (or null function))
   (painter nil :type (or null function))
   (text "" :type string)
@@ -140,7 +139,7 @@ An optional terminal-label callback overrides the standard kind-based label."
      ((maximum real) 1) ((step real) 0.01) ((font-size real) 16)
      ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
      ((opacity real) 0.85) ((accent string) "#258bff") (disabled-p nil)
-     painter web-style terminal-label accessible-name)
+     painter terminal-label accessible-name)
   "Declare a low-level widget in the current frame using STYLE and stable ID.
 Layout, typography, colors, optical effects, and backend extension callbacks
 are supplied as keywords. Return activation for enabled actionable kinds.
@@ -156,7 +155,7 @@ Most applications should use the public LUI controls with LUI:OPT instead."
            :font-family font-family :font-weight font-weight
            :opacity opacity :accent accent
            :disabled-p (not (null disabled-p)) :painter painter
-           :web-style web-style :terminal-label terminal-label
+           :terminal-label terminal-label
            :accessible-name accessible-name)))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding
@@ -553,7 +552,7 @@ KIND is :CHECKBOX, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
     (loop :for (key value) :on options :by #'cddr
           :do (if (member key '(:foreground :background :radius :frost
                                :opacity :accent :font-size :font-family
-                               :font-weight :painter :web-style
+                               :font-weight :painter
                                :terminal-label :accessible-name))
                   (setf appearance (append appearance (list key value)))
                   (setf layout (append layout (list key value)))))

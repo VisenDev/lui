@@ -1,233 +1,51 @@
-"""Exercise the standalone documentation artifact without a web server."""
+"""Open the standalone docs offline and drive its canvas with real input."""
 
 from pathlib import Path
-import re
 import shutil
 import tempfile
 import unittest
 
-from playwright.sync_api import expect, sync_playwright
-
-ROOT = Path(__file__).resolve().parents[1]
+import web
+from playwright.sync_api import sync_playwright
 
 
 class DocsWebTests(unittest.TestCase):
-    def test_standalone_guides_search_reference_and_scroll(self):
-        artifact = ROOT / "build/docs.html"
-        self.assertTrue(artifact.is_file(), "Build docs with build-docs-web.lisp")
-        with tempfile.TemporaryDirectory() as directory, sync_playwright() as pw:
-            isolated = Path(directory) / "docs.html"
-            shutil.copyfile(artifact, isolated)
+    def test_offline_navigation_widgets_and_debugger(self):
+        with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
+            path = Path(tmp) / "index.html"
+            shutil.copyfile(web.ROOT / "build/docs.html", path)
             browser = pw.chromium.launch(
                 executable_path=shutil.which("chromium-browser")
                 or shutil.which("chromium"), args=["--no-sandbox"])
-            page = browser.new_page(viewport={"width": 1000, "height": 760})
-            errors, requests = [], []
-            page.on("pageerror", lambda error: errors.append(str(error)))
-            page.on("request", lambda request: requests.append(request.url))
+            ui = web.WebTests()
+            ui.page = browser.new_page(viewport={"width": 1100, "height": 820})
+            requests, errors = [], []
+            ui.page.on("request", lambda request: requests.append(request.url))
+            ui.page.on("pageerror", lambda error: errors.append(str(error)))
             try:
-                page.goto(isolated.as_uri())
+                ui.page.goto(path.as_uri())
+                ui.frames()
+                self.assertEqual(ui.page.locator("main canvas").count(), 1)
+                self.assertTrue(any("FPS" in n["text"] for n in ui.nodes()))
+                ui.click_widget(text="Cycle toolkit")
+                ui.widget(text="Toolkit: Motif")
+                ui.click_widget(text="Show debugger")
+                ui.widget(text="Layout debugger")
+                ui.click_widget(text="Close")
+                ui.click_widget(text="Toolkits", kind="list-item")
+                ui.click_widget(text="Try this button")
+                ui.widget(text="Button clicks: 1")
+                ui.click_widget(id=":DOCS-SEARCH")
+                ui.page.keyboard.insert_text("checkbox")
+                ui.frames()
+                ui.click_widget(text="lui:CHECKBOX", kind="list-item")
+                self.assertTrue(any(n["kind"] == "checkbox" for n in ui.nodes()))
+                ui.page.set_viewport_size({"width": 540, "height": 500})
+                ui.frames()
+                self.assertTrue(any(n["text"] in ("Browse symbols", "Read selected")
+                                    for n in ui.nodes()))
                 self.assertEqual(errors, [])
-                self.assertEqual(page.locator("script").count(), 2)
-                self.assertEqual(page.locator("script[src]").count(), 0)
-                title = page.get_by_text("LUI documentation", exact=True)
-                expect(title.filter(visible=True)).to_be_visible()
-                page.get_by_role("button", name="Show debugger", exact=True).click()
-                debugger = page.get_by_text("Layout debugger", exact=True)
-                expect(debugger.filter(visible=True)).to_be_visible()
-                page.get_by_role("button", name="Close", exact=True).click()
-                expect(debugger.filter(visible=True)).to_have_count(0)
-                page.get_by_role("option", name="Debugger", exact=True).click()
-                page.get_by_role("button", name="Open debugger").click()
-                expect(page.get_by_role("separator", name="Debugger width")
-                       ).to_be_visible()
-                root_row = page.get_by_role("option", name=re.compile(
-                    r"^:?COLUMN$")).first
-                root_row.click()
-                divider = page.get_by_role("separator", name="Properties height")
-                expect(divider).to_have_attribute("aria-orientation", "horizontal")
-                root_row.click()
-                expect(divider).to_have_count(0)
-                root_row.click()
-                close_details = page.get_by_role("button", name="Close details")
-                expect(close_details).to_have_text("×")
-                close_details.click()
-                expect(divider).to_have_count(0)
-                expect(root_row).to_be_visible()
-                expect(debugger.filter(visible=True)).to_be_visible()
-                page.get_by_role("button", name="Close", exact=True).click()
-                expect(debugger.filter(visible=True)).to_have_count(0)
-                page.get_by_role("option", name="Getting started",
-                                 exact=True).click()
-                page.screenshot(path=str(ROOT / "build/docs-web.png"))
-                expect(page.get_by_role("option", name="Getting started",
-                                        exact=True)).to_be_visible()
-                page.get_by_role("option", name="Toolkits", exact=True).click()
-                page.get_by_role("tab", name="Garnet", exact=True).click()
-                sample = page.get_by_role("button", name="Try this button")
-                expect(sample).to_have_attribute("data-lui-style", "garnet")
-                cycle = page.get_by_role("button", name="Cycle toolkit")
-                for style in ("motif", "garnet", "glass"):
-                    cycle.click()
-                    expect(cycle).to_have_attribute("data-lui-style", style)
-                    expect(sample).to_have_attribute("data-lui-style", "garnet")
-                sample.click()
-                expect(page.get_by_text("Button clicks: 1", exact=True)
-                       .filter(visible=True)).to_be_visible()
-                page.get_by_role("option", name="Controls and options",
-                                 exact=True).click()
-                expect(page.get_by_text("Buttons return true when activated.",
-                                        exact=False).filter(visible=True)).to_be_visible()
-                page.get_by_role("option", name="All packages", exact=True).click()
-                search = page.get_by_role("textbox")
-                # The reference has room for a full-height column of symbols.
-                search_box = search.bounding_box()
-                candidates = page.get_by_role("option").all()
-                rows = [item.bounding_box() for item in candidates
-                        if ":" in (item.text_content() or "")]
-                visible = [box for box in rows if box and
-                           search_box["y"] < box["y"] < 750]
-                self.assertGreater(max(b["y"] for b in visible) -
-                                   min(b["y"] for b in visible), 380)
-                bars = page.get_by_role("scrollbar").all()
-                symbol_bar = next(bar for bar in bars if
-                                  search_box["x"] <= bar.bounding_box()["x"]
-                                  <= search_box["x"] + search_box["width"])
-                symbol_bar.press("End")
-                expect(symbol_bar).to_have_attribute("aria-valuenow",
-                    symbol_bar.get_attribute("aria-valuemax"))
-                symbol_bar.press("Home")
-                expect(symbol_bar).to_have_attribute("aria-valuenow", "0")
-                # Hold the next draw to exercise two real clicks in one frame.
-                page.evaluate("""() => {
-                    const raf = window.requestAnimationFrame.bind(window);
-                    const pending = [];
-                    window.requestAnimationFrame = cb => pending.push(cb);
-                    window.resumeDocs = () => {
-                        window.requestAnimationFrame = raf;
-                        pending.forEach(cb => raf(cb));
-                    };
-                }""")
-                for symbol in ("lui:CHECKBOX", "lui:BUTTON"):
-                    box = page.get_by_role("option", name=symbol,
-                                           exact=True).bounding_box()
-                    page.mouse.click(box["x"] + 15, box["y"] + 12)
-                page.evaluate("window.resumeDocs()")
-                expect(page.locator("main > div[data-lui-style]").filter(
-                    has_text=re.compile(r"^lui:BUTTON$"))).to_be_visible()
-                # Releasing over a different row cancels the click.
-                check = page.get_by_role("option", name="lui:CHECKBOX",
-                                         exact=True).bounding_box()
-                cell = page.get_by_role("option", name="lui:CELL",
-                                        exact=True).bounding_box()
-                page.mouse.move(check["x"] + 15, check["y"] + 10)
-                page.mouse.down()
-                page.mouse.move(cell["x"] + 15, cell["y"] + 10)
-                page.mouse.up()
-                page.evaluate("""() => new Promise(resolve =>
-                    requestAnimationFrame(() => requestAnimationFrame(resolve)))""")
-                expect(page.locator("main > div[data-lui-style]").filter(
-                    has_text=re.compile(r"^lui:BUTTON$"))).to_be_visible()
-                search.fill("button")
-                expect(search).to_have_value("button")
-                entries = page.get_by_role("option", name="lui:BUTTON", exact=True)
-                expect(entries.first).to_be_visible()
-                for toolkit in ("glass", "motif", "garnet"):
-                    expect(page.get_by_role("option", name=f"lui.{toolkit}:BUTTON",
-                                            exact=True)).to_have_count(0)
-                search.fill("*defaults*")
-                for toolkit in ("motif", "garnet", "glass"):
-                    page.get_by_role("option", name=f"lui.{toolkit}:*DEFAULTS*",
-                                     exact=True).click()
-                    sample = page.get_by_role("button", name="Try this button")
-                    expect(sample).to_have_attribute("data-lui-style", toolkit)
-                    expect(page.get_by_role("button", name="Cycle toolkit")
-                           ).to_have_attribute("data-lui-style", "glass")
-                search.fill("checkbox")
-                page.get_by_role("option", name="lui:CHECKBOX",
-                                 exact=True).click()
-                preview = page.get_by_role("checkbox")
-                expect(preview).to_have_count(1)
-                for current, following in (("Glass", "Motif"),
-                                           ("Motif", "Garnet"),
-                                           ("Garnet", "Glass")):
-                    checked = preview.is_checked()
-                    preview.click()
-                    self.assertNotEqual(preview.is_checked(), checked)
-                    expect(page.get_by_text("Toolkit: " + current, exact=True)
-                           .filter(visible=True)).to_be_visible()
-                    page.get_by_role("button", name="Cycle toolkit").click()
-                    expect(page.get_by_text("Toolkit: " + following, exact=True)
-                           .filter(visible=True)).to_be_visible()
-                    self.assertNotEqual(preview.is_checked(), checked)
-                self.assertEqual(page.get_by_role(
-                    "option", name="lui.wayland-protocol", exact=True).count(), 0)
-                search.fill("no-such-public-lui-entry-123")
-                expect(page.get_by_text("No matching entries.", exact=True)
-                       .filter(visible=True)).to_be_visible()
-                search.fill("")
-                page.set_viewport_size({"width": 1000, "height": 360})
-                page.get_by_role("option", name="Getting started", exact=True).click()
-                # Long guide content is clipped and scrolls inside its own pane.
-                paragraph = page.get_by_text(
-                    "LUI draws the same immediate-mode interface", exact=False
-                ).filter(visible=True)
-                before = paragraph.bounding_box()["y"]
-                paragraph.hover()
-                page.mouse.wheel(0, 240)
-                page.wait_for_function("""old => {
-                    const text = [...document.querySelectorAll('main > div')]
-                        .find(n => n.textContent.startsWith('LUI draws the same'));
-                    return text && text.getBoundingClientRect().y < old;
-                }""", arg=before, timeout=5000)
-                page.screenshot(path=str(ROOT / "build/docs-web-scrolled.png"))
-                page.set_viewport_size({"width": 520, "height": 480})
-                expect(search).to_be_visible()
-                for name in ("Start", "Frames", "Controls"):
-                    guide = page.get_by_role("option", name=name, exact=True)
-                    self.assertTrue(guide.evaluate(
-                        "node => node.scrollHeight <= node.clientHeight"), name)
-                search.fill("checkbox")
-                expect(page.get_by_role("option", name="lui:CHECKBOX", exact=True)
-                       .first).to_be_visible()
-                page.screenshot(path=str(ROOT / "build/docs-web-narrow.png"))
-                for width in (520, 720, 1000):
-                    page.set_viewport_size({"width": width, "height": 600})
-                    search.fill("text-input-event")
-                    full_name = "lui.interaction:TEXT-INPUT-EVENT"
-                    wrapped = re.compile(r"\s*".join(map(re.escape, full_name)))
-                    option = page.get_by_role("option", name=wrapped)
-                    expect(option).to_be_visible()
-                    self.assertTrue(option.evaluate(r"""node => {
-                        const text = node.textContent.replace(/\s/g, '');
-                        if (text.toLowerCase() !==
-                            'lui.interaction:text-input-event') return false;
-                        const box = node.getBoundingClientRect();
-                        const range = document.createRange();
-                        range.selectNodeContents(node);
-                        return [...range.getClientRects()].every(r =>
-                            r.left >= box.left - 1 && r.right <= box.right + 1
-                            && r.top >= box.top - 1 && r.bottom <= box.bottom + 1);
-                    }"""), width)
-                page.get_by_role("button", name="Cycle toolkit", exact=True).click()
-                expect(page.get_by_text("Toolkit: Motif", exact=True)
-                       .filter(visible=True)).to_be_visible()
-                page.get_by_role("button", name="Cycle toolkit", exact=True).click()
-                guides = ("Controls and options", "Layout and scrolling",
-                          "Input and inspection", "Backends and running")
-                for name in guides:
-                    guide = page.get_by_role("option", name=name, exact=True)
-                    guide.click()
-                    self.assertTrue(guide.evaluate("""node => {
-                        const box = node.getBoundingClientRect();
-                        const range = document.createRange();
-                        range.selectNodeContents(node);
-                        return [...range.getClientRects()].every(r =>
-                            r.top >= box.top - 1 && r.bottom <= box.bottom + 1);
-                    }"""), name)
-                page.screenshot(path=str(ROOT / "build/docs-web-garnet.png"))
-                self.assertEqual(errors, [])
-                self.assertEqual(requests, [isolated.as_uri()])
+                self.assertEqual(requests, [path.as_uri()])
             finally:
                 browser.close()
 

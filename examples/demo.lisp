@@ -24,10 +24,7 @@
   (preview "Ocean")
   (preview-color "#335d91")
   (preview-count 0)
-  (fps 0.0)
-  (frame-ms 0.0)
-  (frame-count 0)
-  (frame-start nil)
+  (frame-rate (lui.frame::make-frame-rate))
   (filtered-items nil)
   (last-filter nil))
 
@@ -50,19 +47,6 @@
                 :when (search (gallery-filter g) title :test #'char-equal)
                 :collect i)))
   (gallery-filtered-items g))
-
-(defun update-fps (g)
-  (let ((now (get-internal-real-time)))
-    (unless (gallery-frame-start g)
-      (setf (gallery-frame-start g) now)
-      (return-from update-fps nil))
-    (incf (gallery-frame-count g))
-    (let ((elapsed (/ (- now (gallery-frame-start g))
-                      (* 1.0 internal-time-units-per-second))))
-      (when (>= elapsed 0.5)
-        (setf (gallery-fps g) (/ (gallery-frame-count g) elapsed)
-              (gallery-frame-ms g) (/ 1000 (gallery-fps g))
-              (gallery-frame-count g) 0 (gallery-frame-start g) now)))))
 
 (defun controls-page (g)
   (lui:label "Buttons, values, disabled controls, and shared state")
@@ -239,10 +223,7 @@
       (when (lui:button :debugger-toggle "Show debugger"
                         (lui:opt :disabled-p (modal-p g)))
         (lui.debug:set-enabled t)))
-    (lui:label (if (context-text-mode-p *context*)
-                   "Terminal: event-driven rendering"
-                   (format nil "~,1F FPS · ~,2F ms/frame"
-                           (gallery-fps g) (gallery-frame-ms g))))
+    (lui:label (lui.frame::frame-rate-label (gallery-frame-rate g)))
     (row (:width (grow) :gap (units 1))
       (dolist (page *pages*)
         (when (lui:tab (list :page (first page)) (second page)
@@ -264,7 +245,6 @@
          (lui.example.seven:draw-content (gallery-seven g)))))))
 
 (defun draw (g)
-  (update-fps g)
   (when (and (not (modal-p g)) (activated-p :toolkit))
     (setf (gallery-toolkit g) (or (second (member (gallery-toolkit g)
                                                   *toolkits*))

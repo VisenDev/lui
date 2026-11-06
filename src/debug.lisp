@@ -459,7 +459,7 @@
               (progn
                 (details-divider height)
                 (column (:id (id :property-pane) :width (grow)
-                         :height (fixed height))
+                         :height (fixed height) :gap (units 0.5))
                   (row (:width (grow) :gap (units 0.5) :cross-align :center)
                     (lui:label "Properties" (lui:opt :width (grow)))
                     (lui:button (id :close-details) "×"

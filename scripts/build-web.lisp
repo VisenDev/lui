@@ -7,8 +7,8 @@
  '("src/fn.lisp" "src/layout.lisp" "src/frame.lisp" "src/widgets.lisp"
    "src/app.lisp" "src/interaction.lisp"
    "src/glass.lisp" "src/motif.lisp" "src/garnet.lisp"
-   "src/web-style.lisp" "src/glass-web.lisp" "src/motif-web.lisp"
-   "src/garnet-web.lisp" "src/debug.lisp" "src/web.lisp"
+   "src/web-font.lisp" "src/draw.lisp" "src/web-input.lisp"
+   "src/debug.lisp" "src/web.lisp"
    "examples/seven-model.lisp" "examples/seven-circles.lisp"
    "examples/seven-cells.lisp" "examples/seven.lisp"
    "examples/demo.lisp" "scripts/start-demo.lisp")

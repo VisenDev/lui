@@ -2,12 +2,13 @@
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui.font)
   (:export #:renderer #:make-renderer #:renderer-font #:renderer-polygons
            #:renderer-clip #:renderer-glass #:renderer-text
+           #:renderer-surface #:renderer-stipple
            #:paint-frame #:measure-widget
            #:rounded-polygon #:color-components #:trapezoids #:paint-text))
 
 (in-package #:lui.draw)
 
-(defstruct renderer
+(defstruct* renderer
   "Native drawing callbacks and font shared by the graphical backends."
   (font nil :type (or null font))
   ;; POLYGONS takes contours, #rrggbb color, and opacity. Native API does rasterization.
@@ -17,6 +18,9 @@
   (glass nil :type (or null function))
   ;; Optional native glyph cache: font, text, baseline x/y, and color.
   (text nil :type (or null function))
+  ;; Optional rectangle primitives avoid contour allocation in browser APIs.
+  (surface nil :type (or null function))
+  (stipple nil :type (or null function))
   (patterns (make-hash-table :test 'equal) :type hash-table))
 
 (fn (color-components list) ((color string) &optional ((alpha real) 1))
@@ -47,8 +51,11 @@
                       (list (+ x r) (+ y r) 180))
           :append (loop :for i :from 0 :to 8
                         :for angle := (* (+ base (* i 11.25f0)) (/ pi 180))
-                        :collect (cons (+ cx (* r (cos angle)))
-                                       (+ cy (* r (sin angle))))))))
+                        :collect
+                        (cons (+ cx (* r #-jscl (cos angle)
+                                         #+jscl (#j:Math:cos angle)))
+                              (+ cy (* r #-jscl (sin angle)
+                                         #+jscl (#j:Math:sin angle))))))))
 
 (fn trapezoids ((contours list) (emit function))
   "Convert contours into nonzero-winding trapezoids for native triangle APIs."
@@ -128,6 +135,9 @@
     (return-from paint-text
       (funcall (renderer-text renderer) (renderer-font renderer)
                text x y color)))
+  #+jscl
+  (error "The browser renderer requires a text drawing callback.")
+  #-jscl
   (let* ((font (renderer-font renderer))
          (scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
          (cursor x)
@@ -159,17 +169,23 @@
 
 (fn shape
     ((renderer renderer) (box box) (radius real) (color string) (alpha real))
-  (funcall (renderer-polygons renderer)
-           (list (rounded-polygon box radius)) color alpha))
+  (if (renderer-surface renderer)
+      (funcall (renderer-surface renderer) box radius color alpha)
+      (funcall (renderer-polygons renderer)
+               (list (rounded-polygon box radius)) color alpha)))
 
 (fn outline
     ((renderer renderer) (box box) (radius real) (color string)
      (alpha real) (thickness real))
-  (funcall (renderer-polygons renderer)
-           (list (rounded-polygon box radius)
-                 (reverse (rounded-polygon (inset-box box thickness)
-                                           (max 0 (- radius thickness)))))
-           color alpha))
+  (if (renderer-surface renderer)
+      (funcall (renderer-surface renderer)
+               box radius color alpha thickness)
+      (funcall (renderer-polygons renderer)
+               (list (rounded-polygon box radius)
+                     (reverse
+                      (rounded-polygon (inset-box box thickness)
+                                       (max 0 (- radius thickness)))))
+               color alpha)))
 
 (fn motif-bevel ((renderer renderer) (box box)
                  &optional recessed disabled)
@@ -265,6 +281,9 @@
                "#000000" 1))))
 
 (fn garnet-stipple ((renderer renderer) (box box) &optional border)
+  (when (renderer-stipple renderer)
+    (return-from garnet-stipple
+      (funcall (renderer-stipple renderer) box border)))
   ;; One cached contour batch, with opaque white underlay supplied by the face.
   (let* ((key (list (box-x box) (box-y box) (box-width box)
                     (box-height box) border))
@@ -595,18 +614,33 @@
           (paint-text-field renderer node x y
                             (max 0 (- (box-width box) (* 2 inset)))))
          (otherwise
-          (loop :for line :in (wrap-text
-                              font (widget-text widget)
-                              (max 0 (- (box-width box) (* 2 inset))))
-                :for baseline :from (+ y (baseline font))
-                  :by (line-height font)
-                :do (paint-text renderer line x baseline
-                                foreground))))))
+          (let* ((lines (wrap-text
+                         font (widget-text widget)
+                         (max 0 (- (box-width box) (* 2 inset)))))
+                 (center (member kind '(:button :tab)))
+                 (top (if center
+                          (+ (box-y box)
+                             (max 0 (/ (- (box-height box)
+                                          (* (length lines)
+                                             (line-height font)))
+                                       2)))
+                          y)))
+            (loop :for line :in lines
+                  :for baseline :from (+ top (baseline font))
+                    :by (line-height font)
+                  :do (paint-text
+                       renderer line
+                       (if center
+                           (+ (box-x box)
+                              (max 0 (/ (- (box-width box)
+                                           (text-width font line)) 2)))
+                           x)
+                       baseline foreground)))))))
     (when (and (focused-p node) (context-focus-visible-p *context*))
       (outline renderer (inset-box box 2) (max 0 (- radius 2))
                (widget-accent widget) 1 2))))
 
-(defstruct text-selection
+(defstruct* text-selection
   anchor focus anchor-text focus-text anchor-key focus-key field
   (node-count 0 :type integer)
   (pending-copy-p nil :type boolean)
@@ -663,12 +697,15 @@
                            (max 0 (- (box-width box) (* 2 inset))))))
     (dolist (line lines (length text))
       (when (< y (+ top (line-height font)))
-        (let ((at (- x (box-x box) inset)) (left 0) (previous nil)
-              (scale (/ (font-size font)
+        (let ((at (- x (box-x box) inset)) (left 0)
+              #-jscl (previous nil)
+              #-jscl (scale (/ (font-size font)
                         (zpb-ttf:units/em (font-loader font)))))
           (dotimes (i (length line))
-            (let* ((char (char line i))
-                   (right (+ left
+            (let* (#-jscl (char (char line i))
+                   (right #+jscl (text-width font (subseq line 0 (1+ i)))
+                          #-jscl
+                          (+ left
                              (* scale
                                 (+ (zpb-ttf:advance-width
                                     (zpb-ttf:find-glyph
@@ -679,7 +716,8 @@
                                        0))))))
               (when (< at (/ (+ left right) 2))
                 (return-from selection-index (+ start i)))
-              (setf left right previous char)))
+              (setf left right)
+              #-jscl (setf previous char)))
           (return-from selection-index (+ start (length line)))))
       (incf start (1+ (length line)))
       (incf top (line-height font)))))

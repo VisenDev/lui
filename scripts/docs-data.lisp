@@ -9,7 +9,7 @@
 (defparameter *public-api*
   '(("lui" "RUN" "REGISTER-BACKEND" "AVAILABLE-BACKENDS" "UNITS" "*BACKEND*"
      "*UNIT*" "WITH-TOOLKIT" "CURRENT-TOOLKIT" "TOOLKIT-DEFAULTS"
-     "REGISTER-TOOLKIT" "TOOLKIT-SURFACE" "CONTROL" "TOOLKIT-WEB-STYLE"
+     "REGISTER-TOOLKIT" "TOOLKIT-SURFACE" "CONTROL"
      "DEFINE-TOOLKIT" "DEFINE-COLLECTION" "OPT" "PANEL" "LABEL" "BUTTON"
      "TAB" "CHECKBOX"
      "DATE-TIME-PICKER" "SLIDER" "TEXT-FIELD" "CELL" "LIST-ITEM" "GAUGE" "CANVAS")
@@ -155,7 +155,10 @@
             arguments)))
 
 (defun source-files ()
-  (remove-if (lambda (path) (char= #\. (char (pathname-name path) 0)))
+  ;; The native font module documents the public API shared by both hosts.
+  (remove-if (lambda (path)
+               (let ((name (pathname-name path)))
+                 (or (char= #\. (char name 0)) (string= name "web-font"))))
              (directory "src/*.lisp")))
 
 (defun collect-entries (&optional (paths (source-files))

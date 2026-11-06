@@ -194,17 +194,7 @@
                             (gethash :legacy
                                      (lui.frame::context-ids context))))))
     (assert (equal *macro-defaults* (lui:toolkit-defaults :test-modern)))
-    (assert (equal *macro-defaults* (lui:toolkit-defaults :test-legacy))))
-  ;; Public defaults/style APIs must not collide with metadata slot accessors.
-  (let ((callback (lambda (dom widget node)
-                    (declare (ignore dom widget node))))
-        (generation (lui:toolkit-revision)))
-    (setf (lui:toolkit-web-style :test-modern) callback)
-    (assert (> (lui:toolkit-revision) generation))
-    (assert (eq callback (lui:toolkit-web-style :test-modern)))
-    (assert (null (lui:toolkit-web-style :test-legacy)))
-    (assert (equal *macro-defaults* (lui:toolkit-defaults :test-modern)))
-    (setf (lui:toolkit-web-style :test-modern) nil)))
+    (assert (equal *macro-defaults* (lui:toolkit-defaults :test-legacy)))))
 
 (defun test-date-time-picker ()
   (assert (lui::picker-parts "2024-02-29T23:59" :datetime))
@@ -339,7 +329,7 @@
     (assert (handler-case (progn (lui:with-toolkit (:unknown) t) nil)
               (error () t)))
     (assert (eq outer (lui:current-toolkit))))
-  (let ((received nil) (styled nil)
+  (let ((received nil)
         (options (lui:opt :width (fixed 12)))
         (context (make-terminal-context)))
     (lui:register-toolkit
@@ -350,13 +340,8 @@
                    (setf received (list id text opts))
                    (apply #'lui.widgets:declare-widget :button
                           (lui:current-toolkit) id text
-                          (append opts (lui:toolkit-defaults))))))
-     :web-style (lambda (dom widget node)
-                  (push (list :parent dom widget node) styled)))
-    (lui:register-toolkit
-     :test-child :parent :test
-     :web-style (lambda (dom widget node)
-                  (push (list :child dom widget node) styled)))
+                          (append opts (lui:toolkit-defaults)))))))
+    (lui:register-toolkit :test-child :parent :test)
     (with-frame (context 30 10)
       (lui:with-toolkit (:test)
         (assert (eq :test (lui:current-toolkit)))
@@ -373,11 +358,6 @@
     (let ((widget (element-content
                    (gethash :custom (lui.frame::context-ids context)))))
       (assert (eq :test (lui.widgets:widget-style widget)))
-      (assert (equal "#123456" (lui.widgets:widget-accent widget))))
-    (lui:map-toolkit-web-styles
-     :test-child (lambda (callback) (funcall callback :dom :widget :element)))
-    (assert (equal (reverse styled)
-                   '((:parent :dom :widget :element)
-                     (:child :dom :widget :element)))))
+      (assert (equal "#123456" (lui.widgets:widget-accent widget)))))
   (format t "Public toolkit scopes, controls, options and panels passed.~%")
   t)

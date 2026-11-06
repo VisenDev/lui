@@ -3,8 +3,8 @@
   (:export #:run #:register-backend #:available-backends #:units #:*backend*
            #:*unit* #:with-toolkit #:current-toolkit #:toolkit-defaults
            #:register-toolkit #:toolkit-revision #:toolkit-surface
-           #:control #:map-toolkit-web-styles
-           #:toolkit-web-style #:define-toolkit #:define-collection
+           #:control
+           #:define-toolkit #:define-collection
            #:opt #:panel #:label
            #:button #:tab #:checkbox #:slider
            #:text-field #:cell #:list-item #:gauge #:canvas
@@ -64,7 +64,7 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 (defvar *toolkit-definition* nil)
 
 (defstruct (toolkit (:conc-name %toolkit-))
-  parent defaults controls web-style)
+  parent defaults controls)
 (defvar *toolkits* (make-hash-table :test 'eq))
 
 (defvar *toolkit-revision* 0)
@@ -75,13 +75,12 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 (defun find-toolkit (name)
   (or (gethash name *toolkits*) (error "Unknown toolkit ~S." name)))
 
-(defun register-toolkit (name &key parent defaults controls web-style
+(defun register-toolkit (name &key parent defaults controls
                                    (surface (if parent
                                                 (toolkit-surface parent)
                                                 :glass)))
   "Register a toolkit. DEFAULTS is a plist or a zero-argument function.
-CONTROLS maps control names to functions taking the public arguments and options.
-WEB-STYLE, when provided, takes the DOM node, widget and layout element."
+CONTROLS maps control names to functions taking the public arguments and options."
   (loop :for ancestor := parent
           :then (%toolkit-parent (find-toolkit ancestor))
         :while ancestor :when (eq ancestor name)
@@ -90,7 +89,7 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
   (register-surface name surface)
   (setf (gethash name *toolkits*)
         (make-toolkit :parent parent :defaults defaults
-                      :controls controls :web-style web-style))
+                      :controls controls))
   name)
 
 (defun current-toolkit ()
@@ -107,21 +106,6 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
 (defun toolkit-defaults (&optional (name *toolkit*))
   "Return appearance defaults with child overrides before inherited values."
   (defaults-of (find-toolkit name)))
-
-(defun toolkit-web-style (name)
-  "Read or replace a toolkit’s DOM styling callback. Inherited callbacks run first."
-  (%toolkit-web-style (find-toolkit name)))
-
-(defun (setf toolkit-web-style) (callback name)
-  (incf *toolkit-revision*)
-  (setf (%toolkit-web-style (find-toolkit name)) callback))
-
-(defun map-toolkit-web-styles (name function)
-  "Call FUNCTION on each registered DOM styling callback, from parent to child."
-  (let* ((entry (find-toolkit name)) (parent (%toolkit-parent entry))
-         (style (%toolkit-web-style entry)))
-    (when parent (map-toolkit-web-styles parent function))
-    (when style (funcall function style))))
 
 (defun override (kind entry)
   (or (cdr (assoc kind (%toolkit-controls entry)))
@@ -147,7 +131,7 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
                interactive-p keyboard-focus-p pointer-focus-p
                foreground background radius frost minimum maximum step
                font-size font-family font-weight opacity accent disabled-p
-               painter web-style terminal-label accessible-name
+               painter terminal-label accessible-name
                selected-p text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align
@@ -156,7 +140,7 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
                    floating-p offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
                    radius frost minimum maximum step font-size font-family
-                   font-weight opacity accent disabled-p painter web-style
+                   font-weight opacity accent disabled-p painter
                    terminal-label accessible-name
                    selected-p text))
   `(list ,@forms))

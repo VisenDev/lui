@@ -11,8 +11,8 @@
  '("src/fn.lisp" "src/layout.lisp" "src/frame.lisp" "src/widgets.lisp"
    "src/app.lisp" "src/interaction.lisp"
    "src/glass.lisp" "src/motif.lisp" "src/garnet.lisp"
-   "src/web-style.lisp" "src/glass-web.lisp" "src/motif-web.lisp"
-   "src/garnet-web.lisp" "src/debug.lisp" "src/web.lisp" "examples/docs.lisp"
+   "src/web-font.lisp" "src/draw.lisp" "src/web-input.lisp"
+   "src/debug.lisp" "src/web.lisp" "examples/docs.lisp"
    "build/docs-data.lisp" "build/start-docs.lisp")
  "build/lui-docs.js")
 

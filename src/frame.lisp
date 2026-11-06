@@ -101,6 +101,28 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   "Monotonic seconds sampled once for the current frame."
   (context-time *context*))
 
+(defstruct* frame-rate
+  (fps 0.0 :type real)
+  (count 0 :type integer)
+  (start nil :type (or null real)))
+
+(fn (frame-rate-label string) ((rate frame-rate))
+  "Sample frame cadence without scheduling additional redraws."
+  (when (context-text-mode-p *context*)
+    (return-from frame-rate-label "Terminal: event-driven rendering"))
+  (let ((now (frame-time)))
+    (if (null (frame-rate-start rate))
+        (setf (frame-rate-start rate) now)
+        (let ((elapsed (- now (frame-rate-start rate))))
+          (incf (frame-rate-count rate))
+          (when (>= elapsed 0.5)
+            (setf (frame-rate-fps rate) (/ (frame-rate-count rate) elapsed)
+                  (frame-rate-count rate) 0
+                  (frame-rate-start rate) now)))))
+  (let ((fps (frame-rate-fps rate)))
+    (format nil "~,1F FPS · ~,2F ms/frame" fps
+            (if (plusp fps) (/ 1000 fps) 0.0))))
+
 (fn frame-wait ((context context) &optional urgent
                 (now (/ (get-internal-real-time)
                         internal-time-units-per-second)))

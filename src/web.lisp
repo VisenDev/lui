@@ -1,118 +1,103 @@
 (defpackage #:lui.web
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui
-        #:lui.web.style)
+  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.draw)
   (:export #:mount #:unmount #:refresh))
-
 (in-package #:lui.web)
 
 (defstruct* web-app
-  host
-  measure-node
-  style-node
-  (tab-focus-p nil :type boolean)
-  (order-dirty-p t :type boolean)
-  callback
-  context
-  (nodes (make-hash-table :test 'equal) :type hash-table)
-  (tablists (make-hash-table :test 'equal) :type hash-table)
-  (measurements (jscl/ffi:new #j:Map))
-  (measurement-count 0 :type integer)
-  hover-id pointer-node
-  (pointer-id nil :type (or null integer))
-  (events nil :type list)
-  (pending-p nil :type boolean)
-  (alive-p t :type boolean)
-  resize-handler blur-handler
-  resize-observer
-  animation-frame
-  deadline-timer
-  wheel-handler
-  (listeners nil :type list))
+  host canvas graphics renderer context callback cleanup observer resize
+  animation-frame deadline-timer events pending-p (alive-p t))
 
-(fn create-node ((tag string))
-  (#j:document:createElement (jscl/ffi:jsstring tag)))
+(fn rounded-path (g (box box) radius &optional (inset 0))
+  ((jscl/ffi:oget g "beginPath"))
+  ((jscl/ffi:oget g "roundRect")
+   (+ inset (box-x box)) (+ inset (box-y box))
+   (max 0 (- (box-width box) (* 2 inset)))
+   (max 0 (- (box-height box) (* 2 inset))) (max 0 (- radius inset))))
 
-(fn create-svg-node ((tag string))
-  (#j:document:createElementNS #j"http://www.w3.org/2000/svg"
-                              (jscl/ffi:jsstring tag)))
-
-(fn release-dom-pointer ((app web-app))
-  (let ((node (web-app-pointer-node app)) (id (web-app-pointer-id app)))
-    ;; Clear ownership before release emits lostpointercapture.
-    (setf (web-app-pointer-node app) nil (web-app-pointer-id app) nil)
-    (when (and node id
-               (jscl/ffi:clbool
-                ((jscl/ffi:oget node "hasPointerCapture") id)))
-      ((jscl/ffi:oget node "releasePointerCapture") id))))
-
-(fn cancel-dom-pointer ((app web-app))
-  (release-dom-pointer app)
-  (queue-event app (make-event :kind :cancel :buttons 0)))
-
-(fn dom-buttons (event)
-  (let ((buttons (jscl/ffi:oget event "buttons")))
-    (unless (eq buttons #j:undefined) buttons)))
-
-(fn current-pointer-p ((app web-app) event)
-  (or (null (web-app-pointer-id app))
-      (eql (web-app-pointer-id app) (jscl/ffi:oget event "pointerId"))))
-
-(fn queue-pointer ((app web-app) event kind &optional id)
-  (let ((rect ((jscl/ffi:oget (web-app-host app)
-                             "getBoundingClientRect"))))
-    (queue-event
-     app (make-event :kind kind :id id :buttons (dom-buttons event)
-                     :button (if (= 2 (jscl/ffi:oget event "button"))
-                                 :secondary :primary)
-                     :clicks (max 1 (jscl/ffi:oget event "detail"))
-                     :x (- (jscl/ffi:oget event "clientX")
-                           (jscl/ffi:oget rect "left"))
-                     :y (- (jscl/ffi:oget event "clientY")
-                           (jscl/ffi:oget rect "top"))))))
-
-(defvar *dom-id-counter* 0)
-
-(fn fresh-dom-id ()
-  (loop :for id := (format nil "lui-scroll-~D" (incf *dom-id-counter*))
-        :when (eq #j:null (#j:document:getElementById
-                          (jscl/ffi:jsstring id)))
-          :return id))
-
-(fn property (node (name string) value)
-  (unless (eq value (jscl/ffi:oget node name))
-    (setf (jscl/ffi:oget node name) value)))
-
-(fn node-text (node (text string))
-  (property node "textContent" (jscl/ffi:jsstring text)))
-
-(fn listen ((app web-app) node (name string) (function function)
-            &optional capture)
-  (let ((options (jscl/ffi:new #j:Object)))
-    (setf (jscl/ffi:oget options "capture") (jscl/ffi:jsbool capture)
-          (jscl/ffi:oget options "passive") #j:false)
-    ((jscl/ffi:oget node "addEventListener")
-     (jscl/ffi:jsstring name) function options))
-  (push (list node name function capture) (web-app-listeners app)))
-
-(fn remove-node ((app web-app) node)
-  (when (and (web-app-pointer-node app)
-             (or (eq node (web-app-pointer-node app))
-                 (jscl/ffi:clbool
-                  ((jscl/ffi:oget node "contains")
-                   (web-app-pointer-node app)))))
-    (cancel-dom-pointer app))
-  (setf (web-app-listeners app)
-        (delete-if
-         (lambda (listener)
-           (destructuring-bind (target name function capture) listener
-             (when (or (eq target node)
-                       (jscl/ffi:clbool
-                        ((jscl/ffi:oget node "contains") target)))
-               ((jscl/ffi:oget target "removeEventListener")
-                (jscl/ffi:jsstring name) function (jscl/ffi:jsbool capture))
-               t)))
-         (web-app-listeners app)))
-  ((jscl/ffi:oget node "remove")))
+(fn canvas-renderer (canvas g)
+  (let* ((tile (#j:document:createElement #j"canvas"))
+         (ink ((jscl/ffi:oget tile "getContext") #j"2d"))
+         (sample (#j:document:createElement #j"canvas"))
+         (blur ((jscl/ffi:oget sample "getContext") #j"2d")))
+    (setf (jscl/ffi:oget tile "width") 2 (jscl/ffi:oget tile "height") 2)
+    ((jscl/ffi:oget ink "fillRect") 0 0 1 1)
+    ((jscl/ffi:oget ink "fillRect") 1 1 1 1)
+    (let ((dots ((jscl/ffi:oget g "createPattern") tile #j"repeat")))
+      (make-renderer
+       :font (lui.font:open-font)
+       :surface
+       (lambda (box radius color alpha &optional stroke)
+         (setf (jscl/ffi:oget g "globalAlpha") alpha)
+         (rounded-path g box radius (if stroke (/ stroke 2) 0))
+         (if stroke
+             (progn
+               (setf (jscl/ffi:oget g "lineWidth") stroke
+                     (jscl/ffi:oget g "strokeStyle")
+                     (jscl/ffi:jsstring color))
+               ((jscl/ffi:oget g "stroke")))
+             (progn
+               (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color))
+               ((jscl/ffi:oget g "fill")))))
+       :polygons
+       (lambda (paths color alpha)
+         (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color)
+               (jscl/ffi:oget g "globalAlpha") alpha)
+         ((jscl/ffi:oget g "beginPath"))
+         (dolist (path paths)
+           (when path
+             ((jscl/ffi:oget g "moveTo") (caar path) (cdar path))
+             (dolist (p (cdr path))
+               ((jscl/ffi:oget g "lineTo") (car p) (cdr p)))
+             ((jscl/ffi:oget g "closePath"))))
+         ((jscl/ffi:oget g "fill")))
+       :text
+       (lambda (font text x y color)
+         (setf (jscl/ffi:oget g "globalAlpha") 1
+               (jscl/ffi:oget g "font")
+               (jscl/ffi:jsstring (lui.font:font-css font))
+               (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color))
+         ((jscl/ffi:oget g "fillText") (jscl/ffi:jsstring text) x y))
+       :clip
+       (lambda (box)
+         ((jscl/ffi:oget g "restore"))
+         ((jscl/ffi:oget g "save"))
+         (rounded-path g box 0)
+         ((jscl/ffi:oget g "clip")))
+       :stipple
+       (lambda (box border)
+         (setf (jscl/ffi:oget g "globalAlpha") 1
+               (jscl/ffi:oget g "fillStyle") dots)
+         (rounded-path g box 0)
+         (when (and border (> (box-width box) (* 2 border))
+                    (> (box-height box) (* 2 border)))
+           ((jscl/ffi:oget g "rect") (+ (box-x box) border)
+            (+ (box-y box) border) (- (box-width box) (* 2 border))
+            (- (box-height box) (* 2 border))))
+         ((jscl/ffi:oget g "fill") #j"evenodd"))
+       :glass
+       (lambda (box radius frost)
+         (when (plusp frost)
+           (let* ((scale #j:window:devicePixelRatio)
+                  (x (box-x box)) (y (box-y box))
+                  (w (box-width box)) (h (box-height box))
+                  (step (max 1 (/ frost 2)))
+                  (sw (max 1 (ceiling (/ w step))))
+                  (sh (max 1 (ceiling (/ h step)))))
+             ;; Sample the underlying artwork at the frost scale, then
+             ;; interpolate it back into the rounded surface.
+             (when (> sw (jscl/ffi:oget sample "width"))
+               (setf (jscl/ffi:oget sample "width") sw))
+             (when (> sh (jscl/ffi:oget sample "height"))
+               (setf (jscl/ffi:oget sample "height") sh))
+             ((jscl/ffi:oget blur "clearRect") 0 0 sw sh)
+             ((jscl/ffi:oget blur "drawImage") canvas
+              (* scale x) (* scale y) (* scale w) (* scale h) 0 0 sw sh)
+             ((jscl/ffi:oget g "save"))
+             (rounded-path g box radius)
+             ((jscl/ffi:oget g "clip"))
+             (setf (jscl/ffi:oget g "globalAlpha") 1)
+             ((jscl/ffi:oget g "drawImage") sample 0 0 sw sh x y w h)
+             ((jscl/ffi:oget g "restore")))))))))
 
 (fn queue-event ((app web-app) (event event))
   (when (web-app-alive-p app)
@@ -122,711 +107,6 @@
         (setf (first (web-app-events app)) event)
         (push event (web-app-events app)))
     (refresh app)))
-
-(fn control-change ((app web-app) control kind id)
-  ;; A rejected native edit must still restore the unchanged model value.
-  (setf (jscl/ffi:oget
-         (if (eq kind :checkbox)
-             (jscl/ffi:oget control "parentNode") control)
-         "luiSignature")
-        #j:undefined)
-  (queue-event
-   app
-   (make-event :kind :change :id id :value
-               (case kind
-                 (:checkbox
-                  (jscl/ffi:clbool (jscl/ffi:oget control "checked")))
-                 (:slider (jscl/ffi:oget control "valueAsNumber"))
-                 (otherwise
-                  (jscl/ffi:clstring (jscl/ffi:oget control "value")))))))
-
-(fn reset-native-edit (control)
-  (edit-text (jscl/ffi:clstring (jscl/ffi:oget control "value"))
-             (jscl/ffi:oget control "luiEditState")
-             (list (make-event :kind :move))))
-
-(fn dom-text-index ((text string) (index integer))
-  (jscl/ffi:oget (jscl/ffi:jsstring (subseq text 0 index)) "length"))
-
-(fn native-application-key ((app web-app) id event)
-  (unless (or (jscl/ffi:clbool (jscl/ffi:oget event "isComposing"))
-              (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
-              (jscl/ffi:clbool (jscl/ffi:oget event "metaKey"))
-              (jscl/ffi:clbool (jscl/ffi:oget event "altKey")))
-    (let ((key (jscl/ffi:clstring (jscl/ffi:oget event "key"))))
-      (when (member key '("Enter" "Escape") :test #'string=)
-        ((jscl/ffi:oget event "preventDefault"))
-        (queue-event app (if (string= key "Enter")
-                             (make-event :kind :activate :id id)
-                             (make-event :kind :key :key :escape :id id)))
-        t))))
-
-(fn native-text-key ((app web-app) control id event)
-  (unless (or (jscl/ffi:clbool (jscl/ffi:oget event "isComposing"))
-              (eql 229 (jscl/ffi:oget event "keyCode"))
-              (jscl/ffi:clbool (jscl/ffi:oget control "luiComposing"))
-              (jscl/ffi:clbool (jscl/ffi:oget event "metaKey"))
-              (and (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
-                   (jscl/ffi:clbool (jscl/ffi:oget event "altKey"))))
-    (when (native-application-key app id event)
-      (return-from native-text-key nil))
-    (let* ((key (jscl/ffi:clstring (jscl/ffi:oget
-                                    event "key")))
-           (command (readline-key key
-                                  :control (jscl/ffi:clbool
-                                            (jscl/ffi:oget event "ctrlKey"))
-                                  :alt (jscl/ffi:clbool
-                                        (jscl/ffi:oget event "altKey"))
-                                  :shift (jscl/ffi:clbool
-                                          (jscl/ffi:oget event "shiftKey")))))
-      ;; Native input copy uses the browser clipboard and DOM selection.
-      (when (eq command :copy) (setf command nil))
-      (if (null command)
-          (unless (member key '("Control" "Alt" "Shift" "Meta" "CapsLock")
-                          :test #'string=)
-            (reset-native-edit control))
-          (let* ((value (jscl/ffi:oget control "value"))
-                 (text (jscl/ffi:clstring value))
-                 (state (jscl/ffi:oget control "luiEditState"))
-                 (start (length
-                         (jscl/ffi:clstring
-                          ((jscl/ffi:oget value "slice") 0
-                           (jscl/ffi:oget control "selectionStart")))))
-                 (end (length
-                       (jscl/ffi:clstring
-                        ((jscl/ffi:oget value "slice") 0
-                         (jscl/ffi:oget control "selectionEnd")))))
-                 (backward
-                  (string= "backward"
-                           (jscl/ffi:clstring
-                            (jscl/ffi:oget control "selectionDirection")))))
-            ((jscl/ffi:oget event "preventDefault"))
-            (setf (edit-state-cursor state) (if backward start end)
-                  (edit-state-anchor state) (if backward end start))
-            (let* ((edited (edit-text text state
-                                      (list (make-event :kind :key
-                                                        :key command))))
-                   (cursor (dom-text-index edited (edit-state-cursor state)))
-                   (anchor (dom-text-index edited (edit-state-anchor state))))
-              (unless (string= text edited)
-                (setf (jscl/ffi:oget control "value")
-                      (jscl/ffi:jsstring edited))
-                (control-change app control :text-field id))
-              ((jscl/ffi:oget control "setSelectionRange")
-               (min cursor anchor) (max cursor anchor)
-               (jscl/ffi:jsstring (if (< cursor anchor)
-                                      "backward" "forward")))))))))
-
-(fn native-tab-key
-    ((app web-app) id event &optional ((vertical-motion-p boolean) nil))
-  (unless (or (jscl/ffi:clbool (jscl/ffi:oget event "isComposing"))
-              (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
-              (jscl/ffi:clbool (jscl/ffi:oget event "altKey"))
-              (jscl/ffi:clbool (jscl/ffi:oget event "metaKey")))
-    (let ((key (cdr (assoc
-                     (jscl/ffi:clstring (jscl/ffi:oget event "key"))
-                     (append '(("Home" . :home) ("End" . :end))
-                             (if vertical-motion-p
-                                 '(("ArrowUp" . :up) ("ArrowDown" . :down))
-                                 '(("ArrowLeft" . :left)
-                                   ("ArrowRight" . :right))))
-                     :test #'string=))))
-      (when key
-        ((jscl/ffi:oget event "preventDefault"))
-        (setf (web-app-tab-focus-p app) t)
-        (queue-event app (make-event :kind :key :key key :id id))))))
-
-(fn native-scrollbar-key ((app web-app) id event)
-  (let ((key (cdr (assoc
-                   (jscl/ffi:clstring (jscl/ffi:oget event "key"))
-                   '(("ArrowUp" . :up) ("ArrowDown" . :down)
-                     ("ArrowLeft" . :left) ("ArrowRight" . :right)
-                     ("PageUp" . :page-up) ("PageDown" . :page-down)
-                     ("Home" . :home) ("End" . :end)) :test #'string=))))
-    (when key
-      ((jscl/ffi:oget event "preventDefault"))
-      (setf (web-app-tab-focus-p app) t)
-      (queue-event app (make-event :kind :key :key key :id id)))))
-
-(fn css-font-family ((widget widget))
-  (if (eq (widget-font-family widget) :monospace)
-      "Liberation Mono,Courier New,DejaVu Sans Mono,monospace"
-      "DejaVu Sans,Arial,sans-serif"))
-
-(fn css-font-weight ((widget widget))
-  (if (eq (widget-font-weight widget) :bold) "700" "400"))
-
-(fn measure-uncached ((app web-app) (widget widget) width)
-  (let* ((node (web-app-measure-node app))
-         (kind (widget-kind widget))
-         (text (if (eq kind :text-field)
-                   (widget-value widget)
-                   (widget-text widget)))
-         (extra (case kind
-                  (:label 0) (:checkbox 48)
-                  (:list-item (* 2 (list-item-inset widget width)))
-                  (otherwise 24)))
-         (vertical (case kind (:label 0) (:list-item 10) (otherwise 12))))
-    (setf (jscl/ffi:oget node "textContent") (jscl/ffi:jsstring text))
-    (style node "font-size" (px (widget-font-size widget)))
-    (style node "font-family" (css-font-family widget))
-    (style node "font-weight" (css-font-weight widget))
-    (style node "width"
-           (if width (px (max 0 (- width extra))) "max-content"))
-    (style node "white-space"
-           (if (member kind '(:label :list-item :button :tab)) "pre-wrap" "pre"))
-    (let ((rect ((jscl/ffi:oget node "getBoundingClientRect"))))
-      (values
-       (max (case kind (:slider 160) (:text-field 160) (otherwise 0))
-            (ceiling (+ extra (jscl/ffi:oget rect "width"))))
-       (max (+ vertical (widget-font-size widget))
-            (ceiling (+ vertical (jscl/ffi:oget rect "height"))))))))
-
-(fn measure-widget ((app web-app) (widget widget) width)
-  (let* ((kind (widget-kind widget))
-         (text (if (eq kind :text-field)
-                   (widget-value widget) (widget-text widget)))
-         (cache (web-app-measurements app))
-         (key (jscl/ffi:jsstring text))
-         (bucket ((jscl/ffi:oget cache "get") key))
-         (variants (unless (eq bucket #j:undefined) bucket))
-         (shape (list kind width (widget-font-size widget)
-                      (widget-font-family widget) 
-                      (widget-font-weight widget)))
-         (entry (assoc shape variants :test #'equal)))
-    (unless entry
-      (setf entry (cons shape
-                        (multiple-value-list
-                         (measure-uncached app widget width))))
-      ((jscl/ffi:oget cache "set") key (cons entry variants))
-      (incf (web-app-measurement-count app)))
-    (values (second entry) (third entry))))
-
-(fn native-option-key ((app web-app) id event)
-  (unless (or (native-application-key app id event)
-              (jscl/ffi:clbool (jscl/ffi:oget event "isComposing"))
-              (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
-              (jscl/ffi:clbool (jscl/ffi:oget event "metaKey"))
-              (jscl/ffi:clbool (jscl/ffi:oget event "altKey")))
-    (let ((key (cdr (assoc
-                     (jscl/ffi:clstring (jscl/ffi:oget event "key"))
-                     '(("ArrowUp" . :up) ("ArrowDown" . :down)
-                       ("ArrowLeft" . :left) ("ArrowRight" . :right)
-                       ("Home" . :home) ("End" . :end))
-                     :test #'string=))))
-      (when key
-        ((jscl/ffi:oget event "preventDefault"))
-        (setf (web-app-tab-focus-p app) t)
-        (queue-event app (make-event :kind :key :key key :id id))))))
-
-(fn native-button-key ((app web-app) id event)
-  (native-option-key app id event)
-  (let ((key (jscl/ffi:clstring (jscl/ffi:oget event "key"))))
-    (when (and (= (length key) 1) (not (string= key " "))
-               (not (some (lambda (name)
-                            (jscl/ffi:clbool (jscl/ffi:oget event name)))
-                          '("isComposing" "ctrlKey" "metaKey" "altKey"))))
-      ((jscl/ffi:oget event "preventDefault"))
-      (queue-event app (make-event :kind :text :id id :value key)))))
-
-(fn widget-node ((app web-app) (node element) key)
-  (let* ((widget (element-content node))
-         (kind (widget-kind widget))
-         (entry (gethash key (web-app-nodes app))))
-    (when (and entry (not (eq kind (car entry))))
-      (remove-node app (cdr entry))
-      (setf entry nil))
-    (unless entry
-      (let* ((dom (if (eq kind :canvas)
-                      (create-svg-node "svg")
-                      (create-node
-                       (case kind
-                         ((:button :tab :list-item :cell) "button")
-                         ((:slider :text-field) "input")
-                         (:checkbox "label")
-                         (otherwise "div")))))
-             (control (if (eq kind :checkbox) (create-node "input") dom))
-             (id (element-id node)))
-        (setf (jscl/ffi:oget dom "luiId") id)
-        (when (eq kind :checkbox)
-          ((jscl/ffi:oget dom "appendChild") control)
-          ((jscl/ffi:oget dom "appendChild") (create-node "span")))
-        (when (member kind '(:canvas :splitter :scrollbar))
-          (setf (jscl/ffi:oget dom "luiContinuousMove") #j:true)
-          (attribute dom "role" (case kind (:canvas "img")
-                                 (:scrollbar "scrollbar")
-                                 (otherwise "separator")))
-          (attribute dom "tabindex" "0")
-          (style dom "touch-action" "none")
-          (listen app dom "keydown"
-                  (lambda (event)
-                    (case kind
-                      (:canvas (native-application-key app id event))
-                      (:scrollbar (native-scrollbar-key app id event))
-                      (otherwise
-                       (native-tab-key
-                        app id event
-                        (eq (jscl/ffi:oget dom "luiOrientation")
-                            :horizontal))))))
-          (listen app dom "contextmenu"
-                  (lambda (event)
-                    ((jscl/ffi:oget event "preventDefault"))))
-          (listen app dom "pointerdown"
-                  (lambda (event)
-                    ((jscl/ffi:oget event "preventDefault"))
-                    (when (web-app-pointer-node app) (cancel-dom-pointer app))
-                    (setf (web-app-pointer-node app) dom
-                          (web-app-pointer-id app)
-                          (jscl/ffi:oget event "pointerId"))
-                    ((jscl/ffi:oget dom "setPointerCapture")
-                     (web-app-pointer-id app))
-                    (queue-pointer app event :press)))
-          (listen app dom "pointerup"
-                  (lambda (event)
-                    (when (and (eq dom (web-app-pointer-node app))
-                               (current-pointer-p app event))
-                      (queue-pointer app event :release)
-                      (release-dom-pointer app))))
-          (dolist (name '("pointercancel" "lostpointercapture"))
-            (listen app dom name
-                    (lambda (event)
-                      (when (and (eq dom (web-app-pointer-node app))
-                                 (current-pointer-p app event))
-                        (cancel-dom-pointer app))))))
-        (case kind
-          ((:button :tab :list-item :cell)
-           (attribute dom "type" "button")
-           (attribute dom "class" "lui-control")
-           (listen app dom "mousedown"
-                   (lambda (event)
-                     ;; Buttons keep editing focus; list options take focus.
-                     (unless (eq kind :list-item)
-                       ((jscl/ffi:oget event "preventDefault")))))
-           (when (member kind '(:button :cell))
-             (when (eq kind :cell)
-               (attribute dom "role" "gridcell")
-               (attribute dom "class" "lui-cell"))
-             (listen app dom "keydown"
-                     (lambda (event) (native-button-key app id event))))
-           (when (eq kind :list-item)
-             (attribute dom "role" "option")
-             (attribute dom "class" "lui-control lui-option")
-             (listen app dom "keydown"
-                     (lambda (event) (native-option-key app id event))))
-           (when (eq kind :tab)
-             (attribute dom "role" "tab")
-             (listen app dom "keydown"
-                     (lambda (event) (native-tab-key app id event))))
-           (listen app dom "click"
-                   (lambda (event)
-                     (if (plusp (jscl/ffi:oget event "detail"))
-                         (progn (queue-pointer app event :press id)
-                                (queue-pointer app event :release id))
-                         (queue-event
-                          app (make-event :kind :activate :id id))))))
-          ((:slider :text-field :checkbox)
-           (when (eq kind :slider)
-             (listen app control "keydown"
-                     (lambda (event)
-                       (native-application-key app id event))))
-           (when (eq kind :checkbox)
-             (listen app control "keydown"
-                     (lambda (event)
-                       (when (and (string= "Enter" (jscl/ffi:clstring
-                                                    (jscl/ffi:oget
-                                                     event "key")))
-                                  (not (jscl/ffi:clbool
-                                        (jscl/ffi:oget event "isComposing"))))
-                         ((jscl/ffi:oget event "preventDefault"))
-                         ((jscl/ffi:oget control "click"))))))
-           (attribute control "type"
-                      (ecase kind
-                        (:slider "range")
-                        (:text-field "text")
-                        (:checkbox "checkbox")))
-           (listen app control "input"
-                   (lambda (event)
-                     ;; Composition remains in the DOM until it is committed.
-                     (unless
-                         (jscl/ffi:clbool
-                          (jscl/ffi:oget event "isComposing"))
-                       (when (eq kind :text-field)
-                         (reset-native-edit control))
-                       (control-change app control kind id))))
-           (when (eq kind :text-field)
-             (setf (jscl/ffi:oget control "luiEditState") (make-edit-state))
-             (listen app control "keydown"
-                     (lambda (event) (native-text-key app control id event)))
-             (listen app control "pointerdown"
-                     (lambda (event)
-                       (declare (ignore event))
-                       (reset-native-edit control)))
-             (listen app control "compositionstart"
-                     (lambda (event)
-                       (declare (ignore event))
-                       (setf (jscl/ffi:oget control "luiComposing")
-                             #j:true)))
-             (listen app control "compositionend"
-                     (lambda (event)
-                       (declare (ignore event))
-                       (setf (jscl/ffi:oget control "luiComposing")
-                             #j:false)
-                       (reset-native-edit control)
-                       (control-change app control kind id)))))
-          (otherwise nil))
-        (unless (eq kind :highlight)
-          (listen app control "focus"
-                  (lambda (event)
-                    (declare (ignore event))
-                    (setf (context-focus (web-app-context app)) id))))
-        ((jscl/ffi:oget (web-app-host app) "appendChild") dom)
-        (setf (web-app-order-dirty-p app) t)
-        (setf entry (cons kind dom) (gethash key (web-app-nodes app))
-              entry)))
-    (cdr entry)))
-
-(fn render-signature ((widget widget) (bounds box) (clip box))
-  (jscl/ffi:new #j:Array (widget-kind widget) (widget-style widget)
-                (jscl/ffi:jsstring (widget-text widget))
-                (if (stringp (widget-value widget))
-                    (jscl/ffi:jsstring (widget-value widget))
-                    (widget-value widget))
-                (widget-minimum widget) (widget-maximum widget)
-                (widget-step widget)
-                (widget-font-family widget) (widget-font-weight widget)
-                (widget-font-size widget) (widget-radius widget)
-                (widget-frost widget)
-                (widget-opacity widget) (widget-disabled-p widget)
-                (widget-web-style widget) (toolkit-revision)
-                (widget-orientation widget)
-                (when (widget-accessible-name widget)
-                  (jscl/ffi:jsstring (widget-accessible-name widget)))
-                (jscl/ffi:jsstring (widget-foreground widget))
-                (jscl/ffi:jsstring (widget-background widget))
-                (jscl/ffi:jsstring (widget-accent widget))
-                (box-x bounds) (box-y bounds)
-                (box-width bounds) (box-height bounds)
-                (box-x clip) (box-y clip) (box-width clip) (box-height clip)))
-
-(fn same-signature-p (signature previous)
-  (when (and (not (eq previous #j:undefined))
-             (eq (jscl/ffi:oget signature "length")
-                 (jscl/ffi:oget previous "length")))
-    (let ((same t))
-      (dotimes (index (jscl/ffi:oget signature "length") same)
-        (unless (eq (jscl/ffi:oget signature index)
-                    (jscl/ffi:oget previous index))
-          (setf same nil))))))
-
-(fn update-node ((app web-app) (node element) key)
-  (let* ((widget (element-content node))
-         (dom (widget-node app node key))
-         (kind (widget-kind widget))
-         (control (if (eq kind :checkbox)
-                      (jscl/ffi:oget dom "firstElementChild") dom))
-         (box (element-box node)) (clip (element-clip node)))
-    (style dom "display"
-           (if (and (plusp (box-width clip)) (plusp (box-height clip)))
-               (if (eq kind :checkbox) "flex" "block") "none"))
-    (unless (and (plusp (box-width clip)) (plusp (box-height clip)))
-      (return-from update-node dom))
-    (let ((signature (render-signature widget box clip)))
-      ;; Canvas command lists may be edited in place by the application.
-      (when (and (not (eq kind :canvas))
-                 (same-signature-p signature
-                                   (jscl/ffi:oget dom "luiSignature")))
-        (return-from update-node dom))
-      ;; Hooks may write raw DOM styles. Replacing/removing one must restore
-      ;; defaults rather than trusting the previous inline-style cache.
-      (unless (and (eql (toolkit-revision)
-                        (jscl/ffi:oget dom "luiStyleRevision"))
-                   (eq (widget-web-style widget)
-                       (jscl/ffi:oget dom "luiWidgetStyle"))
-                   (eq (widget-style widget)
-                       (jscl/ffi:oget dom "luiToolkit")))
-        (setf (jscl/ffi:oget dom "style" "cssText") #j""
-              (jscl/ffi:oget dom "luiStyles") #j:undefined
-              (jscl/ffi:oget dom "luiAttributes") #j:undefined
-              (jscl/ffi:oget dom "luiStyleRevision") (toolkit-revision)
-              (jscl/ffi:oget dom "luiWidgetStyle") (widget-web-style widget)
-              (jscl/ffi:oget dom "luiToolkit") (widget-style widget)))
-      (setf (jscl/ffi:oget dom "luiSignature") signature))
-    (when (and (eq kind :panel) (= 1 (widget-opacity widget))
-               (= 0 (box-x box) (box-y box))
-               (= (box-width box) (context-width (web-app-context app)))
-               (= (box-height box) (context-height (web-app-context app))))
-      (style (web-app-host app) "background" (widget-background widget)))
-    (attribute dom "data-lui-interactive"
-               (if (element-interactive-p node) "true" "false"))
-    (attribute dom "data-lui-style"
-               (string-downcase (symbol-name (widget-style widget))))
-    (attribute dom "data-lui-surface"
-               (string-downcase (symbol-name
-                                 (toolkit-surface (widget-style widget)))))
-    (attribute dom "class"
-               (case kind
-                 ((:button :tab) "lui-control")
-                 (:cell "lui-cell") (:list-item "lui-control lui-option")
-                 (:checkbox "lui-check") (:slider "lui-range")
-                 (:highlight "lui-highlight") (:splitter "lui-splitter")
-                 (:scrollbar "lui-scrollbar")
-                 (otherwise "")))
-    (style dom "display" (if (eq kind :checkbox) "flex" "block"))
-    (style dom "position" "absolute")
-    (style dom "box-sizing" "border-box")
-    (style dom "margin" "0")
-    (style dom "font-family" (css-font-family widget))
-    (style dom "font-weight" (css-font-weight widget))
-    (style dom "left" (px (box-x box)))
-    (style dom "top" (px (box-y box)))
-    (style dom "width" (px (box-width box)))
-    (style dom "height" (px (box-height box)))
-    (style dom "font-size" (px (widget-font-size widget)))
-    (style dom "color" (if (widget-disabled-p widget)
-                           "#777777" (widget-foreground widget)))
-    (let ((accent (if (widget-disabled-p widget)
-                      "#999999" (widget-accent widget))))
-      (style dom "accent-color" accent)
-      (style dom "--lui-accent" accent))
-    (style dom "white-space" "pre-wrap")
-    (style dom "text-align" "left")
-    (style dom "line-height" "normal")
-    (style dom "clip-path"
-           (format nil "inset(~A ~A ~A ~A)"
-                   (px (- (box-y clip) (box-y box)))
-                   (px (max 0 (- (+ (box-x box) (box-width box))
-                                 (+ (box-x clip) (box-width clip)))))
-                   (px (max 0 (- (+ (box-y box) (box-height box))
-                                 (+ (box-y clip) (box-height clip)))))
-                   (px (- (box-x clip) (box-x box)))))
-    (unless (member kind '(:text-field :slider :checkbox :canvas :gauge
-                          :highlight :splitter :scrollbar))
-      (node-text dom (widget-text widget)))
-    (unless (member kind '(:label :highlight :splitter))
-      (property control "disabled"
-                (jscl/ffi:jsbool (widget-disabled-p widget)))
-      (attribute control "aria-label"
-                 (or (widget-accessible-name widget)
-                     (if (plusp (length (widget-text widget)))
-                         (widget-text widget)
-                         (if (eq kind :cell) "Empty cell"
-                             (princ-to-string key))))))
-    (case kind
-      (:scrollbar
-       (let ((owner (cdr (gethash (second (element-id node))
-                                  (web-app-nodes app)))))
-         (when owner
-           (when (string= "" (jscl/ffi:clstring (jscl/ffi:oget owner "id")))
-             (attribute owner "id" (fresh-dom-id)))
-           (attribute dom "aria-controls"
-                      (jscl/ffi:clstring (jscl/ffi:oget owner "id")))))
-       (destructuring-bind (offset viewport extent) (widget-value widget)
-         (attribute dom "aria-orientation" "vertical")
-         (attribute dom "aria-valuemin" "0")
-         (attribute dom "aria-valuemax"
-                    (jscl/ffi:clstring (#j:String (- extent viewport))))
-         (attribute dom "aria-valuenow"
-                    (jscl/ffi:clstring (#j:String offset))))
-       (style dom "padding" "0")
-       (style dom "border" "none")
-       (style dom "background" (widget-background widget))
-       (style dom "cursor" "default")
-       (style dom "touch-action" "none")
-       (style dom "user-select" "none")
-       (when (eq #j:null (jscl/ffi:oget dom "firstElementChild"))
-         ((jscl/ffi:oget dom "appendChild") (create-node "div")))
-       (let ((thumb (jscl/ffi:oget dom "firstElementChild"))
-             (bounds (scrollbar-thumb node)))
-         (style thumb "pointer-events" "none")
-         (style thumb "position" "absolute")
-         (style thumb "top" (px (- (box-y bounds) (box-y box))))
-         (style thumb "width" "100%")
-         (style thumb "height" (px (box-height bounds)))
-         (style thumb "background" (widget-accent widget))))
-      (:splitter
-       (let ((horizontal (eq (widget-orientation widget) :horizontal)))
-         (setf (jscl/ffi:oget dom "luiOrientation")
-               (widget-orientation widget))
-         (attribute dom "aria-orientation"
-                    (if horizontal "horizontal" "vertical"))
-         (attribute dom "aria-label"
-                    (or (widget-accessible-name widget)
-                        (if (plusp (length (widget-text widget)))
-                            (widget-text widget)
-                            (if horizontal "Panel height" "Panel width"))))
-         (attribute dom "aria-valuemin" "0")
-         (attribute dom "aria-valuemax" "1")
-         (attribute dom "aria-valuenow"
-                    (jscl/ffi:clstring (#j:String (widget-value widget))))
-         (style dom "cursor" (if horizontal "ns-resize" "ew-resize"))
-         (style dom "user-select" "none")
-         (style dom "background"
-                (format nil "linear-gradient(~Ddeg, transparent calc(50% - 1px), ~A calc(50% - 1px), ~A calc(50% + 1px), transparent calc(50% + 1px))"
-                        (if horizontal 0 90)
-                        (widget-accent widget) (widget-accent widget)))))
-      (:highlight
-       (attribute dom "aria-hidden" "true")
-       (style dom "pointer-events" "none")
-       (style dom "user-select" "none")
-       (style dom "padding" "0")
-       (style dom "border-radius" "0")
-       (style dom "border"
-              (concatenate 'string "1px solid " (widget-accent widget)))
-       (style dom "background"
-              (format nil "color-mix(in srgb, ~A ~D%, transparent)"
-                      (widget-background widget)
-                      (round (* 100 (widget-opacity widget))))))
-      (:tab
-       (attribute dom "aria-selected"
-                  (if (widget-value widget) "true" "false"))
-       (attribute dom "tabindex"
-                  (if (and (widget-value widget)
-                           (not (widget-disabled-p widget))) "0" "-1")))
-      ((:list-item :cell)
-       (attribute dom "aria-selected"
-                  (if (widget-value widget) "true" "false")))
-      (:checkbox
-       (attribute control "class" "lui-control")
-       (style dom "align-items" "center")
-       (style dom "gap" "8px")
-       (style control "margin" "0")
-       (style control "width" "16px")
-       (style control "height" "16px")
-       (style control "flex-shrink" "0")
-       (property control "checked" (jscl/ffi:jsbool (widget-value widget)))
-       (node-text (jscl/ffi:oget dom "lastElementChild")
-                  (widget-text widget)))
-      (:slider
-       (style dom "appearance" "none")
-       (style dom "padding" "0 7px")
-       (style dom "--lui-fill"
-              (jscl/ffi:clstring
-               ((jscl/ffi:oget
-                 (#j:String (* 100 (/ (- (widget-value widget)
-                                        (widget-minimum widget))
-                                     (- (widget-maximum widget)
-                                        (widget-minimum widget)))))
-                 "concat") #j"%")))
-       (attribute dom "min" (princ-to-string (widget-minimum widget)))
-       (attribute dom "max" (princ-to-string (widget-maximum widget)))
-       (attribute dom "step" (princ-to-string (widget-step widget)))
-       (property dom "valueAsNumber" (widget-value widget)))
-      (:text-field
-       (style dom "appearance" "none")
-       (unless (jscl/ffi:clbool (jscl/ffi:oget dom "luiComposing"))
-         (property dom "value" (jscl/ffi:jsstring (widget-value widget)))))
-      (:canvas (update-canvas dom widget))
-      (:gauge
-       (attribute dom "role" "progressbar")
-       (attribute dom "aria-valuemin" "0")
-       (attribute dom "aria-valuemax" "1")
-       (attribute dom "aria-valuenow"
-                  (jscl/ffi:clstring (#j:String (widget-value widget))))
-       (when (eq #j:null (jscl/ffi:oget dom "firstElementChild"))
-         ((jscl/ffi:oget dom "appendChild") (create-node "div")))
-       (let ((fill (jscl/ffi:oget dom "firstElementChild")))
-         (style fill "height" "100%")
-         (style fill "width"
-                (jscl/ffi:clstring
-                 ((jscl/ffi:oget (#j:String (* 100 (widget-value widget)))
-                                "concat") #j"%")))
-         (style fill "background" (widget-accent widget))
-         (style fill "border-radius" "inherit"))))
-    (finish-control-style dom widget node)
-    (let ((*context* (web-app-context app)))
-      (map-toolkit-web-styles
-       (widget-style widget)
-       (lambda (callback) (funcall callback dom widget node)))
-      (when (widget-web-style widget)
-        (funcall (widget-web-style widget) dom widget node)))
-    dom))
-
-(fn update-canvas (dom (widget widget))
-  (let ((index 0))
-    (dolist (command (widget-value widget))
-      (destructuring-bind (kind x y radius stroke fill) command
-        (assert (eq kind :circle))
-        (let ((circle ((jscl/ffi:oget dom "children" "item") index)))
-          (when (eq circle #j:null)
-            (setf circle (create-svg-node "circle"))
-            ((jscl/ffi:oget dom "appendChild") circle))
-          (attribute circle "cx" (px x))
-          (attribute circle "cy" (px y))
-          (attribute circle "r" (px radius))
-          (attribute circle "stroke" (or stroke "none"))
-          (attribute circle "fill" (or fill "none"))
-          (incf index))))
-    (loop :while (> (jscl/ffi:oget dom "children" "length") index)
-          :do ((jscl/ffi:oget dom "lastElementChild" "remove")))))
-
-(fn update-tablists ((app web-app))
-  (let ((seen (make-hash-table :test 'equal)))
-    (walk-elements
-     (context-root (web-app-context app))
-     (lambda (parent)
-       (let ((tabs nil) (items nil))
-         (do-children (node parent)
-           (let ((widget (element-content node)))
-             (when (widget-p widget)
-               (case (widget-kind widget)
-                 (:tab (push node tabs))
-                 (:list-item (push node items))))))
-         (dolist (nodes (list (nreverse tabs) (nreverse items)))
-           (when nodes
-             (let* ((kind (widget-kind (element-content (first nodes))))
-                    (key (cons kind (mapcar #'element-id nodes)))
-                    (group (gethash key (web-app-tablists app))))
-               (unless group
-                 (setf group (create-node "div")
-                       (gethash key (web-app-tablists app)) group)
-                 (attribute group "role"
-                            (if (eq kind :tab) "tablist" "listbox"))
-                 (style group "display" "contents")
-                 (let* ((first (cdr (gethash (element-id (first nodes))
-                                            (web-app-nodes app))))
-                        (owner (jscl/ffi:oget first "parentNode")))
-                   ((jscl/ffi:oget (web-app-host app) "insertBefore")
-                    group (if (eq owner (web-app-host app)) first owner))))
-               (setf (gethash key seen) t)
-               (dolist (node nodes)
-                 (let ((dom (cdr (gethash (element-id node)
-                                         (web-app-nodes app)))))
-                   (unless (eq group (jscl/ffi:oget dom "parentNode"))
-                     ((jscl/ffi:oget group "appendChild") dom))))))))))
-    (let ((removed nil))
-      (maphash (lambda (key group)
-                 (unless (gethash key seen)
-                   ((jscl/ffi:oget group "remove"))
-                   (push key removed)))
-               (web-app-tablists app))
-      (dolist (key removed) (remhash key (web-app-tablists app))))))
-
-(fn reconcile-dom-order ((app web-app))
-  (when (web-app-order-dirty-p app)
-    (setf (web-app-order-dirty-p app) nil)
-    (let ((nodes nil) (index 0) (seen (make-hash-table :test 'eq))
-          (host (web-app-host app))
-          (active #j:document:activeElement)
-          (reference #j:null))
-      (walk-elements
-       (context-root (web-app-context app))
-       (lambda (node)
-         (when (widget-p (element-content node))
-           (let* ((key (or (element-id node)
-                           (list :anonymous (incf index))))
-                  (dom (cdr (gethash key (web-app-nodes app)))))
-             (incf index)
-             (when dom (push dom nodes))))))
-      (dolist (dom nodes)
-        (let* ((owner (jscl/ffi:oget dom "parentNode"))
-               (child (if (eq owner host) dom owner)))
-          (unless (gethash child seen)
-            (setf (gethash child seen) t)
-            (unless (eq (jscl/ffi:oget child "nextSibling") reference)
-              ((jscl/ffi:oget host "insertBefore") child reference))
-            (setf reference child))))
-      (unless (eq active #j:document:activeElement)
-        ((jscl/ffi:oget active "focus"))))))
 
 (fn cancel-deadline ((app web-app))
   (when (web-app-deadline-timer app)
@@ -843,78 +123,29 @@
                 (#j:setTimeout (lambda () (refresh app))
                                (ceiling (* delay 1000))))))))
 
-(fn restore-application-focus ((app web-app))
-  (when (web-app-tab-focus-p app)
-    (let* ((context (web-app-context app))
-           (id (context-focus context))
-           (node (gethash id (lui.frame::context-ids context)))
-           (target (gethash id (web-app-nodes app))))
-      (cond ((null id) (setf (web-app-tab-focus-p app) nil))
-            ((and target node (element-interactive-p node))
-             (let ((control (if (eq (car target) :checkbox)
-                                (jscl/ffi:oget (cdr target)
-                                               "firstElementChild")
-                                (cdr target))))
-               ((jscl/ffi:oget control "focus"))
-               (setf (web-app-tab-focus-p app) nil)))))))
-
 (fn draw-frame ((app web-app))
-  (let* ((host (web-app-host app))
-         (context (web-app-context app))
-         (previous-focus (context-focus context))
-         (previous-active #j:document:activeElement)
-         (desired-focus nil)
-         (events (nreverse (web-app-events app)))
-         (stamp (jscl/ffi:new #j:Object))
-         (index 0))
-    (setf (web-app-events app) nil)
-    (when (> (web-app-measurement-count app) 2048)
-      (setf (web-app-measurement-count app) 0)
-      ((jscl/ffi:oget (web-app-measurements app) "clear")))
-    (let ((*unit* 8))
-      (with-frame
-          (context (jscl/ffi:oget host "clientWidth")
-                   (jscl/ffi:oget host "clientHeight") :events events)
-        (funcall (web-app-callback app))))
-    (setf desired-focus (context-focus context))
-    (setf (web-app-hover-id app) (context-hover context))
-    ;; A plain hover already has its resolved target in this frame.
-    (when (some (lambda (event)
-                  (or (not (eq (event-kind event) :move))
-                      (event-dragging-p event)))
-                events)
+  (let* ((canvas (web-app-canvas app)) (g (web-app-graphics app))
+         (context (web-app-context app)) (*unit* 8)
+         (width (jscl/ffi:oget canvas "clientWidth"))
+         (height (jscl/ffi:oget canvas "clientHeight"))
+         (scale #j:window:devicePixelRatio)
+         (events (nreverse (shiftf (web-app-events app) nil))))
+    (let ((w (round (* width scale))) (h (round (* height scale))))
+      (unless (= w (jscl/ffi:oget canvas "width"))
+        (setf (jscl/ffi:oget canvas "width") w))
+      (unless (= h (jscl/ffi:oget canvas "height"))
+        (setf (jscl/ffi:oget canvas "height") h)))
+    (with-frame (context width height :events events)
+      (funcall (web-app-callback app)))
+    ((jscl/ffi:oget g "setTransform") scale 0 0 scale 0 0)
+    (setf (jscl/ffi:oget g "fillStyle") #j"#202432")
+    ((jscl/ffi:oget g "fillRect") 0 0 width height)
+    ((jscl/ffi:oget g "save"))
+    (unwind-protect (paint-frame (web-app-renderer app) context)
+      ((jscl/ffi:oget g "restore")))
+    (when (some (lambda (e) (not (eq :move (event-kind e)))) events)
       (refresh app))
-    (walk-elements
-     (context-root context)
-     (lambda (node)
-       (when (widget-p (element-content node))
-         (let* ((key
-                 (or (element-id node)
-                     (list :anonymous (incf index))))
-                (dom (update-node app node key)))
-           (let ((rank (#j:String (incf index))))
-             (unless (eq rank (jscl/ffi:oget dom "style" "zIndex"))
-               (setf (jscl/ffi:oget dom "style" "zIndex") rank)))
-           (setf (jscl/ffi:oget dom "luiFrame") stamp)))))
-    (update-tablists app)
-    (let ((removed nil))
-      (maphash
-       (lambda (key entry)
-         (unless (eq stamp (jscl/ffi:oget (cdr entry) "luiFrame"))
-           (remove-node app (cdr entry))
-           (setf (web-app-order-dirty-p app) t)
-           (push key removed)))
-       (web-app-nodes app))
-      (dolist (key removed) (remhash key (web-app-nodes app))))
-    (reconcile-dom-order app)
-    ;; Reparenting can fire focus events for the old active DOM control.
-    (setf (context-focus context) desired-focus)
-    (when (or (not (equal previous-focus (context-focus context)))
-              (and (not (eq previous-active #j:document:activeElement))
-                   (equal (jscl/ffi:oget previous-active "luiId")
-                          (context-focus context))))
-      (setf (web-app-tab-focus-p app) t))
-    (restore-application-focus app)
+    (lui.web.input:update-accessibility canvas context)
     (schedule-deadline app)))
 
 (fn refresh ((app web-app))
@@ -942,150 +173,60 @@
 
 (fn mount (host (callback function) &key (min-fps lui.frame::*min-fps*)
            (max-fps lui.frame::*max-fps*))
-  "Mount in an existing DOM element with explicit dimensions. Returns a handle."
-  (assert (<= min-fps max-fps))
-  (assert (plusp min-fps))
-  (let* ((app (make-web-app :host host :callback callback))
-         (measure (create-node "span"))
-         (sheet (create-node "style")))
-    (style host "position" "relative")
-    (style host "overflow" "hidden")
-    (style host "font-family" "DejaVu Sans, Arial, sans-serif")
-    (style measure "position" "absolute")
-    (style measure "visibility" "hidden")
-    (style measure "pointer-events" "none")
-    (setf (jscl/ffi:oget sheet "textContent") (style-sheets))
-    ((jscl/ffi:oget host "appendChild") sheet)
-    ((jscl/ffi:oget host "appendChild") measure)
-    (setf (web-app-style-node app) sheet
-          (web-app-measure-node app) measure
-          (web-app-context app)
-          (make-context :min-fps min-fps :max-fps max-fps
-                        :measure (lambda (widget width)
-                          (measure-widget app widget width)))
-          (web-app-resize-handler app)
-          (lambda (event)
-            (declare (ignore event))
-            (refresh app)))
-    (#j:window:addEventListener #j"resize" (web-app-resize-handler app))
-    (setf (web-app-blur-handler app)
-          (lambda (event)
-            (declare (ignore event))
-            (cancel-dom-pointer app)))
-    (#j:window:addEventListener #j"blur" (web-app-blur-handler app))
-    (setf (web-app-wheel-handler app)
-          (lambda (event)
-            (when (web-app-alive-p app)
-              ((jscl/ffi:oget event "preventDefault"))
-              (let ((rect ((jscl/ffi:oget host "getBoundingClientRect"))))
-                (queue-event
-                 app
-                 (make-event
-                  :kind :scroll
-                  :x (- (jscl/ffi:oget event "clientX")
-                        (jscl/ffi:oget rect "left"))
-                  :y (- (jscl/ffi:oget event "clientY")
-                        (jscl/ffi:oget rect "top"))
-                  ;; No standardized browser flag distinguishes OS inertia.
-                  ;; Preserve fine/fractional pixel motion; ease coarse notches.
-                  :scroll-mode
-                  (let ((delta (jscl/ffi:oget event "deltaY")))
-                    (if (and (zerop (jscl/ffi:oget event "deltaMode"))
-                             (or (< (abs delta) 20)
-                                 (/= delta (truncate delta))))
-                        :immediate :smooth))
-                  :value (* (jscl/ffi:oget event "deltaY")
-                            (case (jscl/ffi:oget event "deltaMode")
-                              (1 16)
-                              (2 (jscl/ffi:oget host "clientHeight"))
-                              (otherwise 1)))))))))
-    (setf (web-app-resize-observer app)
-          (jscl/ffi:new
-           #j:ResizeObserver
-           (lambda (entries observer)
-             (declare (ignore entries observer))
-             (refresh app))))
-    ((jscl/ffi:oget (web-app-resize-observer app) "observe") host)
-    (listen app host "wheel" (web-app-wheel-handler app) t)
-    (listen app host "pointermove"
-            (lambda (event)
-              (when (current-pointer-p app event)
-                (let* ((captured (web-app-pointer-node app))
-                       (buttons (dom-buttons event))
-                       (target ((jscl/ffi:oget event "target" "closest")
-                                #j"[data-lui-interactive='true']"))
-                       (id (unless (eq target #j:null)
-                             (jscl/ffi:oget target "luiId"))))
-                  (when (and captured buttons (not (logbitp 0 buttons)))
-                    (release-dom-pointer app))
-                  (when (or captured
-                            (not (equal id (web-app-hover-id app)))
-                            (and (not (eq target #j:null))
-                                 (jscl/ffi:clbool
-                                  (jscl/ffi:oget
-                                   target "luiContinuousMove"))))
-                    (setf (web-app-hover-id app) id)
-                    (queue-pointer app event :move))))))
-    (listen app host "pointerenter"
-            (lambda (event)
-              (when (current-pointer-p app event)
-                (queue-pointer app event :move))))
-    (listen app host "pointerleave"
-            (lambda (event)
-              (when (current-pointer-p app event)
-                (setf (web-app-hover-id app) nil)
-                (let ((buttons (dom-buttons event)))
-                  (if (and (web-app-pointer-node app) buttons
-                           (logbitp 0 buttons))
-                      (queue-pointer app event :move)
-                      (progn
-                        (cancel-dom-pointer app)
-                        (queue-event app (make-event :kind :move :buttons 0
-                                                     :x -1 :y -1))))))))
+  "Mount a Canvas 2D application inside HOST and return its lifetime handle."
+  (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
+  (let* ((canvas (#j:document:createElement #j"canvas"))
+         (g ((jscl/ffi:oget canvas "getContext") #j"2d"))
+         (renderer (canvas-renderer canvas g))
+         (context (make-context
+                   :min-fps min-fps :max-fps max-fps
+                   :measure (lambda (widget width)
+                              (measure-widget renderer widget width))))
+         (app (make-web-app :host host :canvas canvas :graphics g
+                            :renderer renderer :context context
+                            :callback callback))
+         (resize (lambda (&rest ignored)
+                   (declare (ignore ignored)) (refresh app))))
+    (setf (jscl/ffi:oget canvas "style" "cssText")
+          #j"display:block;width:100%;height:100%;touch-action:none"
+          (jscl/ffi:oget canvas "luiApp") app)
+    ((jscl/ffi:oget host "appendChild") canvas)
+    (setf (web-app-cleanup app)
+          (lui.web.input:install-input
+           host canvas context (lambda (event) (queue-event app event)))
+          (web-app-resize app) resize
+          (web-app-observer app) (jscl/ffi:new #j:ResizeObserver resize))
+    ((jscl/ffi:oget (web-app-observer app) "observe") host)
+    (#j:window:addEventListener #j"resize" resize)
     (refresh app)
     app))
 
 (fn unmount ((app web-app))
-  "Dispose an application, cancelling scheduled frames and DOM listeners."
-  (cancel-deadline app)
-  (release-dom-pointer app)
-  (setf (web-app-alive-p app) nil
-        (web-app-events app) nil
-        (web-app-pending-p app) nil)
-  (when (web-app-animation-frame app)
-    (#j:cancelAnimationFrame (web-app-animation-frame app))
-    (setf (web-app-animation-frame app) nil))
-  ((jscl/ffi:oget (web-app-resize-observer app) "disconnect"))
-  (dolist (listener (web-app-listeners app))
-    (destructuring-bind (node name function capture) listener
-      ((jscl/ffi:oget node "removeEventListener")
-       (jscl/ffi:jsstring name) function (jscl/ffi:jsbool capture))))
-  (setf (web-app-listeners app) nil)
-  (#j:window:removeEventListener #j"resize" (web-app-resize-handler app))
-  (#j:window:removeEventListener #j"blur" (web-app-blur-handler app))
-  (maphash
-   (lambda (key entry)
-     (declare (ignore key))
-     (remove-node app (cdr entry))) (web-app-nodes app))
-  ((jscl/ffi:oget (web-app-measure-node app) "remove"))
-  ((jscl/ffi:oget (web-app-style-node app) "remove"))
-  (clrhash (web-app-nodes app))
-  ((jscl/ffi:oget (web-app-measurements app) "clear"))
-  (maphash (lambda (key group)
-             (declare (ignore key))
-             ((jscl/ffi:oget group "remove")))
-           (web-app-tablists app))
-  (clrhash (web-app-tablists app)))
+  "Cancel scheduled work and release the mounted canvas and input listeners."
+  (when (web-app-alive-p app)
+    (setf (web-app-alive-p app) nil)
+    (cancel-deadline app)
+    (when (web-app-animation-frame app)
+      (#j:cancelAnimationFrame (web-app-animation-frame app)))
+    ((jscl/ffi:oget (web-app-observer app) "disconnect"))
+    (#j:window:removeEventListener #j"resize" (web-app-resize app))
+    (funcall (web-app-cleanup app))
+    (lui.font:close-font (renderer-font (web-app-renderer app)))
+    ((jscl/ffi:oget (web-app-canvas app) "remove"))))
+
+(fn css-size (value fallback)
+  (if value ((jscl/ffi:oget (#j:String value) "concat") #j"px") fallback))
 
 (fn run-web ((draw function) &key title width height (interactive t))
   (declare (ignore interactive))
   (setf (jscl/ffi:oget #j:document "title") (jscl/ffi:jsstring title))
-  (let ((host (create-node "main")))
-    (attribute host "aria-label" title)
-    (style host "width" (if width (px width) "100%"))
-    (style host "height" (if height (px height) "100vh"))
-    (style host "background"
-           "radial-gradient(at 10% 20%, #254f7b, transparent 65%), radial-gradient(at 90% 80%, #613f7a, #191d29 75%)")
+  (let ((host (#j:document:createElement #j"main")))
+    ((jscl/ffi:oget host "setAttribute") #j"aria-label"
+     (jscl/ffi:jsstring title))
+    (setf (jscl/ffi:oget host "style" "width")
+          (css-size width #j"100%")
+          (jscl/ffi:oget host "style" "height")
+          (css-size height #j"100vh"))
     (#j:document:body:appendChild host)
     (mount host draw)))
 

@@ -677,6 +677,33 @@
       (assert (find '("#ff8c00" 1) paints :test #'equal))
       (assert (null (lui.frame::hit context 5 5))))))
 
+(defun test-button-text-centering (font)
+  ;; A compact close glyph must stay centered in a generously sized control.
+  (let* ((position nil)
+         (renderer
+           (make-renderer
+            :font font :clip (lambda (box) (declare (ignore box)))
+            :polygons (lambda (&rest args) (declare (ignore args)))
+            :text (lambda (face text x y color)
+                    (declare (ignore face color))
+                    (when (string= text "×")
+                      (setf position (cons x y))))))
+         (context (make-context
+                   :measure (lambda (widget width)
+                              (measure-widget renderer widget width)))))
+    (with-frame (context 200 100)
+      (lui.glass:button :close "×" :width (fixed 80)
+                                  :height (fixed 50)))
+    (paint-frame renderer context)
+    (let* ((node (gethash :close (lui.frame::context-ids context)))
+           (box (element-box node)))
+      (assert position)
+      (assert (near (+ (car position) (/ (text-width font "×") 2))
+                    (+ (box-x box) (/ (box-width box) 2))))
+      (assert (near (- (cdr position) (baseline font)
+                       (- (/ (line-height font) 2)))
+                    (+ (box-y box) (/ (box-height box) 2)))))))
+
 (defun run-tests ()
   (paint-text (make-renderer
                :text (lambda (&rest arguments)
@@ -693,6 +720,7 @@
            (test-edit-painting font)
            (test-panel-painting font)
            (test-button-feedback font)
+           (test-button-text-centering font)
            (test-motif-states font)
            (test-font-faces)
            (test-garnet-states font)

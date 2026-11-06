@@ -32,6 +32,7 @@
              (activate (id)
                (frame context draw (make-event :kind :activate :id id))))
       (frame context draw)
+      (assert (has-label context "Terminal: event-driven rendering"))
       ;; Symbols and details each retain an independent tall viewport.
       (let ((list (element-box (node-with-id context :docs-entries)))
             (detail (element-box (node-with-id context :docs-detail))))

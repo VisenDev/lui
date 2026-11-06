@@ -1,4 +1,4 @@
-"""Measure actual Lisp/layout/DOM work on actively refreshed gallery frames."""
+"""Measure actual Lisp/layout/canvas work on active gallery frames."""
 
 import json
 import math
@@ -7,13 +7,14 @@ from pathlib import Path
 import statistics
 
 from web import WebTests
-from playwright.sync_api import expect
 
 toolkits = tuple(os.environ.get("BENCH_TOOLKITS", "Glass,Motif,Garnet").split(","))
 pages = ("Controls", "Editing", "Layout", "Scroll", "Styles") + tuple(
     "7GUIs/" + task for task in
     ("Counter", "Temperature", "Flight", "Timer", "CRUD", "Circles", "Cells")
 )
+if os.environ.get("BENCH_PAGES"):
+    pages = tuple(os.environ["BENCH_PAGES"].split(","))
 case_count = len(toolkits) * len(pages)
 frames = int(os.environ.get("BENCH_FRAMES", "240"))
 warmup = int(os.environ.get("WARMUP", "30"))
@@ -49,64 +50,94 @@ RAW_PROFILE = r"""({count, warmup}) => new Promise(resolve => {
 })"""
 
 PROFILE = r"""({count, warmup}) => new Promise(resolve => {
-    const names = ['draw-frame', 'measure-widget', 'update-node'];
+    const names = ['lui.web::draw-frame', 'lui.layout:solve',
+                   'lui.draw::measure-widget', 'lui.draw::paint-frame'];
     const original = Object.fromEntries(names.map(name => [name,
-        jscl.evaluateString(`(symbol-function 'lui.web::${name})`)]));
+        jscl.evaluateString(`(symbol-function '${name})`)]));
     const refresh = jscl.evaluateString("(symbol-function 'lui.web:refresh)");
-    const setProperty = CSSStyleDeclaration.prototype.setProperty;
-    const rect = Element.prototype.getBoundingClientRect;
     let current, completed = 0;
     const samples = [];
-    CSSStyleDeclaration.prototype.setProperty = function(...args) {
-        if (current) current.style_writes++;
-        return setProperty.apply(this, args);
-    };
-    Element.prototype.getBoundingClientRect = function(...args) {
-        if (current) current.layout_reads++;
-        return rect.apply(this, args);
-    };
     function patch(name, fn) {
         window.__luiBenchmarkFunction = fn;
-        jscl.evaluateString(`(setf (symbol-function 'lui.web::${name})
+        jscl.evaluateString(`(setf (symbol-function '${name})
             #j:window:__luiBenchmarkFunction)`);
     }
-    for (const [name, metric] of [['measure-widget','measure_ms'],
-                                ['update-node','dom_ms']]) {
+    for (const [name, metric] of [[names[1], 'layout_ms'],
+                                [names[2], 'measure_ms'],
+                                [names[3], 'paint_ms']]) {
         patch(name, function(...args) {
             const start = performance.now();
             const result = original[name](...args);
-            if (current) {
-                current[metric] += performance.now() - start;
-                if (name === 'measure-widget') current.measure_calls++;
-            }
+            if (current) current[metric] += performance.now() - start;
             return result;
         });
     }
-    patch('draw-frame', function(...args) {
+    patch(names[0], function(...args) {
         window.__luiBenchmarkApp = args[0];
-        current = {measure_ms:0, dom_ms:0, measure_calls:0,
-                   style_writes:0, layout_reads:0, start:performance.now()};
-        const result = original['draw-frame'](...args);
+        current = {layout_ms:0, measure_ms:0, paint_ms:0,
+                   start:performance.now()};
+        const result = original[names[0]](...args);
         current.draw_ms = performance.now() - current.start;
-        // Include deferred browser style/layout cost, but not GPU raster time.
-        document.querySelector('main').getBoundingClientRect();
+        document.querySelector('main canvas').getBoundingClientRect();
         current.work_ms = performance.now() - current.start;
         if (completed++ >= warmup) samples.push(current);
         current = undefined;
         if (samples.length === count) {
             for (const name of names) patch(name, original[name]);
-            CSSStyleDeclaration.prototype.setProperty = setProperty;
-            Element.prototype.getBoundingClientRect = rect;
             delete window.__luiBenchmarkFunction;
             resolve(samples);
-        } else {
-            // Drive real application work. An idle rAF interval is not a frame.
-            refresh(...args);
-        }
+        } else refresh(...args);
         return result;
     });
     window.dispatchEvent(new Event('resize'));
 })"""
+
+def nodes(page):
+    return page.evaluate("""() => {
+        return jscl.evaluateString(`
+          (let ((result (jscl/ffi:new #j:Array)))
+            (lui.layout:walk-elements
+             (lui.frame:context-root
+              (lui.web::web-app-context
+               (jscl/ffi:oget (#j:document:querySelector #j"main canvas")
+                              "luiApp")))
+             (lambda (node)
+               (let ((widget (lui.layout:element-content node))
+                     (box (lui.layout:element-box node))
+                     (clip (lui.layout:element-clip node)))
+                 (when (and (lui.widgets:widget-p widget)
+                            (plusp (lui.layout:box-width clip))
+                            (plusp (lui.layout:box-height clip)))
+                   (let ((item (jscl/ffi:new #j:Object)))
+                     (setf (jscl/ffi:oget item "text")
+                           (jscl/ffi:jsstring (lui.widgets:widget-text widget))
+                           (jscl/ffi:oget item "kind")
+                           (jscl/ffi:jsstring
+                            (symbol-name (lui.widgets:widget-kind widget)))
+                           (jscl/ffi:oget item "x")
+                           (+ (lui.layout:box-x clip)
+                              (/ (lui.layout:box-width clip) 2))
+                           (jscl/ffi:oget item "y")
+                           (+ (lui.layout:box-y clip)
+                              (/ (lui.layout:box-height clip) 2))
+                           (jscl/ffi:oget item "top")
+                           (lui.layout:box-y box))
+                     ((jscl/ffi:oget result "push") item))))))
+            result))`);
+    }""")
+
+
+def click(page, text, kind):
+    item = next(n for n in nodes(page)
+                if n["text"] == text and n["kind"] == kind.upper())
+    page.mouse.click(item["x"], item["y"])
+    page.evaluate("""() => new Promise(resolve =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)))""")
+
+
+def has_text(page, text):
+    return any(n["text"] == text for n in nodes(page))
+
 
 WebTests.setUpClass()
 results = []
@@ -123,30 +154,44 @@ try:
             path=str(bundle), content_type="text/javascript"))
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
+    page.add_init_script("""(() => {
+        const raf = window.requestAnimationFrame.bind(window);
+        window.requestAnimationFrame = callback => raf(timestamp => {
+            const start = performance.now();
+            const result = callback(timestamp);
+            const canvas = document.querySelector('main canvas');
+            if (!window.__luiFirstFrame && canvas?.luiApp) {
+                window.__luiFirstFrame = {
+                    navigation_ms: performance.now(),
+                    callback_ms: performance.now() - start};
+            }
+            return result;
+        });
+    })()""")
     page.goto(f"http://127.0.0.1:{WebTests.server.server_port}/examples/web.html")
-    page.get_by_role("tab", name="Controls", exact=True).wait_for()
+    page.wait_for_function("document.querySelector('main canvas')?.luiApp")
+    page.wait_for_function("window.__luiFirstFrame")
+    cold_load = page.evaluate("window.__luiFirstFrame")
     detail = bool(os.environ.get("BENCH_DETAIL"))
+    print("Cold first animation callback:", json.dumps(cold_load))
     print(f"Viewport: {viewport['width']}x{viewport['height']}")
-    print("Active completed frames: Lisp/layout/DOM elapsed time + browser layout flush; excludes GPU raster")
+    print("Active completed frames: Lisp/layout/canvas submission + browser layout flush; excludes GPU raster")
     print("Diagnostic per-function instrumentation" if detail else
           "Raw timing: only draw entry/exit and one browser layout flush")
     print("toolkit page frames draw_mean_ms flush_mean_ms work_mean_ms "
           "work_p50_ms work_p95_ms work_max_ms active_fps scroll_delta_px")
     current_toolkit = "Glass"
-    expect(page.get_by_text("Toolkit: Glass", exact=True)).to_be_visible()
+    assert has_text(page, "Toolkit: Glass")
     for case, (toolkit, name) in enumerate(
         (toolkit, name) for toolkit in toolkits for name in pages
     ):
         while current_toolkit != toolkit:
-            page.get_by_role("button", name="Cycle toolkit", exact=True).click()
+            click(page, "Cycle toolkit", "button")
             current_toolkit = {"Glass": "Motif", "Motif": "Garnet",
                                "Garnet": "Glass"}[current_toolkit]
-            expect(page.get_by_text(f"Toolkit: {current_toolkit}",
-                                    exact=True).filter(visible=True)).to_be_visible()
+            assert has_text(page, f"Toolkit: {current_toolkit}")
         for tab_name in name.split("/"):
-            tab = page.get_by_role("tab", name=tab_name, exact=True)
-            tab.click()
-            expect(tab).to_have_attribute("aria-selected", "true")
+            click(page, tab_name, "tab")
         samples = page.evaluate(PROFILE if detail else RAW_PROFILE, {
             "count": frames // case_count + (case < frames % case_count),
             "warmup": warmup // case_count + (case < warmup % case_count),
@@ -168,17 +213,12 @@ try:
                       total))`);
             }""")
             scroll_value = "() => window.__luiReadScroll()"
-            visible_rows = """() => Array.from(document.querySelectorAll('main button'))
-                .filter(n => n.textContent.startsWith('Item ') &&
-                    getComputedStyle(n).display !== 'none' &&
-                    (() => {const r=n.getBoundingClientRect();
-                        return r.top>=0 && r.bottom<=innerHeight &&
-                            document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===n;})())
-                .map(n => n.textContent).join('|')"""
             before = page.evaluate(scroll_value)
-            rows_before = page.evaluate(visible_rows)
-            row = page.get_by_role("button", name="Item 01 — selectable row", exact=True)
-            row.hover()
+            rows_before = [(n["text"], n["top"]) for n in nodes(page)
+                           if n["text"].startswith("Item ")]
+            row = next(n for n in nodes(page)
+                       if n["text"] == "Item 01 — selectable row")
+            page.mouse.move(row["x"], row["y"])
             page.evaluate("""() => {window.__luiWheelStart = undefined;
                 window.addEventListener('wheel', () => {
                     window.__luiWheelStart = performance.now();
@@ -186,13 +226,16 @@ try:
             page.mouse.wheel(0, 240)
             page.wait_for_function("before => window.__luiReadScroll()>before", arg=before)
             model_latency = page.evaluate("performance.now()-window.__luiWheelStart")
-            page.wait_for_function("({read, before}) => (0,eval)('('+read+')')()!==before",
-                                   arg={"read": visible_rows, "before": rows_before})
+            rows_after = [(n["text"], n["top"]) for n in nodes(page)
+                          if n["text"].startswith("Item ")]
+            if rows_after == rows_before:
+                raise AssertionError("Wheel did not move painted row geometry")
             visible_latency = page.evaluate("performance.now()-window.__luiWheelStart")
             scroll_delta = page.evaluate(scroll_value) - before
             if scroll_delta <= 0:
                 raise AssertionError("Wheel over a row did not scroll the app")
         result = {"toolkit": toolkit, "page": name, "frames": len(samples),
+                  "cold_load": cold_load if case == 0 else None,
                   "mean_ms": statistics.fmean(work),
                   "draw_ms": statistics.fmean(s["draw_ms"] for s in samples),
                   "flush_ms": statistics.fmean(s["work_ms"] - s["draw_ms"]
@@ -204,7 +247,7 @@ try:
                   "scroll_model_observed_ms": model_latency if name == "Scroll" else None,
                   "scroll_visible_observed_ms": visible_latency if name == "Scroll" else None}
         if detail:
-            for metric in ("measure_ms", "dom_ms", "style_writes", "layout_reads"):
+            for metric in ("layout_ms", "measure_ms", "paint_ms"):
                 result[metric] = statistics.fmean(sample[metric] for sample in samples)
         results.append(result)
         numbers = [result[key] for key in ("draw_ms", "flush_ms", "mean_ms", "p50_ms", "p95_ms", "max_ms",

@@ -49,7 +49,7 @@
   (lui:button :save \"Save\"
               (lui:opt :disabled-p (not enabled))))"
      "Pass optional styling/layout settings in one explicit lui:opt form. An omitted option inherits the toolkit default; an explicit NIL remains an explicit value. Common settings include :width, :height, :padding, :foreground, :background, :font-size, and :disabled-p."
-     "Canvas commands provide simple shared circles and rectangles. A custom :painter can draw through a native renderer, while :web-style customizes its DOM counterpart. Such extensions must supply equivalent behavior on each backend they support.")
+     "Canvas commands provide shared drawing primitives. A custom :painter takes the same renderer and layout element on the desktop and in the browser.")
     (:layout "Layout and scrolling"
      "Rows arrange children horizontally; columns arrange them vertically. A fixed size uses backend coordinates, grow distributes available space, and fit measures content. Use lui:units for spacing that adapts to terminal cells and graphical pixels."
      "(lui.frame:row (:width (lui.layout:grow)
@@ -78,14 +78,15 @@
      "When implementing a draggable control, handle :cancel by clearing its drag state. event-buttons reports the physical buttons on pointer motion when the backend knows them. Zero means all buttons are up, bit 0 means primary, bit 1 means secondary, and NIL means unknown."
      "Text editing uses Readline shortcuts: Ctrl-A/E move to the beginning/end, Ctrl-B/F move by character, Alt-B/F move by word, Ctrl-D deletes, Ctrl-H backspaces, Ctrl-K/U/W kill text, and Ctrl-Y yanks it. Ctrl-Shift-A or Command-A selects all where supported. Ctrl-D does not quit."
      "Load the optional lui/debug system and call (lui.debug:set-enabled t) on a toggle action in your drawing function to attach a debugger to the current context. It displays the completed application tree, bounds, clipping, sizing, style, and text. Call (lui.debug:set-enabled nil) to close it. Debugger nodes are excluded from its own tree."
-     "Clipboard and IME completeness vary by backend; full text shaping is not implemented. Native Wayland, X11, Windows, Cocoa, browser DOM, and raw terminal input use their own platform facilities. Check the project's current test matrix before assuming an untested platform configuration is verified.")
+     "Clipboard and IME completeness vary by backend; full text shaping is not implemented. Native Wayland, X11, Windows, Cocoa, browser canvas, and raw terminal input use their own platform facilities. Check the project's current test matrix before assuming an untested platform configuration is verified.")
     (:backends "Backends and running"
      "Native: load lui/wayland or lui/x11 on Linux, lui/win32 on Windows, or lui/cocoa on macOS. X11 uses GLX and Wayland uses EGL with the shared OpenGL renderer; Windows and macOS use their native drawing/compositing APIs. Fonts are loaded from the system. OpenGL's offscreen system is useful for rendering tests and is not a separate interactive window backend."
-     "Browser: make web-demo compiles the same gallery callback with JSCL and serves it locally. The DOM backend uses browser text metrics and native HTML inputs. Use make docs for the native docs browser, make docs-html for a standalone build/docs.html, and make docs-pages to refresh docs/index.html for hosting. No Canvas renderer is required."
+     "Browser: make web-demo compiles the same gallery callback with JSCL and serves it locally. The web backend paints the solved layout onto one high-DPI canvas. Use make docs for the native docs browser, make docs-html for a standalone build/docs.html, and make docs-pages to refresh docs/index.html for hosting."
      "Terminal: make terminal-demo loads the optional raw backend, handling input, mouse, resize, ANSI colors, and restoration on exit. Plain noninteractive terminal rendering needs only portable Common Lisp. Terminal coordinates are cells; graphical coordinates are pixels."
      "Build commands use GNU Make, Bash, and SBCL. Python is used by the existing integration tests and local web server. make test PLATFORM=core runs portable checks; native, gl, and platform-specific targets cover additional paths. See README for configuration, source registry setup, and the verified platform matrix.")))
 
 (defstruct browser
+  (frame-rate (lui.frame::make-frame-rate))
   (clicks 0 :type integer) (panel-clicks 0 :type integer)
   (date-time "2026-11-05T12:30" :type string)
   (checked-p t :type boolean) (cell-p nil :type boolean)
@@ -502,6 +503,7 @@
           (request-frame))
         (when (lui:button :docs-debug "Show debugger")
           (lui.debug:set-enabled t)))
+      (lui:label (lui.frame::frame-rate-label (browser-frame-rate state)))
       (row (:width (grow) :height (grow) :gap (units 1))
         (navigation state)
         (if (>= (context-width *context*) (units 80))

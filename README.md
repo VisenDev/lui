@@ -7,8 +7,7 @@ and a terminal. Applications own their state; `lui:run` owns the backend lifecyc
 Load the library with `(asdf:load-system "lui")` to register the backends for
 your host. Use `lui/core` for the portable core with no external dependencies.
 Native graphical backends add CFFI, zpb-ttf, and system rendering libraries. Browser output uses
-JSCL and native HTML controls, with browser DOM text measurement rather than
-Canvas. There is no application software pixel renderer; Vulkan remains future
+JSCL and one high-DPI Canvas 2D surface per window. There is no application software pixel renderer; Vulkan remains future
 work.
 
 ## Layout and widgets
@@ -82,11 +81,8 @@ Use `badge` directly when all toolkits share that definition. Use
 can also replace standard controls such as `:button`. Overrides of a standard
 control receive its positional arguments plus the options list (possibly NIL).
 Compose another control or explicitly select a parent toolkit to delegate.
-For custom drawing on a semantic control, `:painter` takes a native renderer
-and element, `:web-style` takes a DOM node, widget and element, and
-`:terminal-label` takes a widget and returns its text. Browser callbacks run
-after inherited styling; native and terminal controls retain their input
-semantics. These hooks do not require a new backend.
+For custom drawing, `:painter` takes the shared graphical renderer and element
+on desktop and web. `:terminal-label` takes a widget and returns its text.
 
 There is one [demo gallery](examples/demo.lisp), with Controls, Editing, Layout,
 Scroll, Styles, and 7GUIs pages. Its Glass/Motif/Garnet selector changes the toolkit for
@@ -182,7 +178,7 @@ time, plus timer/settings information.
 
 Windowed native results include event-loop, window-system, and presentation
 pacing; browser results actively redraw the application and measure completed
-frames plus application/layout/DOM work, rather than idle animation ticks. The
+frames plus application/layout/drawing work, rather than idle animation ticks. The
 `core`/`terminal` benchmark measures layout and terminal string rendering; `gl`
 measures an offscreen pipeline with `glFinish`. These paths should not be
 compared as equivalent screen FPS. Compare logged platform/settings and matching
@@ -355,8 +351,7 @@ Text inputs share GNU Readline-style commands across backends:
 | Ctrl-Shift-A | Select all; Command-A also remains available on macOS |
 
 Consecutive kills combine in a per-field kill buffer. Ctrl-P/N navigate existing
-lines where supported; there is no command-history model. Browsers retain native
-DOM inputs and composition behavior. Modifier reporting differs between terminal
+lines where supported; there is no command-history model. The browser uses a shared textarea for keyboard composition and clipboard events. Modifier reporting differs between terminal
 emulators, so Ctrl-Shift-A requires a distinguishable terminal key sequence.
 
 Run `make terminal-demo` for a real POSIX terminal, or load `lui/terminal` and
@@ -384,7 +379,7 @@ Appearance is backend-dependent:
 
 | Backend | Glass presentation |
 | --- | --- |
-| HTML | Browser backdrop filtering, tint, rounded borders, and native controls |
+| Canvas 2D | Shared toolkit painters, clipped backdrop blur and browser text metrics |
 | EGL/OpenGL / Wayland | Backdrop sampling, blur, and an edge refraction approximation |
 | X11/GLX | Uses the same OpenGL glass shader, glyphs, and geometry cache as Wayland. |
 | Win32 | Native filtered downsample/upsample backdrop blur, tint, and rim; no refraction |
@@ -394,13 +389,24 @@ Appearance is backend-dependent:
 These effects are approximations, not identical implementations of a single
 physical glass model.
 
+The gallery and docs display the measured frame rate and frame interval.
+The browser draws custom widgets with their shared toolkit painter. A single
+hidden text field handles keyboard composition and exposes the focused label
+and value. Screen readers currently lack a navigable tree of canvas widgets.
+
 ## Local performance evidence
+
+In a 60-frame headless Chromium comparison, downsampling the Glass backdrop
+reduced canvas draw time from 25.34 to 9.26 ms for Controls and from 61.01
+to 37.94 ms for Cells. The former DOM renderer took 4.12 and 33.84 ms on
+the same cases. Navigation through the first frame took about 492 ms on
+both renderers. These timings include the shared Lisp layout work.
 
 A November 5 full run covered all 36 toolkit/page/task combinations with
 720 measured frames and 144 warmup frames per backend. Core layout/terminal
 rendering averaged 0.266 ms; offscreen GL with `glFinish` averaged 2.569 ms
 (389 FPS); the paced Wayland window averaged 6.029 ms (166 FPS, p95 5.946 ms).
-The browser averaged 9.452 ms of Lisp/DOM/layout work. Most browser cases reached
+The previous DOM backend averaged 9.452 ms of Lisp/DOM/layout work. Most browser cases reached
 60 active FPS, but Cells reached 30–33 FPS and Glass Styles reached 43 FPS.
 Browser per-case p95 values are reported; no pooled browser p95 was measured.
 Cells click-to-visible latency improved from about 725 ms cold / 670–692 ms warm
