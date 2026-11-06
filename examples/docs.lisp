@@ -453,7 +453,8 @@
                  (cond (kind (with-toolkit ((or toolkit (current-toolkit)))
                                (preview state kind)))
                        ((and toolkit (string= "*DEFAULTS*" (getf entry :name)))
-                        (toolkit-sample state toolkit)))))
+                        ;; (toolkit-sample state toolkit)
+                        ))))
              (lui:label "Choose an API entry from the list.")))))))
 
 (defun search-reference (state)
