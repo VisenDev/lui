@@ -440,6 +440,11 @@
     (cond
       ((widget-painter widget)
        (funcall (widget-painter widget) renderer node))
+      ((eq kind :scrollbar)
+       (let ((rounding (if glass (/ (box-width box) 2) 0)))
+         (shape renderer box rounding foreground 0.15)
+         (shape renderer (scrollbar-thumb node) rounding
+                (widget-accent widget) 1)))
       ((eq kind :splitter)
        (shape renderer
               (make-box :x (+ (box-x box) (/ (box-width box) 2) -1)

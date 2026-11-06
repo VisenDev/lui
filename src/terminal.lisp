@@ -249,6 +249,12 @@
                              :do (setf (aref borders row column) nil))))
            (let* ((highlight-p (eq (widget-kind widget) :highlight))
                   (splitter-p (eq (widget-kind widget) :splitter))
+                  (thumb (when (eq (widget-kind widget) :scrollbar)
+                           (scrollbar-thumb node)))
+                  (thumb-top (when thumb (cell-edge (box-y thumb))))
+                  (thumb-end (when thumb
+                              (cell-edge (+ (box-y thumb)
+                                            (box-height thumb)))))
                   (label-p (member (widget-kind widget) '(:label :splitter)))
                   (left (max 0 (cell-edge (box-x clip))))
                   (top (max 0 (cell-edge (box-y clip))))
@@ -266,7 +272,7 @@
                   (bottom (cell-edge (+ (box-y box) (box-height box)
                                         (- padding))))
                   (w (max 0 (- right x)))
-                  (text (cond ((or highlight-p splitter-p) "")
+                  (text (cond ((or highlight-p splitter-p thumb) "")
                               ((eq (widget-kind widget) :slider)
                                (slider-line widget w))
                               (t (widget-terminal-text widget)))))
@@ -279,6 +285,16 @@
                              :below (min width (cell-edge (+ (box-x clip)
                                                            (box-width clip))))
                              :do (cond
+                                   ((and thumb
+                                         (or (not (aref borders row column))
+                                             (member (aref cells row column)
+                                                     '("│" "|")
+                                                     :test #'string=)))
+                                    (setf (aref cells row column)
+                                          (if (and (<= thumb-top row)
+                                                   (< row thumb-end))
+                                              "█" "│")
+                                          (aref colors row column) style))
                                    (highlight-p
                                     (when (or (plusp (widget-opacity widget))
                                               (= row y) (= row (1- bottom))
