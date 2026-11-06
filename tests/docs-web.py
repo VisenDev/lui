@@ -133,6 +133,21 @@ class DocsWebTests(unittest.TestCase):
                             r.left >= box.left - 1 && r.right <= box.right + 1
                             && r.top >= box.top - 1 && r.bottom <= box.bottom + 1);
                     }"""), width)
+                page.get_by_role("button", name="Glass", exact=True).click()
+                page.get_by_role("button", name="Motif", exact=True).click()
+                guides = ("Controls and options", "Layout and scrolling",
+                          "Input and inspection", "Backends and running")
+                for name in guides:
+                    guide = page.get_by_role("option", name=name, exact=True)
+                    guide.click()
+                    self.assertTrue(guide.evaluate("""node => {
+                        const box = node.getBoundingClientRect();
+                        const range = document.createRange();
+                        range.selectNodeContents(node);
+                        return [...range.getClientRects()].every(r =>
+                            r.top >= box.top - 1 && r.bottom <= box.bottom + 1);
+                    }"""), name)
+                page.screenshot(path=str(ROOT / "build/docs-web-garnet.png"))
                 self.assertEqual(errors, [])
                 self.assertEqual(requests, [isolated.as_uri()])
             finally:
