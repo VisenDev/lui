@@ -62,6 +62,13 @@ class DocsWebTests(unittest.TestCase):
                 page.screenshot(path=str(ROOT / "build/docs-web.png"))
                 expect(page.get_by_role("option", name="Getting started",
                                         exact=True)).to_be_visible()
+                page.get_by_role("option", name="Toolkits", exact=True).click()
+                page.get_by_role("tab", name="Garnet", exact=True).click()
+                sample = page.get_by_role("button", name="Try this button")
+                expect(sample).to_have_attribute("data-lui-style", "garnet")
+                sample.click()
+                expect(page.get_by_text("Button clicks: 1", exact=True)
+                       .filter(visible=True)).to_be_visible()
                 page.get_by_role("option", name="Controls and options",
                                  exact=True).click()
                 expect(page.get_by_text("Buttons return true when activated.",
@@ -120,12 +127,17 @@ class DocsWebTests(unittest.TestCase):
                 expect(search).to_have_value("button")
                 entries = page.get_by_role("option", name="lui:BUTTON", exact=True)
                 expect(entries.first).to_be_visible()
-                page.get_by_role("option", name="lui.garnet:BUTTON",
-                                 exact=True).click()
-                expect(page.locator("main > div[data-lui-style]").filter(
-                    has_text=re.compile(r"^lui\.garnet:BUTTON$"))).to_be_visible()
-                expect(page.get_by_text("Choose an API entry from the list.",
-                                        exact=True)).to_have_count(0)
+                for toolkit in ("glass", "motif", "garnet"):
+                    expect(page.get_by_role("option", name=f"lui.{toolkit}:BUTTON",
+                                            exact=True)).to_have_count(0)
+                search.fill("*defaults*")
+                for toolkit in ("motif", "garnet", "glass"):
+                    page.get_by_role("option", name=f"lui.{toolkit}:*DEFAULTS*",
+                                     exact=True).click()
+                    sample = page.get_by_role("button", name="Try this button")
+                    expect(sample).to_have_attribute("data-lui-style", toolkit)
+                    expect(page.get_by_role("button", name="Cycle toolkit")
+                           ).to_have_attribute("data-lui-style", "glass")
                 search.fill("checkbox")
                 page.get_by_role("option", name="lui:CHECKBOX",
                                  exact=True).click()

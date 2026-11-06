@@ -66,7 +66,7 @@
      "Scrolling panels show a scrollbar by default. :scrollbar-p NIL hides it; :scrollbar-width customizes the reserved track width in backend coordinates. The default is 12 graphical pixels or one terminal cell. Drag the thumb to move continuously, or click the track above/below it to page by a viewport. Wheel scrolling supports momentum; nested scrollers pass unused motion to an ancestor."
      "A scrolling viewport needs a bounded size. Nested scrollers pass wheel input to an ancestor when they cannot scroll further. lui.frame:previous-box exposes completed geometry; lui.frame:scroll-position and scroll-to support application-controlled navigation. Virtualize very large lists instead of declaring every row.")
     (:toolkits "Toolkits"
-     "Glass, Motif, and Garnet expose the same public controls. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. A window background remains opaque."
+     "The lui package documents the shared widget API once. The toolkit packages document their own settings and any additional controls. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. A window background remains opaque."
      "(lui:with-toolkit (:motif)
   (lui:button :ok \"OK\"))
 (lui:with-toolkit (:garnet)
@@ -91,6 +91,7 @@
   (text "Edit this example" :type string) (value 0.4 :type real)
   (tab :one :type symbol) (item :one :type symbol)
   (circles '((4 4)) :type list)
+  (sample :glass :type symbol)
   (toolkit :glass :type symbol)
   (entries #() :type vector)
   (packages nil :type list)
@@ -200,7 +201,7 @@
                                  (:start "Start") (:debug "Debugger")
                                  (:frames "Frames")
                                  (:widgets "Controls") (:layout "Layout")
-                                 (:toolkits "Styles") (:input "Input")
+                                 (:toolkits "Toolkits") (:input "Input")
                                  (:backends "Backends"))
                                (second guide))
                            (lui:opt :width (grow)
@@ -378,6 +379,21 @@
           (lui:label "Second child")
           (lui:label "Third child")))))
 
+(defparameter *toolkit-packages*
+  '(("lui.glass" . :glass) ("lui.motif" . :motif) ("lui.garnet" . :garnet)))
+
+(defun toolkit-sample (state toolkit)
+  (with-toolkit (toolkit)
+    (lui:panel (lui:opt :width (grow) :padding (units 1) :gap (units 1)
+                        :opacity 1)
+      (lui:label (string-capitalize (symbol-name toolkit)))
+      (when (lui:button :docs-sample-button "Try this button")
+        (incf (browser-clicks state)))
+      (setf (browser-checked-p state)
+            (lui:checkbox :docs-sample-check (browser-checked-p state)
+                          "Enable the example"))
+      (lui:label (format nil "Button clicks: ~D" (browser-clicks state))))))
+
 (defun entry-preview-kind (entry)
   (when (member (getf entry :package)
                 '("lui" "lui.glass" "lui.motif" "lui.garnet" "lui.frame")
@@ -397,6 +413,16 @@
        (let ((guide (assoc (browser-guide state) *guides*)))
          (lui:label (second guide)
                     (lui:opt :width (grow) :font-weight :bold))
+         (when (eq (browser-guide state) :toolkits)
+           (row (:width (grow) :gap (units 0.5))
+             (dolist (pair *toolkit-packages*)
+               (let ((name (cdr pair)))
+                 (when (lui:tab (list :docs-sample name)
+                                (string-capitalize (symbol-name name))
+                                (lui:opt :selected-p
+                                         (eq name (browser-sample state))))
+                   (setf (browser-sample state) name)))))
+           (toolkit-sample state (browser-sample state)))
          (when (eq (browser-guide state) :debug)
            (when (lui:button :docs-open-debug "Open debugger"
                              (lui:opt :disabled-p (lui.debug:enabled-p)))
@@ -421,8 +447,13 @@
                (lui:label (or (getf entry :documentation)
                               "No docstring is available for this entry.")
                           (lui:opt :width (grow)))
-               (let ((kind (entry-preview-kind entry)))
-                 (when kind (preview state kind))))
+               (let ((kind (entry-preview-kind entry))
+                     (toolkit (cdr (assoc (getf entry :package)
+                                          *toolkit-packages* :test #'equal))))
+                 (cond (kind (with-toolkit ((or toolkit (current-toolkit)))
+                               (preview state kind)))
+                       ((and toolkit (string= "*DEFAULTS*" (getf entry :name)))
+                        (toolkit-sample state toolkit)))))
              (lui:label "Choose an API entry from the list.")))))))
 
 (defun search-reference (state)

@@ -290,17 +290,9 @@ are read for resolution; only explicitly selected exports enter the reference."
                                         value)))))
                  ((member head '("DEFINE-TOOLKIT" "DEFINE-COLLECTION")
                           :test #'string=)
-                  (record (fourth form) :macro '(options &body body)
-                          "Draw a panel in this toolkit.")
-                  (loop :for name :in (cddddr form)
-                        :for args :in '((text) (id text) (id text)
-                                       (id value text) (id value) (id value)
-                                       (id text) (id text) (id fraction)
-                                       (id commands))
-                        :do (record name :function
-                                    (append args '(&optional options
-                                                   &rest legacy))
-                                    nil)))))))
+                  ;; These package-qualified controls forward to the LUI API.
+                  (dolist (name (cdddr form))
+                    (record name :shared-widget nil nil)))))))
          (resolve (package name &optional seen)
            (unless (member package seen :test #'equal)
              (or (gethash (key package name) definitions)
@@ -337,7 +329,10 @@ are read for resolution; only explicitly selected exports enter the reference."
              (when (eq (car option) :export)
                (dolist (name (remove-if-not
                               (lambda (name)
-                                (reference-symbol-p package name policy))
+                                (and (reference-symbol-p package name policy)
+                                     (not (eq :shared-widget
+                                              (getf (resolve package name)
+                                                    :kind)))))
                               (cdr option)))
                  (let* ((definition (resolve package name))
                         (entry (copy-list definition)))
@@ -350,12 +345,6 @@ are read for resolution; only explicitly selected exports enter the reference."
                              (format nil "~A~%~A"
                                      (getf entry :signature) setter))))
                    (setf (getf entry :package) package)
-                   ;; Compatibility controls share their public API docs.
-                   (when (zerop (length (getf entry :documentation)))
-                     (let ((public (gethash (key "lui" name) definitions)))
-                       (when public
-                         (setf (getf entry :documentation)
-                               (getf public :documentation)))))
                    (push entry entries))))))
          packages)
         (sort entries #'string<

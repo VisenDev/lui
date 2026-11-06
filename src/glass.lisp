@@ -10,7 +10,8 @@
 (defvar *defaults*
   '(:background "#303040" :foreground "#ffffff" :opacity 0.35
     :radius 12 :frost 12 :accent "#258bff")
-  "Toolkit defaults; bind this plist to customize a group of widgets.")
+  "Glass uses rounded, translucent surfaces. Bind this plist to change their
+tint, corner radius, opacity, or frost for a group of controls.")
 
 (define-toolkit :glass *defaults* panel
   label button tab checkbox slider text-field cell list-item gauge canvas)

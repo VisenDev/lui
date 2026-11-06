@@ -104,6 +104,10 @@
         (dolist (name (cdr scope))
           (assert (entry entries (car scope) name) ()
                   "Stale public API entry ~A:~A." (car scope) name))))
+    (dolist (package '("lui.glass" "lui.motif" "lui.garnet"))
+      (assert (entry entries package "*DEFAULTS*"))
+      (assert (null (entry entries package "BUTTON")))
+      (assert (null (entry entries package "PANEL"))))
     (assert (string= "(button id text &optional options)"
                      (getf button :signature)))
     (assert (plusp (length (getf button :documentation))))

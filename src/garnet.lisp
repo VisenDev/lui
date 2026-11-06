@@ -11,7 +11,8 @@
   '(:background "#ffffff" :foreground "#000000" :opacity 1
     :radius 0 :frost 0 :accent "#000000"
     :font-family :monospace :font-weight :bold)
-  "Toolkit defaults; bind this plist to customize a group of widgets.")
+  "Garnet uses black outlines, offset shadows, and bold monospace labels.
+Bind this plist to change its colors or typography for a group of controls.")
 
 (define-toolkit :garnet *defaults* panel
   label button tab checkbox slider text-field cell list-item gauge canvas)
