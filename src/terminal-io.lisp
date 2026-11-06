@@ -16,7 +16,7 @@
   (events nil :type list)
   (quit-p nil :type boolean))
 
-(fn control ((stream stream) (command string) &rest arguments)
+(fn write-escape ((stream stream) (command string) &rest arguments)
   (write-char #\Escape stream)
   (apply #'format stream command arguments))
 
@@ -336,29 +336,29 @@
         (when (and (plusp width) (<= 0 y) (< y (context-height context))
                    (<= (cell-edge (box-y clip)) y)
                    (< y (cell-edge (+ (box-y clip) (box-height clip)))))
-          (control stream "[~D;~DH" (1+ y) (1+ x))
-          (control stream "[7m")
+          (write-escape stream "[~D;~DH" (1+ y) (1+ x))
+          (write-escape stream "[7m")
           (write-string (slice-cells text (+ offset (- x origin)) width)
                         stream)
-          (control stream "[0m")
+          (write-escape stream "[0m")
           (when field-p
             (let ((column (+ origin cursor (- offset))))
               (when (and (<= x column) (< column right))
-                (control stream "[~D;~DH" (1+ y) (1+ column))
-                (control stream "[?25h")))))))))
+                (write-escape stream "[~D;~DH" (1+ y) (1+ column))
+                (write-escape stream "[?25h")))))))))
 
 (fn display-frame ((context context))
   (write-terminal
    (with-output-to-string (stream)
-     (control stream "[?25l")
-     (control stream "[H")
+     (write-escape stream "[?25l")
+     (write-escape stream "[H")
      ;; Explicit positioning avoids ONLCR changes and last-column autowrap.
      (let* ((frame (render-terminal context :ansi t))
             (start 0)
             (row 1))
        (loop :for end := (position #\Newline frame :start start)
              :while end
-             :do (control stream "[~D;1H" row)
+             :do (write-escape stream "[~D;1H" row)
                  (write-string frame stream :start start :end end)
                  (setf start (1+ end))
                  (incf row)))
@@ -418,11 +418,11 @@
                   (error "Cannot enter raw terminal mode."))
                 (write-terminal
                  (with-output-to-string (stream)
-                   (control stream "[?1049h")
-                   (control stream "[?7l")
-                   (control stream "[?1003h")
-                   (control stream "[?1006h")
-                   (control stream "[2J")))
+                   (write-escape stream "[?1049h")
+                   (write-escape stream "[?7l")
+                   (write-escape stream "[?1003h")
+                   (write-escape stream "[?1006h")
+                   (write-escape stream "[2J")))
                 (loop
                   (multiple-value-bind (columns rows) (terminal-size)
                     (let ((events (nreverse (input-events input))))
@@ -449,12 +449,12 @@
            (unwind-protect
                 (write-terminal
                  (with-output-to-string (stream)
-                   (control stream "[0m")
-                   (control stream "[?1006l")
-                   (control stream "[?1003l")
-                   (control stream "[?7h")
-                   (control stream "[?25h")
-                   (control stream "[?1049l")))
+                   (write-escape stream "[0m")
+                   (write-escape stream "[?1006l")
+                   (write-escape stream "[?1003l")
+                   (write-escape stream "[?7h")
+                   (write-escape stream "[?25h")
+                   (write-escape stream "[?1049l")))
              (cffi:foreign-funcall "tcsetattr" :int 0 :int 0
                                              :pointer saved :int))))))))
 
