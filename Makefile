@@ -33,7 +33,7 @@ DOC_SOURCES := $(wildcard src/*.lisp) examples/docs.lisp lui.asd
 DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
-.PHONY: docs docs-html help check-platform build demo test test-platform \
+.PHONY: docs docs-html test-docs help check-platform build demo test test-platform \
 	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform
 help:
 	@echo 'make docs                 Build standalone docs.html and open the documentation window'
@@ -69,6 +69,15 @@ $(DEMO): $(SOURCES) | check-platform
 
 docs: build/docs.html $(DOC_BIN)
 	$(RUNNER) "$(DOC_BIN)" $(RUN_ARGS)
+
+test-docs: build/docs.html
+	LUI_DOCS_LIBRARY_ONLY=1 $(SBCL) $(SBCL_FLAGS) --load scripts/setup.lisp \
+		--load scripts/docs-data.lisp --load tests/docs-data.lisp \
+		--eval '(lui.tests.docs-data:run-tests)' \
+		--eval '(asdf:load-system "lui")' \
+		--load examples/docs.lisp --load tests/docs.lisp \
+		--eval '(lui.tests.docs:run-tests)'
+	$(PYTHON) -u tests/docs-web.py
 
 docs-html: build/docs.html
 
