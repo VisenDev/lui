@@ -12,6 +12,8 @@
 
 (defvar *backends* (make-hash-table :test 'eq))
 
+(defvar *default-backend-function* nil)
+
 (defvar *backend* nil
   "Default backend override; NIL selects an available backend.")
 
@@ -38,7 +40,10 @@
 Backend-specific window, DOM, input, frame, and lifetime management stay in LUI.
 WIDTH/HEIGHT are optional backend coordinates; omit them for sensible defaults.
 INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
-  (let* ((name (or backend (first (available-backends))))
+  (let* ((name (or backend
+                   (and *default-backend-function*
+                        (funcall *default-backend-function*))
+                   (first (available-backends))))
          (runner (gethash name *backends*)))
     (unless runner
       (error "Backend ~S is not loaded. Available: ~S" name
