@@ -22,7 +22,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def script(error=False):
+def script(error=False, debug=False):
     draw = """(let ((frames 0))
   (handler-case
       (lui:run (lambda ()
@@ -36,6 +36,14 @@ def script(error=False):
           lui.example::*name* lui.example::*volume* lui.example::*enabled*
           lui.example::*count* (lui.frame:context-width context)
           (lui.frame:context-height context)))"""
+    if debug:
+        draw = """
+(setf lui.example::*debug-state* (lui.debug:make-state :open-p t :width 30))
+(let ((context (lui:run #'lui.example:draw :backend :terminal)))
+  (format t "~&@@DEBUG width=~,1F size=~Dx~D~%"
+          (lui.debug:state-width lui.example::*debug-state*)
+          (lui.frame:context-width context) (lui.frame:context-height context)))
+"""
     return f"""(let ((asdf (merge-pathnames "quicklisp/asdf.lisp"
                                    (user-homedir-pathname))))
   (when (probe-file asdf) (load asdf)))
@@ -397,6 +405,38 @@ def exercise(lisp, path):
         terminal.close()
 
 
+def exercise_debugger(lisp, path):
+    terminal = Terminal(command(lisp, path))
+    try:
+        terminal.until(b"\x1b[?1049h", timeout=180)
+        terminal.until(b"Layout inspector")
+        terminal.pump(0.2)
+        # Unit-size rows expose the tab nodes without oversized disclosure pills.
+        assert last_frame(terminal.output).count(b"TAB (PAGE") >= 5
+        # Initial width30 in90columns: handle centered at x60 (zero based).
+        terminal.send(b"\x1b[<0;61;4M")
+        terminal.send(b"\x1b[<32;51;4M\x1b[<0;51;4m")
+        terminal.send(b"\x1b[D")
+        terminal.resize(100, 30)
+        terminal.pump(0.4)
+        frame = last_frame(terminal.output)
+        assert b"Layout inspector" in frame
+        assert b"\x1b[30;1H" in frame
+        assert b"\x1b[31;1H" not in frame
+        assert "│".encode() in frame
+        assert b"\x1b[7m(" not in frame, "Resize rail repainted as a button"
+        assert text_style(frame, "│".encode())[:2] == (
+            (48, 48, 64), (37, 139, 255))
+        terminal.send(b"\x11")
+        terminal.until(b"@@DEBUG")
+        terminal.restored()
+        result = terminal.output.split(b"@@DEBUG", 1)[1]
+        assert b"width=42.0" in result, result
+        assert b"size=100x30" in result, result
+    finally:
+        terminal.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lisp", choices=("sbcl", "clisp", "ecl"))
@@ -416,7 +456,10 @@ def main():
                 terminal.restored()
             finally:
                 terminal.close()
-            print(f"{lisp}: raw input, mouse, Unicode, resize and restoration pass")
+            path.write_text(script(debug=True), encoding="utf-8")
+            exercise_debugger(lisp, path)
+            print(f"{lisp}: raw input, Unicode, inspector drag/keyboard resize "
+                  "and restoration pass")
 
 
 if __name__ == "__main__":

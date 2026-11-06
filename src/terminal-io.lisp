@@ -303,6 +303,7 @@
   (let* ((node (focused-node context))
          (widget (and node (element-content node))))
     (when (and (widget-p widget)
+               (not (eq (widget-kind widget) :splitter))
                (or (context-focus-visible-p context)
                    (eq (widget-kind widget) :text-field)))
       (let* ((box (element-box node))
