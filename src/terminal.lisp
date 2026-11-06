@@ -73,7 +73,7 @@
                      readout ""))
          (length (max 1 (- width (text-width prefix) (length suffix))))
          (track (make-string length :initial-element #\─)))
-    (setf (char track (round (* fraction (1- length)))) #\●)
+    (setf (char track (round (* fraction (1- length)))) #\#)
     (values (concatenate 'string prefix track suffix)
             (text-width prefix) length)))
 
