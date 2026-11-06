@@ -5,6 +5,7 @@
            #:register-toolkit #:toolkit-revision #:toolkit-surface
            #:control
            #:define-toolkit #:define-collection
+           #:table #:table-row #:table-cell
            #:opt #:panel #:label
            #:button #:tab #:checkbox #:slider
            #:text-field #:cell #:list-item #:gauge #:canvas
@@ -188,6 +189,19 @@ CONTROLS maps control names to functions taking the public arguments and options
 (define-control list-item (id text)
   "Declare a selectable row and return activation. The caller owns selection."
   (selectable :list-item style id text options defaults))
+
+(defmacro table ((&rest options) &body rows)
+  "Lay out TABLE-ROWs with shared content-sized columns. :GAP separates rows
+and :COLUMN-GAP separates columns. Other options are layout element keywords."
+  `(column (:table-p t ,@options) ,@rows))
+
+(defmacro table-row (() &body cells)
+  "Declare a table row. Each direct child occupies one column by default."
+  `(row () ,@cells))
+
+(defmacro table-cell ((&rest options) &body contents)
+  "Group any number of widgets in a table cell. :COLUMN-SPAN defaults to one."
+  `(column (,@options :height (lui.layout:grow) :clip-p t) ,@contents))
 
 (define-control cell (id text)
   "Display a compact grid cell. Use :selected-p to mark the active cell."

@@ -620,3 +620,23 @@ for a calendar and 24-hour time picker. Store its returned ISO local value
 `HH:MM`. Invalid typed drafts stay editable while the last valid value is
 retained. NIL starts an empty editor with the calendar at January 2000.
 The gallery’s Editing page includes an example.
+
+### Tables
+
+`lui:cell` is a selectable text widget. Use it directly in a table row for a
+text-only cell, or use `lui:table-cell` to group labels, buttons, editors, or
+nested layouts in one column.
+
+```lisp
+(lui:table (:width (lui.layout:grow) :column-gap (lui:units 1))
+  (lui:table-row ()
+    (lui:table-cell (:column-span 2) (lui:label "Account")))
+  (lui:table-row ()
+    (lui:label "Name")
+    (lui:table-cell ()
+      (setf name (lui:text-field :name name)))))
+```
+
+Columns use the widest content across rows. Extra width is shared equally,
+and narrow tables shrink columns proportionally before measuring row heights.
+Short rows can omit trailing cells. Row spanning is currently unsupported.
