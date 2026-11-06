@@ -459,6 +459,69 @@ class X11Tests(unittest.TestCase):
             resized = self.capture(window, "x11-resized.png")
             self.assertEqual(resized.size, (560, 420))
 
+    def test_blur_strength_and_odd_resize_keep_global_sampling(self):
+        source = r'''
+(lui.x11:run-x11
+ (lambda ()
+   (lui.glass:button
+    :blur "" :width (lui.layout:grow) :height (lui.layout:grow)
+    :painter
+    (lambda (renderer node)
+      (let* ((box (lui.layout:element-box node))
+             (width (lui.layout:box-width box))
+             (height (lui.layout:box-height box)))
+        (loop :for x :from 0 :below width :by 8
+              :do (funcall (lui.draw:renderer-polygons renderer)
+                           (list (lui.draw:rounded-polygon
+                                  (lui.layout:make-box
+                                   :x x :width 8 :height height) 0))
+                           (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
+        (funcall (lui.draw:renderer-glass renderer)
+                 (lui.layout:make-box :width width :height height)
+                 20 FROST)))))
+ :title WINDOW_TITLE :width 241 :height 123)
+'''
+        variances = []
+        for frost in (2, 8, 24):
+            with self.subTest(frost=frost):
+                with self.application(
+                        "blur-strength", source.replace("FROST", str(frost))
+                ) as (window, path):
+                    render = C.CDLL(find_library("Xrender"))
+                    render.XRenderQueryFilters.restype = C.POINTER(Filters)
+                    render.XRenderQueryFilters.argtypes = [C.c_void_p, C.c_ulong]
+                    filters = render.XRenderQueryFilters(self.x.display, window)
+                    try:
+                        supported = filters and b"convolution" in [
+                            filters.contents.names[i]
+                            for i in range(filters.contents.count)]
+                    finally:
+                        if filters:
+                            self.x.lib.XFree(filters)
+                    if not supported:
+                        self.skipTest("XRender convolution unavailable")
+                    image = self.capture(window, f"x11-frost-{frost}.png")
+                    self.assertEqual(image.size, (241, 123))
+                    values = [image.getpixel((x, 61))[0]
+                              for x in range(60, 180)]
+                    mean = sum(values) / len(values)
+                    variances.append(sum((v - mean) ** 2 for v in values)
+                                     / len(values))
+                    # The rounded top-left cutout remains the original white.
+                    self.assertEqual(image.getpixel((8, 0)), (255, 255, 255))
+                    self.x.lib.XResizeWindow(self.x.display, window, 257, 131)
+                    self.x.lib.XFlush(self.x.display)
+                    time.sleep(0.2)
+                    resized = self.capture(window, f"x11-frost-{frost}-odd.png")
+                    self.assertEqual(resized.size, (257, 131))
+                    # A resize reallocates every level, without shifting stripes.
+                    for x in range(70, 170):
+                        self.assertLessEqual(abs(image.getpixel((x, 61))[0]
+                                                 - resized.getpixel((x, 61))[0]),
+                                             2)
+        self.assertLess(variances[1], variances[0] * 0.75)
+        self.assertLess(variances[2], variances[1] * 0.5)
+
     def test_native_convolution_blurs_backdrop_inside_rounded_mask(self):
         source = r'''
 (lui.x11:run-x11

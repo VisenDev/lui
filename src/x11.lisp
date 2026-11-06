@@ -121,6 +121,9 @@
   (parameters :pointer)
   (count :int))
 
+(binding ("XRenderSetPictureTransform" set-transform)
+  :void (display :pointer) (picture :ulong) (transform :pointer))
+
 (binding ("XRenderChangePicture" change-picture)
   :void
   (display :pointer)
@@ -279,8 +282,7 @@
   (back 0 :type integer)
   (pixmap 0 :type integer)
   (backdrop 0 :type integer)
-  (scratch 0 :type integer)
-  (scratch-pixmap 0 :type integer)
+  (blur-levels nil :type list)
   (glass-mask 0 :type integer)
   (mask-pixmap 0 :type integer)
   (convolution-p nil :type boolean)
@@ -292,6 +294,12 @@
   (depth 0 :type integer)
   (width 640 :type integer)
   (height 480 :type integer)
+  (shapes (make-hash-table :test 'equal) :type hash-table)
+  (shape-ring (make-array 256 :initial-element nil) :type simple-vector)
+  (shape-index 0 :type integer) (shape-pixels 0 :type integer)
+  (glyphs (make-hash-table :test 'equal) :type hash-table)
+  (glyph-pixels 0 :type integer) (glyph-clock 0 :type integer)
+  (glyph-builds 0 :type integer)
   (colors (make-hash-table :test 'equal) :type hash-table)
   (cursors (make-hash-table :test 'eq) :type hash-table)
   cursor-kind (pointer-x -1 :type real) (pointer-y -1 :type real))
@@ -371,21 +379,23 @@
 
 (fn free-buffer ((window x-window))
   (let ((display (x-window-display window)))
+    (dolist (level (x-window-blur-levels window))
+      (free-picture display (first level))
+      (free-picture display (third level))
+      (free-pixmap display (second level))
+      (free-pixmap display (fourth level)))
+    (setf (x-window-blur-levels window) nil)
     (dolist (picture (list (x-window-back window)
                            (x-window-backdrop window)
-                           (x-window-scratch window)
                            (x-window-glass-mask window)))
       (when (plusp picture) (free-picture display picture)))
     (dolist (pixmap (list (x-window-pixmap window)
-                          (x-window-scratch-pixmap window)
                           (x-window-mask-pixmap window)))
       (when (plusp pixmap) (free-pixmap display pixmap)))
     (setf (x-window-back window) 0
           (x-window-backdrop window) 0
-          (x-window-scratch window) 0
           (x-window-glass-mask window) 0
           (x-window-pixmap window) 0
-          (x-window-scratch-pixmap window) 0
           (x-window-mask-pixmap window) 0)))
 
 (fn resize-buffer ((window x-window) (width integer) (height integer))
@@ -407,20 +417,30 @@
         ;; clipped destination would discard pixels needed by the blur kernel.
         (setf (x-window-backdrop window)
               (picture (x-window-pixmap window) (x-window-format window))
-              (x-window-scratch-pixmap window)
-              (pixmap (x-window-depth window))
-              (x-window-scratch window)
-              (picture (x-window-scratch-pixmap window)
-                       (x-window-format window))
               (x-window-mask-pixmap window) (pixmap 8)
               (x-window-glass-mask window)
               (picture (x-window-mask-pixmap window)
                        (x-window-mask-format window)))
         (cffi:with-foreign-object (repeat :int)
-          ;; RepeatPad extends the window edge through the convolution kernel.
+          ;; RepeatPad keeps window edges opaque through the blur kernel.
           (setf (cffi:mem-ref repeat :int) 2)
           (change-picture display (x-window-backdrop window) 1 repeat)
-          (change-picture display (x-window-scratch window) 1 repeat))))))
+          (setf (x-window-blur-levels window)
+                (loop :for scale :in '(1 2 4 8 16 32)
+                      :collect
+                      (let* ((w (ceiling (x-window-width window) scale))
+                             (h (ceiling (x-window-height window) scale))
+                             (a (create-pixmap display
+                                  (x-window-window window) w h
+                                  (x-window-depth window)))
+                             (b (create-pixmap display
+                                  (x-window-window window) w h
+                                  (x-window-depth window)))
+                             (pa (picture a (x-window-format window)))
+                             (pb (picture b (x-window-format window))))
+                        (change-picture display pa 1 repeat)
+                        (change-picture display pb 1 repeat)
+                        (list pa a pb b w h)))))))))
 
 (fn color-picture ((window x-window) (color string) (alpha real))
   (or (gethash (list color alpha) (x-window-colors window))
@@ -432,7 +452,7 @@
                           (round (* 65535 component (if (< i 3) alpha 1)))))
               (solid-fill (x-window-display window) rgba)))))
 
-(fn draw-polygons
+(fn rasterize-polygons
     ((window x-window) (contours list) (color string) (alpha real)
      &optional target)
   (let ((triangles nil))
@@ -454,18 +474,100 @@
          (or target (x-window-back window)) (x-window-mask-format window)
          0 0 data (length triangles))))))
 
-(fn gaussian-filter ((window x-window) picture (radius integer)
+(defun rectangle-points-p (points)
+  (and (= (length points) 4)
+       (let ((a (first points)) (b (second points))
+             (c (third points)) (d (fourth points)))
+         (and (= (cdr a) (cdr b)) (= (cdr c) (cdr d))
+              (= (car a) (car d)) (= (car b) (car c))
+              (< (car a) (car b)) (< (cdr a) (cdr c))
+              (every (lambda (n) (= n (round n)))
+                     (list (car a) (cdr a) (car c) (cdr c)))))))
+
+(defun discard-mask (window)
+  (let* ((ring (x-window-shape-ring window))
+         (index (x-window-shape-index window))
+         (entry (aref ring index)))
+    (when entry
+      (destructuring-bind (key picture pixels) entry
+        (remhash key (x-window-shapes window))
+        (free-picture (x-window-display window) picture)
+        (decf (x-window-shape-pixels window) pixels))
+      (setf (aref ring index) nil))
+    (setf (x-window-shape-index window) (mod (1+ index) (length ring)))))
+
+(defun shape-mask (window key width height)
+  (or (gethash key (x-window-shapes window))
+      (let* ((display (x-window-display window)) (pixels (* width height))
+             (pixmap (create-pixmap display (x-window-window window)
+                                    width height 8))
+             (picture (create-picture display pixmap
+                                      (x-window-mask-format window)
+                                      0 (cffi:null-pointer))))
+        ;; The picture now owns the drawable. Cache only its alpha coverage;
+        ;; color, opacity, and the destination clip can change on every draw.
+        (free-pixmap display pixmap)
+        (composite display 1 (color-picture window "#000000" 0) 0 picture
+                   0 0 0 0 0 0 width height)
+        (rasterize-polygons window key "#ffffff" 1 picture)
+        (loop :while (> (+ pixels (x-window-shape-pixels window)) 16777216)
+              :do (discard-mask window))
+        (let ((index (x-window-shape-index window)))
+          (discard-mask window)
+          (setf (aref (x-window-shape-ring window) index)
+                (list key picture pixels)))
+        (incf (x-window-shape-pixels window) pixels)
+        (setf (gethash key (x-window-shapes window)) picture))))
+
+(defun draw-polygons (window contours color alpha &optional target)
+  (let* ((points (first contours)) (origin (first points))
+         (display (x-window-display window))
+         (dst (or target (x-window-back window))))
+    (cond
+      ((null origin) nil)
+      ((and (not (cdr contours)) (rectangle-points-p points))
+       (let ((a origin) (c (third points)))
+         (composite display 3 (color-picture window color alpha) 0 dst
+                    0 0 0 0 (round (car a)) (round (cdr a))
+                    (round (- (car c) (car a))) (round (- (cdr c) (cdr a))))))
+      (target (rasterize-polygons window contours color alpha target))
+      (t
+       (let ((left (car origin)) (top (cdr origin))
+             (right (car origin)) (bottom (cdr origin)))
+         (dolist (contour contours)
+           (dolist (p contour)
+             (setf left (min left (car p)) right (max right (car p))
+                   top (min top (cdr p)) bottom (max bottom (cdr p)))))
+         (let* ((x (floor left)) (y (floor top))
+                (width (- (ceiling right) x)) (height (- (ceiling bottom) y)))
+           (when (and (plusp width) (plusp height))
+             (if (or (> (* width height) 4194304)
+                     (> (max width height) 32767))
+                 (rasterize-polygons window contours color alpha)
+                 (let* ((local (mapcar
+                                (lambda (contour)
+                                  (mapcar (lambda (p)
+                                            (cons (- (car p) x)
+                                                  (- (cdr p) y)))
+                                          contour))
+                                contours))
+                        (mask (shape-mask window local width height)))
+                   (composite display 3 (color-picture window color alpha)
+                              mask dst 0 0 0 0 x y width height))))))))))
+
+(fn gaussian-filter ((window x-window) picture (radius real)
                      horizontal-p)
-  (let* ((size (1+ (* 2 radius)))
+  (let* ((extent (ceiling radius))
+         (size (1+ (* 2 extent)))
          (sigma (max 0.5 (/ radius 2.0)))
-         (weights (loop :for offset :from (- radius) :to radius
+         (weights (loop :for offset :from (- extent) :to extent
                         :collect (exp (- (/ (* offset offset)
                                             (* 2 sigma sigma))))))
          (total (reduce #'+ weights))
          (fixed (mapcar (lambda (weight) (round (* 65536 (/ weight total))))
                         weights)))
     ;; Preserve a constant background exactly despite fixed-point rounding.
-    (incf (nth radius fixed) (- 65536 (reduce #'+ fixed)))
+    (incf (nth extent fixed) (- 65536 (reduce #'+ fixed)))
     (cffi:with-foreign-object (parameters :int32 (+ 2 size))
       (setf (cffi:mem-aref parameters :int32 0)
             (* 65536 (if horizontal-p size 1))
@@ -476,34 +578,96 @@
       (set-filter (x-window-display window) picture "convolution"
                   parameters (+ 2 size)))))
 
+(fn scale-picture ((window x-window) picture (scale real))
+  (cffi:with-foreign-object (matrix :int32 9)
+    (dotimes (i 9) (setf (cffi:mem-aref matrix :int32 i) 0))
+    (setf (cffi:mem-aref matrix :int32 0) (round (* 65536 scale))
+          (cffi:mem-aref matrix :int32 4) (round (* 65536 scale))
+          (cffi:mem-aref matrix :int32 8) 65536)
+    (set-transform (x-window-display window) picture matrix)))
+
+(fn bilinear-picture ((window x-window) picture (scale real))
+  (scale-picture window picture scale)
+  (set-filter (x-window-display window) picture "bilinear"
+              (cffi:null-pointer) 0))
+
+(fn composite-blur-region ((window x-window) source target (box box)
+                           (scale real) (padding integer))
+  (let* ((x (max 0 (- (floor (box-x box) scale) padding)))
+         (y (max 0 (- (floor (box-y box) scale) padding)))
+         (right (min (ceiling (x-window-width window) scale)
+                     (+ (ceiling (+ (box-x box) (box-width box)) scale)
+                        padding)))
+         (bottom (min (ceiling (x-window-height window) scale)
+                      (+ (ceiling (+ (box-y box) (box-height box)) scale)
+                         padding))))
+    (composite (x-window-display window) 1 source 0 target
+               x y 0 0 x y (- right x) (- bottom y))))
+
 (fn blur-backdrop ((window x-window) (box box) (corner-radius real)
                    (blur-radius real))
   (when (and (x-window-convolution-p window) (plusp blur-radius))
     (let* ((display (x-window-display window))
-           ;; Bound native filter size while retaining a useful frosted radius.
-           (radius (min 64 (ceiling blur-radius)))
+           (radius (min 64 blur-radius))
+           (level (min 5 (max 0 (ceiling (log (max 1 (/ radius 3)) 2)))))
+           (scale (expt 2 level))
+           (buffers (nth level (x-window-blur-levels window)))
+           (source (x-window-backdrop window))
            (x (max 0 (floor (box-x box))))
            (y (max 0 (floor (box-y box))))
            (right (min (x-window-width window)
                        (ceiling (+ (box-x box) (box-width box)))))
            (bottom (min (x-window-height window)
-                        (ceiling (+ (box-y box) (box-height box)))))
-           (top (max 0 (- y radius)))
-           (end (min (x-window-height window) (+ bottom radius))))
+                        (ceiling (+ (box-y box) (box-height box))))))
       (when (and (< x right) (< y bottom))
-        (gaussian-filter window (x-window-backdrop window) radius t)
-        (composite display 1 (x-window-backdrop window) 0
-                   (x-window-scratch window) x top 0 0 x top
-                   (- right x) (- end top))
-        (composite display 1 (color-picture window "#000000" 0) 0
-                   (x-window-glass-mask window) 0 0 0 0 0 0
-                   (x-window-width window) (x-window-height window))
-        (draw-polygons window (list (rounded-polygon box corner-radius))
-                       "#ffffff" 1 (x-window-glass-mask window))
-        (gaussian-filter window (x-window-scratch window) radius nil)
-        (composite display 3 (x-window-scratch window)
-                   (x-window-glass-mask window) (x-window-back window)
-                   x y x y x y (- right x) (- bottom y))))))
+        ;; Repeated half-size bilinear passes average all source pixels instead
+        ;; of aliasing stripes with a single large reduction. The shrinking
+        ;; halo includes both Gaussian passes and each bilinear sample footprint;
+        ;; global coordinates preserve phase across widgets and window edges.
+        (loop :for index :from 1 :to level
+              :for target := (nth index (x-window-blur-levels window))
+              :do (bilinear-picture window source 2)
+                  (let* ((factor (expt 2 index))
+                         (remaining (/ scale factor))
+                         (halo (+ (* (+ (* 2 (ceiling (/ radius scale))) 4)
+                                     remaining)
+                                  (1- remaining))))
+                    (composite-blur-region window source (first target)
+                                           box factor halo))
+                  (scale-picture window source 1)
+                  (setf source (first target)))
+        ;; The remaining Gaussian is at most seven taps per axis, evaluated on
+        ;; the reduced image. Its fractional sigma keeps frost changes smooth.
+        (gaussian-filter window source (/ radius scale) t)
+        (composite-blur-region window source (third buffers) box scale
+                               (+ (ceiling (/ radius scale)) 2))
+        (gaussian-filter window (third buffers) (/ radius scale) nil)
+        (composite-blur-region window (third buffers) (first buffers)
+                               box scale 2)
+        (let* ((cached-p (<= (* (- right x) (- bottom y)) 4194304))
+               (mask
+                 (if cached-p
+                     (shape-mask
+                      window
+                      (list (rounded-polygon
+                             (make-box :x (- (box-x box) x)
+                                       :y (- (box-y box) y)
+                                       :width (box-width box)
+                                       :height (box-height box))
+                             corner-radius))
+                      (- right x) (- bottom y))
+                     (x-window-glass-mask window))))
+          (unless cached-p
+            (composite display 1 (color-picture window "#000000" 0) 0
+                       mask 0 0 0 0 0 0
+                       (x-window-width window) (x-window-height window))
+            (draw-polygons window (list (rounded-polygon box corner-radius))
+                           "#ffffff" 1 mask))
+          (bilinear-picture window (first buffers) (/ scale))
+          (composite display 3 (first buffers) mask (x-window-back window)
+                     x y (if cached-p 0 x) (if cached-p 0 y)
+                     x y (- right x) (- bottom y)))
+        (scale-picture window (first buffers) 1)))))
 
 (fn clip-window ((window x-window) (box box))
   (cffi:with-foreign-object (rect '(:struct rectangle))
@@ -512,6 +676,134 @@
             (max 0 (floor (box-width box))) height
             (max 0 (floor (box-height box)))))
     (set-clip (x-window-display window) (x-window-back window) 0 0 rect 1)))
+
+(defparameter *glyph-cache-limit* 8192)
+(defparameter *glyph-cache-pixels* (* 16 1024 1024))
+(defstruct glyph-mask
+  (picture 0 :type integer) (left 0 :type integer) (top 0 :type integer)
+  (width 0 :type integer) (height 0 :type integer) (stamp 0 :type integer))
+
+(fn discard-glyph ((window x-window) key (mask glyph-mask))
+  (when (plusp (glyph-mask-picture mask))
+    (free-picture (x-window-display window) (glyph-mask-picture mask)))
+  (decf (x-window-glyph-pixels window)
+        (* (glyph-mask-width mask) (glyph-mask-height mask)))
+  (remhash key (x-window-glyphs window)))
+
+(fn clear-glyph-cache ((window x-window))
+  (maphash (lambda (key mask) (discard-glyph window key mask))
+           (x-window-glyphs window)))
+
+(fn trim-glyph-cache ((window x-window) (pixels integer))
+  (loop :while (and (plusp (hash-table-count (x-window-glyphs window)))
+                   (or (>= (hash-table-count (x-window-glyphs window))
+                           *glyph-cache-limit*)
+                       (> (+ pixels (x-window-glyph-pixels window))
+                          *glyph-cache-pixels*)))
+        :do (let ((oldest nil) (old-key nil))
+              (maphash (lambda (key mask)
+                         (when (or (null oldest)
+                                   (< (glyph-mask-stamp mask)
+                                      (glyph-mask-stamp oldest)))
+                           (setf oldest mask old-key key)))
+                       (x-window-glyphs window))
+              (discard-glyph window old-key oldest))))
+
+(fn build-glyph-mask ((window x-window) (font font) (char character)
+                      (phase-x integer) (phase-y integer))
+  (let ((scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
+        (left nil) (top nil) (right nil) (bottom nil))
+    (let ((contours
+            (mapcar (lambda (contour)
+                      (mapcar (lambda (point)
+                                (let ((x (+ (* scale (car point))
+                                            (/ phase-x 4)))
+                                      (y (+ (* (- scale) (cdr point))
+                                            (/ phase-y 4))))
+                                  (setf left (if left (min left x) x)
+                                        right (if right (max right x) x)
+                                        top (if top (min top y) y)
+                                        bottom (if bottom (max bottom y) y))
+                                  (cons x y)))
+                              contour))
+                    (glyph-polygons font char))))
+      (unless left (return-from build-glyph-mask (make-glyph-mask)))
+      (let* ((x (1- (floor left))) (y (1- (floor top)))
+             (width (+ 1 (- (ceiling right) x)))
+             (height (+ 1 (- (ceiling bottom) y)))
+             (pixels (* width height)))
+        (when (or (> (max width height) 4096)
+                  (> pixels *glyph-cache-pixels*))
+          (return-from build-glyph-mask nil))
+        (trim-glyph-cache window pixels)
+        (let* ((display (x-window-display window))
+               (pixmap (create-pixmap display (x-window-window window)
+                                      width height 8))
+               (picture (create-picture display pixmap
+                                        (x-window-mask-format window)
+                                        0 (cffi:null-pointer))))
+          (free-pixmap display pixmap)
+          (composite display 1 (color-picture window "#000000" 0) 0 picture
+                     0 0 0 0 0 0 width height)
+          (draw-polygons
+           window (mapcar (lambda (contour)
+                            (mapcar (lambda (point)
+                                      (cons (- (car point) x)
+                                            (- (cdr point) y)))
+                                    contour))
+                          contours)
+           "#ffffff" 1 picture)
+          (incf (x-window-glyph-pixels window) pixels)
+          (incf (x-window-glyph-builds window))
+          (make-glyph-mask :picture picture :left x :top y
+                           :width width :height height))))))
+
+(fn glyph-mask-for ((window x-window) (font font) glyph (char character)
+                    (phase-x integer) (phase-y integer))
+  (let* ((key (list font (font-size font) (zpb-ttf:font-index glyph)
+                    phase-x phase-y))
+         (mask (or (gethash key (x-window-glyphs window))
+                   (let ((new (build-glyph-mask window font char
+                                                 phase-x phase-y)))
+                     (when new
+                       (trim-glyph-cache window 0)
+                       (setf (gethash key (x-window-glyphs window)) new))))))
+    (when mask
+      (setf (glyph-mask-stamp mask) (incf (x-window-glyph-clock window))))
+    mask))
+
+(fn draw-cached-text ((window x-window) (font font) (text string)
+                      (x real) (y real) (color string))
+  ;; Four fractional phases retain subpixel placement without position keys.
+  (let ((scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
+        (cursor x) (previous nil) (qy (round (* y 4))))
+    (loop :for char :across text
+          :for glyph := (zpb-ttf:find-glyph char (font-loader font))
+          :do (when previous
+                (incf cursor (* scale (zpb-ttf:kerning-offset
+                                      previous char (font-loader font)))))
+              (let* ((qx (round (* cursor 4)))
+                     (mask (glyph-mask-for window font glyph char
+                                           (mod qx 4) (mod qy 4))))
+                (cond
+                  ((null mask)
+                   (let ((renderer
+                           (make-renderer
+                            :font font :polygons
+                            (lambda (contours ink alpha)
+                              (draw-polygons window contours ink alpha)))))
+                     (paint-text renderer (string char) cursor y color)))
+                  ((plusp (glyph-mask-picture mask))
+                   (composite (x-window-display window) 3
+                              (color-picture window color 1)
+                              (glyph-mask-picture mask) (x-window-back window)
+                              0 0 0 0
+                              (+ (floor qx 4) (glyph-mask-left mask))
+                              (+ (floor qy 4) (glyph-mask-top mask))
+                              (glyph-mask-width mask)
+                              (glyph-mask-height mask)))))
+              (incf cursor (* scale (zpb-ttf:advance-width glyph)))
+              (setf previous char))))
 
 (fn key-input (event &optional context)
   (cffi:with-foreign-objects ((buffer :char 64) (symbol :ulong))
@@ -660,8 +952,8 @@
 (fn draw-window ((window x-window) (renderer renderer) (context context)
                  (draw function) interactive (delete integer))
   (let ((display (x-window-display window)))
-    (loop
-     (multiple-value-bind (events quit) (read-events window delete)
+    (loop :for start := (get-internal-real-time)
+          :do (multiple-value-bind (events quit) (read-events window delete)
        (when quit (return context))
        (with-frame (context (x-window-width window) (x-window-height window)
                             :events events)
@@ -677,11 +969,13 @@
        (composite display 1 (x-window-back window) 0
                   (x-window-picture window) 0 0 0 0 0 0
                   (x-window-width window) (x-window-height window))
-       (flush-display display)
-       (unless interactive
-         (sync-display display 0)
-         (return context))
-       (sleep 0.016)))))
+       ;; Bound the render queue: frame intervals include server completion.
+       (sync-display display 0)
+       (unless interactive (return context))
+       (let ((remaining (- (/ 1 60)
+                           (/ (- (get-internal-real-time) start)
+                              internal-time-units-per-second))))
+         (when (plusp remaining) (sleep remaining)))))))
 
 (fn run-x11 ((draw function) &key title width height (interactive t))
   (let* ((display (open-display (cffi:null-pointer)))
@@ -725,6 +1019,8 @@
            (let* ((renderer
                    (make-renderer
                     :font font
+                    :text (lambda (face text x y color)
+                            (draw-cached-text window face text x y color))
                     :polygons (lambda (polys color alpha)
                                 (draw-polygons window polys color alpha))
                     :clip (lambda (box) (clip-window window box))
@@ -737,6 +1033,9 @@
                                (measure-widget renderer widget width)))))
              (setf (x-window-context window) context)
              (draw-window window renderer context draw interactive delete)))
+      (dotimes (i (length (x-window-shape-ring window)))
+        (discard-mask window))
+      (clear-glyph-cache window)
       (when font (close-font font))
       (maphash
        (lambda (key picture)
