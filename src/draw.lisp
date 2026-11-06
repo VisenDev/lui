@@ -1001,7 +1001,7 @@
                                          0 "#258bff" 0.4)))
                               (incf offset (1+ (length line))))))))))))
 
-(fn paint-frame ((renderer renderer) (context context) &optional external-labels)
+(fn paint-frame ((renderer renderer) (context context) &optional external-labels viewport)
   "Paint the visible elements of a solved frame and its text selection."
   (unless (context-input-handler context)
     (setf (context-input-handler context)
@@ -1012,6 +1012,10 @@
      (context-root context)
      (lambda (node)
        (when (and (widget-p (element-content node))
+                  (or (null viewport)
+                      (let ((clip (element-clip node)))
+                        (and (< (box-y clip) (+ (box-y viewport) (box-height viewport)))
+                             (< (box-y viewport) (+ (box-y clip) (box-height clip))))))
                   (not (and external-labels (gethash node external-labels))))
          (paint-widget renderer node))))
     (let* ((selection (context-selection context))

@@ -5,6 +5,7 @@
 
 (defstruct* web-app
   host stage overlay canvas graphics renderer context callback cleanup observer resize
+  mobile-page-p (viewport-offset 0)
   overlay-order overlay-geometry overlay-cache
   animation-frame deadline-timer events pending-p (alive-p t))
 
@@ -87,26 +88,32 @@
        (lambda (box radius frost)
          (when (plusp frost)
            (let* ((scale #j:window:devicePixelRatio)
-                  (x (box-x box)) (y (box-y box))
-                  (w (box-width box)) (h (box-height box))
+                  (offset (jscl/ffi:oget canvas "luiViewportOffset"))
+                  (x (max 0 (box-x box)))
+                  (y (max offset (box-y box)))
+                  (w (max 0 (- (min (+ (box-x box) (box-width box))
+                                        (/ (jscl/ffi:oget canvas "width") scale)) x)))
+                  (h (max 0 (- (min (+ (box-y box) (box-height box))
+                                        (+ offset (/ (jscl/ffi:oget canvas "height") scale))) y)))
                   (step (max 1 (/ frost 2)))
                   (sw (max 1 (ceiling (/ w step))))
                   (sh (max 1 (ceiling (/ h step)))))
-             ;; Sample the underlying artwork at the frost scale, then
-             ;; interpolate it back into the rounded surface.
-             (when (> sw (jscl/ffi:oget sample "width"))
-               (setf (jscl/ffi:oget sample "width") sw))
-             (when (> sh (jscl/ffi:oget sample "height"))
-               (setf (jscl/ffi:oget sample "height") sh))
-             ((jscl/ffi:oget blur "clearRect") 0 0 sw sh)
-             ((jscl/ffi:oget blur "drawImage") canvas
-              (* scale x) (* scale y) (* scale w) (* scale h) 0 0 sw sh)
-             ((jscl/ffi:oget g "save"))
-             (rounded-path g box radius)
-             ((jscl/ffi:oget g "clip"))
-             (setf (jscl/ffi:oget g "globalAlpha") 1)
-             ((jscl/ffi:oget g "drawImage") sample 0 0 sw sh x y w h)
-             ((jscl/ffi:oget g "restore")))))))))
+             ;; Restrict the scratch bitmap to the visible artwork. The original
+             ;; rounded surface still supplies the destination clip.
+             (when (and (plusp w) (plusp h))
+               (when (> sw (jscl/ffi:oget sample "width"))
+                 (setf (jscl/ffi:oget sample "width") sw))
+               (when (> sh (jscl/ffi:oget sample "height"))
+                 (setf (jscl/ffi:oget sample "height") sh))
+               ((jscl/ffi:oget blur "clearRect") 0 0 sw sh)
+               ((jscl/ffi:oget blur "drawImage") canvas
+                (* scale x) (* scale (- y offset)) (* scale w) (* scale h) 0 0 sw sh)
+               ((jscl/ffi:oget g "save"))
+               (rounded-path g box radius)
+               ((jscl/ffi:oget g "clip"))
+               (setf (jscl/ffi:oget g "globalAlpha") 1)
+               ((jscl/ffi:oget g "drawImage") sample 0 0 sw sh x y w h)
+               ((jscl/ffi:oget g "restore"))))))))))
 
 (fn queue-event ((app web-app) (event event))
   (when (web-app-alive-p app)
@@ -330,7 +337,9 @@
   (let* ((canvas (web-app-canvas app)) (g (web-app-graphics app))
          (context (web-app-context app)) (*unit* 8)
          (width (jscl/ffi:oget canvas "clientWidth"))
-         (height (jscl/ffi:oget canvas "clientHeight"))
+         (mobile (web-app-mobile-page-p app))
+         (height (if mobile #j:window:innerHeight
+                     (jscl/ffi:oget canvas "clientHeight")))
          (scale #j:window:devicePixelRatio)
          (events (nreverse (shiftf (web-app-events app) nil))))
     (let ((w (round (* width scale))) (h (round (* height scale))))
@@ -338,13 +347,41 @@
         (setf (jscl/ffi:oget canvas "width") w))
       (unless (= h (jscl/ffi:oget canvas "height"))
         (setf (jscl/ffi:oget canvas "height") h)))
+    (setf (lui.frame::context-page-height-p context) mobile
+          (lui.frame::context-page-top context)
+          (if mobile
+              (max 0 (- (jscl/ffi:oget
+                         ((jscl/ffi:oget (web-app-stage app) "getBoundingClientRect"))
+                         "top")))
+              0))
     (with-frame (context width height :events events)
       (funcall (web-app-callback app)))
+    (when mobile
+      (let ((stage (web-app-stage app))
+            (page-height (context-height context))
+            (requested (shiftf (lui.frame::context-requested-page-top context) nil)))
+        (setf (jscl/ffi:oget stage "style" "height") (css-pixels page-height))
+        (when requested
+          (#j:window:scrollBy
+           0 (+ requested (jscl/ffi:oget
+                           ((jscl/ffi:oget stage "getBoundingClientRect")) "top"))))
+        (let* ((rect ((jscl/ffi:oget stage "getBoundingClientRect")))
+               (offset (max 0 (min (max 0 (- page-height height))
+                                   (- (jscl/ffi:oget rect "top"))))))
+          (setf (web-app-viewport-offset app) offset
+                (jscl/ffi:oget canvas "luiViewportOffset") offset
+                (jscl/ffi:oget canvas "style" "top") (css-pixels offset)
+                (jscl/ffi:oget canvas "style" "height") (css-pixels height)))))
     ((jscl/ffi:oget g "setTransform") scale 0 0 scale 0 0)
     (setf (jscl/ffi:oget g "fillStyle") #j"#202432")
     ((jscl/ffi:oget g "fillRect") 0 0 width height)
+    ((jscl/ffi:oget g "translate") 0 (- (web-app-viewport-offset app)))
     ((jscl/ffi:oget g "save"))
-    (unwind-protect (paint-frame (web-app-renderer app) context (sync-overlay app))
+    (unwind-protect
+         (paint-frame (web-app-renderer app) context (sync-overlay app)
+                      (when mobile
+                        (make-box :x 0 :y (web-app-viewport-offset app)
+                                  :width width :height height)))
       ((jscl/ffi:oget g "restore")))
     (when (some (lambda (e) (not (eq :move (event-kind e)))) events)
       (refresh app))
@@ -375,7 +412,7 @@
                   (#j:setTimeout #'enqueue (ceiling (* wait 1000)))))))))
 
 (fn mount (host (callback function) &key (min-fps lui.frame::*min-fps*)
-           (max-fps lui.frame::*max-fps*))
+           (max-fps lui.frame::*max-fps*) mobile-page-p)
   "Mount a Canvas 2D application inside HOST and return its lifetime handle."
   (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
   (let* ((stage (#j:document:createElement #j"div"))
@@ -389,26 +426,33 @@
                               (measure-widget renderer widget width))))
          (app (make-web-app :host host :stage stage :overlay labels :canvas canvas :graphics g
                             :renderer renderer :context context
-                            :callback callback))
+                            :callback callback :mobile-page-p mobile-page-p))
          (resize (lambda (&rest ignored)
                    (declare (ignore ignored)) (refresh app))))
     (setf (jscl/ffi:oget canvas "style" "cssText")
           #j"display:block;width:100%;height:100%;touch-action:none"
-          (jscl/ffi:oget canvas "luiApp") app)
+          (jscl/ffi:oget canvas "luiApp") app
+          (jscl/ffi:oget canvas "luiViewportOffset") 0)
     (setf (jscl/ffi:oget stage "style" "cssText")
           #j"position:relative;width:100%;height:100%;overflow:hidden"
           (jscl/ffi:oget labels "style" "cssText")
           #j"position:absolute;inset:0;pointer-events:none")
+    (when mobile-page-p
+      (setf (jscl/ffi:oget canvas "style" "position") #j"absolute"
+            (jscl/ffi:oget canvas "style" "height") (css-pixels #j:window:innerHeight)
+            (jscl/ffi:oget stage "style" "height") (css-pixels #j:window:innerHeight)))
     ((jscl/ffi:oget stage "appendChild") canvas)
     ((jscl/ffi:oget stage "appendChild") labels)
     ((jscl/ffi:oget host "appendChild") stage)
     (setf (web-app-cleanup app)
           (lui.web.input:install-input
-           stage canvas context (lambda (event) (queue-event app event)))
+           stage canvas context (lambda (event) (queue-event app event))
+           :mobile-page-p mobile-page-p)
           (web-app-resize app) resize
           (web-app-observer app) (jscl/ffi:new #j:ResizeObserver resize))
     ((jscl/ffi:oget (web-app-observer app) "observe") host)
     (#j:window:addEventListener #j"resize" resize)
+    (when mobile-page-p (#j:window:addEventListener #j"scroll" resize))
     (refresh app)
     app))
 
@@ -421,6 +465,7 @@
       (#j:cancelAnimationFrame (web-app-animation-frame app)))
     ((jscl/ffi:oget (web-app-observer app) "disconnect"))
     (#j:window:removeEventListener #j"resize" (web-app-resize app))
+    (#j:window:removeEventListener #j"scroll" (web-app-resize app))
     (funcall (web-app-cleanup app))
     (lui.font:close-font (renderer-font (web-app-renderer app)))
     (setf (web-app-overlay-order app) nil
@@ -434,14 +479,17 @@
 (fn run-web ((draw function) &key title width height (interactive t))
   (declare (ignore interactive))
   (setf (jscl/ffi:oget #j:document "title") (jscl/ffi:jsstring title))
-  (let ((host (#j:document:createElement #j"main")))
+  (let* ((mobile (and (null height)
+                      (jscl/ffi:clbool
+                       (jscl/ffi:oget (#j:window:matchMedia #j"(pointer: coarse)") "matches"))))
+         (host (#j:document:createElement #j"main")))
     ((jscl/ffi:oget host "setAttribute") #j"aria-label"
      (jscl/ffi:jsstring title))
     (setf (jscl/ffi:oget host "style" "width")
           (css-size width #j"100%")
           (jscl/ffi:oget host "style" "height")
-          (css-size height #j"100vh"))
+          (css-size height (if mobile #j"auto" #j"100vh")))
     (#j:document:body:appendChild host)
-    (mount host draw)))
+    (mount host draw :mobile-page-p mobile)))
 
 (register-backend :web #'run-web)

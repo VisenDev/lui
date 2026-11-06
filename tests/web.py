@@ -322,6 +322,62 @@ class WebTests(unittest.TestCase):
         finally:
             page.close()
 
+    def test_mobile_standalone_gallery_scrolls_on_canvas_swipe(self):
+        page = self.browser.new_page(viewport={"width": 390, "height": 844},
+                                     device_scale_factor=2, is_mobile=True,
+                                     has_touch=True)
+        try:
+            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+            page.wait_for_function("""() => {
+              const c=document.querySelector('main canvas');
+              return c && c.luiApp && c.width > 0 &&
+                     document.body.innerText.includes('Toolkit: Glass');
+            }""")
+            def tap_button(name):
+                bounds = page.get_by_role("button", name=name, exact=True).bounding_box()
+                self.assertIsNotNone(bounds)
+                page.touchscreen.tap(bounds["x"] + bounds["width"] / 2,
+                                     bounds["y"] + bounds["height"] / 2)
+
+            # Touch editing must keep the IME sink focused after the browser
+            # finishes its compatibility mouse events.
+            ui = WebTests()
+            ui.page = page
+            page.touchscreen.tap(*ui.point(ui.widget(id=":NAME")))
+            expect(page.locator("main textarea")).to_be_focused()
+            page.keyboard.insert_text("X")
+            ui.frames()
+            self.assertIn("X", ui.text_value(":NAME"))
+            tap_button("Scroll")
+            page.wait_for_function("document.documentElement.scrollHeight > innerHeight * 2")
+            self.assertEqual(page.locator("main canvas").evaluate("c => c.clientHeight"),
+                             page.evaluate("innerHeight"))
+            cdp = page.context.new_cdp_session(page)
+            # Start over a result button's canvas surface and drag vertically.
+            x, y = 190, 700
+            self.assertEqual(page.evaluate("([x,y]) => document.elementFromPoint(x,y).tagName",
+                                           [x, y]), "CANVAS")
+            cdp.send("Input.dispatchTouchEvent", {
+                "type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+            for y in (620, 540, 460, 380):
+                cdp.send("Input.dispatchTouchEvent", {
+                    "type": "touchMove", "touchPoints": [{"x": x, "y": y}]})
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            page.wait_for_function("window.scrollY > 100")
+            # At the bottom, a real tap must hit the last item in page coordinates.
+            page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+            last = "Item 60 — selectable row"
+            page.wait_for_function("""() => {
+                const c = document.querySelector('main canvas');
+                return c.getBoundingClientRect().top < 1 && c.getBoundingClientRect().bottom > innerHeight - 1;
+            }""")
+            tap_button(last)
+            expect(page.get_by_text("Selected item: 60", exact=True)).to_have_count(1)
+            tap_position = page.evaluate("window.scrollY")
+            self.assertGreater(tap_position, 100)
+        finally:
+            page.close()
+
     def test_demo_buttons_text_checkbox_and_slider(self):
         self.click_widget(text="Say hello")
         self.widget(text="Hello Common Lisp (1)")

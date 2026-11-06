@@ -427,6 +427,11 @@ same `examples/demo.lisp`. Open the root URL printed by the server;
 it is not a separate browser application. `make web-build` builds the JavaScript
 without launching a server.
 
+On touch-first devices, a standalone web app with no explicit height grows
+to fit its content. Swipe vertically to scroll the page. The canvas draws
+the visible window, and labels support browser text selection. Embedded
+apps can use the same behavior with `:mobile-page-p t` on `lui.web:mount`.
+
 ## Rendering differences
 
 Native text uses zpb-ttf metrics and TrueType outlines, including curved contours

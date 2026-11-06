@@ -4,13 +4,14 @@
 
 (in-package #:lui.web.input)
 
-(defun install-input (host canvas context queue)
+(defun install-input (host canvas context queue &key mobile-page-p)
   "Install canvas input and one shared IME sink. Return an idempotent cleanup."
   (let ((sink (#j:document:createElement #j"textarea"))
         (listeners nil)
         (pending nil)
         (pending-root (context-root context))
         (pointer nil)
+        (touch-start nil)
         (composing nil)
         (alive t)
         (old-copy (context-copy context))
@@ -36,10 +37,10 @@
          (stop (event) ((jscl/ffi:oget event "preventDefault")))
          (flag (event name)
            (jscl/ffi:clbool (jscl/ffi:oget event name)))
-         (focus-sink ()
+         (focus-without-scroll (element)
            (let ((options (jscl/ffi:new #j:Object)))
              (setf (jscl/ffi:oget options "preventScroll") #j:true)
-             ((jscl/ffi:oget sink "focus") options)))
+             ((jscl/ffi:oget element "focus") options)))
          (release ()
            (let ((id pointer))
              (setf pointer nil)
@@ -53,7 +54,7 @@
            (or (null pointer)
                (eql pointer (jscl/ffi:oget event "pointerId"))))
          (position-event (event kind &rest arguments)
-           (let ((rect ((jscl/ffi:oget canvas "getBoundingClientRect"))))
+           (let ((rect ((jscl/ffi:oget host "getBoundingClientRect"))))
              (apply #'make-event :kind kind
                     :x (- (jscl/ffi:oget event "clientX")
                           (jscl/ffi:oget rect "left"))
@@ -87,7 +88,8 @@
             (jscl/ffi:oget sink "style" "cssText")
             #j"position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none"
             (jscl/ffi:oget canvas "tabIndex") 0
-            (jscl/ffi:oget canvas "style" "touchAction") #j"none")
+            (jscl/ffi:oget canvas "style" "touchAction")
+            (if mobile-page-p #j"pan-y pinch-zoom" #j"none"))
       ((jscl/ffi:oget host "appendChild") sink)
       (setf (context-copy context)
             (lambda (value)
@@ -98,15 +100,23 @@
                     ((jscl/ffi:oget promise "catch")
                      (lambda (error) (declare (ignore error)))))))))
       (listen canvas "focus"
-              (lambda (event) (declare (ignore event)) (focus-sink)))
+              (lambda (event) (declare (ignore event))
+                (unless mobile-page-p (focus-without-scroll sink))))
       (listen canvas "pointerdown"
               (lambda (event)
                 (when (current-p event)
-                  (stop event)
-                  (focus-sink)
-                  (setf pointer (jscl/ffi:oget event "pointerId"))
-                  ((jscl/ffi:oget canvas "setPointerCapture") pointer)
-                  (pointer-event event :press))))
+                  (let ((touch (and mobile-page-p
+                                    (equal (jscl/ffi:oget event "pointerType") #j"touch"))))
+                    (setf touch-start (when touch
+                                        (cons (jscl/ffi:oget event "clientX")
+                                              (jscl/ffi:oget event "clientY"))))
+                    ;; Suppress the compatibility mouse click that would refocus
+                    ;; the canvas after we focus the editor. Touch-action owns panning.
+                    (stop event)
+                    (unless touch (focus-without-scroll sink))
+                    (setf pointer (jscl/ffi:oget event "pointerId"))
+                    (unless touch ((jscl/ffi:oget canvas "setPointerCapture") pointer))
+                    (pointer-event event :press)))))
       (listen canvas "pointermove"
               (lambda (event)
                 (when (current-p event) (pointer-event event :move))))
@@ -114,6 +124,16 @@
               (lambda (event)
                 (when (current-p event)
                   (pointer-event event :release)
+                  (when (and touch-start
+                             (< (abs (- (car touch-start) (jscl/ffi:oget event "clientX"))) 8)
+                             (< (abs (- (cdr touch-start) (jscl/ffi:oget event "clientY"))) 8))
+                    (let ((input (input-context)) (position (position-event event :release)))
+                      (focus-without-scroll
+                       (if (and (text-field-focused-p input)
+                                (equal (context-focus input)
+                                       (lui.frame::hit input (event-x position) (event-y position))))
+                           sink canvas))))
+                  (setf touch-start nil)
                   (release))))
       (dolist (name '("pointercancel" "lostpointercapture"))
         (listen canvas name
@@ -125,22 +145,26 @@
       (listen canvas "contextmenu" #'stop)
       (listen host "wheel"
               (lambda (event)
-                (stop event)
-                (let* ((mode (jscl/ffi:oget event "deltaMode"))
-                       (delta (jscl/ffi:oget event "deltaY")))
-                  (send (position-event
-                         event :scroll
-                         :scroll-mode (if (and (zerop mode)
-                                               (< (abs delta) 20))
-                                          :immediate :smooth)
-                         :value (* delta
-                                   (case mode
-                                     (1 16)
-                                     (2 (context-height context))
-                                     (otherwise 1))))))))
-      (listen sink "keydown"
+                (unless mobile-page-p
+                  (stop event)
+                  (let* ((mode (jscl/ffi:oget event "deltaMode"))
+                         (delta (jscl/ffi:oget event "deltaY")))
+                    (send (position-event
+                           event :scroll
+                           :scroll-mode (if (and (zerop mode)
+                                                 (< (abs delta) 20))
+                                            :immediate :smooth)
+                           :value (* delta
+                                     (case mode
+                                       (1 16)
+                                       (2 (context-height context))
+                                       (otherwise 1)))))))))
+      ;; Touch taps can focus the canvas without summoning the software keyboard.
+      (listen host "keydown"
               (lambda (event)
-                (unless (or composing (flag event "isComposing")
+                (unless (or (not (or (eq (jscl/ffi:oget event "target") canvas)
+                                     (eq (jscl/ffi:oget event "target") sink)))
+                            composing (flag event "isComposing")
                             (eql 229 (jscl/ffi:oget event "keyCode")))
                   (let* ((key (jscl/ffi:clstring
                                (jscl/ffi:oget event "key")))

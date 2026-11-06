@@ -241,15 +241,26 @@
             (browser-guide state) nil
             (browser-symbols-p state) nil)
       (scroll-to :docs-detail 0 0)
+      (when (lui.frame::context-page-height-p *context*)
+        (setf (lui.frame::context-requested-page-top *context*) 0))
       (request-frame))))
 
 (defun entry-list (state height)
   (lui:panel (lui:opt :id :docs-entries :width (grow) :height height
-                      :scroll-p t :padding (units 0.5) :opacity 1 :frost 0)
+                      :scroll-p (not (lui.frame::context-page-height-p *context*))
+                      :padding (units 0.5) :opacity 1 :frost 0)
     (let* ((rows (symbol-rows state)) (count (length rows))
-           (offset (nth-value 1 (scroll-position :docs-entries)))
            (viewport (previous-box :docs-entries))
-           (bottom (+ offset (if viewport (box-height viewport) (units 18))))
+           (page-p (lui.frame::context-page-height-p *context*))
+           (offset (if page-p
+                       (if viewport
+                           (- (lui.frame::context-page-top *context*)
+                              (box-y viewport) (units 0.5))
+                           0)
+                       (nth-value 1 (scroll-position :docs-entries))))
+           (bottom (+ offset (if page-p
+                                 (lui.frame::context-viewport-height *context*)
+                                 (if viewport (box-height viewport) (units 18)))))
            (start (max 0 (1- (or (position-if
                                   (lambda (row)
                                     (> (+ (third row) (fourth row)) offset))

@@ -155,19 +155,23 @@
   (lui:label "Double-click or Enter to edit; Enter commits, Esc cancels. Arrows move; Home/End reach A0/Z99.")
   (lui:label (format nil "Selected: ~A"
                      (cell-address (state-selected state))))
-  (let* ((previous (context-previous-root *context*))
+  (let* ((page-p (lui.frame::context-page-height-p *context*))
+         (previous (context-previous-root *context*))
          (viewport (when (and previous
                               (= (box-width (element-box previous))
                                  (context-width *context*))
-                              (= (box-height (element-box previous))
-                                 (context-height *context*)))
+                              (or page-p
+                                  (= (box-height (element-box previous))
+                                     (context-height *context*))))
                      (previous-box :seven-grid)))
          (width (units 10)) (height (units 3)) (header (units 4))
          (cached (eq (state-view-toolkit state) (lui:current-toolkit)))
          (view-width (if viewport (box-width viewport)
                          (or (and cached (state-view-width state)) 0)))
-         (view-height (if viewport (box-height viewport)
-                          (or (and cached (state-view-height state)) 0)))
+         (view-height (if (and page-p viewport)
+                          (lui.frame::context-viewport-height *context*)
+                          (if viewport (box-height viewport)
+                              (or (and cached (state-view-height state)) 0))))
          (full-width (+ header (* 26 width)))
          (full-height (* 101 height)))
     (when viewport
@@ -177,6 +181,14 @@
     ;; The cold geometry pass avoids constructing rows for a whole-window guess.
     (unless viewport (request-frame))
     (multiple-value-bind (x y) (scroll-position :seven-grid)
+      ;; The page owns vertical scrolling; retain the grid's horizontal
+      ;; viewport and paint only rows near the visible part of its full extent.
+      (when page-p
+        (setf y (if viewport
+                    (max 0 (min (- full-height view-height)
+                                (- (lui.frame::context-page-top *context*)
+                                   (box-y viewport))))
+                    0)))
       (let* ((maximum (max 0 (- full-width view-width)))
              (next (lui:slider :seven-grid-horizontal x
                                (lui:opt :minimum 0 :maximum (max 1 maximum)
@@ -184,13 +196,14 @@
                                         :disabled-p (zerop maximum)))))
         (unless (= x next)
           (setf x next)
-          (scroll-to :seven-grid x y)
+          (scroll-to :seven-grid x (if page-p 0 y))
           (request-frame)))
       (multiple-value-bind (first-column last-column)
           (visible-span x view-width width header 26)
         (multiple-value-bind (first-row last-row)
             (visible-span y view-height height height 100)
-          (lui:panel (lui:opt :id :seven-grid :width (grow) :height (grow)
+          (lui:panel (lui:opt :id :seven-grid :width (grow)
+                              :height (if page-p (fixed full-height) (grow))
                               :scroll-p t :radius 0 :frost 0 :opacity 1)
             (column (:width (fixed full-width) :height (fixed full-height))
               ;; This clip also prevents clicks passing through headers.

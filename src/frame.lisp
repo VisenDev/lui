@@ -66,6 +66,8 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (previous-root nil :type (or null element))
   (width 0 :type real)
   (height 0 :type real)
+  (viewport-height 0 :type real)
+  page-height-p (page-top 0 :type real) requested-page-top
   (copy nil :type (or null function))
   (input-handler nil :type (or null function))
   selection
@@ -307,7 +309,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
         (context-next-frame context) nil)
   (when (context-input-handler context)
     (if (and (= width (context-width context))
-             (= height (context-height context)))
+             (= height (context-viewport-height context)))
         (funcall (context-input-handler context) context events)
         (setf (context-selection context) nil)))
   (setf (context-activation-order context) nil)
@@ -316,7 +318,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
   (clrhash (context-events context))
   ;; Old hit regions are invalid after resizing. Establish new geometry first.
   (let ((resized (or (/= width (context-width context))
-                     (/= height (context-height context)))))
+                     (/= height (context-viewport-height context)))))
     (when resized
       (setf (context-active context) nil (context-hover context) nil))
     (when (or resized
@@ -424,7 +426,9 @@ clock, redraw deadline, declarations, and per-frame activation state."
         (context-tabs-handled-p context) nil
         (context-previous-root context) (context-root context)
         (context-width context) width
-        (context-height context) height
+        (context-height context) (if (and (context-page-height-p context) (context-root context))
+                                     (max height (context-height context)) height)
+        (context-viewport-height context) height
         (context-root context) (make-element :width (grow) :height (grow))
         (context-building-p context) t))
 
@@ -485,8 +489,9 @@ Clear focus/hover for removed controls and return the completed root element."
   (when (context-overlay context)
     (let ((*context* context) (*parent* (context-root context)))
       (funcall (context-overlay context) (context-previous-root context))))
-  (solve (context-root context) (context-width context)
-         (context-height context))
+  (let ((page-top (when (context-page-height-p context) (context-page-top context))))
+    (solve (context-root context) (context-width context) (context-viewport-height context) page-top)
+    (setf (context-height context) (box-height (element-box (context-root context)))))
   (dolist (decorate (nreverse (context-after-layout context)))
     (funcall decorate))
   (flet ((interactive-p (id)

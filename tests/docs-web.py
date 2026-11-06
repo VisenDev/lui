@@ -10,6 +10,34 @@ from playwright.sync_api import sync_playwright
 
 
 class DocsWebTests(unittest.TestCase):
+    def test_mobile_symbol_list_uses_page_scroll(self):
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                executable_path=shutil.which("chromium-browser") or shutil.which("chromium"),
+                args=["--no-sandbox"])
+            try:
+                page = browser.new_page(viewport={"width": 390, "height": 700},
+                                        is_mobile=True, has_touch=True, device_scale_factor=2)
+                errors = []
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                page.goto((web.ROOT / "build/docs.html").as_uri())
+                browse = page.get_by_role("button", name="Browse symbols", exact=True)
+                browse.evaluate("el => el.click()")
+                page.wait_for_function("document.documentElement.scrollHeight > innerHeight * 5")
+                entries = page.locator('button[aria-label*=":"]:visible')
+                first = entries.evaluate_all("els => els.map(el => el.getAttribute('aria-label'))")
+                page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+                page.wait_for_function("""first => [...document.querySelectorAll('button[aria-label*=":"]')]
+                    .some(el => getComputedStyle(el).visibility === 'visible' &&
+                          !first.includes(el.getAttribute('aria-label')))""", arg=first)
+                self.assertLess(entries.count(), 100)
+                self.assertEqual(page.locator("main canvas").evaluate("c => c.height"), 1400)
+                entries.last.evaluate("el => el.click()")
+                page.wait_for_function("window.scrollY === 0")
+                self.assertEqual(errors, [])
+            finally:
+                browser.close()
+
     def test_offline_navigation_widgets_and_debugger(self):
         with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             path = Path(tmp) / "index.html"
