@@ -86,6 +86,7 @@
   (symbols-p nil :type boolean)
   (package nil :type (or null string))
   (query "" :type string)
+  (row-key nil :type list) (rows #() :type vector)
   (matches nil :type list)
   (selected nil :type (or null integer)))
 
@@ -99,6 +100,7 @@
             '(:name :package :signature :documentation))))
 
 (defun update-matches (state)
+  (setf (browser-row-key state) nil)
   (setf (browser-matches state)
         (loop :for entry :across (browser-entries state) :for index :from 0
               :when (and (or (null (browser-package state))
@@ -111,12 +113,71 @@
   (scroll-to :docs-entries 0 0)
   (scroll-to :docs-detail 0 0))
 
+(defun navigation-width ()
+  (min (units (if (< (context-width *context*) (units 105)) 18 28))
+       (* 0.3 (context-width *context*))))
+
+(defun reference-width ()
+  (if (>= (context-width *context*) (units 80))
+      (min (units 40)
+           (* 0.44 (- (context-width *context*)
+                      (navigation-width) (units 4))))
+      (- (context-width *context*) (navigation-width) (units 3))))
+
+(defun wrap-symbol (text columns)
+  (format nil "~{~A~^~%~}"
+          (loop :with start := 0
+                :for end := (min (length text) (+ start columns))
+                :for delimiter :=
+                (when (< end (length text))
+                  (position-if (lambda (char) (find char "-:")) text
+                               :start start :end end :from-end t))
+                :for stop := (if delimiter (1+ delimiter) end)
+                :while (< start (length text))
+                :collect (subseq text start stop)
+                :do (setf start stop))))
+
+(defun symbol-rows (state)
+  (let* ((width (reference-width))
+         (key (list width (current-toolkit) (toolkit-revision) *unit*
+                    (context-text-mode-p *context*))))
+    (unless (equal key (browser-row-key state))
+      (let* ((defaults (toolkit-defaults))
+             (measure (context-measure *context*))
+             (text-p (context-text-mode-p *context*))
+             (inset (if text-p 0 24)) (gutter (if text-p 1 12))
+             (available (max 1 (- width (units 1) gutter inset)))
+             (top 0))
+        (flet ((probe (text)
+                 (funcall measure
+                          (lui.widgets:make-widget
+                           :kind :label :text text :font-family :monospace
+                           :font-size (getf defaults :font-size 16)
+                           :font-weight (getf defaults :font-weight :normal))
+                          nil)))
+          (multiple-value-bind (advance line-height) (probe "M")
+            (let ((columns (max 1 (floor available (max 1 advance)))))
+              (setf (browser-rows state)
+                    (coerce
+                     (loop :for index :in (browser-matches state)
+                           :for entry := (aref (browser-entries state) index)
+                           :for title := (if (browser-package state)
+                                             (getf entry :name)
+                                             (entry-title entry))
+                           :for caption := (wrap-symbol title columns)
+                           :for height :=
+                           (+ (if text-p 1 12)
+                              (* line-height
+                                 (1+ (count #\Newline caption))))
+                           :collect (prog1 (list index caption top height)
+                                      (incf top height)))
+                     'vector)))))
+        (setf (browser-row-key state) key)))
+    (browser-rows state)))
+
 (defun navigation (state)
   (lui:panel (lui:opt :id :docs-navigation
-                      :width (fixed
-                              (min (units (if (< (context-width *context*)
-                                                 (units 105)) 18 28))
-                                   (* 0.3 (context-width *context*))))
+                      :width (fixed (navigation-width))
                       :height (grow) :scroll-p t :padding (units 1)
                       :gap (units 0.5) :opacity 1 :frost 0)
     (lui:label "Guides")
@@ -157,22 +218,29 @@
 (defun entry-list (state height)
   (lui:panel (lui:opt :id :docs-entries :width (grow) :height height
                       :scroll-p t :padding (units 0.5) :opacity 1 :frost 0)
-    (let* ((matches (browser-matches state)) (size (units 3))
+    (let* ((rows (symbol-rows state)) (count (length rows))
            (offset (nth-value 1 (scroll-position :docs-entries)))
            (viewport (previous-box :docs-entries))
-           (start (max 0 (floor offset size)))
-           (end (min (length matches)
-                     (+ start 2 (ceiling (if viewport (box-height viewport)
-                                             (units 18)) size)))))
-      (emit (make-element
-             :height (fixed (* (min start (length matches)) size))))
-      (loop :for index :in (subseq matches (min start (length matches)) end)
-            :for entry := (aref (browser-entries state) index)
+           (bottom (+ offset (if viewport (box-height viewport) (units 18))))
+           (start (max 0 (1- (or (position-if
+                                  (lambda (row)
+                                    (> (+ (third row) (fourth row)) offset))
+                                  rows) count))))
+           (end (min count (1+ (or (position-if
+                                    (lambda (row) (>= (third row) bottom))
+                                    rows :start start) count))))
+           (total (if (plusp count)
+                      (+ (third (aref rows (1- count)))
+                         (fourth (aref rows (1- count)))) 0)))
+      (emit (make-element :height (fixed (if (< start count)
+                                             (third (aref rows start))
+                                            total))))
+      (loop :for i :from start :below end
+            :for (index caption top height) := (aref rows i)
             :do (when (lui:list-item
-                       (list :docs-entry index)
-                       (if (browser-package state) (getf entry :name)
-                           (entry-title entry))
-                       (lui:opt :width (grow) :height (fixed size)
+                       (list :docs-entry index) caption
+                       (lui:opt :width (grow) :height (fixed height)
+                                :font-family :monospace
                                 :selected-p
                                 (and (null (browser-guide state))
                                      (= index (browser-selected state)))))
@@ -181,8 +249,12 @@
                         (browser-symbols-p state) nil)
                   (request-frame)
                   (scroll-to :docs-detail 0 0)))
-      (emit (make-element :height (fixed (* (- (length matches) end) size))))
-      (when (null matches) (lui:label "No matching entries.")))))
+      (emit (make-element
+             :height (fixed (- total (if (plusp end)
+                                         (+ (third (aref rows (1- end)))
+                                            (fourth (aref rows (1- end))))
+                                        0)))))
+      (when (zerop count) (lui:label "No matching entries.")))))
 
 (defparameter *preview-kinds*
   '(("LABEL" . :label) ("BUTTON" . :button) ("TAB" . :tab)
@@ -340,7 +412,8 @@
   (lui:label (format nil "~D API entries" (length (browser-matches state)))))
 
 (defun references (state)
-  (column (:width (fixed (units 26)) :height (grow) :gap (units 0.5))
+  (column (:width (fixed (reference-width)) :height (grow)
+                  :gap (units 0.5))
     (search-reference state)
     (entry-list state (grow))))
 

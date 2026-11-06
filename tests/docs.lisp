@@ -107,7 +107,53 @@
       (assert (node-with-id context :docs-entries))
       (assert (null (node-with-id context :docs-detail))))))
 
+(defun test-symbol-wrapping ()
+  (assert (equal (format nil "lui:AVAILABLE-~%BACKENDS")
+                 (lui.docs::wrap-symbol "lui:AVAILABLE-BACKENDS" 18)))
+  (assert (equal (format nil "abcdef~%ghij")
+                 (lui.docs::wrap-symbol "abcdefghij" 6)))
+  (let* ((lui:*unit* 8)
+         (title "lui:AN-EXCEPTIONALLY-LONG-PUBLIC-SYMBOL-WITHOUT-TRUNCATION")
+         (draw (lui.docs:make-docs
+                :entries (list (list :package "lui" :name (subseq title 4)
+                                     :kind :function :signature "()"
+                                     :documentation "A long entry."))))
+         (context
+           (make-context
+            :measure
+            (lambda (widget width)
+              (let* ((extra (if (eq (widget-kind widget) :label) 0 24))
+                     (lines (text-lines (widget-text widget)
+                                        (when width
+                                          (/ (max 1 (- width extra)) 8)))))
+                (values (+ extra (* 8 (reduce #'max lines :key #'length)))
+                        (+ extra (* 16 (length lines))))))))
+         (previous nil))
+    (dolist (width '(720 1000 520 720))
+      (with-frame (context width 600) (funcall draw))
+      (when (< width 640)
+        (with-frame (context width 600
+                             :events (list (make-event
+                                            :kind :activate
+                                            :id '(:docs-package nil))))
+          (funcall draw)))
+      (let* ((row (node-with-id context '(:docs-entry 0)))
+             (caption (widget-text (element-content row)))
+             (lines (text-lines caption nil)))
+        (assert (string= title (remove #\Newline caption)))
+        (assert (> (length lines) 1))
+        ;; Include both DOM padding and the narrower native text insets.
+        (assert (<= (+ 24 (* 8 (reduce #'max lines :key #'length)))
+                    (+ 0.001 (box-width (element-box row)))))
+        (assert (>= (box-height (element-box row))
+                    (+ 12 (* 16 (length lines)))))
+      (let ((pane (node-with-id context :docs-entries)))
+        (when (and previous (= width 1000))
+          (assert (> (box-width (element-box pane)) previous)))
+        (setf previous (box-width (element-box pane))))))))
+
 (defun run-tests ()
+  (test-symbol-wrapping)
   (test-live-widgets)
   (test-narrow-reference)
   (let* ((lui:*unit* 1)
