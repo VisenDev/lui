@@ -1,5 +1,6 @@
 (defpackage #:lui.web
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui)
+  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui
+        #:lui.web.style)
   (:export #:mount #:unmount #:refresh))
 
 (in-package #:lui.web)
@@ -45,31 +46,6 @@
                            (jscl/ffi:oget rect "left"))
                      :y (- (jscl/ffi:oget event "clientY")
                            (jscl/ffi:oget rect "top"))))))
-
-(fn node-cache (node (name string))
-  (let ((cache (jscl/ffi:oget node name)))
-    (if (eq cache #j:undefined)
-        (setf (jscl/ffi:oget node name) (jscl/ffi:new #j:Object))
-        cache)))
-
-(fn style (node (name string) (value string))
-  (let ((cache (node-cache node "luiStyles"))
-        (native (jscl/ffi:jsstring value)))
-    (unless (eq native (jscl/ffi:oget cache name))
-      ((jscl/ffi:oget node "style" "setProperty")
-       (jscl/ffi:jsstring name) native)
-      (setf (jscl/ffi:oget cache name) native))))
-
-(fn px ((value real))
-  (jscl/ffi:clstring
-   ((jscl/ffi:oget (#j:String value) "concat") #j"px")))
-
-(fn attribute (node (name string) (value string))
-  (let ((cache (node-cache node "luiAttributes"))
-        (native (jscl/ffi:jsstring value)))
-    (unless (eq native (jscl/ffi:oget cache name))
-      ((jscl/ffi:oget node "setAttribute") (jscl/ffi:jsstring name) native)
-      (setf (jscl/ffi:oget cache name) native))))
 
 (fn property (node (name string) value)
   (unless (eq value (jscl/ffi:oget node name))
@@ -446,6 +422,7 @@
                 (widget-font-size widget) (widget-radius widget)
                 (widget-frost widget)
                 (widget-opacity widget) (widget-disabled-p widget)
+                (widget-web-style widget) (toolkit-revision)
                 (jscl/ffi:jsstring (widget-foreground widget))
                 (jscl/ffi:jsstring (widget-background widget))
                 (jscl/ffi:jsstring (widget-accent widget))
@@ -468,11 +445,8 @@
          (dom (widget-node app node key))
          (kind (widget-kind widget))
          (control (if (eq kind :checkbox)
-                      (jscl/ffi:oget dom "firstElementChild")
-                      dom))
-         (box (element-box node))
-         (clip (element-clip node))
-         (glass (eq (widget-style widget) :glass)))
+                      (jscl/ffi:oget dom "firstElementChild") dom))
+         (box (element-box node)) (clip (element-clip node)))
     (style dom "display"
            (if (and (plusp (box-width clip)) (plusp (box-height clip)))
                (if (eq kind :checkbox) "flex" "block") "none"))
@@ -484,6 +458,20 @@
                  (same-signature-p signature
                                    (jscl/ffi:oget dom "luiSignature")))
         (return-from update-node dom))
+      ;; Hooks may write raw DOM styles. Replacing/removing one must restore
+      ;; defaults rather than trusting the previous inline-style cache.
+      (unless (and (eql (toolkit-revision)
+                        (jscl/ffi:oget dom "luiStyleRevision"))
+                   (eq (widget-web-style widget)
+                       (jscl/ffi:oget dom "luiWidgetStyle"))
+                   (eq (widget-style widget)
+                       (jscl/ffi:oget dom "luiToolkit")))
+        (setf (jscl/ffi:oget dom "style" "cssText") #j""
+              (jscl/ffi:oget dom "luiStyles") #j:undefined
+              (jscl/ffi:oget dom "luiAttributes") #j:undefined
+              (jscl/ffi:oget dom "luiStyleRevision") (toolkit-revision)
+              (jscl/ffi:oget dom "luiWidgetStyle") (widget-web-style widget)
+              (jscl/ffi:oget dom "luiToolkit") (widget-style widget)))
       (setf (jscl/ffi:oget dom "luiSignature") signature))
     (when (and (eq kind :panel) (= 1 (widget-opacity widget))
                (= 0 (box-x box) (box-y box))
@@ -493,8 +481,18 @@
     (attribute dom "data-lui-interactive"
                (if (element-interactive-p node) "true" "false"))
     (attribute dom "data-lui-style"
-               (case (widget-style widget)
-                 (:garnet "garnet") (:motif "motif") (otherwise "glass")))
+               (string-downcase (symbol-name (widget-style widget))))
+    (attribute dom "data-lui-surface"
+               (string-downcase (symbol-name
+                                 (toolkit-surface (widget-style widget)))))
+    (attribute dom "class"
+               (case kind
+                 ((:button :tab) "lui-control")
+                 (:cell "lui-cell") (:list-item "lui-control lui-option")
+                 (:checkbox "lui-check") (:slider "lui-range")
+                 (:highlight "lui-highlight") (:splitter "lui-splitter")
+                 (otherwise "")))
+    (style dom "display" (if (eq kind :checkbox) "flex" "block"))
     (style dom "position" "absolute")
     (style dom "box-sizing" "border-box")
     (style dom "margin" "0")
@@ -505,9 +503,8 @@
     (style dom "width" (px (box-width box)))
     (style dom "height" (px (box-height box)))
     (style dom "font-size" (px (widget-font-size widget)))
-    (style dom "color"
-           (if (widget-disabled-p widget)
-               "#777777" (widget-foreground widget)))
+    (style dom "color" (if (widget-disabled-p widget)
+                           "#777777" (widget-foreground widget)))
     (let ((accent (if (widget-disabled-p widget)
                       "#999999" (widget-accent widget))))
       (style dom "accent-color" accent)
@@ -515,137 +512,90 @@
     (style dom "white-space" "pre-wrap")
     (style dom "text-align" "left")
     (style dom "line-height" "normal")
-    (when (member kind '(:button :tab :text-field :checkbox))
-      (style dom "padding" (if glass "5px 11px" "4px 10px")))
     (style dom "clip-path"
-           (format nil "inset(~A ~A ~A ~A)" (px (- (box-y clip) (box-y box)))
-                   (px
-                    (max 0
-                         (- (+ (box-x box) (box-width box))
-                            (+ (box-x clip) (box-width clip)))))
-                   (px
-                    (max 0
-                         (- (+ (box-y box) (box-height box))
-                            (+ (box-y clip) (box-height clip)))))
+           (format nil "inset(~A ~A ~A ~A)"
+                   (px (- (box-y clip) (box-y box)))
+                   (px (max 0 (- (+ (box-x box) (box-width box))
+                                 (+ (box-x clip) (box-width clip)))))
+                   (px (max 0 (- (+ (box-y box) (box-height box))
+                                 (+ (box-y clip) (box-height clip)))))
                    (px (- (box-x clip) (box-x box)))))
-    (when (eq kind :splitter)
-      (attribute dom "class" "lui-splitter")
-      (attribute dom "aria-orientation" "vertical")
-      (attribute dom "aria-label"
-                 (if (plusp (length (widget-text widget)))
-                     (widget-text widget) "Panel width"))
-      (attribute dom "aria-valuemin" "0")
-      (attribute dom "aria-valuemax" "1")
-      (attribute dom "aria-valuenow"
-                 (jscl/ffi:clstring (#j:String (widget-value widget))))
-      (style dom "cursor" "ew-resize")
-      (style dom "user-select" "none")
-      (style dom "background"
-             (format nil "linear-gradient(90deg, transparent calc(50% - 1px), ~A calc(50% - 1px), ~A calc(50% + 1px), transparent calc(50% + 1px))"
-                     (widget-accent widget) (widget-accent widget)))
-      (return-from update-node dom))
-    (when (eq kind :highlight)
-      (attribute dom "class" "lui-highlight")
-      (attribute dom "aria-hidden" "true")
-      (style dom "pointer-events" "none")
-      (style dom "user-select" "none")
-      (style dom "padding" "0")
-      (style dom "border-radius" "0")
-      (style dom "border"
-             (concatenate 'string "1px solid " (widget-accent widget)))
-      (style dom "background"
-             (format nil "color-mix(in srgb, ~A ~D%, transparent)"
-                     (widget-background widget)
-                     (round (* 100 (widget-opacity widget)))))
-      (return-from update-node dom))
-    (unless (member kind '(:text-field :slider :checkbox :canvas :gauge))
+    (unless (member kind '(:text-field :slider :checkbox :canvas :gauge
+                          :highlight :splitter))
       (node-text dom (widget-text widget)))
-    (unless (eq kind :label)
+    (unless (member kind '(:label :highlight :splitter))
       (property control "disabled"
                 (jscl/ffi:jsbool (widget-disabled-p widget)))
       (attribute control "aria-label"
                  (if (plusp (length (widget-text widget)))
                      (widget-text widget)
                      (if (eq kind :cell) "Empty cell"
-                         (princ-to-string key))))
-      (style dom "border-radius" (px (if glass (widget-radius widget) 0)))
-      (style dom "border"
-             (if glass
-                 (if (widget-disabled-p widget)
-                     "1px solid #ffffff26" "1px solid #ffffff66")
-                 "2px outset #dddddd"))
-      (style dom "background"
-             (if glass
-                 (format nil "color-mix(in srgb, ~A ~D%, transparent)"
-                         (widget-background widget)
-                         (round (* 100 (widget-opacity widget))))
-                 (widget-background widget)))
-      (style dom "backdrop-filter"
-             (if (and glass (< (widget-opacity widget) 1))
-                 (format nil "blur(~A) saturate(150%)"
-                         (px (widget-frost widget))) "none"))
-      (style dom "box-shadow"
-             (if glass "inset 0 1px 1px #ffffff88, 0 3px 12px #00000044"
-                 "none")))
+                         (princ-to-string key)))))
     (case kind
+      (:splitter
+       (attribute dom "aria-orientation" "vertical")
+       (attribute dom "aria-label" (if (plusp (length (widget-text widget)))
+                                       (widget-text widget) "Panel width"))
+       (attribute dom "aria-valuemin" "0")
+       (attribute dom "aria-valuemax" "1")
+       (attribute dom "aria-valuenow"
+                  (jscl/ffi:clstring (#j:String (widget-value widget))))
+       (style dom "cursor" "ew-resize")
+       (style dom "user-select" "none")
+       (style dom "background"
+              (format nil "linear-gradient(90deg, transparent calc(50% - 1px), ~A calc(50% - 1px), ~A calc(50% + 1px), transparent calc(50% + 1px))"
+                      (widget-accent widget) (widget-accent widget))))
+      (:highlight
+       (attribute dom "aria-hidden" "true")
+       (style dom "pointer-events" "none")
+       (style dom "user-select" "none")
+       (style dom "padding" "0")
+       (style dom "border-radius" "0")
+       (style dom "border"
+              (concatenate 'string "1px solid " (widget-accent widget)))
+       (style dom "background"
+              (format nil "color-mix(in srgb, ~A ~D%, transparent)"
+                      (widget-background widget)
+                      (round (* 100 (widget-opacity widget))))))
       (:tab
        (attribute dom "aria-selected"
                   (if (widget-value widget) "true" "false"))
        (attribute dom "tabindex"
                   (if (and (widget-value widget)
-                           (not (widget-disabled-p widget))) "0" "-1"))
-       (when (widget-value widget)
-         (style dom "box-shadow"
-                (format nil "inset 0 -3px 0 ~A" (widget-accent widget)))))
+                           (not (widget-disabled-p widget))) "0" "-1")))
+      ((:list-item :cell)
+       (attribute dom "aria-selected"
+                  (if (widget-value widget) "true" "false")))
       (:checkbox
-       (style dom "display" "flex")
+       (attribute control "class" "lui-control")
        (style dom "align-items" "center")
        (style dom "gap" "8px")
-       (attribute dom "class"
-                  (if glass "lui-check" "lui-check lui-motif-check"))
-       (attribute control "class" "lui-control")
-       (unless glass
-         (style dom "padding" "6px 12px")
-         (style dom "border" "none")
-         (style dom "background" "transparent")
-         (style dom "box-shadow" "none")
-         (style dom "backdrop-filter" "none"))
        (style control "margin" "0")
        (style control "width" "16px")
        (style control "height" "16px")
        (style control "flex-shrink" "0")
-       (setf (jscl/ffi:oget control "checked")
-             (jscl/ffi:jsbool (widget-value widget))
-             (jscl/ffi:oget dom "lastElementChild" "textContent")
-             (jscl/ffi:jsstring (widget-text widget))))
+       (property control "checked" (jscl/ffi:jsbool (widget-value widget)))
+       (node-text (jscl/ffi:oget dom "lastElementChild")
+                  (widget-text widget)))
       (:slider
-       (attribute dom "class" "lui-range")
        (style dom "appearance" "none")
        (style dom "padding" "0 7px")
-       (style dom "--lui-thumb-radius" (if glass "7px" "0"))
        (style dom "--lui-fill"
-              (concatenate 'string
-                           (jscl/ffi:clstring
-                            (#j:String
-                             (* 100 (/ (- (widget-value widget)
-                                          (widget-minimum widget))
-                                       (- (widget-maximum widget)
-                                          (widget-minimum widget))))))
-                           "%"))
+              (jscl/ffi:clstring
+               ((jscl/ffi:oget
+                 (#j:String (* 100 (/ (- (widget-value widget)
+                                        (widget-minimum widget))
+                                     (- (widget-maximum widget)
+                                        (widget-minimum widget)))))
+                 "concat") #j"%")))
        (attribute dom "min" (princ-to-string (widget-minimum widget)))
        (attribute dom "max" (princ-to-string (widget-maximum widget)))
        (attribute dom "step" (princ-to-string (widget-step widget)))
-       (setf (jscl/ffi:oget dom "valueAsNumber") (widget-value widget)))
+       (property dom "valueAsNumber" (widget-value widget)))
       (:text-field
        (style dom "appearance" "none")
-       (unless
-           (or (jscl/ffi:clbool (jscl/ffi:oget dom "luiComposing"))
-               (string= (widget-value widget)
-                        (jscl/ffi:clstring (jscl/ffi:oget dom "value"))))
-         (setf (jscl/ffi:oget dom "value")
-               (jscl/ffi:jsstring (widget-value widget)))))
-      (otherwise nil))
-    (case kind
+       (unless (jscl/ffi:clbool (jscl/ffi:oget dom "luiComposing"))
+         (property dom "value" (jscl/ffi:jsstring (widget-value widget)))))
       (:canvas (update-canvas dom widget))
       (:gauge
        (attribute dom "role" "progressbar")
@@ -663,105 +613,13 @@
                                 "concat") #j"%")))
          (style fill "background" (widget-accent widget))
          (style fill "border-radius" "inherit"))))
-    (when (eq (widget-style widget) :garnet)
-      (style dom "border-radius" "0")
-      (style dom "backdrop-filter" "none")
-      (unless (eq kind :label)
-        (style dom "background" (widget-background widget))
-        (style dom "border" "1px solid #000")
-        (style dom "box-shadow" "none"))
-      (when (member kind '(:button :tab :panel))
-        (let ((window-p (and (eq kind :panel)
-                             (= (box-width box)
-                                (context-width (web-app-context app)))
-                             (= (box-height box)
-                                (context-height (web-app-context app))))))
-          (style dom "border" (if window-p "none" "1px solid #000"))
-          (style dom "background"
-                 (if (or window-p (eq kind :panel))
-                     (widget-background widget)
-                     "linear-gradient(#fff,#fff) 4px 4px / calc(100% - 8px) calc(100% - 8px) no-repeat,repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px"))
-          (style dom "box-shadow"
-                 (if window-p "none"
-                     "inset 0 0 0 1px #000,4px 4px 0 #000"))
-          (unless window-p
-            (when (member kind '(:button :tab))
-              (style dom "padding" "3px 9px")
-              (style dom "text-align" "center"))
-            (style dom "width" (px (max 0 (- (box-width box) 4))))
-            (style dom "height" (px (max 0 (- (box-height box) 4))))
-            (style dom "clip-path"
-                   (format nil "inset(~A ~A ~A ~A)"
-                           (px (- (box-y clip) (box-y box)))
-                           (px (- (+ (box-x box) (box-width box))
-                                  (+ (box-x clip) (box-width clip)) 4))
-                           (px (- (+ (box-y box) (box-height box))
-                                  (+ (box-y clip) (box-height clip)) 4))
-                           (px (- (box-x clip) (box-x box))))))))
-      (when (and (eq kind :tab) (widget-value widget))
-        (style dom "background" "#000")
-        (style dom "color" "#fff"))
-      (when (eq kind :text-field)
-        (style dom "padding" "5px"))
-      (when (eq kind :checkbox)
-        (attribute dom "class" "lui-check lui-garnet-check")
-        (style dom "padding" "3px 4px 3px 12px")
-        (style dom "gap" "12px")
-        (style dom "border" "none")
-        (style dom "background" "transparent")
-        (style dom "flex-direction" "row-reverse")
-        (style dom "justify-content" "flex-end")
-        (style control "width" "20px")
-        (style control "height" "20px")))
-    (when (eq kind :list-item)
-      (attribute dom "aria-selected"
-                 (if (widget-value widget) "true" "false"))
-      (let ((inset (min 11 (max 0 (/ (- (box-width box)
-                                         (widget-font-size widget)) 2)))))
-        (style dom "padding" (concatenate 'string "5px " (px inset)))
-        (style dom "text-align" (if (< inset 11) "center" "left")))
-      (style dom "border" "none")
-      (style dom "border-radius" "0")
-      (style dom "box-shadow" "none")
-      (style dom "backdrop-filter" "none")
-      (style dom "background"
-             (if (widget-value widget) (widget-accent widget) "transparent"))
-      (when (and (widget-value widget) (not (widget-disabled-p widget)))
-        (style dom "color" "#ffffff")))
-    (when (eq kind :cell)
-      (attribute dom "aria-selected"
-                 (if (widget-value widget) "true" "false"))
-      (style dom "background"
-             (if (widget-value widget) "#e7effa"
-                 (widget-background widget)))
-      (style dom "color" (widget-foreground widget))
-      (style dom "outline"
-             (if (widget-value widget)
-                 (concatenate 'string "2px solid " (widget-accent widget))
-                 "none"))
-      (style dom "outline-offset" "-2px")
-      (style dom "border" "1px solid #b8b8b8")
-      (style dom "border-radius" "0")
-      (style dom "padding" "2px 4px")
-      (style dom "text-align" "left")
-      (style dom "cursor" (if (widget-disabled-p widget) "default" "pointer"))
-      (style dom "opacity" "1")
-      (when (widget-disabled-p widget) (attribute dom "tabindex" "-1"))
-      (style dom "box-shadow" "none")
-      (style dom "backdrop-filter" "none"))
-    (unless (eq (widget-style widget) :garnet)
-      (style dom "flex-direction" "row")
-      (style dom "justify-content" "normal"))
-    (when (member kind '(:canvas :gauge))
-      (style dom "padding" "0")
-      (style dom "background" (widget-background widget))
-      (style dom "backdrop-filter" "none")
-      (style dom "box-shadow" "none")
-      (style dom "border"
-             (if (eq kind :canvas) "none"
-                 (concatenate 'string "1px solid "
-                              (widget-foreground widget)))))
-    (when (eq kind :canvas) (style dom "border-radius" "0"))
+    (finish-control-style dom widget node)
+    (let ((*context* (web-app-context app)))
+      (map-toolkit-web-styles
+       (widget-style widget)
+       (lambda (callback) (funcall callback dom widget node)))
+      (when (widget-web-style widget)
+        (funcall (widget-web-style widget) dom widget node)))
     dom))
 
 (fn update-canvas (dom (widget widget))
@@ -962,24 +820,7 @@
     (style measure "position" "absolute")
     (style measure "visibility" "hidden")
     (style measure "pointer-events" "none")
-    (setf (jscl/ffi:oget sheet "textContent")
-          #j".lui-control{cursor:pointer;transition:filter 100ms,transform 100ms}.lui-control:hover:enabled{filter:brightness(1.2)}.lui-control:active:enabled{filter:brightness(.85);transform:translateY(1px)}.lui-control:disabled{opacity:1;cursor:not-allowed}.lui-control:focus-visible{outline:2px solid var(--lui-accent);outline-offset:-3px}.lui-range{cursor:pointer}.lui-range:focus-visible{outline:2px solid var(--lui-accent);outline-offset:-3px}.lui-range:disabled{cursor:not-allowed;--lui-accent:#999}.lui-range::-webkit-slider-runnable-track{height:4px;border:0;border-radius:2px;background:linear-gradient(to right,var(--lui-accent) var(--lui-fill),#777 var(--lui-fill))}.lui-range::-webkit-slider-thumb{appearance:none;width:14px;height:14px;margin-top:-5px;border:0;border-radius:var(--lui-thumb-radius);background:#fff}.lui-range:disabled::-webkit-slider-thumb{background:#a0a0a0}.lui-range::-moz-range-track{height:4px;border:0;border-radius:2px;background:#777}.lui-range::-moz-range-progress{height:4px;background:var(--lui-accent)}.lui-range::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:var(--lui-thumb-radius);background:#fff}.lui-range:disabled::-moz-range-thumb{background:#a0a0a0}.lui-check{cursor:pointer}.lui-check:has(:disabled){cursor:not-allowed;color:#777}.lui-check:hover input:enabled{filter:brightness(1.2)}.lui-motif-check input{appearance:none;background:#b8b8b8;border:2px outset #ddd;border-radius:0;display:grid;place-content:center}.lui-motif-check input:checked{border-style:inset}.lui-motif-check input:checked::after{content:\"\";width:8px;height:4px;border-left:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);margin-top:-3px}")
-    (setf (jscl/ffi:oget sheet "textContent")
-          (#j:String:prototype:concat:call
-           (jscl/ffi:oget sheet "textContent")
-           #j"[data-lui-style=garnet].lui-control:hover:enabled{filter:none;background:#eee!important}[data-lui-style=garnet].lui-control:active:enabled{filter:none;transform:translate(4px,4px);box-shadow:inset 0 0 0 1px #000!important}.lui-garnet-check:active input:enabled,.lui-garnet-check input:active:enabled{filter:none;transform:translate(4px,4px);box-shadow:0 0 0 #000}.lui-garnet-check input{appearance:none;transition:none;background:linear-gradient(#fff,#fff) 3px 3px / calc(100% - 6px) calc(100% - 6px) no-repeat,repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px;border:1px solid #000;border-radius:0;box-shadow:4px 4px 0 #000;display:grid;place-content:center}.lui-garnet-check input:checked::after{content:\"\";width:10px;height:10px;background:linear-gradient(45deg,transparent 44%,currentColor 44%,currentColor 56%,transparent 56%),linear-gradient(-45deg,transparent 44%,currentColor 44%,currentColor 56%,transparent 56%)}[data-lui-style=garnet].lui-range::-webkit-slider-runnable-track{height:12px;border:1px solid #000;border-radius:0;background:repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px}[data-lui-style=garnet].lui-range::-webkit-slider-thumb{width:18px;height:18px;margin-top:-4px;border:1px solid #000;border-radius:0;background:#fff;box-shadow:3px 3px 0 #000}[data-lui-style=garnet].lui-range::-moz-range-track{height:12px;border:1px solid #000;border-radius:0;background:repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0 / 2px 2px}[data-lui-style=garnet].lui-range::-moz-range-progress{background:transparent}[data-lui-style=garnet].lui-range::-moz-range-thumb{width:18px;height:18px;border:1px solid #000;border-radius:0;background:#fff;box-shadow:3px 3px 0 #000}"))
-    (setf (jscl/ffi:oget sheet "textContent")
-          (#j:String:prototype:concat:call
-           (jscl/ffi:oget sheet "textContent")
-           #j".lui-option:active:enabled{transform:none;filter:none}.lui-option[aria-selected=false]:hover:enabled{filter:none;background:color-mix(in srgb,var(--lui-accent) 14%,transparent)!important}.lui-option[aria-selected=true]:hover:enabled{filter:none;background:var(--lui-accent)!important}"))
-    (setf (jscl/ffi:oget sheet "textContent")
-          (#j:String:prototype:concat:call
-           (jscl/ffi:oget sheet "textContent")
-           #j".lui-cell:focus-visible{outline:2px solid var(--lui-accent);outline-offset:-2px}"))
-    (setf (jscl/ffi:oget sheet "textContent")
-          (#j:String:prototype:concat:call
-           (jscl/ffi:oget sheet "textContent")
-           #j".lui-splitter{opacity:.5}.lui-splitter:hover,.lui-splitter:active,.lui-splitter:focus-visible{opacity:1}.lui-splitter:focus-visible{outline:1px solid var(--lui-accent);outline-offset:-2px}"))
+    (setf (jscl/ffi:oget sheet "textContent") (style-sheets))
     ((jscl/ffi:oget host "appendChild") sheet)
     ((jscl/ffi:oget host "appendChild") measure)
     (setf (web-app-style-node app) sheet

@@ -52,7 +52,8 @@ class WebTests(unittest.TestCase):
         # The runtime compiler needs the special declarations when compiling
         # new fixture callbacks against an already compiled application.
         self.page.evaluate("""() => {jscl.evaluateString(`(declaim (special
-            lui.frame:*context* lui.frame:*parent* lui:*unit*))`);}""")
+            lui.frame:*context* lui.frame:*parent* lui:*unit*
+            lui::*collection* lui::*definition*))`);}""")
 
     def tearDown(self):
         self.page.close()
@@ -1036,6 +1037,84 @@ class WebTests(unittest.TestCase):
             !!document.elementFromPoint(x,y).closest('button')""",
             {"x": box["x"] + 20, "y": box["y"] + 2}))
         self.lisp('(lui.web:unmount *clip-app*)')
+
+    def test_custom_toolkit_styles_inherit_and_widget_hook_runs_last(self):
+        self.lisp('''
+          (lui:register-toolkit :web-parent :parent :motif
+            :defaults '(:foreground "#112233" :background "#334455")
+            :web-style (lambda (dom widget element)
+              (assert (eq :button (lui.widgets:widget-kind widget)))
+              (assert (typep element 'lui.layout:element))
+              (setf (jscl/ffi:oget dom "dataset" "order") #j"parent"
+                    (jscl/ffi:oget dom "style" "borderColor") #j"#cc0000")))
+          (lui:register-toolkit :web-child :parent :web-parent
+            :web-style (lambda (dom widget element)
+              (declare (ignore widget element))
+              (setf (jscl/ffi:oget dom "dataset" "order")
+                    ((jscl/ffi:oget (jscl/ffi:oget dom "dataset" "order")
+                                   "concat") #j"-child")
+                    (jscl/ffi:oget dom "style" "borderWidth") #j"3px")))
+          (lui:register-toolkit :web-garnet :parent :garnet)
+          (defvar *widget-style*
+            (lambda (dom widget element)
+              (declare (ignore widget element))
+              (setf (jscl/ffi:oget dom "dataset" "order")
+                    ((jscl/ffi:oget (jscl/ffi:oget dom "dataset" "order")
+                                   "concat") #j"-widget")
+                    (jscl/ffi:oget dom "style" "color") #j"#ff0000"
+                    (jscl/ffi:oget dom "style" "letterSpacing") #j"2px")))
+          (defvar *custom-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *custom-host* "id") #j"custom-host"
+                (jscl/ffi:oget *custom-host* "style" "width") #j"500px"
+                (jscl/ffi:oget *custom-host* "style" "height") #j"120px")
+          (#j:document:body:appendChild *custom-host*)
+          (defvar *custom-app*
+            (lui.web:mount *custom-host*
+              (lambda ()
+                (lui:with-toolkit (:web-child)
+                  (lui:button :custom "Custom style"
+                    (lui:opt :web-style *widget-style*)))
+                (lui:with-toolkit (:web-garnet)
+                  (lui:button :inherited "Inherited Garnet")))))
+        ''')
+        custom = self.page.get_by_role("button", name="Custom style")
+        expect(custom).to_have_attribute("data-order", "parent-child-widget")
+        expect(custom).to_have_attribute("data-lui-surface", "motif")
+        expect(custom).to_have_css("border-top-style", "outset")
+        expect(custom).to_have_css("border-top-width", "3px")
+        expect(custom).to_have_css("border-top-color", "rgb(204, 0, 0)")
+        expect(custom).to_have_css("background-color", "rgb(51, 68, 85)")
+        expect(custom).to_have_css("color", "rgb(255, 0, 0)")
+        self.lisp('''
+          (setf (lui:toolkit-web-style :web-parent)
+            (lambda (dom widget element)
+              (declare (ignore widget element))
+              (setf (jscl/ffi:oget dom "dataset" "order") #j"replacement"
+                    (jscl/ffi:oget dom "style" "borderColor") #j"#00aa00")))
+          (lui.web:refresh *custom-app*)
+        ''')
+        expect(custom).to_have_attribute("data-order", "replacement-child-widget")
+        expect(custom).to_have_css("border-top-color", "rgb(0, 170, 0)")
+        self.lisp('''(setf *widget-style* nil)
+          (lui.web:refresh *custom-app*)''')
+        expect(custom).to_have_attribute("data-order", "replacement-child")
+        expect(custom).to_have_css("color", "rgb(17, 34, 51)")
+        expect(custom).to_have_css("letter-spacing", "normal")
+        inherited = self.page.get_by_role("button", name="Inherited Garnet")
+        expect(inherited).to_have_attribute("data-lui-surface", "garnet")
+        expect(inherited).to_have_css("border-radius", "0px")
+        self.assertIn("repeating-conic-gradient", inherited.evaluate(
+            "n => getComputedStyle(n).backgroundImage"))
+        inherited.hover()
+        self.page.mouse.down()
+        try:
+            self.page.wait_for_function("""() => getComputedStyle(
+                document.querySelector('#custom-host button:last-child'))
+                .transform === 'matrix(1, 0, 0, 1, 4, 4)'""")
+        finally:
+            self.page.mouse.up()
+        self.lisp('(lui.web:unmount *custom-app*)')
+        expect(self.page.locator("#custom-host > *")).to_have_count(0)
 
     def test_garnet_checkbox_pressed_face_and_stationary_shadow(self):
         self.lisp('''
