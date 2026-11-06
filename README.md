@@ -322,8 +322,8 @@ painting use the same CSS family and weight.
 | `lui/win32` | Windows User32, GDI32, Kernel32, and GDI+ |
 | `lui/cocoa` | macOS AppKit and Objective-C runtime; SBCL only |
 
-On Linux, the aggregate chooses Wayland when `WAYLAND_DISPLAY` is set,
-X11 when only `DISPLAY` is set, and the terminal when both are absent.
+On Linux, the aggregate prefers a Wayland session with a socket, then X11
+when `DISPLAY` is set, and otherwise uses the terminal.
 Pass `:backend` to `lui:run` to choose a loaded backend explicitly.
 
 To load a single graphical backend for the gallery:
