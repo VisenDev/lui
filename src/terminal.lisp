@@ -74,7 +74,7 @@
          (length (max 1 (- width (text-width prefix) (length suffix))))
          (position (round (* fraction (1- length))))
          (track (make-string length :initial-element #\-)))
-    (fill track #\= :end position)
+    (dotimes (index position) (setf (char track index) #\=))
     (setf (char track position) #\#)
     (values (concatenate 'string prefix track suffix)
             (text-width prefix) length)))
