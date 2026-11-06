@@ -594,31 +594,10 @@
                                "initWithFrame:" rect frame)
                       "drawing view"))
                (install-pointer-tracking (cocoa-app-view *app*) frame)
-               ;; Native AppKit backdrop material; no desktop capture or pixels.
-               (let ((backdrop
-                      (require-object
-                       (message object
-                                (message object
-                                         (objc-class "NSVisualEffectView")
-                                         "alloc")
-                                "initWithFrame:" rect frame)
-                       "backdrop view")))
-                 (unwind-protect
-                      (progn
-                        (message sb-alien:void backdrop "setMaterial:"
-                                 sb-alien:long 13)
-                        (message sb-alien:void backdrop "setBlendingMode:"
-                                 sb-alien:long 0)
-                        (message sb-alien:void backdrop "setState:"
-                                 sb-alien:long 1)
-                        (message sb-alien:void (cocoa-app-view *app*)
-                                 "setAutoresizingMask:"
-                                 sb-alien:unsigned-long 18)
-                        (message sb-alien:void backdrop "addSubview:"
-                                 object (cocoa-app-view *app*))
-                        (message sb-alien:void (cocoa-app-window *app*)
-                                 "setContentView:" object backdrop))
-                   (message sb-alien:void backdrop "release"))))
+               (message sb-alien:void (cocoa-app-view *app*)
+                        "setWantsLayer:" objc-bool 1)
+               (message sb-alien:void (cocoa-app-window *app*)
+                        "setContentView:" object (cocoa-app-view *app*)))
              (let ((window (cocoa-app-window *app*)))
                (message sb-alien:void window "setTitle:"
                         object (ns-string title))

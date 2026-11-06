@@ -211,6 +211,12 @@
   (dolist (text '("2023-02-29T12:00" "2024-04-31T12:00"
                   "2024-01-01T24:00" "0000-01-01T00:00"))
     (assert (null (lui::picker-parts text :datetime))))
+  (let ((context (lui.terminal:make-terminal-context)))
+    (with-frame (context 56 22)
+      (lui:date-time-picker :appointment "2026-11-06T12:30"))
+    (let ((screen (lui.terminal:render-terminal context)))
+      (dolist (text '("2026-11-06T12:30" "( Choose date )" "Hour" "Minute"))
+        (assert (search text screen)))))
   (assert (= 4 (lui::calendar-start 2026 1)))
   (let ((context (lui.terminal:make-terminal-context))
         (value "2024-02-28"))

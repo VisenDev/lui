@@ -15,7 +15,8 @@
   context
   (nodes (make-hash-table :test 'equal) :type hash-table)
   (tablists (make-hash-table :test 'equal) :type hash-table)
-  (measurements (make-hash-table :test 'equal) :type hash-table)
+  (measurements (jscl/ffi:new #j:Map))
+  (measurement-count 0 :type integer)
   hover-id pointer-node
   (pointer-id nil :type (or null integer))
   (events nil :type list)
@@ -285,17 +286,21 @@
   (let* ((kind (widget-kind widget))
          (text (if (eq kind :text-field)
                    (widget-value widget) (widget-text widget)))
-         (key (list kind (widget-font-size widget)
-                    (widget-font-family widget) (widget-font-weight widget)
-                    text width))
-         (cached (gethash key (web-app-measurements app))))
-    (unless cached
-      (setf cached (multiple-value-list (measure-uncached app widget width))
-            (gethash (list kind (widget-font-size widget)
-                           (widget-font-family widget)
-                           (widget-font-weight widget) (copy-seq text) width)
-                     (web-app-measurements app)) cached))
-    (values (first cached) (second cached))))
+         (cache (web-app-measurements app))
+         (key (jscl/ffi:jsstring text))
+         (bucket ((jscl/ffi:oget cache "get") key))
+         (variants (unless (eq bucket #j:undefined) bucket))
+         (shape (list kind width (widget-font-size widget)
+                      (widget-font-family widget) 
+                      (widget-font-weight widget)))
+         (entry (assoc shape variants :test #'equal)))
+    (unless entry
+      (setf entry (cons shape
+                        (multiple-value-list
+                         (measure-uncached app widget width))))
+      ((jscl/ffi:oget cache "set") key (cons entry variants))
+      (incf (web-app-measurement-count app)))
+    (values (second entry) (third entry))))
 
 (fn native-option-key ((app web-app) id event)
   (unless (or (native-application-key app id event)
@@ -868,8 +873,9 @@
          (seen (make-hash-table :test 'equal))
          (index 0))
     (setf (web-app-events app) nil)
-    (when (> (hash-table-count (web-app-measurements app)) 2048)
-      (clrhash (web-app-measurements app)))
+    (when (> (web-app-measurement-count app) 2048)
+      (setf (web-app-measurement-count app) 0)
+      ((jscl/ffi:oget (web-app-measurements app) "clear")))
     (let ((*unit* 8))
       (with-frame
           (context (jscl/ffi:oget host "clientWidth")
@@ -1051,7 +1057,7 @@
   ((jscl/ffi:oget (web-app-measure-node app) "remove"))
   ((jscl/ffi:oget (web-app-style-node app) "remove"))
   (clrhash (web-app-nodes app))
-  (clrhash (web-app-measurements app))
+  ((jscl/ffi:oget (web-app-measurements app) "clear"))
   (maphash (lambda (key group)
              (declare (ignore key))
              ((jscl/ffi:oget group "remove")))

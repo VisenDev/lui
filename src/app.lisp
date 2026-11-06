@@ -373,7 +373,7 @@ when VALUE is NIL. No timezone conversion is performed."
               (picker-state-month state) (second parts))))
     (panel (append (without-option :mode options)
                    (opt :id id :interactive-p t :keyboard-focus-p nil
-                        :gap (units 0.5)))
+                        :padding (units 1) :gap (units 0.5)))
       (let* ((draft (text-field (list id :input) (picker-state-draft state)
                                 (opt :width (lui.layout:grow)
                                      :accessible-name
