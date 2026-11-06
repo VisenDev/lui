@@ -72,8 +72,10 @@
          (suffix (if (>= width (+ (text-width prefix) (length readout) 3))
                      readout ""))
          (length (max 1 (- width (text-width prefix) (length suffix))))
-         (track (make-string length :initial-element #\─)))
-    (setf (char track (round (* fraction (1- length)))) #\#)
+         (position (round (* fraction (1- length))))
+         (track (make-string length :initial-element #\-)))
+    (fill track #\= :end position)
+    (setf (char track position) #\#)
     (values (concatenate 'string prefix track suffix)
             (text-width prefix) length)))
 
