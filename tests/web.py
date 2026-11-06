@@ -456,6 +456,13 @@ class WebTests(unittest.TestCase):
         finally:
             page.close()
 
+    def test_canvas_right_click_allows_browser_context_menu(self):
+        self.page.evaluate("""window.addEventListener("contextmenu", event => {
+            window.menuEvent = [event.target.tagName, event.defaultPrevented];
+        }, {once: true})""")
+        self.page.mouse.click(*self.point(self.widget(text="Say hello")), button="right")
+        self.assertEqual(self.page.evaluate("window.menuEvent"), ["CANVAS", False])
+
     def test_mobile_standalone_gallery_scrolls_on_canvas_swipe(self):
         page = self.browser.new_page(viewport={"width": 390, "height": 844},
                                      device_scale_factor=2, is_mobile=True,
@@ -482,6 +489,8 @@ class WebTests(unittest.TestCase):
             page.keyboard.insert_text("X")
             ui.frames()
             self.assertIn("X", ui.text_value(":NAME"))
+            expect(page.locator("main canvas")).to_have_css(
+                "-webkit-tap-highlight-color", "rgba(0, 0, 0, 0)")
             tap_button("Scroll")
             page.wait_for_function("document.documentElement.scrollHeight > innerHeight * 2")
             self.assertEqual(page.locator("main canvas").evaluate("c => c.clientHeight"),

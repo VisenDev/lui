@@ -483,7 +483,7 @@
           (jscl/ffi:oget canvas "luiApp") app
           (jscl/ffi:oget canvas "luiViewportOffset") 0)
     (setf (jscl/ffi:oget stage "style" "cssText")
-          #j"position:relative;width:100%;height:100%;overflow:hidden"
+          #j"position:relative;width:100%;height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent"
           (jscl/ffi:oget labels "style" "cssText")
           #j"position:absolute;inset:0;pointer-events:none")
     (when mobile-page-p

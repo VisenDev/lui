@@ -200,7 +200,6 @@
       (listen canvas "pointerleave"
               (lambda (event)
                 (unless pointer (pointer-event event :move))))
-      (listen canvas "contextmenu" #'stop)
       (listen host "wheel"
               (lambda (event)
                 ;; Keep browser zoom shortcuts native.
