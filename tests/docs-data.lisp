@@ -95,7 +95,15 @@
       (when (probe-file output) (delete-file output))))
   (let* ((entries (lui.docs.generator:collect-entries))
          (button (entry entries "lui" "BUTTON")))
-    (assert (> (length entries) 100))
+    (dolist (item entries)
+      (assert (plusp (length (getf item :documentation))) ()
+              "Missing docstring for ~A:~A."
+              (getf item :package) (getf item :name)))
+    (dolist (scope lui.docs.generator::*public-api*)
+      (when (listp (cdr scope))
+        (dolist (name (cdr scope))
+          (assert (entry entries (car scope) name) ()
+                  "Stale public API entry ~A:~A." (car scope) name))))
     (assert (string= "(button id text &optional options)"
                      (getf button :signature)))
     (assert (plusp (length (getf button :documentation))))
