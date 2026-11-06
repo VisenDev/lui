@@ -87,6 +87,7 @@
 (defstruct cocoa-app
   window view renderer context error
   (text-paths (make-hash-table :test 'equal) :type hash-table)
+  (shape-paths (make-hash-table :test 'equal) :type hash-table)
   (pointer-x -1 :type real) (pointer-y -1 :type real)
   (focused-p nil :type boolean)
   (buttons 0 :type integer))
@@ -133,9 +134,28 @@
                     sb-alien:double (float opacity 1.0d0))))
       (message sb-alien:void native-color "setFill"))))
 
+(fn cached-shape ((contours list))
+  (let* ((cache (cocoa-app-shape-paths *app*))
+         (cached (gethash contours cache)))
+    (or cached
+        (let ((path (make-path contours)))
+          ;; Keep stable geometry when animation introduces additional shapes.
+          (when (< (hash-table-count cache) 2048)
+            (setf (gethash (copy-tree contours) cache)
+                  (message object path "retain")))
+          path))))
+
+(fn clear-shape-paths ()
+  (let ((cache (cocoa-app-shape-paths *app*)))
+    (maphash (lambda (key path)
+               (declare (ignore key))
+               (message sb-alien:void path "release"))
+             cache)
+    (clrhash cache)))
+
 (fn cocoa-polygons ((contours list) (color string) (alpha real))
   (cocoa-color color alpha)
-  (message sb-alien:void (make-path contours) "fill"))
+  (message sb-alien:void (cached-shape contours) "fill"))
 
 (fn clear-text-paths ()
   (maphash (lambda (key path)
@@ -180,7 +200,7 @@
     (message sb-alien:void graphics "restoreGraphicsState")
     (message sb-alien:void graphics "saveGraphicsState")
     (message sb-alien:void
-             (make-path (list (rounded-polygon box 0))) "addClip")))
+             (cached-shape (list (rounded-polygon box 0))) "addClip")))
 
 (fn callback-true (view selector)
   (declare (ignore view selector))
@@ -658,6 +678,7 @@
         (when (cocoa-app-view *app*)
           (message sb-alien:void (cocoa-app-view *app*) "release"))
         (clear-text-paths)
+        (clear-shape-paths)
         (when font (close-font font))
         (message sb-alien:void pool "drain")))))
 

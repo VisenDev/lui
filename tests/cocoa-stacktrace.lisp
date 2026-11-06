@@ -231,6 +231,26 @@
 (test-values-and-cleanup)
 (test-callback-float-mode)
 (test-selector-cache)
+(fn test-shape-cache ()
+  (let* ((lui.cocoa::*app* (lui.cocoa::make-cocoa-app))
+         (contours '(((0 . 0) (40 . 0) (40 . 20) (0 . 20))))
+         (builds (counter 1)) (retains (counter 2)) (releases (counter 3)))
+    (unwind-protect
+         (let ((path (lui.cocoa::cached-shape contours)))
+           (dotimes (frame 100)
+             (assert (lui.cocoa::same-object-p
+                      path (lui.cocoa::cached-shape (copy-tree contours)))))
+           (assert (= (1+ builds) (counter 1)))
+           (assert (= (1+ retains) (counter 2)))
+           (assert (= releases (counter 3))))
+      (lui.cocoa::clear-shape-paths))
+    (assert (= (1+ releases) (counter 3)))
+    (assert (zerop (hash-table-count
+                    (lui.cocoa::cocoa-app-shape-paths lui.cocoa::*app*))))
+    (lui.cocoa::clear-shape-paths)
+    (assert (= (1+ releases) (counter 3)))))
+
+(test-shape-cache)
 (test-text-path-cache)
 (test-text-cache-bound)
 (format t "Cocoa text-path reuse, bounded ownership and selector caching passed.~%")
