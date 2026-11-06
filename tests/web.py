@@ -1037,6 +1037,78 @@ class WebTests(unittest.TestCase):
             {"x": box["x"] + 20, "y": box["y"] + 2}))
         self.lisp('(lui.web:unmount *clip-app*)')
 
+    def test_garnet_checkbox_pressed_face_and_stationary_shadow(self):
+        self.lisp('''
+          (defvar *pressed-value* t)
+          (defvar *pressed-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *pressed-host* "id") #j"pressed-host"
+                (jscl/ffi:oget *pressed-host* "style" "width") #j"400px"
+                (jscl/ffi:oget *pressed-host* "style" "height") #j"100px"
+                (jscl/ffi:oget *pressed-host* "style" "background") #j"white")
+          (#j:document:body:appendChild *pressed-host*)
+          (defvar *pressed-app*
+            (lui.web:mount *pressed-host*
+              (lambda ()
+                (setf *pressed-value*
+                  (lui.garnet:checkbox :pressed *pressed-value* "Press square"))))))
+        ''')
+        check = self.page.locator("#pressed-host input")
+        label = self.page.locator("#pressed-host label span")
+        check.scroll_into_view_if_needed()
+
+        def geometry():
+            return check.evaluate(r"""n => {
+                const face = n.getBoundingClientRect();
+                const style = getComputedStyle(n);
+                const offset = style.boxShadow.match(/-?[\d.]+px/g).map(parseFloat);
+                const mark = getComputedStyle(n,'::after');
+                return {x:face.x,y:face.y,shadowX:face.x+offset[0],
+                    shadowY:face.y+offset[1],width:face.width,height:face.height,
+                    markWidth:mark.width,markHeight:mark.height,
+                    centered:style.placeContent,markTransform:mark.transform};
+            }""")
+
+        def pressed_matches(rest):
+            active = geometry()
+            self.assertAlmostEqual(active["x"] - rest["x"], 4)
+            self.assertAlmostEqual(active["y"] - rest["y"], 4)
+            self.assertAlmostEqual(active["shadowX"], rest["shadowX"])
+            self.assertAlmostEqual(active["shadowY"], rest["shadowY"])
+            self.assertEqual((active["width"], active["height"]), (20, 20))
+            self.assertEqual(active["centered"], "center")
+            if check.is_checked():
+                self.assertEqual((active["markWidth"], active["markHeight"]),
+                                 ("10px", "10px"))
+                self.assertEqual(active["markTransform"], "none")
+
+        for target in (check, label):
+            rest = geometry()
+            target.hover()
+            self.page.mouse.down()
+            try:
+                pressed_matches(rest)
+            finally:
+                self.page.mouse.up()
+            self.frames()
+            self.assertAlmostEqual(geometry()["x"], rest["x"])
+            self.assertAlmostEqual(geometry()["y"], rest["y"])
+        # Space holds the same face down, then activates on release.
+        for checked in (True, False):
+            self.lisp(f'''(setf *pressed-value* {"t" if checked else "nil"})
+              (lui.web:refresh *pressed-app*)''')
+            expect(check).to_be_checked(checked=checked)
+            check.focus()
+            rest = geometry()
+            self.page.keyboard.down("Space")
+            try:
+                pressed_matches(rest)
+            finally:
+                self.page.keyboard.up("Space")
+            expect(check).to_be_checked(checked=not checked)
+            self.assertAlmostEqual(geometry()["x"], rest["x"])
+            self.assertAlmostEqual(geometry()["y"], rest["y"])
+        self.lisp('(lui.web:unmount *pressed-app*)')
+
     def test_garnet_monochrome_controls_and_stipple(self):
         self.lisp('''
           (defvar *garnet-host* (#j:document:createElement #j"section"))
