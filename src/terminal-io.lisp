@@ -175,7 +175,7 @@
              :x (1- x) :y (1- y)
              :button (if (= (logand button 3) 2) :secondary :primary)
              :dragging-p (and (logbitp 5 button) (/= (logand button 3) 3))
-             :value (if (logbitp 0 button) 3 -3))
+             :scroll-mode :smooth :value (if (logbitp 0 button) 3 -3))
             (input-events input))
       (when (and context (zerop (logand button 3))
                  (not (logbitp 6 button))

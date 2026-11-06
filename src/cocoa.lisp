@@ -371,6 +371,10 @@
       (update-cursor x y)
       (if (= type 22)
           (make-event :kind :scroll :x x :y y
+                      :scroll-mode
+                      (if (zerop (message objc-bool event
+                                          "hasPreciseScrollingDeltas"))
+                          :smooth :immediate)
                       :value (- (message sb-alien:double event
                                          "scrollingDeltaY")))
           (make-event :kind (case type ((1 3) :press) ((2 4) :release)
