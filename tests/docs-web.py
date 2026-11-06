@@ -16,12 +16,17 @@ class DocsWebTests(unittest.TestCase):
                 executable_path=shutil.which("chromium-browser") or shutil.which("chromium"),
                 args=["--no-sandbox"])
             try:
-                page = browser.new_page(viewport={"width": 390, "height": 700},
+                page = browser.new_page(viewport={"width": 412, "height": 700},
                                         is_mobile=True, has_touch=True, device_scale_factor=2)
                 errors = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 page.goto((web.ROOT / "build/docs.html").as_uri())
                 browse = page.get_by_role("button", name="Browse symbols", exact=True)
+                browse.wait_for()
+                ui = web.WebTests()
+                ui.page = page
+                self.assertGreater(page.evaluate("document.documentElement.scrollHeight"), 700)
+                self.assertFalse(any(n["kind"] == "scrollbar" for n in ui.nodes()))
                 browse.evaluate("el => el.click()")
                 page.wait_for_function("document.documentElement.scrollHeight > innerHeight * 5")
                 entries = page.locator('button[aria-label*=":"]:visible')

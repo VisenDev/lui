@@ -98,6 +98,14 @@
         (check (= (box-y (element-clip child)) 1.5))
         (check (= (box-width (element-clip child)) 7))
         (check (= (box-height (element-clip child)) 5)))
+      ;; Fractional row heights can sum to slightly more than the viewport.
+      (let ((root (make-element :scroll-p t)))
+        (dotimes (i 3)
+          (append-child root (make-element :height (fixed 0.1d0))))
+        (solve root 1 0.3d0)
+        (check (zerop (element-scroll-limit-y root)))
+        (solve root 1 0.25d0)
+        (check (> (element-scroll-limit-y root) 0.049d0)))
       ;; Scrolled children stay inside padding; the last row can reach its end.
       (let* ((root (make-element :padding 2 :scroll-p t :scroll-y 1.5))
              (first (append-child

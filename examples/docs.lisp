@@ -193,7 +193,8 @@
 (defun navigation (state)
   (lui:panel (lui:opt :id :docs-navigation
                       :width (fixed (navigation-width))
-                      :height (grow) :scroll-p t :padding (units 1)
+                      :height (grow) :scroll-p (not (lui.frame::context-page-height-p *context*))
+                      :padding (units 1)
                       :gap (units 0.5) :opacity 1 :frost 0)
     (lui:label "Guides")
     (dolist (guide *guides*)
@@ -418,7 +419,7 @@
 
 (defun detail (state)
   (lui:panel (lui:opt :id :docs-detail :width (grow) :height (grow)
-                      :scroll-p t :padding (units 1) :gap (units 1)
+                      :scroll-p (not (lui.frame::context-page-height-p *context*)) :padding (units 1) :gap (units 1)
                       :opacity 1 :frost 0)
     (cond
       ((eq (browser-guide state) :previews)

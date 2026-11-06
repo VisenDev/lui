@@ -459,7 +459,10 @@ With PAGE-TOP, HEIGHT is the minimum page height and popups stay in the viewport
                     (max extent-y (- (+ (box-y (element-box child))
                                         (box-height (element-box child)))
                                      dy))))
-            (setf (element-scroll-limit-y node) (- extent-y bottom)
+            ;; Fractional line heights can put the last edge a few ULPs
+            ;; beyond its container after repeated additions.
+            (setf (element-scroll-limit-y node)
+                  (if (< (- extent-y bottom) 1d-7) 0 (- extent-y bottom))
                   (element-scroll-x node)
                   (min (max 0 (element-scroll-x node)) (- extent-x right))
                   (element-scroll-y node)
