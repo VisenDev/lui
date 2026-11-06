@@ -8,15 +8,15 @@
 
 (defparameter *guides*
   '((:start "Getting started"
-     "LUI draws the same immediate-mode interface on native windows, the browser, and a terminal. Load the backend you want, then pass a drawing function to lui:run."
-     "(asdf:load-system \"lui/wayland\")
+     "LUI draws the same immediate-mode interface on native windows, the browser, and a terminal. Load lui to register the backends for your host, then pass a drawing function to lui:run."
+     "(asdf:load-system \"lui\")
 (let ((name \"Common Lisp\"))
   (lui:run
    (lambda ()
      (setf name (lui:text-field :name name))
      (when (lui:button :hello \"Say hello\")
        (format t \"Hello ~A!~%\" name)))))"
-     "Other optional native systems include lui/x11, lui/win32, lui/cocoa, and lui/terminal. The browser backend is compiled with JSCL rather than loaded as an ASDF system. Core LUI has no dependencies. Native graphical backends use CFFI, zpb-ttf, and platform libraries. The raw terminal adds CFFI; plain terminal output remains dependency-free."
+     "For portable layout, widgets, and plain terminal output, load lui/core. It has no external dependencies. To load a single backend, use its system, such as lui/x11 or lui/wayland. The browser build uses JSCL. Native graphical backends use CFFI, zpb-ttf, and platform libraries. The raw terminal adds CFFI; plain terminal output remains dependency-free."
      "Use make demo for the gallery, make docs for this browser, and make test for the detected platform. Backend availability depends on which systems are loaded; an explicit :backend argument selects one.")
     (:debug "Debugger"
      "Show debugger opens this window's layout inspector. Close dismisses it. Each window owns its inspector state."

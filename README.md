@@ -4,8 +4,9 @@ LUI is an immediate-mode Common Lisp UI library under development. The same
 [shared example](examples/demo.lisp) runs unchanged in a browser, native windows,
 and a terminal. Applications own their state; `lui:run` owns the backend lifecycle.
 
-The portable core has no external dependencies. Native graphical backends add
-CFFI and zpb-ttf, plus operating-system rendering libraries. Browser output uses
+Load the library with `(asdf:load-system "lui")` to register the backends for
+your host. Use `lui/core` for the portable core with no external dependencies.
+Native graphical backends add CFFI, zpb-ttf, and system rendering libraries. Browser output uses
 JSCL and native HTML controls, with browser DOM text measurement rather than
 Canvas. There is no application software pixel renderer; Vulkan remains future
 work.
@@ -311,7 +312,8 @@ painting use the same CSS family and weight.
 
 | ASDF system | Purpose and system requirements |
 | --- | --- |
-| `lui` | Dependency-free layout, widgets, and portable terminal output |
+| `lui` | Core and the backends supported on the host |
+| `lui/core` | Dependency-free layout, widgets, and portable terminal output |
 | `lui/terminal` | Optional raw POSIX terminal input through CFFI and libc |
 | `lui/native` | Shared native measurement and outline painting; CFFI, zpb-ttf |
 | `lui/x11` | Xlib and system OpenGL, an X display with GLX |
@@ -320,10 +322,15 @@ painting use the same CSS family and weight.
 | `lui/win32` | Windows User32, GDI32, Kernel32, and GDI+ |
 | `lui/cocoa` | macOS AppKit and Objective-C runtime; SBCL only |
 
-For a native window, load its system and select its backend:
+On Linux, the aggregate chooses Wayland when `WAYLAND_DISPLAY` is set,
+X11 when only `DISPLAY` is set, and the terminal when both are absent.
+Pass `:backend` to `lui:run` to choose a loaded backend explicitly.
+
+To load a single graphical backend for the gallery:
 
 ```lisp
 (asdf:load-system "lui/x11")
+(asdf:load-system "lui/demo")
 (let ((lui:*backend* :x11))
   (lui.example:main))
 ```
