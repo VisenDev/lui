@@ -29,15 +29,19 @@
   (%sizing kind value minimum maximum))
 
 (fn (fit sizing) (&optional ((minimum real) 0) maximum)
+  "Size to measured content, bounded by MINIMUM and optional MAXIMUM."
   (checked-size :fit 0 minimum maximum))
 
 (fn (grow sizing) (&optional ((minimum real) 0) maximum)
+  "Share the remaining space with grow siblings, respecting size bounds."
   (checked-size :grow 0 minimum maximum))
 
 (fn (fixed sizing) ((value real))
+  "Reserve exactly VALUE backend coordinates on this axis."
   (checked-size :fixed value value value))
 
 (fn (percent sizing) ((fraction real))
+  "Use FRACTION of the available parent space after padding and gaps."
   (assert (<= 0 fraction 1))
   (checked-size :percent fraction 0 nil))
 
@@ -79,12 +83,14 @@
   child)
 
 (defmacro do-children ((child node &optional result) &body body)
+  "Evaluate BODY for each direct CHILD of NODE, then return RESULT."
   (let ((children (gensym "CHILDREN")) (index (gensym "INDEX")))
     `(let ((,children (element-children ,node)))
        (dotimes (,index (length ,children) ,result)
          (let ((,child (aref ,children ,index))) ,@body)))))
 
 (fn walk-elements ((root element) (function function))
+  "Call FUNCTION on ROOT and every descendant in declaration order."
   (funcall function root)
   (do-children (child root)
     (walk-elements child function)))

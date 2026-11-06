@@ -321,6 +321,7 @@
   (context-root context))
 
 (defmacro with-frame ((context width height &key events) &body body)
+  "Dispatch input, build and solve one frame, and return its root element."
   `(let ((*context* ,context))
      (begin-frame *context* ,width ,height ,events)
      (let ((*parent* (context-root *context*))
@@ -341,9 +342,11 @@
                  (context-focus *context*) nil))))))
 
 (defmacro row ((&rest options) &body body)
+  "Lay out children declared by BODY horizontally, using element options."
   `(let ((*parent* (emit (make-element :direction :row ,@options))))
      ,@body))
 
 (defmacro column ((&rest options) &body body)
+  "Lay out children declared by BODY vertically, using element options."
   `(let ((*parent* (emit (make-element :direction :column ,@options))))
      ,@body))
