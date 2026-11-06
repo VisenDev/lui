@@ -48,6 +48,14 @@ class DocsWebTests(unittest.TestCase):
                 expect(root_row).to_have_count(0)
                 page.get_by_role("button", name="Restore tree").click()
                 expect(root_row).to_be_visible()
+                root_row.click()
+                expect(page.get_by_role("button", name="Close details",
+                                        exact=True)).to_have_count(0)
+                root_row.click()
+                page.get_by_role("button", name="Expand details").click()
+                page.get_by_role("button", name="Close details").click()
+                expect(root_row).to_be_visible()
+                expect(inspector.filter(visible=True)).to_be_visible()
                 page.get_by_role("button", name="Close", exact=True).click()
                 expect(inspector.filter(visible=True)).to_have_count(0)
                 page.get_by_role("option", name="Getting started",

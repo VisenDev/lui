@@ -22,7 +22,7 @@
      "Debug toggles this window's layout inspector; Open inspector also opens it. Close dismisses it. Each window owns its inspector state."
      "The tree shows the previous completed application frame. Click a row for details; - / + collapses or expands containers. Tree and details scroll independently. Inspector controls are excluded from their own tree."
      "Hover a tree row to outline bounds in orange and clipping in cyan. Highlights pass input through. Offscreen and clipped badges describe visibility, rather than errors."
-     "Selecting a tree row gives its properties more height. Choose Expand details to use the full height, or Restore tree to bring the hierarchy back. Read the property names on the left and their current values on the right. Compare Bounds with Clip to see how much of a widget is visible, or compare Width and Height with Bounds to see the result of its sizing rules."
+     "Selecting a tree row gives its properties more height. Choose Expand details to use the full height, or Restore tree to bring the hierarchy back. Click the selected tree row again or use Close details to dismiss its properties and continue browsing. Read the property names on the left and their current values on the right. Compare Bounds with Clip to see how much of a widget is visible, or compare Width and Height with Bounds to see the result of its sizing rules."
      "Drag the left edge to resize the inspector. From the keyboard, Tab to its rail and use Left/Right to adjust the width or Home/End to choose its minimum or maximum."
      "(asdf:load-system \"lui/debug\")
 ;; Inside an ordinary draw callback:

@@ -456,7 +456,9 @@ scrolling, and widget details. Tree rows are virtualized. The highlight preserve
 pointer input and terminal text; the inspector is excluded from its own tree.
 
 Selecting a tree row gives its properties more vertical space. **Expand details**
-uses the full sidebar height. **Restore tree** brings the hierarchy back. Bounds shows
+uses the full sidebar height. **Restore tree** brings the hierarchy back.
+Click the selected row again or choose **Close details** to dismiss its properties.
+Bounds shows
 the allocated rectangle, while Clip shows the part visible through its
 ancestors. Compare these with the widget’s width and height rules to diagnose
 truncated text or a control that grows unexpectedly.
