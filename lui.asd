@@ -10,10 +10,11 @@
                              (:file "layout")
                              (:file "frame")
                              (:file "widgets")
+                             (:file "app")
+                             (:file "interaction")
                              (:file "glass")
                              (:file "motif")
                              (:file "garnet")
-                             (:file "app")
                              (:file "terminal"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
 
@@ -27,10 +28,10 @@
   :components ((:module "examples"
                 :serial t
                 :components ((:file "seven-model")
-                             (:file "demo")
                              (:file "seven-circles")
                              (:file "seven-cells")
-                             (:file "seven")))))
+                             (:file "seven")
+                             (:file "demo")))))
 
 (defsystem "lui/tests"
   :depends-on ("lui/demo")
@@ -40,6 +41,7 @@
                 :components ((:file "debug")
                              (:file "core")
                              (:file "widgets")
+                             (:file "interaction")
                              (:file "gallery")
                              (:file "seven-model")
                              (:file "seven-circles")
@@ -50,6 +52,7 @@
              (uiop:symbol-call :lui.tests.debug :run-tests)
              (uiop:symbol-call :lui.tests :run-tests)
              (uiop:symbol-call :lui.tests.widgets :run-tests)
+             (uiop:symbol-call :lui.tests.interaction :run-tests)
              (uiop:symbol-call :lui.tests.gallery :run-tests)
              (uiop:symbol-call :lui.tests.seven.model :run-tests)
              (uiop:symbol-call :lui.tests.seven :run-tests)

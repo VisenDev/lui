@@ -23,26 +23,38 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def script(error=False, debug=False):
-    draw = """(let ((frames 0))
+    draw = """(let ((frames 0) (draw (lui.example:make-demo)))
   (handler-case
       (lui:run (lambda ()
-                 (lui.example:draw)
+                 (funcall draw)
                  (lui.frame:request-frame 0.03)
                  (when (> (incf frames) 1) (error "test draw failure")))
                :backend :terminal)
     (error () (format t "~&@@DRAW-ERROR~%"))))""" if error else """
-(let ((context (lui:run #'lui.example:draw :backend :terminal)))
+(let* ((gallery (lui.example:make-gallery))
+       (context (lui:run (lambda () (lui.example:draw gallery))
+                         :backend :terminal)))
   (format t "~&@@RESULT name=~S volume=~,2F enabled=~S count=~D size=~Dx~D~%"
-          lui.example::*name* lui.example::*volume* lui.example::*enabled*
-          lui.example::*count* (lui.frame:context-width context)
+          (lui.example::gallery-name gallery)
+          (lui.example::gallery-volume gallery)
+          (lui.example::gallery-enabled gallery)
+          (lui.example::gallery-count gallery) (lui.frame:context-width context)
           (lui.frame:context-height context)))"""
     if debug:
         draw = """
-(setf lui.example::*debug-state* (lui.debug:make-state :open-p t :width 30))
-(let ((context (lui:run #'lui.example:draw :backend :terminal)))
+(let* ((gallery (lui.example:make-gallery))
+       (state (lui.debug:make-state :open-p t :width 30))
+       (first t)
+       (context (lui:run (lambda ()
+                           (when first
+                             (setf first nil)
+                             (lui.debug:set-enabled t :state state))
+                           (lui.example:draw gallery))
+                         :backend :terminal)))
   (format t "~&@@DEBUG width=~,1F size=~Dx~D~%"
-          (lui.debug:state-width lui.example::*debug-state*)
+          (lui.debug:state-width state)
           (lui.frame:context-width context) (lui.frame:context-height context)))
+
 """
     return f"""(let ((asdf (merge-pathnames "quicklisp/asdf.lisp"
                                    (user-homedir-pathname))))
@@ -173,7 +185,7 @@ def script(error=False, debug=False):
     (assert (not (find #\\Escape plain)))
     (assert (search "[38;2;0;0;0m" colored))
     (assert (search "[48;2;255;255;255m" colored))))
-(let ((context (lui:run #'lui.example:draw :backend :terminal
+(let ((context (lui:run (lui.example:make-demo) :backend :terminal
                         :width 90 :height 35 :interactive nil)))
   (lui.layout:walk-elements
    (lui.frame:context-root context)

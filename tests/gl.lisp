@@ -172,6 +172,7 @@
        (context (make-context
                  :measure (lambda (widget width)
                             (measure-widget renderer widget width))))
+       (gallery (lui.example:make-gallery))
        (*unit* 8))
   (unwind-protect
        (progn
@@ -179,7 +180,7 @@
          (test-fractional-resolution gpu renderer)
          (test-backdrop-frost gpu renderer context)
          (test-translated-geometry-cache gpu renderer)
-         (with-frame (context 720 520) (lui.example:draw))
+         (with-frame (context 720 520) (lui.example:draw gallery))
          (begin-gpu-frame gpu)
          (paint-frame renderer context)
          (assert (zerop (cffi:foreign-funcall "glGetError" :uint)))

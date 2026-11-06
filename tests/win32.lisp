@@ -103,7 +103,7 @@
 
 (test-readline-keys)
 
-(let ((window nil) (frames 0)
+(let ((window nil) (frames 0) (gallery (lui.example:make-gallery))
       (lui.font:*font-path*
         (or lui.font:*font-path*
           (find-if #'probe-file
@@ -134,7 +134,7 @@
               (lambda ()
                 (incf frames)
                 (test-copy window)
-                (lui.example:draw)
+                (lui.example:draw gallery)
                 (let ((graphics (lui.win32::win-window-graphics window)))
                   (lui.win32::checked
                     (lui.win32::clear-graphics graphics #xff000000))
@@ -180,7 +180,7 @@
     (setf frames 0)
     (run (lambda ()
            (incf frames)
-           (lui.example:draw)
+           (lui.example:draw gallery)
            (when (= frames 2)
              (assert (> (lui.win32::win-window-width window) 720))
              (assert (plusp

@@ -14,7 +14,35 @@
   (lui.widgets:widget-disabled-p
    (element-content (gethash id (lui.frame::context-ids context)))))
 
+(fn test-owned-models ()
+  (let* ((first (make-state)) (second (make-state))
+         (first-circles (lui.example.seven:state-circles first))
+         (second-circles (lui.example.seven:state-circles second))
+         (first-cells (lui.example.seven:state-cells first))
+         (second-cells (lui.example.seven:state-cells second))
+         (model (lui.example.seven.circles:state-model first-circles))
+         (circle (circle-add model 5 5 2)))
+    (assert (not (eq first-circles second-circles)))
+    (assert (not (eq first-cells second-cells)))
+    (sheet-set (lui.example.seven.cells:state-sheet first-cells) "A0" "42")
+    (assert (equal "" (cell-value
+                       (sheet-cell
+                        (lui.example.seven.cells:state-sheet second-cells)
+                        "A0"))))
+    (assert (null (circles-items
+                   (lui.example.seven.circles:state-model second-circles))))
+    (circle-begin-adjust model (circle-id circle))
+    (assert (lui.example.seven:modal-p first))
+    (assert (not (lui.example.seven:modal-p second)))
+    (let ((context (make-terminal-context)))
+      (with-frame (context 100 60) (draw-content second))
+      (let ((tab (gethash '(:seven-task :counter)
+                           (lui.frame::context-ids context))))
+        (assert (not (lui.widgets:widget-disabled-p (element-content tab))))))
+    (circle-cancel model)))
+
 (fn run-tests ()
+  (test-owned-models)
   (let ((*state* (make-state)) (lui:*unit* 1)
         (context (make-terminal-context)))
     (labels ((frame (&optional events (time 0))
@@ -36,7 +64,7 @@
                (when (lui.widgets:widget-p widget)
                  (assert (eq style (lui.widgets:widget-style widget)))))))
           (assert (plusp (length (render-terminal context))))))
-      (let ((lui.example::*toolkit* :motif))
+      (lui:with-toolkit (:motif)
         (with-frame (context 100 60) (draw-content))
         (assert (null (gethash :seven-window
                                (lui.frame::context-ids context)))))
@@ -161,7 +189,8 @@
           (assert (equal (row-id first) (context-focus context)))
           (frame (input :seven-name "Draft name"))
           (frame (click (row-id first)))
-          (assert (equal "Draft name" (lui.example.seven::state-name *state*)))
+          (assert (equal "Draft name"
+                         (lui.example.seven::state-name *state*)))
           (frame (make-event :kind :key :key :down))
           (assert (selected second))
           (assert (not (selected first)))

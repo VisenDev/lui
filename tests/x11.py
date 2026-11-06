@@ -388,16 +388,17 @@ class X11Tests(unittest.TestCase):
     def test_shared_demo_pixels_interaction_and_resize(self):
         source = r'''
 (asdf:load-system "lui/demo")
+(let ((gallery (lui.example:make-gallery)))
 (lui.x11:run-x11
  (lambda ()
-   (lui.example:draw)
+   (lui.example:draw gallery)
    (when (lui.frame:previous-box :hello)
      (with-open-file (stream STATE_PATH :direction :output
                              :if-exists :supersede)
        (format stream "{~S:~S,~S:~D,~S:~A,~S:~F,~S:~D,~S:~A,~S:{"
-               "name" lui.example::*name* "count" lui.example::*count*
-               "enabled" (if lui.example::*enabled* "true" "false")
-               "volume" lui.example::*volume*
+               "name" (lui.example::gallery-name gallery) "count" (lui.example::gallery-count gallery)
+               "enabled" (if (lui.example::gallery-enabled gallery) "true" "false")
+               "volume" (lui.example::gallery-volume gallery)
                "width" (round (lui.frame:context-width lui.frame:*context*))
                "hover" (if (lui.frame:context-hover lui.frame:*context*)
                            "true" "false")
@@ -413,7 +414,7 @@ class X11Tests(unittest.TestCase):
                          (round (lui.layout:box-width box))
                          (round (lui.layout:box-height box))))
        (write-string "}}" stream))))
- :title WINDOW_TITLE :width 720 :height 520)
+ :title WINDOW_TITLE :width 720 :height 520))
 '''
         with self.application("demo", source) as (window, path):
             state = self.state(path)

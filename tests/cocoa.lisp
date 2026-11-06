@@ -267,12 +267,11 @@
                                 '(1.25d0 2.5d0 30d0 40d0))))))
         (lui.cocoa::message sb-alien:void pool "drain"))))
   (asdf:load-system "lui/demo")
-  (let ((frames 0))
+  (let ((frames 0) (draw (uiop:symbol-call :lui.example :make-demo)))
     (let ((context
            (run (lambda ()
                   (incf frames)
-                  (funcall (symbol-function
-                            (find-symbol "DRAW" "LUI.EXAMPLE"))))
+                  (funcall draw))
                 :backend :cocoa :interactive nil)))
       (assert (= frames 1))
       (assert (plusp (box-width (element-box (context-root context)))))

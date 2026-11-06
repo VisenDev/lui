@@ -9,10 +9,10 @@
 (fn run-tests ()
   (dolist (style '(:glass :motif :garnet))
     (let ((*state* (make-state)) (lui:*unit* 1)
-          (lui.example::*toolkit* style)
           (context (make-terminal-context)))
       (labels ((frame (&rest events)
-                 (with-frame (context 100 60 :events events) (draw-content)))
+                 (with-frame (context 100 60 :events events)
+                   (lui:with-toolkit (style) (draw-content))))
                (key (name) (make-event :kind :key :key name))
                (change (text)
                  (make-event :kind :change
@@ -164,7 +164,7 @@
         ;; Scrolling cannot make cell hit regions overlap sticky headers.
         (with-frame (context 100 60)
           (scroll-to :seven-grid 15 4)
-          (draw-content))
+          (lui:with-toolkit (style) (draw-content)))
         (let* ((grid (gethash :seven-grid (lui.frame::context-ids context)))
                (bounds (element-box grid)))
           (walk-elements
@@ -181,15 +181,17 @@
         (assert (gethash (cell-id 27) (lui.frame::context-ids context)))
         ;; A different toolkit invalidates the cached viewport key.
         (with-frame (context 100 60))
-        (let ((lui.example::*toolkit* (if (eq style :glass) :motif :glass)))
-          (frame)
+        (lui:with-toolkit ((if (eq style :glass) :motif :glass))
+          (with-frame (context 100 60) (draw-content))
           (assert (null (gethash (cell-id 27)
                                  (lui.frame::context-ids context)))))
         (frame)
         ;; Resize schedules a second measurement with the new viewport geometry.
-        (with-frame (context 120 70) (draw-content))
+        (with-frame (context 120 70)
+          (lui:with-toolkit (style) (draw-content)))
         (assert (context-next-frame context))
-        (with-frame (context 120 70) (draw-content))
+        (with-frame (context 120 70)
+          (lui:with-toolkit (style) (draw-content)))
         (assert (plusp (length (render-terminal context)))))))
   (format t "Cells virtual grid, formulas, editing, navigation and clips passed.~%")
   t)
