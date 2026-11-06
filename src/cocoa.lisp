@@ -622,6 +622,7 @@
         (message sb-alien:void pool "drain")))))
 
 (fn run-cocoa ((draw function) &rest options)
+  "Run DRAW in an AppKit window on the SBCL main thread. OPTIONS are the LUI:RUN window keywords."
   (unless (member :darwin *features*)
     (error "The Cocoa backend requires macOS and SBCL."))
   (unless (sb-thread:main-thread-p)

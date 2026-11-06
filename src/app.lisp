@@ -53,7 +53,9 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 (defvar *collections* (make-hash-table :test 'eq))
 
 (defvar *toolkit-revision* 0)
-(defun toolkit-revision () *toolkit-revision*)
+(defun toolkit-revision ()
+  "Return the generation used to invalidate cached toolkit styles."
+  *toolkit-revision*)
 
 (defun collection (name)
   (or (gethash name *collections*) (error "Unknown toolkit ~S." name)))
@@ -87,9 +89,11 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
     (if parent (append defaults (defaults-of (collection parent))) defaults)))
 
 (defun toolkit-defaults (&optional (name *collection*))
+  "Return appearance defaults with child overrides before inherited values."
   (defaults-of (collection name)))
 
 (defun toolkit-web-style (name)
+  "Read or replace a toolkit’s DOM styling callback. Inherited callbacks run first."
   (collection-web-style (collection name)))
 
 (defun (setf toolkit-web-style) (callback name)
@@ -97,6 +101,7 @@ WEB-STYLE, when provided, takes the DOM node, widget and layout element."
   (setf (collection-web-style (collection name)) callback))
 
 (defun map-toolkit-web-styles (name function)
+  "Call FUNCTION on each registered DOM styling callback, from parent to child."
   (let* ((entry (collection name)) (parent (collection-parent entry))
          (style (collection-web-style entry)))
     (when parent (map-toolkit-web-styles parent function))

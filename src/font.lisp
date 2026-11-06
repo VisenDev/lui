@@ -13,6 +13,7 @@
   "Optional ((family weight) . pathname) overrides for additional font faces.")
 
 (defstruct font
+  "An open TrueType face, its pixel size, and cached glyph outlines."
   loader
   owner
   (faces (make-array 4 :initial-element nil) :type simple-vector)
@@ -57,10 +58,12 @@
       (resolve-face :sans-serif :normal)))
 
 (fn (open-font font) (&optional path ((size real) 16))
+  "Open a TrueType file at SIZE; a missing PATH uses the configured base face."
   (make-font :loader (zpb-ttf:open-font-loader (or path (default-font)))
              :size size))
 
 (fn close-font ((font font))
+  "Release the loader, cached faces, and glyph outlines owned by FONT."
   (dotimes (index 4)
     (let ((face (aref (font-faces font) index)))
       (when face (close-font face))))
@@ -71,6 +74,7 @@
   (clrhash (font-cache font)))
 
 (fn (font-face font) ((font font) (family symbol) (weight symbol))
+  "Resolve a sans-serif or monospace face at normal or bold weight; reuse it until the owner is closed."
   (let* ((owner (or (font-owner font) font))
          (index (+ (ecase family (:sans-serif 0) (:monospace 2))
                    (ecase weight (:normal 0) (:bold 1)))))
@@ -85,15 +89,18 @@
   (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
 
 (fn (baseline real) ((font font))
+  "Return the ascent from the top of a line to its baseline."
   (* (scale-font font) (zpb-ttf:ascender (font-loader font))))
 
 (fn (line-height real) ((font font))
+  "Return baseline-to-baseline spacing including the font’s line gap."
   (* (scale-font font)
      (+ (zpb-ttf:ascender (font-loader font))
         (- (zpb-ttf:descender (font-loader font)))
         (zpb-ttf:line-gap (font-loader font)))))
 
 (fn (text-width real) ((font font) (text string))
+  "Measure a string using glyph advances and pair kerning at the current size."
   (let ((previous nil)
         (width 0))
     (loop :for char :across text
@@ -108,6 +115,7 @@
     (* (scale-font font) width)))
 
 (fn (wrap-text list) ((font font) (text string) width)
+  "Split TEXT into lines at newlines and spaces; NIL width preserves only explicit breaks."
   (let ((start 0)
         (lines nil)
         (length (length text)))

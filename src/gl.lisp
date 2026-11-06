@@ -21,6 +21,7 @@
     (cffi:foreign-symbol-pointer ,name :library 'egl) () ,@args))
 
 (defstruct gpu
+  "GL drawing resources and viewport dimensions for a current compatibility context."
   display surface context renderer
   (geometry (make-hash-table :test 'equal) :type hash-table)
   (geometry-builds 0 :type integer)
@@ -356,6 +357,7 @@ void main() {
       (unless complete (close-gpu gpu)))))
 
 (fn begin-gpu-frame ((gpu gpu))
+  "Clear the back buffer and set the viewport, projection, clipping, and blending."
   (call-gl "glViewport" :int 0 :int 0 :int (gpu-width gpu)
            :int (gpu-height gpu) :void)
   (call-gl "glDisable" :uint #x0c11 :void)
@@ -377,12 +379,14 @@ void main() {
   (call-gl "glLoadIdentity" :void))
 
 (fn present-gpu ((gpu gpu))
+  "Swap the EGL surface created by OPEN-GPU. GLX presents its own drawable."
   (egl-check
    (call-egl "eglSwapBuffers" :pointer (gpu-display gpu)
             :pointer (gpu-surface gpu) :uint)
    "eglSwapBuffers"))
 
 (fn close-gpu ((gpu gpu))
+  "Release cached geometry, shader, and texture; also release an owned EGL context."
   (clear-geometry gpu)
   (when (plusp (gpu-program gpu))
     (call-gl "glDeleteProgram" :uint (gpu-program gpu) :void))

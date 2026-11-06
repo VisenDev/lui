@@ -8,6 +8,7 @@
 (in-package #:lui.draw)
 
 (defstruct renderer
+  "Native drawing callbacks and font shared by the graphical backends."
   (font nil :type (or null font))
   ;; POLYGONS takes contours, #rrggbb color, and opacity. Native API does rasterization.
   (polygons nil :type (or null function))
@@ -19,6 +20,7 @@
   (patterns (make-hash-table :test 'equal) :type hash-table))
 
 (fn (color-components list) ((color string) &optional ((alpha real) 1))
+  "Convert #RRGGBB and ALPHA to a list of normalized red, green, blue, and alpha values."
   (assert (and (= (length color) 7) (char= (char color 0) #\#)))
   (append (loop :for start :in '(1 3 5)
                 :collect (/ (parse-integer color :start start
@@ -28,6 +30,7 @@
           (list (max 0 (min 1 alpha)))))
 
 (fn (rounded-polygon list) ((box box) (radius real))
+  "Return contour points for BOX with corners rounded by RADIUS."
   (let* ((x (box-x box))
          (y (box-y box))
          (w (box-width box))
@@ -96,6 +99,7 @@
     font))
 
 (fn measure-widget ((renderer renderer) (widget widget) width)
+  "Return intrinsic width and wrapped height using this renderer’s font metrics."
   (when (eq (widget-kind widget) :panel)
     (return-from measure-widget (values 0 0)))
   (let* ((font (widget-font renderer widget))
@@ -117,6 +121,7 @@
 
 (fn paint-text
     ((renderer renderer) (text string) (x real) (y real) (color string))
+  "Draw TEXT at horizontal position X and baseline Y in COLOR."
   (when (zerop (length text)) (return-from paint-text nil))
   (when (renderer-text renderer)
     (return-from paint-text
@@ -832,6 +837,7 @@
                               (incf offset (1+ (length line))))))))))))
 
 (fn paint-frame ((renderer renderer) (context context))
+  "Paint the visible elements of a solved frame and its text selection."
   (unless (context-input-handler context)
     (setf (context-input-handler context)
           (lambda (context events)

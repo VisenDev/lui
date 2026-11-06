@@ -6,6 +6,7 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun symbolicate (&rest things)
+    "Concatenate the printed arguments, uppercase the result, and intern it in the current package."
     (intern (string-upcase
              (apply #'concatenate 'string
                     (mapcar (lambda (thing) (format nil "~a" thing))

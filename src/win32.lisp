@@ -549,6 +549,7 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
 
 (fn run-win32
   ((draw function) &key (title "LUI") width height (interactive t))
+  "Open a Win32 window and run the shared DRAW callback; INTERACTIVE NIL renders a single frame."
   (let ((window (make-win-window)) (font nil) (token nil)
         (registered nil) (*unit* 8)
         (instance (module-handle (cffi:null-pointer)))
