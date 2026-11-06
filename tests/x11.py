@@ -1,7 +1,7 @@
-"""Native X11 window, rendering, convolution, input, and resize regressions.
+"""Native GLX window, rendering, glass, input, and resize regressions.
 
 Run python tests/x11.py with DISPLAY set. Requires SBCL, CFFI, zpb-ttf,
-libX11/libXrender, ImageMagick import, and Pillow. Captures only LUI windows.
+libX11/libGL, ImageMagick import, and Pillow. Captures only LUI windows.
 """
 
 from contextlib import contextmanager
@@ -83,11 +83,6 @@ class XErrorEvent(C.Structure):
                 ("resource", C.c_ulong), ("serial", C.c_ulong),
                 ("error", C.c_ubyte), ("request", C.c_ubyte),
                 ("minor", C.c_ubyte)]
-
-
-class Filters(C.Structure):
-    _fields_ = [("count", C.c_int), ("names", C.POINTER(C.c_char_p)),
-                ("alias_count", C.c_int), ("aliases", C.c_void_p)]
 
 
 class X11:
@@ -420,7 +415,7 @@ class X11Tests(unittest.TestCase):
             state = self.state(path)
             image = self.capture(window, "x11.png")
             self.assertEqual(image.size, (720, 520))
-            # Every widget must survive the final source-picture composite.
+            # Every widget must survive the final GL buffer swap.
             # Counting varied pixels in each control catches last-item-only frames.
             for name, bounds in state["bounds"].items():
                 x, y, width, height = bounds
@@ -487,19 +482,6 @@ class X11Tests(unittest.TestCase):
                 with self.application(
                         "blur-strength", source.replace("FROST", str(frost))
                 ) as (window, path):
-                    render = C.CDLL(find_library("Xrender"))
-                    render.XRenderQueryFilters.restype = C.POINTER(Filters)
-                    render.XRenderQueryFilters.argtypes = [C.c_void_p, C.c_ulong]
-                    filters = render.XRenderQueryFilters(self.x.display, window)
-                    try:
-                        supported = filters and b"convolution" in [
-                            filters.contents.names[i]
-                            for i in range(filters.contents.count)]
-                    finally:
-                        if filters:
-                            self.x.lib.XFree(filters)
-                    if not supported:
-                        self.skipTest("XRender convolution unavailable")
                     image = self.capture(window, f"x11-frost-{frost}.png")
                     self.assertEqual(image.size, (241, 123))
                     values = [image.getpixel((x, 61))[0]
@@ -514,7 +496,7 @@ class X11Tests(unittest.TestCase):
                     time.sleep(0.2)
                     resized = self.capture(window, f"x11-frost-{frost}-odd.png")
                     self.assertEqual(resized.size, (257, 131))
-                    # A resize reallocates every level, without shifting stripes.
+                    # A resize must preserve the shader sampling coordinates.
                     for x in range(70, 170):
                         self.assertLessEqual(abs(image.getpixel((x, 61))[0]
                                                  - resized.getpixel((x, 61))[0]),
@@ -522,7 +504,7 @@ class X11Tests(unittest.TestCase):
         self.assertLess(variances[1], variances[0] * 0.75)
         self.assertLess(variances[2], variances[1] * 0.5)
 
-    def test_native_convolution_blurs_backdrop_inside_rounded_mask(self):
+    def test_glx_glass_blurs_backdrop_inside_rounded_mask(self):
         source = r'''
 (lui.x11:run-x11
  (lambda ()
@@ -544,40 +526,14 @@ class X11Tests(unittest.TestCase):
                  20 8)))))
  :title WINDOW_TITLE :width 240 :height 120)
 '''
-        for force_fallback in (False, True):
-            prefix = "" if not force_fallback else r'''
-(setf (symbol-function 'lui.x11::convolution-supported-p)
-      (lambda (window) (declare (ignore window)) nil))
-'''
-            with self.subTest(fallback=force_fallback):
-                with self.application("blur", prefix + source) as (window, path):
-                    # Independently distinguish native support from its fallback.
-                    render = C.CDLL(find_library("Xrender"))
-                    render.XRenderQueryFilters.restype = C.POINTER(Filters)
-                    render.XRenderQueryFilters.argtypes = [C.c_void_p, C.c_ulong]
-                    filters = render.XRenderQueryFilters(self.x.display, window)
-                    try:
-                        names = ([] if not filters else [
-                            filters.contents.names[i]
-                            for i in range(filters.contents.count)])
-                        supported = not force_fallback and b"convolution" in names
-                    finally:
-                        if filters:
-                            self.x.lib.XFree(filters)
-                    time.sleep(0.3)
-                    filename = ("x11-no-blur.png" if force_fallback
-                                else "x11-blur.png")
-                    image = self.capture(window, filename)
-                    if supported:
-                        center = [image.getpixel((x, 60))[0] for x in range(70, 170)]
-                        self.assertLess(max(center) - min(center), 128)
-                        self.assertTrue(all(70 < value < 185 for value in center))
-                    else:
-                        self.assertEqual(image.getpixel((80, 60)), (0, 0, 0))
-                    # Stripes outside the mask and in its cutout stay sharp.
-                    self.assertEqual(image.getpixel((16, 60)), (0, 0, 0))
-                    self.assertEqual(image.getpixel((24, 60)), (255, 255, 255))
-                    self.assertEqual(image.getpixel((40, 20)), (255, 255, 255))
+        with self.application("glass", source) as (window, path):
+            image = self.capture(window, "x11-blur.png")
+            center = [image.getpixel((x, 60))[0] for x in range(70, 170)]
+            self.assertLess(max(center) - min(center), 180)
+            self.assertTrue(all(20 < value < 235 for value in center))
+            self.assertEqual(image.getpixel((16, 60)), (0, 0, 0))
+            self.assertEqual(image.getpixel((24, 60)), (255, 255, 255))
+            self.assertEqual(image.getpixel((40, 20)), (255, 255, 255))
 
 
 if __name__ == "__main__":

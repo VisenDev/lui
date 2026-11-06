@@ -1,6 +1,6 @@
 (defpackage #:lui.gl
   (:use #:cl #:lui.fn #:lui.layout #:lui.draw #:lui.font)
-  (:export #:gpu #:open-gpu #:close-gpu #:gpu-renderer #:gpu-width
+  (:export #:gpu #:attach-gpu #:open-gpu #:close-gpu #:gpu-renderer #:gpu-width
            #:gpu-height #:gpu-logical-width #:gpu-logical-height
            #:begin-gpu-frame #:present-gpu))
 (in-package #:lui.gl)
@@ -9,7 +9,6 @@
   (:unix (:or "libEGL.so.1" "libEGL.so")))
 (cffi:define-foreign-library opengl
   (:unix (:or "libGL.so.1" "libGL.so")))
-(cffi:use-foreign-library egl)
 (cffi:use-foreign-library opengl)
 
 (defmacro call-gl (name &rest args)
@@ -236,9 +235,44 @@ void main() {
            (call-gl "eglGetError" :int)))
   result)
 
+(fn initialize-gpu ((gpu gpu) (font font))
+  (setf (gpu-program gpu) (make-program))
+  (cffi:with-foreign-object (texture :uint)
+    (call-gl "glGenTextures" :int 1 :pointer texture :void)
+    (setf (gpu-texture gpu) (cffi:mem-ref texture :uint)))
+  (call-gl "glBindTexture" :uint #x0de1
+           :uint (gpu-texture gpu) :void)
+  (dolist (parameter '(#x2801 #x2800))
+    (call-gl "glTexParameteri" :uint #x0de1
+             :uint parameter :int #x2601 :void))
+  (dolist (parameter '(#x2802 #x2803))
+    (call-gl "glTexParameteri" :uint #x0de1
+             :uint parameter :int #x812f :void))
+  (setf (gpu-renderer gpu)
+        (make-renderer
+         :font font
+         :polygons (lambda (contours color alpha)
+                     (gl-shape gpu contours color alpha))
+         :text (lambda (font text x y color)
+                 (gl-text gpu font text x y color))
+         :clip (lambda (box) (gl-clip gpu box))
+         :glass (lambda (box radius frost)
+                  (gl-glass gpu box radius frost))))
+  gpu)
+
+(fn attach-gpu ((font font) (width integer) (height integer))
+  "Attach the shared renderer to a current OpenGL compatibility context."
+  (let ((gpu (make-gpu :width width :height height
+                       :logical-width width :logical-height height))
+        (done nil))
+    (unwind-protect
+         (prog1 (initialize-gpu gpu font) (setf done t))
+      (unless done (close-gpu gpu)))))
+
 (fn open-gpu (native-display native-window font
              (width integer) (height integer))
   "Use a Wayland EGL window, or NIL/NIL for a surfaceless test buffer."
+  (cffi:use-foreign-library egl)
   (let* ((display
            (if native-display
                (call-gl "eglGetDisplay" :pointer native-display :pointer)
@@ -310,29 +344,8 @@ void main() {
                      :pointer (gpu-surface gpu) :pointer (gpu-surface gpu)
                      :pointer (gpu-context gpu) :uint)
             "eglMakeCurrent")
-           (setf (gpu-program gpu) (make-program))
-           (cffi:with-foreign-object (texture :uint)
-             (call-gl "glGenTextures" :int 1 :pointer texture :void)
-             (setf (gpu-texture gpu) (cffi:mem-ref texture :uint)))
-           (call-gl "glBindTexture" :uint #x0de1
-                    :uint (gpu-texture gpu) :void)
-           (dolist (parameter '(#x2801 #x2800))
-             (call-gl "glTexParameteri" :uint #x0de1
-                      :uint parameter :int #x2601 :void))
-           (dolist (parameter '(#x2802 #x2803))
-             (call-gl "glTexParameteri" :uint #x0de1
-                      :uint parameter :int #x812f :void))
-           (setf (gpu-renderer gpu)
-                 (make-renderer
-                  :font font
-                  :polygons (lambda (contours color alpha)
-                              (gl-shape gpu contours color alpha))
-                  :text (lambda (font text x y color)
-                          (gl-text gpu font text x y color))
-                  :clip (lambda (box) (gl-clip gpu box))
-                  :glass (lambda (box radius frost)
-                           (gl-glass gpu box radius frost)))
-                 complete t)
+           (initialize-gpu gpu font)
+           (setf complete t)
            gpu)
       (unless complete (close-gpu gpu)))))
 

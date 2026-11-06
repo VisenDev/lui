@@ -68,7 +68,7 @@
                              (:file "draw")))))
 
 (defsystem "lui/x11"
-  :depends-on ("lui/native")
+  :depends-on ("lui/gl")
   :components ((:module "src"
                 :components ((:file "x11")))))
 
