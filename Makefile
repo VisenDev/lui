@@ -1,4 +1,5 @@
 .DEFAULT_GOAL := help
+.DELETE_ON_ERROR:
 SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 
@@ -28,9 +29,15 @@ SOURCES := $(wildcard src/*.lisp examples/*.lisp) lui.asd \
 SUFFIX := $(if $(filter win32,$(PLATFORM)),.exe,)
 DEMO := build/bin/demo-$(PLATFORM)$(SUFFIX)
 
-.PHONY: help check-platform build demo test test-platform \
+DOC_SOURCES := $(wildcard src/*.lisp) examples/docs.lisp lui.asd
+DOC_DATA := build/docs-data.lisp
+DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
+
+.PHONY: docs docs-html help check-platform build demo test test-platform \
 	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform
 help:
+	@echo 'make docs                 Build standalone docs.html and open the documentation window'
+	@echo 'make docs-html            Only build build/docs.html for hosting'
 	@echo 'make demo                 Build and run the tabbed demo executable'
 	@echo 'make build                Save the demo executable in build/bin/'
 	@echo 'make test                 Test platform; progress/results in build/logs/'
@@ -60,16 +67,36 @@ $(DEMO): $(SOURCES) | check-platform
 	@mkdir -p build/bin
 	LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build.lisp
 
+docs: build/docs.html $(DOC_BIN)
+	$(RUNNER) "$(DOC_BIN)" $(RUN_ARGS)
+
+docs-html: build/docs.html
+
+$(DOC_DATA): scripts/docs-data.lisp scripts/setup.lisp $(DOC_SOURCES)
+	@mkdir -p build
+	$(SBCL) $(SBCL_FLAGS) --load scripts/setup.lisp --load scripts/docs-data.lisp
+
+build/jscl.js: $(JSCL)/dist/jscl.js
+	@mkdir -p build
+	cp "$<" "$@"
+
+build/docs.html: $(DOC_DATA) $(DOC_SOURCES) scripts/build-docs-web.lisp \
+		build/jscl.js $(JSCL)/dist/jscl-node.js
+	node "$(JSCL)/dist/jscl-node.js" scripts/build-docs-web.lisp
+
+$(DOC_BIN): $(DOC_DATA) $(DOC_SOURCES) scripts/build-docs.lisp
+	@mkdir -p build/bin
+	LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build-docs.lisp
+
 test-macos:
 	$(MAKE) --no-print-directory test PLATFORM=cocoa
 
 terminal-demo:
 	$(MAKE) --no-print-directory demo PLATFORM=terminal
 
-web-build:
+web-build: build/jscl.js
 	@mkdir -p build
 	node "$(JSCL)/dist/jscl-node.js" scripts/build-web.lisp
-	cp "$(JSCL)/dist/jscl.js" build/jscl.js
 	sed 's#../build/##g' examples/web.html > build/index.html
 
 web-demo: web-build

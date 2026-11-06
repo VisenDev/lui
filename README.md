@@ -115,6 +115,8 @@ terminal/X11/browser integration tests; `cloc` is needed for source reports and
 the test/benchmark targets. Run from the repository directory:
 
 ```sh
+make docs                    # Generate build/docs.html and open native docs
+make docs-html               # Generate the self-contained page without opening a window
 make build                   # Save the native demo executable
 make demo                    # Build and run the same executable
 make terminal-demo           # Build and run in the terminal
@@ -123,6 +125,14 @@ make test                    # Platform checks, executable smoke test, and log
 make loc                     # cloc src, by file
 make benchmark               # Throughput/frame-time measurements and log
 ```
+
+The documentation browser contains a getting-started guide and a searchable
+reference generated from the library's exported symbols, signatures, and
+docstrings. `make docs` builds the single portable `build/docs.html` and opens
+the same documentation UI in a native window. Use `make docs-html` for hosting
+or CI: copy just that HTML file to a static server or open it directly from
+disk. Both the JSCL runtime and the application are embedded. Make reuses the
+generated files until their sources, build scripts, or runtime change.
 
 Native builds invoke SBCL with `--load scripts/build.lisp`, load the backend and
 shared demo, then use `sb-ext:save-lisp-and-die` to save
@@ -176,7 +186,7 @@ make benchmark PLATFORM=x11 BENCH_CASE=glass/controls
 
 Native and core benchmarks accept `BENCH_CASE` to repeat just one page,
 for example `glass/controls` or `garnet/seven/cells`. X11 timings include
-waiting for the X server to finish rendering each frame.
+buffer swaps and GPU completion.
 
 SBCL runs also print separate `ALLOC` rows per case and for `all/all`:
 `bytes_total`, `bytes_mean`, and `bytes_p95` measure Lisp bytes allocated per
@@ -296,7 +306,7 @@ painting use the same CSS family and weight.
 | `lui` | Dependency-free layout, widgets, and portable terminal output |
 | `lui/terminal` | Optional raw POSIX terminal input through CFFI and libc |
 | `lui/native` | Shared native measurement and outline painting; CFFI, zpb-ttf |
-| `lui/x11` | X11 and XRender libraries, an X display |
+| `lui/x11` | Xlib and system OpenGL, an X display with GLX |
 | `lui/gl` | EGL/OpenGL renderer; EGL and compatibility OpenGL libraries |
 | `lui/wayland` | Wayland client/EGL, xkbcommon, EGL/OpenGL, a Wayland compositor |
 | `lui/win32` | Windows User32, GDI32, Kernel32, and GDI+ |
@@ -360,7 +370,7 @@ Appearance is backend-dependent:
 | --- | --- |
 | HTML | Browser backdrop filtering, tint, rounded borders, and native controls |
 | EGL/OpenGL / Wayland | Backdrop sampling, blur, and an edge refraction approximation |
-| XRender | Server-side Gaussian convolution, tint, and rim; no refraction. A warning identifies servers without convolution support, which fall back to tint/rim. |
+| X11/GLX | Uses the same OpenGL glass shader, glyphs, and geometry cache as Wayland. |
 | Win32 | Native filtered downsample/upsample backdrop blur, tint, and rim; no refraction |
 | Cocoa | Whole-window AppKit material, with widget tint and rounded outlines; no per-widget backdrop blur |
 | Terminal | Cell text and square/rounded panel outlines |
@@ -517,7 +527,7 @@ Additional checks:
 | Portable core | SBCL, CLISP, ECL, and JSCL: core layout plus widget, editing, tab, hover, and focus checks |
 | Raw terminal | SBCL, CLISP, ECL: real PTY input, Unicode, mouse, resize, and cleanup after normal exit/errors |
 | HTML | Chromium integration tests: interaction, composition/lifecycle, resizing and teardown |
-| X11/XRender | Real-window tests of native rendering, input/resize, convolution and fallback behavior |
+| X11/GLX | Real-window tests of OpenGL rendering, input/resize, glass frost and clipboard behavior |
 | EGL/OpenGL | Offscreen shared-demo rendering, glass shader, pixel readback, and GL error checks |
 | Wayland | SBCL, CLISP, ECL: shared-demo compositor frames, pointer callbacks, repeat timing/modifiers/cancellation |
 | Win32 | Windows SBCL under Wine: outline holes, alpha, clipping, input, resizing, and filtered blur |
