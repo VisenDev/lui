@@ -19,6 +19,11 @@
                                                   :ulong symbol :uint))
     (lui.x11::key-input event context)))
 
+(assert (= 0 (lui.x11::pointer-buttons 0)))
+(assert (= 1 (lui.x11::pointer-buttons #x100)))
+(assert (= 2 (lui.x11::pointer-buttons #x400)))
+(assert (= 3 (lui.x11::pointer-buttons #x500)))
+
 (let* ((display (lui.x11::open-display (cffi:null-pointer)))
        (window (lui.x11::make-x-window :display display))
        (context (make-context :focus :button))

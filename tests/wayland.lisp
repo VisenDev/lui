@@ -46,6 +46,77 @@
   (nreverse (shiftf
              (lui.wayland::wl-window-events lui.wayland::*window*) nil)))
 
+(defun pointer-motion (x y)
+  (let ((null (cffi:null-pointer)))
+    (cffi:foreign-funcall-pointer
+     (cffi:callback lui.wayland::pointer-motion) ()
+     :pointer null :pointer null :uint32 0
+     :int32 (round (* x 256)) :int32 (round (* y 256)) :void)))
+
+(defun pointer-button (pressed)
+  (let ((null (cffi:null-pointer)))
+    (cffi:foreign-funcall-pointer
+     (cffi:callback lui.wayland::pointer-button) ()
+     :pointer null :pointer null :uint32 0 :uint32 0
+     :uint32 #x110 :uint32 pressed :void)))
+
+(defun test-pointer-cancellation ()
+  (let* ((lui:*unit* 1) (context (lui.terminal:make-terminal-context))
+         (state (lui.debug:make-state :open-p t :selected '(:id :target)))
+         (lui.wayland::*window* (lui.wayland::make-wl-window)))
+    (labels ((frame ()
+               (with-frame (context 200 80 :events (take-input))
+                 (lui.debug:draw (lambda () (lui:button :target "Target"))
+                                 :state state)))
+             (node (name)
+               (gethash (lui.debug::id name)
+                        (lui.frame::context-ids context)))
+             (height () (box-height (element-box (node :property-pane)))))
+      (frame) (frame)
+      (dolist (mode '(:leave :keyboard :enter :device))
+        (let* ((box (element-box (node :details-resize)))
+               (x (+ (box-x box) 2)) (y (+ (box-y box) 0.5)))
+          (pointer-motion x y)
+          (pointer-button 1)
+          (assert (= 1 (event-buttons
+                        (first (lui.wayland::wl-window-events
+                                lui.wayland::*window*)))))
+          (frame)
+          (assert (equal (context-active context)
+                         (lui.debug::id :details-resize)))
+          (let ((before (height)))
+            (pointer-motion x (- y 2))
+            (frame)
+            (assert (= (+ before 2) (height))))
+          (let ((null (cffi:null-pointer)) (before (height)))
+            (case mode
+              (:enter
+               ;; A new enter re-synchronizes buttons after a lost release.
+               (cffi:foreign-funcall-pointer
+                (cffi:callback lui.wayland::pointer-enter) ()
+                :pointer null :pointer null :uint32 0 :pointer null
+                :int32 (round (* x 256)) :int32 (round (* (- y 2) 256))
+                :void))
+              (:device
+               (cffi:foreign-funcall-pointer
+                (cffi:callback lui.wayland::seat-capabilities) ()
+                :pointer null :pointer null :uint32 0 :void))
+              (otherwise
+               (cffi:foreign-funcall-pointer
+                (if (eq mode :leave)
+                    (cffi:callback lui.wayland::pointer-leave)
+                    (cffi:callback lui.wayland::keyboard-leave)) ()
+                :pointer null :pointer null :uint32 0 :pointer null :void)))
+            (frame)
+            (assert (null (context-active context)))
+            (assert (null (lui.debug::state-details-grab state)))
+            (pointer-motion x (- y 5))
+            (frame)
+            (assert (= before (height)))
+            (assert (equal '(:id :target)
+                           (lui.debug:state-selected state))))))
+      (format t "Wayland pointer ABI cancellation and re-entry passed.~%"))))
+
 (defun test-key-repeat ()
   (let* ((context (cffi:foreign-funcall "xkb_context_new" :uint 0 :pointer))
          (lui.wayland::*window*
@@ -418,6 +489,7 @@
 
 (test-pointer-cursor-state)
 (test-decoration-configure)
+(test-pointer-cancellation)
 (test-surface-scaling)
 (test-readline-translation)
 

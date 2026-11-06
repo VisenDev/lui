@@ -37,7 +37,7 @@
   (repeat-rate 25 :type integer) (repeat-delay 600 :type integer)
   repeat-code repeat-at
   (width 720 :type integer) (height 520 :type integer)
-  (x 0 :type real) (y 0 :type real)
+  (x 0 :type real) (y 0 :type real) (buttons 0 :type integer)
   (configured-p nil :type boolean) (quit-p nil :type boolean)
   (events nil :type list) (listeners nil :type list))
 (defvar *window*)
@@ -245,29 +245,36 @@
           (wl-window-cursor-kind *window*) nil)
     (update-cursor)))
 
+(fn cancel-pointer ((window wl-window))
+  (setf (wl-window-buttons window) 0)
+  (push (make-event :kind :cancel :buttons 0) (wl-window-events window)))
+
 (callback pointer-enter
     ((serial :uint32) (surface :pointer) (x :int32) (y :int32))
   (declare (ignore surface))
-  (setf (wl-window-cursor-serial *window*) serial
+  (setf (wl-window-buttons *window*) 0
+        (wl-window-cursor-serial *window*) serial
         (wl-window-cursor-kind *window*) nil
         (wl-window-x *window*) (/ x 256.0)
         (wl-window-y *window*) (/ y 256.0))
-  (queue-input :move :x (wl-window-x *window*) :y (wl-window-y *window*))
+  (queue-input :move :buttons 0
+                    :x (wl-window-x *window*) :y (wl-window-y *window*))
   (update-cursor))
 
 (callback pointer-leave ((serial :uint32) (surface :pointer))
   (declare (ignore serial surface))
+  (cancel-pointer *window*)
   (setf (wl-window-cursor-serial *window*) nil
         (wl-window-cursor-kind *window*) nil
         (wl-window-x *window*) -1 (wl-window-y *window*) -1)
-  (queue-input :move :x -1 :y -1))
+  (queue-input :move :buttons 0 :x -1 :y -1))
 
 (callback pointer-motion ((time :uint32) (x :int32) (y :int32))
   (declare (ignore time))
   (setf (wl-window-x *window*) (/ x 256.0)
         (wl-window-y *window*) (/ y 256.0))
-  (queue-input :move :x (wl-window-x *window*)
-                    :y (wl-window-y *window*))
+  (queue-input :move :buttons (wl-window-buttons *window*)
+                    :x (wl-window-x *window*) :y (wl-window-y *window*))
   (update-cursor))
 
 (callback pointer-button
@@ -275,8 +282,13 @@
   (declare (ignore time))
   (setf (wl-window-clipboard-serial *window*) serial)
   (when (member button '(#x110 #x111))
+    (let ((bit (if (= button #x111) 2 1)))
+      (setf (wl-window-buttons *window*)
+            (if (zerop state) (logandc2 (wl-window-buttons *window*) bit)
+                (logior (wl-window-buttons *window*) bit))))
     (queue-input (if (zerop state) :release :press)
                  :button (if (= button #x111) :secondary :primary)
+                 :buttons (wl-window-buttons *window*)
                  :x (wl-window-x *window*) :y (wl-window-y *window*))))
 
 (callback pointer-axis ((time :uint32) (axis :uint32) (value :int32))
@@ -349,7 +361,8 @@
   (stop-key-repeat *window*))
 (callback keyboard-leave ((serial :uint32) (surface :pointer))
   (declare (ignore serial surface))
-  (stop-key-repeat *window*))
+  (stop-key-repeat *window*)
+  (cancel-pointer *window*))
 
 (fn modifier-active-p (state (name string))
   (plusp (cffi:foreign-funcall
@@ -464,12 +477,17 @@
 (fn release-keyboard ((window wl-window))
   (release-keymap window)
   (when (wl-window-keyboard window)
+    (cancel-pointer window)
     (if (>= (wl-window-seat-version window) 3)
         (request (wl-window-keyboard window) 0 nil nil nil t)
         (destroy-proxy (wl-window-keyboard window)))
     (setf (wl-window-keyboard window) nil)))
 
 (callback seat-capabilities ((capabilities :uint32))
+  (when (and (not (logtest capabilities 1))
+             (or (wl-window-pointer *window*)
+                 (plusp (wl-window-buttons *window*))))
+    (cancel-pointer *window*))
   (unless (logtest capabilities 1)
     (when (wl-window-cursor-device *window*)
       (request (wl-window-cursor-device *window*) 0 nil nil nil t)

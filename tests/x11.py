@@ -176,7 +176,7 @@ class X11:
         event = Event()
         event.key = KeyEvent(type=kind, display=self.display, window=window,
                              root=self.root, x=x, y=y, code=code, state=state, same_screen=1)
-        mask = {2: 1, 4: 4, 5: 8, 8: 32}[kind]
+        mask = {2: 1, 4: 4, 5: 8, 6: 64, 8: 32, 10: 1 << 21}[kind]
         assert self.lib.XSendEvent(self.display, window, 0, mask, C.byref(event))
         if flush:
             self.lib.XFlush(self.display)
@@ -379,6 +379,60 @@ class X11Tests(unittest.TestCase):
                     self.x.display, clipboard) == requestor)
             finally:
                 self.x.lib.XDestroyWindow(self.x.display, requestor)
+
+    def test_divider_lost_release_and_focus_loss_stop_dragging(self):
+        source = r'''
+(asdf:load-system "lui/debug")
+(let ((state (lui.debug:make-state :open-p t :selected '(:id :target))))
+  (lui.x11:run-x11
+   (lambda ()
+     (lui.debug:draw (lambda () (lui:button :target "Target")) :state state)
+     (let ((rail (lui.frame:previous-box '(:lui.debug :details-resize nil)))
+           (pane (lui.frame:previous-box '(:lui.debug :property-pane nil))))
+       (when (and rail pane)
+         (with-open-file (out STATE_PATH :direction :output
+                              :if-exists :supersede)
+           (format out "{~S:[~D,~D,~D,~D],~S:~F,~S:~A,~S:~A}"
+                   "rail" (round (lui.layout:box-x rail))
+                   (round (lui.layout:box-y rail))
+                   (round (lui.layout:box-width rail))
+                   (round (lui.layout:box-height rail))
+                   "height" (lui.layout:box-height pane)
+                   "active" (if (equal (lui.frame:context-active
+                                        lui.frame:*context*)
+                                       '(:lui.debug :details-resize nil))
+                                "true" "false")
+                   "selected" (if (lui.debug:state-selected state)
+                                  "true" "false"))))))
+   :title WINDOW_TITLE :width 520 :height 420))
+'''
+        with self.application("lost-release", source) as (window, path):
+            for focus_loss in (False, True):
+                with self.subTest(focus_loss=focus_loss):
+                    state = self.state(path)
+                    x, y, width, height = state["rail"]
+                    x += width // 2
+                    y += height // 2
+                    before = state["height"]
+                    self.x.send(window, 4, x, y, code=1)
+                    self.state(path, lambda s: s["active"])
+                    self.x.send(window, 6, x, y - 20, state=1 << 8)
+                    dragged = self.state(path, lambda s: s["height"] > before + 10)
+                    if focus_loss:
+                        self.x.send(window, 10)
+                    else:
+                        # No ButtonRelease arrives: physical motion reports up.
+                        self.x.send(window, 6, x, y - 20, state=0)
+                    stopped = self.state(path, lambda s: not s["active"])
+                    self.assertTrue(stopped["selected"])
+                    self.assertAlmostEqual(stopped["height"], dragged["height"],
+                                           delta=1)
+                    self.x.send(window, 6, x, y - 50, state=0)
+                    time.sleep(0.15)
+                    state = self.state(path)
+                    self.assertFalse(state["active"])
+                    self.assertAlmostEqual(state["height"], stopped["height"],
+                                           delta=1)
 
     def test_shared_demo_pixels_interaction_and_resize(self):
         source = r'''

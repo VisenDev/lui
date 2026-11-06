@@ -323,6 +323,10 @@
                      (cursor-for window kind))
       (setf (x-window-cursor-kind window) kind))))
 
+(fn pointer-buttons ((state integer))
+  (logior (if (logtest state #x100) 1 0)
+          (if (logtest state #x400) 2 0)))
+
 (fn read-events ((window x-window) (delete integer))
   (let ((display (x-window-display window))
         (events nil)
@@ -335,6 +339,7 @@
                (setf (x-window-pointer-x window) -1
                      (x-window-pointer-y window) -1)
                (push (make-event :kind :move :x -1 :y -1) events))
+              ((10 18) (push (make-event :kind :cancel :buttons 0) events))
               (2
                (let* ((context (x-window-context window))
                       (predicted
@@ -346,7 +351,7 @@
                  (when input (push input events))))
               ((4 5 6 7)
                (cffi:with-foreign-slots
-                   ((type x y code) event (:struct key-event))
+                   ((type x y code state) event (:struct key-event))
                  (cond
                    ((and (= type 4) (member code '(4 5)))
                     (push (make-event :kind :scroll :x x :y y
@@ -363,6 +368,14 @@
                            :button (if (and (member type '(4 5))
                                             (= code 3))
                                        :secondary :primary)
+                           :buttons
+                           (unless (= type 7)
+                             (let ((buttons (pointer-buttons state))
+                                   (bit (if (= code 3) 2 1)))
+                               (case type
+                                 (4 (logior buttons bit))
+                                 (5 (logandc2 buttons bit))
+                                 (otherwise buttons))))
                            :x x :y y)
                           events)))))
               (22
@@ -457,7 +470,7 @@
                  (intern-atom display "CLIPBOARD" 0))
            (store-name display (x-window-window window) title)
            (select-input display (x-window-window window)
-                         (logior 1 4 8 16 32 64 #x8000 #x20000))
+                         (logior 1 4 8 16 32 64 #x8000 #x20000 #x200000))
            (cffi:with-foreign-object (atom :ulong)
              (setf (cffi:mem-ref atom :ulong) delete)
              (set-protocols display (x-window-window window) atom 1))
