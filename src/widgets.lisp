@@ -4,17 +4,25 @@
            #:widget-foreground #:widget-background #:widget-radius
            #:widget-frost
            #:widget-terminal-text #:declare-panel #:declare-widget
-           #:value-widget
+           #:toolkit-surface #:register-surface #:value-widget
            #:make-widget
            #:widget-value #:widget-minimum #:widget-maximum #:widget-step
            #:widget-font-size #:widget-font-family #:widget-font-weight
            #:widget-opacity #:widget-accent
            #:widget-disabled-p
-           #:widget-painter #:edit-state #:edit-state-cursor
+           #:widget-painter #:widget-web-style #:edit-state #:edit-state-cursor
            #:edit-state-anchor #:make-edit-state #:edit-text #:readline-key
            #:text-field-focused-p #:activation-focused-p #:cursor-at))
 
 (in-package #:lui.widgets)
+
+(defvar *surfaces* (make-hash-table :test 'eq))
+
+(defun register-surface (name surface)
+  (setf (gethash name *surfaces*) surface))
+
+(defun toolkit-surface (name)
+  (gethash name *surfaces* name))
 
 (defstruct* widget
   (kind :label :type symbol)
@@ -29,6 +37,8 @@
   (opacity 0.85 :type real)
   (accent "#258bff" :type string)
   (disabled-p nil :type boolean)
+  (web-style nil :type (or null function))
+  (terminal-label nil :type (or null function))
   (painter nil :type (or null function))
   (text "" :type string)
   (terminal-cache nil :type (or null string))
@@ -40,7 +50,9 @@
 (fn (widget-terminal-text string) ((widget widget))
   (or (widget-terminal-cache widget)
       (setf (widget-terminal-cache widget)
-            (let ((text (widget-text widget)) (value (widget-value widget)))
+            (if (widget-terminal-label widget)
+                (funcall (widget-terminal-label widget) widget)
+                (let ((text (widget-text widget)) (value (widget-value widget)))
               (case (widget-kind widget)
                 ((:label :list-item :cell) text)
                 ((:panel :canvas) "")
@@ -59,25 +71,27 @@
                 (:text-field (format nil "[~A]" value))
                 (:tab (format nil (if value "[ ~A ]" "  ~A  ") text))
                 (otherwise
-                 (format nil (if (member (widget-style widget)
-                                             '(:motif :garnet))
-                                 "[ ~A ]" "( ~A )") text)))))))
+                 (format nil (if (member (toolkit-surface
+                                          (widget-style widget))
+                                         '(:motif :garnet))
+                                 "[ ~A ]" "( ~A )") text))))))))
 
 (fn tab-arrow-p ((event event))
   (and (eq (event-kind event) :key)
        (member (event-key event) '(:left :right :home :end))))
 
 (fn navigate-tabs ()
-  (when (and (context-previous-root *context*)
+  (when (and (not (context-tabs-handled-p *context*))
+             (context-previous-root *context*)
              (let ((pending nil))
                (maphash (lambda (id events)
                           (declare (ignore id))
                           (when (some #'tab-arrow-p events) (setf pending t)))
                         (context-events *context*))
                pending))
+    (setf (context-tabs-handled-p *context*) t)
     (walk-elements
-     ;; Only tab navigation consumes this previous tree; process a batch once.
-     (shiftf (context-previous-root *context*) nil)
+     (context-previous-root *context*)
      (lambda (parent)
        (let ((tabs (remove-if-not
                     (lambda (node)
@@ -117,7 +131,7 @@
      ((maximum real) 1) ((step real) 0.01) ((font-size real) 16)
      ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
      ((opacity real) 0.85) ((accent string) "#258bff") (disabled-p nil)
-     painter)
+     painter web-style terminal-label)
   (when (eq kind :tab) (navigate-tabs))
   (let ((measure (or (context-measure *context*)
                      (error "A backend text measurer is required.")))
@@ -128,7 +142,8 @@
            :minimum minimum :maximum maximum :step step :font-size font-size
            :font-family font-family :font-weight font-weight
            :opacity opacity :accent accent
-           :disabled-p (not (null disabled-p)) :painter painter)))
+           :disabled-p (not (null disabled-p)) :painter painter
+           :web-style web-style :terminal-label terminal-label)))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding
            :floating-p floating-p :offset-x offset-x :offset-y offset-y
@@ -420,7 +435,7 @@
     (loop :for (key value) :on options :by #'cddr
           :do (if (member key '(:foreground :background :radius :frost
                                :opacity :accent :font-size :font-family
-                               :font-weight :painter))
+                               :font-weight :painter :web-style :terminal-label))
                   (setf appearance (append appearance (list key value)))
                   (setf layout (append layout (list key value)))))
     (emit (apply #'make-element

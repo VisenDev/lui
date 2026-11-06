@@ -420,7 +420,7 @@
   (let* ((widget (element-content node))
          (box (element-box node))
          (kind (widget-kind widget))
-         (glass (eq (widget-style widget) :glass))
+         (glass (eq (toolkit-surface (widget-style widget)) :glass))
          (disabled (widget-disabled-p widget))
          (pressed (and (not disabled) (hovered-p (element-id node))
                        (equal (element-id node)
@@ -474,7 +474,8 @@
          (shape renderer fill radius (widget-accent widget) 1))
        (outline renderer box radius foreground 1 1))
       ((eq kind :canvas) (paint-canvas renderer node))
-      ((eq (widget-style widget) :garnet) (paint-garnet renderer node))
+      ((eq (toolkit-surface (widget-style widget)) :garnet)
+       (paint-garnet renderer node))
       (t
        (unless (eq kind :label)
          (when (and glass (< (widget-opacity widget) 1)
@@ -607,7 +608,8 @@
 
 (fn selection-inset ((node element))
   (if (eq (widget-kind (element-content node)) :label) 0
-      (if (eq (widget-style (element-content node)) :garnet) 6 12)))
+      (if (eq (toolkit-surface (widget-style (element-content node)))
+              :garnet) 6 12)))
 
 (fn selection-index ((renderer renderer) (node element) (x real) (y real))
   (let* ((font (widget-font renderer (element-content node)))

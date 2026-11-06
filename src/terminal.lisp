@@ -122,7 +122,7 @@
          (top (cell-edge (box-y box)))
          (right (1- (cell-edge (+ (box-x box) (box-width box)))))
          (bottom (1- (cell-edge (+ (box-y box) (box-height box)))))
-         (square-p (not (eq (widget-style widget) :glass)))
+         (square-p (not (eq (toolkit-surface (widget-style widget)) :glass)))
          (corners (if square-p "++++" "╭╮╰╯"))
          (horizontal (if square-p #\- #\─))
          (vertical (if square-p #\| #\│)))

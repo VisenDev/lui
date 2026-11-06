@@ -1,5 +1,6 @@
 (defpackage #:lui.glass
-  (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
+  (:use #:cl)
+  (:import-from #:lui #:define-collection)
   (:export #:label #:button #:checkbox #:slider #:text-field #:panel #:tab
            #:canvas #:gauge #:list-item #:cell
            #:*defaults*))
@@ -11,59 +12,5 @@
     :radius 12 :frost 12 :accent "#258bff")
   "Collection defaults; bind this plist to customize a group of widgets.")
 
-(fn label ((text string) &rest options)
-  (apply #'declare-widget :label :glass nil text (append options *defaults*)))
-
-(fn button (id (text string) &rest options)
-  (apply #'declare-widget :button :glass id text
-         (append options *defaults*)))
-
-(fn tab (id (text string) &rest options)
-  (apply #'declare-widget :tab :glass id text
-         :value (not (null (getf options :selected-p)))
-         (loop :for (key value) :on (append options *defaults*) :by #'cddr
-               :unless (eq key :selected-p) :append (list key value))))
-
-(fn checkbox (id value (text string) &rest options)
-  (value-widget :checkbox :glass id value text (append options *defaults*)))
-
-(fn slider (id (value real) &rest options)
-  (value-widget :slider :glass id value (getf options :text "")
-                (loop :for (key val) :on (append options *defaults*)
-                      :by #'cddr
-                      :unless (eq key :text)
-                        :append (list key val))))
-
-(fn text-field (id (value string) &rest options)
-  (value-widget :text-field :glass id value "" (append options *defaults*)))
-
-(fn cell (id (text string) &rest options)
-  (let ((args nil))
-    (do ((tail options (cddr tail))) ((null tail))
-      (unless (eq (car tail) :selected-p)
-        (push (car tail) args)
-        (push (cadr tail) args)))
-    (apply #'declare-widget :cell :glass id text
-           :value (not (null (getf options :selected-p)))
-           (append (nreverse args)
-                   '(:background "#ffffff" :foreground "#202430")
-                   *defaults*))))
-
-(fn list-item (id (text string) &rest options)
-  (apply #'declare-widget :list-item :glass id text
-         :value (not (null (getf options :selected-p)))
-         (loop :for (key value) :on (append options *defaults*) :by #'cddr
-               :unless (eq key :selected-p) :append (list key value))))
-
-(fn gauge (id (fraction real) &rest options)
-  (apply #'declare-widget :gauge :glass id ""
-         :value (max 0 (min 1 fraction)) (append options *defaults*)))
-
-(fn canvas (id (commands list) &rest options)
-  (apply #'declare-widget :canvas :glass id ""
-         :value commands (append options *defaults*)))
-
-(defmacro panel ((&rest options) &body body)
-  `(let ((*parent* (declare-panel :glass
-                    (append (list ,@options) *defaults*))))
-     ,@body))
+(define-collection :glass *defaults* panel
+  label button tab checkbox slider text-field cell list-item gauge canvas)

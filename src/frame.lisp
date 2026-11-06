@@ -13,7 +13,8 @@
            #:context-previous-root #:context-activated
            #:context-focus-visible-p #:frame-time #:request-frame
            #:context-next-frame #:scroll-position #:scroll-to
-           #:pending-input-context
+           #:pending-input-context #:context-overlay #:context-overlay-state
+           #:context-tabs-handled-p
            #:context-copy #:context-input-handler #:context-selection))
 
 (in-package #:lui.frame)
@@ -33,6 +34,9 @@
 
 (defstruct* context
   (root nil :type (or null element))
+  overlay-state
+  (overlay nil :type (or null function))
+  (tabs-handled-p nil :type boolean)
   (previous-root nil :type (or null element))
   (width 0 :type real)
   (height 0 :type real)
@@ -223,7 +227,8 @@
          (setf (gethash (element-id node) (context-regions context))
                (element-box node))))))
   (clrhash (context-ids context))
-  (setf (context-previous-root context) (context-root context)
+  (setf (context-tabs-handled-p context) nil
+        (context-previous-root context) (context-root context)
         (context-width context) width
         (context-height context) height
         (context-root context) (make-element :width (grow) :height (grow))
@@ -272,6 +277,9 @@
 
 (fn (end-frame element) ((context context))
   (assert (context-building-p context))
+  (when (context-overlay context)
+    (let ((*context* context) (*parent* (context-root context)))
+      (funcall (context-overlay context) (context-previous-root context))))
   (solve (context-root context) (context-width context)
          (context-height context))
   (flet ((interactive-p (id)

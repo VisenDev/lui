@@ -1,8 +1,10 @@
 (defpackage #:lui
-  (:use #:cl #:lui.fn)
+  (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
   (:export #:run #:register-backend #:available-backends #:units #:*backend*
            #:*unit* #:with-toolkit #:current-toolkit #:toolkit-defaults
-           #:opt #:panel #:label #:button #:tab #:checkbox #:slider
+           #:register-toolkit #:toolkit-surface #:map-toolkit-web-styles
+           #:toolkit-web-style #:define-collection #:opt #:panel #:label
+           #:button #:tab #:checkbox #:slider
            #:text-field #:cell #:list-item #:gauge #:canvas))
 
 (in-package #:lui)
@@ -42,18 +44,58 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 
 (defvar *collection* :glass)
 
+(defstruct collection parent defaults controls web-style)
+(defvar *collections* (make-hash-table :test 'eq))
+
+(defun collection (name)
+  (or (gethash name *collections*) (error "Unknown toolkit ~S." name)))
+
+(defun register-toolkit (name &key parent defaults controls web-style
+                                   (surface (if parent
+                                                (toolkit-surface parent)
+                                                :glass)))
+  "Register a collection. DEFAULTS is a plist or a zero-argument function.
+CONTROLS maps control names to functions taking the public arguments and options.
+WEB-STYLE, when provided, takes the DOM node, widget and layout element."
+  (loop :for ancestor := parent
+          :then (collection-parent (collection ancestor))
+        :while ancestor :when (eq ancestor name)
+          :do (error "Circular toolkit inheritance at ~S." name))
+  (register-surface name surface)
+  (setf (gethash name *collections*)
+        (make-collection :parent parent :defaults defaults
+                         :controls controls :web-style web-style))
+  name)
+
 (defun current-toolkit () *collection*)
 
-(defun toolkit-defaults (&optional (toolkit *collection*))
-  (ecase toolkit
-    (:glass lui.glass:*defaults*)
-    (:motif lui.motif:*defaults*)
-    (:garnet lui.garnet:*defaults*)))
+(defun toolkit-defaults (&optional (name *collection*))
+  (let* ((entry (collection name)) (parent (collection-parent entry))
+         (source (collection-defaults entry))
+         (defaults (if (functionp source) (funcall source) source)))
+    (if parent (append defaults (toolkit-defaults parent)) defaults)))
+
+(defun toolkit-web-style (name)
+  (collection-web-style (collection name)))
+
+(defun (setf toolkit-web-style) (callback name)
+  (setf (collection-web-style (collection name)) callback))
+
+(defun map-toolkit-web-styles (name function)
+  (let* ((entry (collection name)) (parent (collection-parent entry))
+         (style (collection-web-style entry)))
+    (when parent (map-toolkit-web-styles parent function))
+    (when style (funcall function style))))
+
+(defun override (kind)
+  (loop :for name := *collection* :then (collection-parent entry)
+        :while name :for entry := (collection name)
+        :thereis (cdr (assoc kind (collection-controls entry)))))
 
 (defmacro with-toolkit ((designator) &body body)
   "Draw BODY with the named collection; nested bindings restore on exit."
   `(let ((*collection* ,designator))
-     (toolkit-defaults *collection*)
+     (collection *collection*)
      ,@body))
 
 (defmacro opt (&rest forms &key width height padding gap align cross-align
@@ -61,14 +103,14 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
                interactive-p keyboard-focus-p pointer-focus-p
                foreground background radius frost minimum maximum step
                font-size font-family font-weight opacity accent disabled-p
-               painter selected-p text)
+               painter web-style terminal-label selected-p text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align id direction
                    clip-p scroll-p floating-p offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
                    radius frost minimum maximum step font-size font-family
-                   font-weight opacity accent disabled-p painter selected-p
-                   text))
+                   font-weight opacity accent disabled-p painter web-style terminal-label
+                   selected-p text))
   `(list ,@forms))
 
 (defmacro panel (options &body body)
@@ -77,38 +119,71 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
             *collection* (append ,options (toolkit-defaults)))))
      ,@body))
 
-(defmacro define-control (name args glass motif garnet)
-  `(defun ,name (,@args &optional options)
-     (apply (ecase *collection*
-              (:glass #',glass) (:motif #',motif) (:garnet #',garnet))
-            ,@args options)))
+(defmacro define-control (name args &body body)
+  (let ((kind (intern (symbol-name name) :keyword)))
+    `(defun ,name (,@args &optional options)
+       (let ((custom (override ,kind)))
+         (if custom (funcall custom ,@args options)
+             (let ((style *collection*) (defaults (toolkit-defaults)))
+               ,@body))))))
 
 (define-control label (text)
-  lui.glass:label lui.motif:label lui.garnet:label)
+  (apply #'declare-widget :label style nil text (append options defaults)))
 
 (define-control button (id text)
-  lui.glass:button lui.motif:button lui.garnet:button)
+  (apply #'declare-widget :button style id text (append options defaults)))
+
+(defun without-option (key options)
+  (let ((result nil))
+    (do ((tail options (cddr tail))) ((null tail) (nreverse result))
+      (unless (eq (car tail) key)
+        (push (car tail) result)
+        (push (cadr tail) result)))))
+
+(defun selectable (kind style id text options defaults)
+  (apply #'declare-widget kind style id text :value (getf options :selected-p)
+         (append (without-option :selected-p options) defaults)))
 
 (define-control tab (id text)
-  lui.glass:tab lui.motif:tab lui.garnet:tab)
-
-(define-control checkbox (id value text)
-  lui.glass:checkbox lui.motif:checkbox lui.garnet:checkbox)
-
-(define-control slider (id value)
-  lui.glass:slider lui.motif:slider lui.garnet:slider)
-
-(define-control text-field (id value)
-  lui.glass:text-field lui.motif:text-field lui.garnet:text-field)
-
-(define-control cell (id text)
-  lui.glass:cell lui.motif:cell lui.garnet:cell)
+  (selectable :tab style id text options defaults))
 
 (define-control list-item (id text)
-  lui.glass:list-item lui.motif:list-item lui.garnet:list-item)
+  (selectable :list-item style id text options defaults))
+
+(define-control cell (id text)
+  (selectable :cell style id text options
+              (list* :background "#ffffff" :foreground "#202430" defaults)))
+
+(define-control checkbox (id value text)
+  (value-widget :checkbox style id value text (append options defaults)))
+
+(define-control slider (id value)
+  (value-widget :slider style id value (getf options :text "")
+                (append (without-option :text options) defaults)))
+
+(define-control text-field (id value)
+  (value-widget :text-field style id value "" (append options defaults)))
 
 (define-control gauge (id fraction)
-  lui.glass:gauge lui.motif:gauge lui.garnet:gauge)
+  (apply #'declare-widget :gauge style id "" :value (max 0 (min 1 fraction))
+         (append options defaults)))
 
 (define-control canvas (id commands)
-  lui.glass:canvas lui.motif:canvas lui.garnet:canvas)
+  (apply #'declare-widget :canvas style id "" :value commands
+         (append options defaults)))
+
+(defmacro define-collection (name defaults panel-name &rest names)
+  "Retain collection-qualified entry points for existing callers."
+  (let ((functions '(label button tab checkbox slider text-field cell
+                     list-item gauge canvas))
+        (args '((text) (id text) (id text) (id value text) (id value)
+                (id value) (id text) (id text) (id fraction) (id commands))))
+    `(progn
+       (register-toolkit ,name :surface ,name :defaults (lambda () ,defaults))
+       ,@(loop :for local :in names :for fn :in functions :for a :in args
+               :collect `(defun ,local (,@a &rest options)
+                           (with-toolkit (,name)
+                             (,fn ,@a options))))
+       (defmacro ,panel-name ((&rest options) &body body)
+         (list 'with-toolkit (list ,name)
+               (list* 'panel (cons 'opt options) body))))))
