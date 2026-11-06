@@ -215,6 +215,19 @@ Native and core benchmarks accept `BENCH_CASE` to repeat just one page,
 for example `glass/controls` or `garnet/seven/cells`. X11 timings include
 buffer swaps and GPU completion.
 
+The web benchmark can compare steady Cells redraws with continuous wheel
+scrolling in the same viewport. The scrolling case checks that the sheet
+moves and reports its travel in pixels.
+
+```sh
+BENCH_TOOLKITS=Glass BENCH_PAGES=7GUIs/Cells,7GUIs/Cells-scroll \
+  make benchmark-platform PLATFORM=web BENCH_FRAMES=120 WARMUP=16
+```
+
+Set `BENCH_DETAIL=1 BENCH_OUTPUT=build/cells-profile.json` for per-phase
+timings. Frame completion includes layout, and layout includes widget
+measurement, so those nested timings overlap.
+
 SBCL runs also print separate `ALLOC` rows per case and for `all/all`:
 `bytes_total`, `bytes_mean`, and `bytes_p95` measure Lisp bytes allocated per
 measured frame; `gc_cpu_ms` reports GC CPU time inside those frame intervals.

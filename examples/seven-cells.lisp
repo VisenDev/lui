@@ -198,19 +198,18 @@
                               :height (fixed (max 0 (- view-height height)))
                               :floating-p t :offset-x (+ x header)
                               :offset-y (+ y height) :clip-p t)
-                (loop :for row :from first-row :below last-row
-                      :do (loop :for column :from first-column
-                                :below last-column
-                                :do (draw-cell state
-                                               (+ (* row 26) column)
-                                               (- (* column width) x)
-                                               (- (* row height) y)
-                                               width height))))
+                (do ((row first-row (1+ row))) ((>= row last-row))
+                  (do ((column first-column (1+ column)))
+                      ((>= column last-column))
+                    (draw-cell state (+ (* row 26) column)
+                               (- (* column width) x)
+                               (- (* row height) y) width height))))
               ;; Sticky headers are painted last over the scrolled cells.
-              (loop :for row :from first-row :below last-row
-                    :do (header (format nil "~D" row) x
-                                (* (1+ row) height) header height))
-              (loop :for column :from first-column :below last-column
-                    :do (header (string (code-char (+ 65 column)))
-                                (+ header (* column width)) y width height))
+              (do ((row first-row (1+ row))) ((>= row last-row))
+                (header (format nil "~D" row) x
+                        (* (1+ row) height) header height))
+              (do ((column first-column (1+ column)))
+                  ((>= column last-column))
+                (header (string (code-char (+ 65 column)))
+                        (+ header (* column width)) y width height))
               (header "" x y header height))))))))

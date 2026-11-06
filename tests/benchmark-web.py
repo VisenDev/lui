@@ -5,6 +5,7 @@ import math
 import os
 from pathlib import Path
 import statistics
+import time
 
 from web import WebTests
 
@@ -15,6 +16,7 @@ pages = ("Controls", "Editing", "Layout", "Scroll", "Styles") + tuple(
 )
 if os.environ.get("BENCH_PAGES"):
     pages = tuple(os.environ["BENCH_PAGES"].split(","))
+# Include 7GUIs/Cells-scroll in BENCH_PAGES to time active wheel scrolling.
 case_count = len(toolkits) * len(pages)
 frames = int(os.environ.get("BENCH_FRAMES", "240"))
 warmup = int(os.environ.get("WARMUP", "30"))
@@ -50,8 +52,17 @@ RAW_PROFILE = r"""({count, warmup}) => new Promise(resolve => {
 })"""
 
 PROFILE = r"""({count, warmup}) => new Promise(resolve => {
-    const names = ['lui.web::draw-frame', 'lui.layout:solve',
-                   'lui.draw::measure-widget', 'lui.draw::paint-frame', 'lui.web::sync-overlay'];
+    const phases = {
+        'lui.frame::begin-frame': 'begin_ms',
+        'lui.example:draw': 'declare_ms',
+        'lui.frame::end-frame': 'end_ms',
+        'lui.layout:solve': 'layout_ms',
+        'lui.draw::measure-widget': 'measure_ms',
+        'lui.draw::paint-frame': 'paint_ms',
+        'lui.web::sync-overlay': 'overlay_ms',
+    };
+    const draw = 'lui.web::draw-frame';
+    const names = [draw, ...Object.keys(phases)];
     const original = Object.fromEntries(names.map(name => [name,
         jscl.evaluateString(`(symbol-function '${name})`)]));
     const refresh = jscl.evaluateString("(symbol-function 'lui.web:refresh)");
@@ -62,9 +73,7 @@ PROFILE = r"""({count, warmup}) => new Promise(resolve => {
         jscl.evaluateString(`(setf (symbol-function '${name})
             #j:window:__luiBenchmarkFunction)`);
     }
-    for (const [name, metric] of [[names[1], 'layout_ms'],
-                                [names[2], 'measure_ms'],
-                                [names[3], 'paint_ms'], [names[4], 'overlay_ms']]) {
+    for (const [name, metric] of Object.entries(phases)) {
         patch(name, function(...args) {
             const start = performance.now();
             const result = original[name](...args);
@@ -72,11 +81,11 @@ PROFILE = r"""({count, warmup}) => new Promise(resolve => {
             return result;
         });
     }
-    patch(names[0], function(...args) {
+    patch(draw, function(...args) {
         window.__luiBenchmarkApp = args[0];
         current = {layout_ms:0, measure_ms:0, paint_ms:0, overlay_ms:0,
-                   start:performance.now()};
-        const result = original[names[0]](...args);
+                   begin_ms:0, declare_ms:0, end_ms:0, start:performance.now()};
+        const result = original[draw](...args);
         current.draw_ms = performance.now() - current.start;
         document.querySelector('main canvas').getBoundingClientRect();
         current.work_ms = performance.now() - current.start;
@@ -139,6 +148,57 @@ def has_text(page, text):
     return any(n["text"] == text for n in nodes(page))
 
 
+def cells_view(page):
+    return page.evaluate(r'''() => jscl.evaluateString(`
+      (let* ((context (lui.web::web-app-context
+                        (jscl/ffi:oget (#j:document:querySelector #j"main canvas") "luiApp")))
+             (grid (gethash :seven-grid (lui.frame::context-ids context)))
+             (box (lui.layout:element-box grid))
+             (result (jscl/ffi:new #j:Object)))
+        (setf (jscl/ffi:oget result "scroll_y") (lui.layout:element-scroll-y grid))
+        (setf (jscl/ffi:oget result "x")
+              (+ (lui.layout:box-x box) (/ (lui.layout:box-width box) 2))
+              (jscl/ffi:oget result "y")
+              (+ (lui.layout:box-y box) (/ (lui.layout:box-height box) 2)))
+        result)`)''')
+
+
+def profile_cells_scroll(page, profile, arguments):
+    """Route browser wheel input throughout the same timed active frames."""
+    before = cells_view(page)
+    painted_before = [(n["text"], n["top"]) for n in nodes(page)
+                      if n["kind"] == "CELL"]
+    page.mouse.move(before["x"], before["y"])
+    # Start the promise without blocking Playwright, so wheel uses real browser
+    # input and the application's normal hit testing and event routing.
+    page.evaluate("""args => {
+        window.__luiScrollSamples = undefined;
+        window.__luiScrollError = undefined;
+        (""" + profile + """)(args).then(
+            samples => {window.__luiScrollSamples = samples},
+            error => {window.__luiScrollError = String(error)});
+    }""", arguments)
+    wheel_events = 0
+    deadline = time.monotonic() + 60
+    while not page.evaluate("!!(window.__luiScrollSamples || window.__luiScrollError)"):
+        if time.monotonic() > deadline:
+            raise TimeoutError("Cells scrolling profile did not complete in 60 seconds")
+        page.mouse.wheel(0, 24)
+        wheel_events += 1
+        page.wait_for_timeout(16)
+    error = page.evaluate("window.__luiScrollError")
+    if error:
+        raise RuntimeError(error)
+    samples = page.evaluate("window.__luiScrollSamples")
+    after = cells_view(page)
+    distance = after["scroll_y"] - before["scroll_y"]
+    painted_after = [(n["text"], n["top"]) for n in nodes(page)
+                     if n["kind"] == "CELL"]
+    if distance <= 0 or painted_before == painted_after:
+        raise AssertionError("Continuous wheel did not move the Cells sheet")
+    return samples, distance, wheel_events
+
+
 WebTests.setUpClass()
 results = []
 try:
@@ -190,17 +250,23 @@ try:
             current_toolkit = {"Glass": "Motif", "Motif": "Garnet",
                                "Garnet": "Glass"}[current_toolkit]
             assert has_text(page, f"Toolkit: {current_toolkit}")
-        for tab_name in name.split("/"):
+        for tab_name in name.replace("Cells-scroll", "Cells").split("/"):
             click(page, tab_name, "tab")
-        samples = page.evaluate(PROFILE if detail else RAW_PROFILE, {
+        arguments = {
             "count": frames // case_count + (case < frames % case_count),
             "warmup": warmup // case_count + (case < warmup % case_count),
-        })
+        }
+        scroll_delta = None
+        wheel_events = None
+        if name == "7GUIs/Cells-scroll":
+            samples, scroll_delta, wheel_events = profile_cells_scroll(
+                page, PROFILE if detail else RAW_PROFILE, arguments)
+        else:
+            samples = page.evaluate(PROFILE if detail else RAW_PROFILE, arguments)
         work = sorted(sample["work_ms"] for sample in samples)
         active_fps = (1000 * (len(samples) - 1) /
                       (samples[-1]["start"] - samples[0]["start"])
                       if len(samples) > 1 else None)
-        scroll_delta = None
         if name == "Scroll":
             page.evaluate("""() => {
                 window.__luiReadScroll = jscl.evaluateString(`(lambda ()
@@ -244,10 +310,12 @@ try:
                   "p95_ms": work[math.ceil(len(work) * .95) - 1],
                   "max_ms": max(work), "active_fps": active_fps,
                   "scroll_delta_px": scroll_delta,
+                  "wheel_events": wheel_events,
+                  "wheel_input_px": wheel_events * 24 if wheel_events is not None else None,
                   "scroll_model_observed_ms": model_latency if name == "Scroll" else None,
                   "scroll_visible_observed_ms": visible_latency if name == "Scroll" else None}
         if detail:
-            for metric in ("layout_ms", "measure_ms", "paint_ms", "overlay_ms"):
+            for metric in ("layout_ms", "measure_ms", "paint_ms", "overlay_ms", "begin_ms", "declare_ms", "end_ms"):
                 result[metric] = statistics.fmean(sample[metric] for sample in samples)
         results.append(result)
         numbers = [result[key] for key in ("draw_ms", "flush_ms", "mean_ms", "p50_ms", "p95_ms", "max_ms",

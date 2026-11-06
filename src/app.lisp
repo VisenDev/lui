@@ -179,8 +179,18 @@ CONTROLS maps control names to functions taking the public arguments and options
         (push (cadr tail) result)))))
 
 (defun selectable (kind style id text options defaults)
-  (apply #'declare-widget kind style id text :value (getf options :selected-p)
-         (append (without-option :selected-p options) defaults)))
+  ;; Extract selection while removing its public option in one pass. Preserve
+  ;; GETF's first-value rule, including an explicitly supplied NIL.
+  (let ((selected nil) (selected-seen nil) (appearance nil))
+    (do ((tail options (cddr tail))) ((null tail))
+      (if (eq (car tail) :selected-p)
+          (unless selected-seen
+            (setf selected (cadr tail) selected-seen t))
+          (progn
+            (push (car tail) appearance)
+            (push (cadr tail) appearance))))
+    (apply #'declare-widget kind style id text :value selected
+           (nreconc appearance defaults))))
 
 (define-control tab (id text)
   "Declare a tab. Supply :selected-p in OPT and update the page on activation."

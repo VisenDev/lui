@@ -340,6 +340,31 @@ class WebTests(unittest.TestCase):
         self.click_widget(text="Reset")
         self.widget(text="Hello Ada (0)")
 
+    def test_cells_edit_and_native_selection_during_scroll(self):
+        self.click_widget(text="7GUIs", kind="tab")
+        self.click_widget(text="Cells", kind="tab")
+        first = "(:SEVEN-CELL 0)"
+        self.page.mouse.dblclick(*self.point(self.widget(id=first)))
+        self.frames()
+        self.assertEqual(self.widget(id=first)["kind"], "text-field")
+        self.page.keyboard.press("Control+a")
+        self.page.keyboard.insert_text("42")
+        self.page.keyboard.press("Enter")
+        self.frames()
+        self.widget(id=first, kind="cell", text="42")
+
+        label = self.page.get_by_text("Selected: A0", exact=True)
+        label.evaluate("el => getSelection().selectAllChildren(el)")
+        self.page.mouse.move(*self.point(self.widget(id=":SEVEN-GRID")))
+        self.page.mouse.wheel(0, 240)
+        self.frames()
+        grid_offset = self.page.evaluate("""() => jscl.evaluateString(`
+          (let* ((app (jscl/ffi:oget (#j:document:querySelector #j"main canvas") "luiApp"))
+                 (ids (lui.frame::context-ids (lui.web::web-app-context app))))
+            (lui.layout:element-scroll-y (gethash :seven-grid ids)))`)""")
+        self.assertGreater(grid_offset, 0)
+        self.assertEqual(self.page.evaluate("getSelection().toString()"), "Selected: A0")
+
     def test_gallery_persistence_and_toolkit_pixels(self):
         self.replace_text(":NAME", "Persistent name")
         self.click_widget(text="Editing", kind="tab")

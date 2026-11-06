@@ -29,16 +29,24 @@
        :surface
        (lambda (box radius color alpha &optional stroke)
          (setf (jscl/ffi:oget g "globalAlpha") alpha)
-         (rounded-path g box radius (if stroke (/ stroke 2) 0))
          (if stroke
+             (setf (jscl/ffi:oget g "lineWidth") stroke
+                   (jscl/ffi:oget g "strokeStyle") (jscl/ffi:jsstring color))
+             (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color)))
+         (if (zerop radius)
+             (if stroke
+                 ((jscl/ffi:oget g "strokeRect")
+                  (+ (box-x box) (/ stroke 2))
+                  (+ (box-y box) (/ stroke 2))
+                  (max 0 (- (box-width box) stroke))
+                  (max 0 (- (box-height box) stroke)))
+                 ((jscl/ffi:oget g "fillRect") (box-x box) (box-y box)
+                  (box-width box) (box-height box)))
              (progn
-               (setf (jscl/ffi:oget g "lineWidth") stroke
-                     (jscl/ffi:oget g "strokeStyle")
-                     (jscl/ffi:jsstring color))
-               ((jscl/ffi:oget g "stroke")))
-             (progn
-               (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color))
-               ((jscl/ffi:oget g "fill")))))
+               (rounded-path g box radius (if stroke (/ stroke 2) 0))
+               (if stroke
+                   ((jscl/ffi:oget g "stroke"))
+                   ((jscl/ffi:oget g "fill"))))))
        :polygons
        (lambda (paths color alpha)
          (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color)
@@ -124,7 +132,7 @@
                 (#j:setTimeout (lambda () (refresh app))
                                (ceiling (* delay 1000))))))))
 
-(defstruct* dom-widget key element text style state geometry)
+(defstruct* dom-widget key element text style state geometry hidden-p)
 
 (defparameter *overlay-cache-limit* 32)
 
@@ -135,9 +143,17 @@
   ;; prefix therefore has exactly the same occlusion as on the previous frame.
   (let ((previous (web-app-overlay-geometry app)) seen bands entries)
     (labels ((index-region (region)
-               (loop for band from (floor (overlay-region-y region) 64)
-                       below (ceiling (overlay-region-bottom region) 64)
-                     do (push region (gethash band bands))))
+               (do ((band (floor (overlay-region-y region) 64) (1+ band))
+                    (end (ceiling (overlay-region-bottom region) 64)))
+                   ((>= band end))
+                 (push region (gethash band bands))))
+             (uncovered-p (x y right bottom)
+               (do ((band (floor y 64) (1+ band)) (end (ceiling bottom 64)))
+                   ((>= band end) t)
+                 (dolist (other (gethash band bands))
+                   (when (and (< x (overlay-region-right other)) (< (overlay-region-x other) right)
+                              (< y (overlay-region-bottom other)) (< (overlay-region-y other) bottom))
+                     (return-from uncovered-p nil)))))
              (region-visible-p (clip candidate)
                (let* ((x (box-x clip)) (y (box-y clip))
                       (right (+ x (box-width clip))) (bottom (+ y (box-height clip)))
@@ -149,16 +165,8 @@
                      (progn
                        (unless bands
                          (setf previous nil bands (make-hash-table))
-                         (mapc #'index-region seen))
-                       (let* ((visible
-                                (and candidate
-                                     (loop for band from (floor y 64) below (ceiling bottom 64)
-                                           never (some (lambda (other)
-                                                         (and (< x (overlay-region-right other))
-                                                              (< (overlay-region-x other) right)
-                                                              (< y (overlay-region-bottom other))
-                                                              (< (overlay-region-y other) bottom)))
-                                                       (gethash band bands)))))
+                         (dolist (region seen) (index-region region)))
+                       (let* ((visible (and candidate (uncovered-p x y right bottom)))
                               (region (make-overlay-region :x x :y y :right right :bottom bottom
                                                            :candidate candidate :visible visible)))
                          (push region seen)
@@ -168,14 +176,16 @@
                (let* ((key (if (element-id node) (list :id (element-id node)) path))
                       (children (element-children node)) (clip (element-clip node))
                       (widget (element-content node)))
-                 (loop for i downfrom (1- (length children)) to 0 do
-                   (visit (aref children i) (cons i key)
-                          (or interactive (element-interactive-p node))))
+                 (let ((count (length children)))
+                   (dotimes (offset count)
+                     (let ((i (- count offset 1)))
+                       (visit (aref children i) (cons i key)
+                              (or interactive (element-interactive-p node))))))
                  (when (and (plusp (box-width clip)) (plusp (box-height clip))
                             (or (lui.widgets:widget-p widget) (element-interactive-p node)))
                    (let ((kind (and (lui.widgets:widget-p widget) (lui.widgets:widget-kind widget))))
                      (when (region-visible-p clip
-                             (and (member kind '(:label :button :tab :list-item :checkbox :radio :cell))
+                             (and (case kind ((:cell :label :button :tab :list-item :checkbox :radio) t))
                                   (not (lui.widgets:widget-painter widget))))
                        (push (list node (cons kind key) interactive) entries)))))))
       (visit root nil nil))
@@ -199,11 +209,10 @@
           (unless (eql w ow) (setf (jscl/ffi:oget style "width") (css-pixels w)))
           (unless (eql h oh) (setf (jscl/ffi:oget style "height") (css-pixels h)))
           (unless (and (eql top otop) (eql right oright) (eql bottom obottom) (eql left oleft))
-            (flet ((px (n) (jscl/ffi:clstring (css-pixels n))))
-              (setf (jscl/ffi:oget style "clipPath")
-                    (if (= 0 top right bottom left) #j"none"
-                        (jscl/ffi:jsstring (format nil "inset(~A ~A ~A ~A)"
-                                                   (px top) (px right) (px bottom) (px left)))))))
+            (setf (jscl/ffi:oget style "clipPath")
+                  (if (= 0 top right bottom left) #j"none"
+                      ((jscl/ffi:oget #j"inset(" "concat")
+                       top #j"px " right #j"px " bottom #j"px " left #j"px)"))))
           (setf (dom-widget-geometry record) (list x y w h top right bottom left)))))))
 
 (defun make-semantic-button (app node kind)
@@ -221,12 +230,17 @@
        (jscl/ffi:jsstring (string-downcase (symbol-name kind)))))
     button))
 
+(defun same-overlay-order-p (records entries)
+  ;; Compare both lists in one pass; JSCL's sequence EVERY indexes into lists.
+  (do ((r records (cdr r)) (e entries (cdr e)))
+      ((or (null r) (null e)
+           (not (equal (dom-widget-key (car r)) (second (car e)))))
+       (and (null r) (null e)))))
+
 (defun reconcile-overlay (app entries)
   ;; Look up keyed nodes and inspect DOM order only when membership or order changes.
   (let ((order (web-app-overlay-order app)))
-    (when (and (= (length order) (length entries))
-               (every (lambda (record entry) (equal (dom-widget-key record) (second entry)))
-                      order entries))
+    (when (same-overlay-order-p order entries)
       (return-from reconcile-overlay order))
     (let ((old (make-hash-table :test 'equal)) (layer (web-app-overlay app)) next
           (cache (web-app-overlay-cache app)) hidden)
@@ -241,13 +255,15 @@
                                (if (eq kind :label) (#j:document:createElement #j"span")
                                    (make-semantic-button app node kind))))))
             (remhash key old)
-            (when (member record cache :test #'eq)
-              (setf (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"visible"))
+            (when (dom-widget-hidden-p record)
+              (setf (dom-widget-hidden-p record) nil
+                    (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"visible"))
             (push record next))))
       ;; Prefer newly hidden nodes over older cached entries when evicting.
       (dolist (record order)
         (when (gethash (dom-widget-key record) old)
-          (setf (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"hidden")
+          (setf (dom-widget-hidden-p record) t
+                (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"hidden")
           (push record hidden)))
       (setf hidden (nconc hidden (loop for record in cache
                                        when (gethash (dom-widget-key record) old) collect record)))

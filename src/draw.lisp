@@ -119,48 +119,48 @@
                                 (widget-value widget)
                                 (widget-text widget))
                             (when width (max 0 (- width extra))))))
-      (values
-       (max (case kind ((:slider :text-field) 160) (otherwise 0))
-            (+ extra
-               (loop :for line :in lines
-                     :maximize (text-width font line))))
-       (+ (if (eq kind :label) 0 12)
-          (* (length lines) (line-height font)))))))
+      (let ((widest 0) (count 0))
+        (dolist (line lines)
+          (setf widest (max widest (text-width font line)))
+          (incf count))
+        (values (max (case kind ((:slider :text-field) 160) (otherwise 0))
+                     (+ extra widest))
+                (+ (if (eq kind :label) 0 12)
+                   (* count (line-height font))))))))
 
 (fn paint-text
     ((renderer renderer) (text string) (x real) (y real) (color string))
   "Draw TEXT at horizontal position X and baseline Y in COLOR."
-  (when (zerop (length text)) (return-from paint-text nil))
-  (when (renderer-text renderer)
-    (return-from paint-text
-      (funcall (renderer-text renderer) (renderer-font renderer)
-               text x y color)))
-  #+jscl
-  (error "The browser renderer requires a text drawing callback.")
-  #-jscl
-  (let* ((font (renderer-font renderer))
-         (scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
-         (cursor x)
-         (previous nil))
-    (loop :for char :across text
-          :do (when previous
-                (incf cursor
-                      (* scale (zpb-ttf:kerning-offset
-                                previous char (font-loader font)))))
-              (funcall
-               (renderer-polygons renderer)
-               (mapcar
-                (lambda (points)
-                  (mapcar (lambda (point)
-                            (cons (+ cursor (* scale (car point)))
-                                  (- y (* scale (cdr point)))))
-                          points))
-                (glyph-polygons font char))
-               color 1)
-              (incf cursor
-                    (* scale (zpb-ttf:advance-width
-                              (zpb-ttf:find-glyph char (font-loader font)))))
-              (setf previous char))))
+  (unless (zerop (length text))
+    (if (renderer-text renderer)
+        (funcall (renderer-text renderer) (renderer-font renderer)
+                 text x y color)
+        #+jscl (error "The browser renderer requires a text drawing callback.")
+        #-jscl
+        (let* ((font (renderer-font renderer))
+               (scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
+               (cursor x)
+               (previous nil))
+          (loop :for char :across text
+                :do (when previous
+                      (incf cursor
+                            (* scale (zpb-ttf:kerning-offset
+                                      previous char (font-loader font)))))
+                    (funcall
+                     (renderer-polygons renderer)
+                     (mapcar
+                      (lambda (points)
+                        (mapcar (lambda (point)
+                                  (cons (+ cursor (* scale (car point)))
+                                        (- y (* scale (cdr point)))))
+                                points))
+                      (glyph-polygons font char))
+                     color 1)
+                    (incf cursor
+                          (* scale (zpb-ttf:advance-width
+                                    (zpb-ttf:find-glyph char
+                                                       (font-loader font)))))
+                    (setf previous char))))))
 
 (fn inset-box ((box box) (inset real))
   (make-box :x (+ (box-x box) inset) :y (+ (box-y box) inset)
@@ -455,13 +455,48 @@
       (otherwise nil))))
 
 (fn paint-widget ((renderer renderer) (node element))
-  (let ((font (renderer-font renderer)))
-    (unwind-protect
-         (progn
-           (setf (renderer-font renderer)
-                 (widget-font renderer (element-content node)))
-           (paint-widget-body renderer node))
-      (setf (renderer-font renderer) font))))
+  (let* ((widget (element-content node))
+         (kind (widget-kind widget)))
+    (if (and (eq kind :cell) (not (widget-painter widget)))
+        (paint-cell renderer node)
+        (let ((font (renderer-font renderer)))
+          (unwind-protect
+               (progn
+                 (setf (renderer-font renderer) (widget-font renderer widget))
+                 (paint-widget-body renderer node))
+            (setf (renderer-font renderer) font))))))
+
+(fn paint-cell ((renderer renderer) (node element))
+  "Paint a cell without looking up its font when it has no label."
+  (let* ((widget (element-content node))
+         (box (element-box node))
+         (selected (widget-value widget))
+         (text (widget-text widget)))
+    (funcall (renderer-clip renderer) (element-clip node))
+    (shape renderer box 0 (if selected "#e7effa" (widget-background widget)) 1)
+    (outline renderer box 0 (if selected (widget-accent widget) "#939ba5")
+             1 (if selected 2 1))
+    (when (plusp (length text))
+      (let ((old-font (renderer-font renderer)))
+        (unwind-protect
+             (progn
+               (setf (renderer-font renderer) (widget-font renderer widget))
+               (paint-text renderer text
+                           (+ (box-x box) 4)
+                           (+ (box-y box) 6
+                              (baseline (renderer-font renderer)))
+                           (widget-foreground widget)))
+          (setf (renderer-font renderer) old-font))))
+    (paint-focus-ring renderer node)))
+
+(fn paint-focus-ring ((renderer renderer) (node element))
+  (when (and (focused-p node) (context-focus-visible-p *context*))
+    (let* ((widget (element-content node))
+           (box (element-box node))
+           (radius (if (eq (toolkit-surface (widget-style widget)) :glass)
+                       (widget-radius widget) 0)))
+      (outline renderer (inset-box box 2) (max 0 (- radius 2))
+               (widget-accent widget) 1 2))))
 
 (fn paint-canvas ((renderer renderer) (node element))
   (let* ((widget (element-content node)) (box (element-box node)))
@@ -529,17 +564,6 @@
        (shape renderer box 0 (widget-accent widget)
               (widget-opacity widget))
        (outline renderer box 0 (widget-accent widget) 1 1))
-      ((eq kind :cell)
-       (shape renderer box 0
-              (if (widget-value widget) "#e7effa"
-                  (widget-background widget)) 1)
-       (outline renderer box 0
-                (if (widget-value widget) (widget-accent widget) "#939ba5")
-                1 (if (widget-value widget) 2 1))
-       (paint-text renderer (widget-text widget)
-                   (+ (box-x box) 4)
-                   (+ (box-y box) 6 (baseline font))
-                   (widget-foreground widget)))
       ((eq (lui.widgets::widget-icon widget) :calendar)
        ;; The field owns the surface and its rounded border.
        (let* ((shadow (if (eq :garnet (toolkit-surface (widget-style widget)))
@@ -701,9 +725,7 @@
                                            (text-width font line)) 2)))
                            x)
                        baseline foreground)))))))
-    (when (and (focused-p node) (context-focus-visible-p *context*))
-      (outline renderer (inset-box box 2) (max 0 (- radius 2))
-               (widget-accent widget) 1 2))))
+    (paint-focus-ring renderer node)))
 
 (defstruct* text-selection
   anchor focus anchor-text focus-text anchor-key focus-key field

@@ -176,10 +176,12 @@ Most applications should use the public LUI controls with LUI:OPT instead."
            :id id :content widget :width width :height height :padding padding
            :floating-p floating-p :offset-x offset-x :offset-y offset-y
            :interactive-p (and (not disabled-p)
-                               (not (member kind '(:label :gauge))))
+                               (not (or (eq kind :label) (eq kind :gauge))))
            :pointer-focus-p (eq kind :text-field)
            :measure (lambda (available) (funcall measure widget available))))
-    (and (not disabled-p) (member kind '(:button :tab :list-item :cell))
+    (and (not disabled-p)
+         (or (eq kind :button) (eq kind :tab)
+             (eq kind :list-item) (eq kind :cell))
          (activated-p id))))
 
 (defstruct* edit-state
@@ -576,13 +578,17 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
 (fn (declare-panel element) ((style symbol) (options list))
   "Declare a styled layout container without introducing retained widgets."
   (let ((appearance nil) (layout nil))
-    (loop :for (key value) :on options :by #'cddr
-          :do (if (member key '(:foreground :background :radius :frost
-                               :opacity :accent :font-size :font-family
-                               :font-weight :painter
-                               :terminal-label :accessible-name))
-                  (setf appearance (append appearance (list key value)))
-                  (setf layout (append layout (list key value)))))
+    (do ((tail options (cddr tail))) ((null tail))
+      (let ((key (car tail)) (value (cadr tail)))
+        (case key
+          ((:foreground :background :radius :frost :opacity :accent
+            :font-size :font-family :font-weight :painter :terminal-label :accessible-name)
+           (push key appearance)
+           (push value appearance))
+          (t
+           (push key layout)
+           (push value layout)))))
+    (setf appearance (nreverse appearance) layout (nreverse layout))
     (let* ((node (apply #'make-element
                         :content (apply #'make-widget :kind :panel
                                         :style style appearance)
