@@ -132,6 +132,84 @@ def script(error=False, debug=False):
     (assert (char= (char line 10) #\\Space))
     (assert (char= (char line 11) #\\Space))
     (assert (not (find #\\# line)))))
+;; Mouse cells use their centers, matching rounded fractional painted bounds.
+(dolist (start '(1/4 1/2 3/4))
+  (let ((context (lui.terminal:make-terminal-context))
+        (clicks 0) (checked nil) (value 0.5))
+    (labels ((draw ()
+               (when (lui:button :fractional-button "Click"
+                       (lui:opt :floating-p t :offset-x start :offset-y start
+                                :width (lui.layout:fixed 8)
+                                :height (lui.layout:fixed 1)))
+                 (incf clicks))
+               (setf checked
+                 (lui:checkbox :fractional-check checked "Enabled"
+                   (lui:opt :floating-p t :offset-x start
+                            :offset-y (+ 2 start) :width (lui.layout:fixed 12)
+                            :height (lui.layout:fixed 1))))
+               (setf value
+                 (lui:slider :fractional-slider value
+                   (lui:opt :floating-p t :offset-x start
+                            :offset-y (+ 4 start) :width (lui.layout:fixed 20)
+                            :height (lui.layout:fixed 1) :step 0.01))))
+             (mouse (button x y &optional release)
+               (let ((input (lui.terminal.io::make-input)))
+                 (lui.terminal.io::mouse-event
+                   input (format nil "~D;~D;~D~A" button x y
+                                 (if release "m" "M")) context)
+                 (lui.frame:with-frame
+                     (context 24 7 :events
+                       (reverse (lui.terminal.io::input-events input)))
+                   (draw)))))
+      (lui.frame:with-frame (context 24 7) (draw))
+      (let ((cell (1+ (floor (+ start 1/2)))))
+        (mouse 0 cell cell)
+        (mouse 0 cell cell t)
+        (assert (= clicks 1))
+        (mouse 0 cell (+ cell 2))
+        (mouse 0 cell (+ cell 2) t)
+        (assert checked)
+        (mouse 0 cell (+ cell 4))
+        (assert (zerop value))
+        (mouse 32 40 (+ cell 4))
+        (assert (= value 1))
+        (mouse 32 1 (+ cell 4))
+        (assert (zerop value))
+        (mouse 0 1 (+ cell 4) t)
+        (assert (null (lui.frame:context-active context)))))))
+;; Sliders behind overlays cannot steal their presses or a batched drag.
+(let ((context (lui.terminal:make-terminal-context))
+      (behind 0.5) (visible 0.5) (clicks 0))
+  (labels ((draw ()
+             (setf behind (lui:slider :behind behind
+                            (lui:opt :width (lui.layout:fixed 20)
+                                     :height (lui.layout:fixed 1))))
+             (setf visible (lui:slider :visible visible
+                             (lui:opt :width (lui.layout:fixed 20)
+                                      :height (lui.layout:fixed 1))))
+             (when (lui:button :overlay "Close"
+                     (lui:opt :floating-p t :width (lui.layout:fixed 20)
+                              :height (lui.layout:fixed 1)))
+               (incf clicks)))
+           (batch (&rest sequences)
+             (let ((input (lui.terminal.io::make-input)))
+               (dolist (sequence sequences)
+                 (lui.terminal.io::mouse-event input sequence context))
+               (lui.frame:with-frame
+                   (context 20 2 :events
+                     (reverse (lui.terminal.io::input-events input)))
+                 (draw)))))
+    (lui.frame:with-frame (context 20 2) (draw))
+    (batch "0;3;1M" "0;3;1m")
+    (assert (= clicks 1))
+    (assert (= behind 0.5))
+    (batch "0;3;1M" "32;3;2M" "32;3;1M" "0;3;1m")
+    (assert (= clicks 2))
+    (assert (= behind 0.5))
+    (assert (= visible 0.5))
+    (batch "0;1;2M" "32;30;1M" "0;30;1m")
+    (assert (= visible 1))
+    (assert (= behind 0.5))))
 ;; Shared gauge/canvas values have useful plain and colored representations.
 (let ((context (lui.terminal:make-terminal-context)))
   (lui.frame:with-frame (context 20 1)
@@ -336,6 +414,18 @@ def text_position(frame, text, last=True):
     return int(move[2]) + len(prefix.decode("utf-8")), int(move[1])
 
 
+def divider_position(frame):
+    """Find the long accent rail, excluding the surrounding panel borders."""
+    for match in reversed(list(re.finditer(b"(?:" + "─".encode() + b"){8,}",
+                                          frame))):
+        prefix = frame[:match.end()]
+        foreground, background, _ = text_style(prefix, match[0])
+        if (37, 139, 255) in (foreground, background):
+            x, y = text_position(prefix, match[0])
+            return x + len(match[0].decode("utf-8")) // 2, y
+    raise AssertionError(frame.decode("utf-8", "replace"))
+
+
 def exercise(lisp, path):
     terminal = Terminal(command(lisp, path))
     try:
@@ -380,7 +470,7 @@ def exercise(lisp, path):
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
         # Shift-Tab reaches 7GUIs; Left selects the preceding Styles tab.
         terminal.send(b"\x1b[Z\x1b[D")
-        terminal.until(b"Customize the active collection")
+        terminal.until(b"Customize the active toolkit")
         terminal.send(b"\x1b[H")
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
         terminal.send(b"\x1b")
@@ -434,7 +524,7 @@ def exercise_debugger(lisp, path):
     terminal = Terminal(command(lisp, path))
     try:
         terminal.until(b"\x1b[?1049h", timeout=180)
-        terminal.until(b"Layout inspector")
+        terminal.until(b"Layout debugger")
         terminal.pump(0.2)
         # Unit-size rows expose the tab nodes without oversized disclosure pills.
         assert last_frame(terminal.output).count(b"TAB (PAGE") >= 5
@@ -445,51 +535,65 @@ def exercise_debugger(lisp, path):
         terminal.resize(100, 30)
         terminal.pump(0.4)
         frame = last_frame(terminal.output)
-        assert b"Layout inspector" in frame
+        assert b"Layout debugger" in frame
         assert b"\x1b[30;1H" in frame
         assert b"\x1b[31;1H" not in frame
         assert "│".encode() in frame
         assert b"\x1b[7m(" not in frame, "Resize rail repainted as a button"
         assert text_style(frame, "│".encode())[:2] == (
             (48, 48, 64), (37, 139, 255))
-        # Select a real tree row, expand details, and scroll the long property
-        # table without losing the fixed inspector controls.
+        # Select a real tree row, then resize its properties through the rail.
         x, y = text_position(frame, b"PANEL WINDOW")
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
         frame = last_frame(terminal.output)
         assert b"Geometry" in frame
-        x, y = text_position(frame, b"Expand details")
-        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        x, y = divider_position(frame)
+        terminal.send(f"\x1b[<0;{x};{y}M".encode())
+        terminal.send(f"\x1b[<32;{x};{y - 3}M\x1b[<0;{x};{y - 3}m".encode())
         frame = last_frame(terminal.output)
-        assert b"Restore tree" in frame
-        assert b"TAB (PAGE" not in frame
+        _, grown_y = divider_position(frame)
+        assert grown_y < y
+        terminal.send(b"\x1b[B")
+        assert divider_position(last_frame(terminal.output))[1] > grown_y
+        terminal.send(b"\x1b[A\x1b[H")
+        assert b"Close" in last_frame(terminal.output)
         for _ in range(16):
             if b"Input" in last_frame(terminal.output):
                 break
             terminal.send(b"\x1b[<65;85;16M")
         frame = last_frame(terminal.output)
         assert b"Input" in frame, frame.decode("utf-8", "replace")
-        x, y = text_position(frame, b"Restore tree")
-        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        terminal.send(b"\x1b[B" * 8)
         frame = last_frame(terminal.output)
-        assert b"Expand details" in frame
-        assert b"PANEL WINDOW" in frame
         x, y = text_position(frame, b"PANEL WINDOW", last=False)
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
         frame = last_frame(terminal.output)
         assert b"Geometry" not in frame
         x, y = text_position(frame, b"PANEL WINDOW", last=False)
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        frame = last_frame(terminal.output)
-        x, y = text_position(frame, b"Expand details")
+        x, y = divider_position(last_frame(terminal.output))
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        terminal.send(b"\x1b[F")
         frame = last_frame(terminal.output)
-        x, y = text_position(frame, b"Close details")
-        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        frame = last_frame(terminal.output)
-        assert b"Restore tree" not in frame
         assert b"Geometry" not in frame
-        assert b"Layout inspector" in frame
+        x, y = text_position(frame, b"PANEL WINDOW", last=False)
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        x, y = divider_position(last_frame(terminal.output))
+        terminal.send(f"\x1b[<0;{x};{y}M".encode())
+        terminal.send(f"\x1b[<32;{x};31M\x1b[<0;{x};31m".encode())
+        frame = last_frame(terminal.output)
+        assert b"Geometry" not in frame
+        x, y = text_position(frame, b"PANEL WINDOW", last=False)
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        frame = last_frame(terminal.output)
+        cross = "×".encode()
+        header = frame.index(b"Properties")
+        close_end = frame.index(cross, header) + len(cross)
+        x, y = text_position(frame[:close_end], cross)
+        terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
+        frame = last_frame(terminal.output)
+        assert b"Geometry" not in frame
+        assert b"Layout debugger" in frame
         assert b"PANEL WINDOW" in frame
         terminal.send(b"\x11")
         terminal.until(b"@@DEBUG")
@@ -522,7 +626,7 @@ def main():
                 terminal.close()
             path.write_text(script(debug=True), encoding="utf-8")
             exercise_debugger(lisp, path)
-            print(f"{lisp}: raw input, Unicode, inspector drag/keyboard resize "
+            print(f"{lisp}: raw input, Unicode, debugger drag/keyboard resize "
                   "and restoration pass")
 
 

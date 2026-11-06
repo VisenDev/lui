@@ -53,7 +53,7 @@ class WebTests(unittest.TestCase):
         # new fixture callbacks against an already compiled application.
         self.page.evaluate("""() => {jscl.evaluateString(`(declaim (special
             lui.frame:*context* lui.frame:*parent* lui:*unit*
-            lui::*collection* lui::*definition*))`);}""")
+            lui::*toolkit* lui::*toolkit-definition*))`);}""")
 
     def tearDown(self):
         self.page.close()
@@ -117,7 +117,7 @@ class WebTests(unittest.TestCase):
         page.get_by_role("button", name="Reset", exact=True).click()
         expect(page.get_by_text("Hello Ada (0)", exact=True).filter(visible=True)).to_be_visible()
 
-    def test_gallery_pages_persist_inputs_and_switch_collection(self):
+    def test_gallery_pages_persist_inputs_and_switch_toolkit(self):
         tabs = self.page.get_by_role("tab")
         expect(tabs).to_have_count(6)
         expect(self.page.get_by_role("tab", name="Controls")).to_have_attribute(
@@ -135,8 +135,8 @@ class WebTests(unittest.TestCase):
         expect(self.page.get_by_role("textbox")).to_have_value("Persistent name")
         self.assertTrue(self.page.locator("main button").evaluate_all(
             "nodes => nodes.every(n => getComputedStyle(n).borderTopLeftRadius !== '0px')"))
-        self.page.get_by_role("button", name="Glass", exact=True).click()
-        expect(self.page.get_by_role("button", name="Motif", exact=True)).to_be_visible()
+        self.page.get_by_role("button", name="Cycle toolkit", exact=True).click()
+        expect(self.page.get_by_text("Toolkit: Motif", exact=True).filter(visible=True)).to_be_visible()
         self.assertEqual(self.page.locator("main").evaluate(
             "n => [getComputedStyle(n).backgroundImage,getComputedStyle(n).backgroundColor]"),
             ["none", "rgb(184, 184, 184)"])
@@ -144,15 +144,15 @@ class WebTests(unittest.TestCase):
             "nodes => nodes.every(n => getComputedStyle(n).borderTopLeftRadius === '0px')"))
         self.page.get_by_role("tab", name="Editing", exact=True).click()
         expect(self.page.get_by_role("textbox")).to_have_value("Persistent editor")
-        self.page.get_by_role("button", name="Motif", exact=True).click()
-        expect(self.page.get_by_role("button", name="Garnet", exact=True)).to_be_visible()
+        self.page.get_by_role("button", name="Cycle toolkit", exact=True).click()
+        expect(self.page.get_by_text("Toolkit: Garnet", exact=True).filter(visible=True)).to_be_visible()
         expect(self.page.get_by_role("textbox")).to_have_value("Persistent editor")
         self.assertEqual(self.page.locator("main").evaluate(
             "n => getComputedStyle(n).backgroundColor"), "rgb(255, 255, 255)")
         self.assertTrue(self.page.locator("main button").evaluate_all(
             "nodes => nodes.every(n => n.dataset.luiStyle === 'garnet' && getComputedStyle(n).fontWeight === '700')"))
-        self.page.get_by_role("button", name="Garnet", exact=True).click()
-        expect(self.page.get_by_role("button", name="Glass", exact=True)).to_be_visible()
+        self.page.get_by_role("button", name="Cycle toolkit", exact=True).click()
+        expect(self.page.get_by_text("Toolkit: Glass", exact=True).filter(visible=True)).to_be_visible()
         expect(self.page.get_by_role("textbox")).to_have_value("Persistent editor")
         expect(self.page.locator("canvas")).to_have_count(0)
 
@@ -162,11 +162,11 @@ class WebTests(unittest.TestCase):
         name.press("Shift+Tab")
         expect(self.page.get_by_role("tab", name="Controls", exact=True)).to_be_focused()
         self.page.keyboard.press("Shift+Tab")
-        expect(self.page.get_by_role("button", name="Debug", exact=True)).to_be_focused()
+        expect(self.page.get_by_role("button", name="Show debugger", exact=True)).to_be_focused()
         self.page.keyboard.press("Shift+Tab")
-        expect(self.page.get_by_role("button", name="Glass", exact=True)).to_be_focused()
+        expect(self.page.get_by_role("button", name="Cycle toolkit", exact=True)).to_be_focused()
         self.page.keyboard.press("Tab")
-        expect(self.page.get_by_role("button", name="Debug", exact=True)).to_be_focused()
+        expect(self.page.get_by_role("button", name="Show debugger", exact=True)).to_be_focused()
         self.page.keyboard.press("Tab")
         expect(self.page.get_by_role("tab", name="Controls", exact=True)).to_be_focused()
         self.page.keyboard.press("Tab")
@@ -401,8 +401,8 @@ class WebTests(unittest.TestCase):
 
     def test_debugger_splitter_drag_keyboard_persistence_and_clamp(self):
         page = self.page
-        page.get_by_role("button", name="Debug", exact=True).click()
-        rail = page.get_by_role("separator", name="Inspector width")
+        page.get_by_role("button", name="Show debugger", exact=True).click()
+        rail = page.get_by_role("separator", name="Debugger width")
         expect(rail).to_have_attribute("aria-orientation", "vertical")
         expect(rail).to_have_attribute("tabindex", "0")
         expect(rail).to_have_css("cursor", "ew-resize")
@@ -439,7 +439,7 @@ class WebTests(unittest.TestCase):
         width = float(rail.get_attribute("aria-valuenow"))
         page.get_by_role("button", name="Close", exact=True).click()
         expect(rail).to_have_count(0)
-        page.get_by_role("button", name="Debug", exact=True).click()
+        page.get_by_role("button", name="Show debugger", exact=True).click()
         expect(rail).to_be_visible()
         self.assertAlmostEqual(float(rail.get_attribute("aria-valuenow")), width)
         page.set_viewport_size({"width": 320, "height": 480})
@@ -454,8 +454,8 @@ class WebTests(unittest.TestCase):
 
     def test_debugger_tree_select_collapse_highlight_and_close(self):
         page = self.page
-        page.get_by_role("button", name="Debug", exact=True).click()
-        expect(page.get_by_text("Layout inspector", exact=True).filter(visible=True)).to_be_visible()
+        page.get_by_role("button", name="Show debugger", exact=True).click()
+        expect(page.get_by_text("Layout debugger", exact=True).filter(visible=True)).to_be_visible()
         options = page.get_by_role("option").filter(has_not_text=re.compile(r"^[+-]$"))
         expect(options.first).to_be_visible()
         self.assertGreater(options.count(), 1)
@@ -465,7 +465,7 @@ class WebTests(unittest.TestCase):
         options.first.click()
         expect(options.first).to_have_attribute("aria-selected", "true")
         expect(page.get_by_text("Geometry", exact=True).filter(visible=True)).to_be_visible()
-        expect(page.get_by_role("option", name="Layout inspector", exact=True)).to_have_count(0)
+        expect(page.get_by_role("option", name="Layout debugger", exact=True)).to_have_count(0)
         page.get_by_role("option", name="-", exact=True).first.click()
         expect(options).to_have_count(1)
         page.get_by_role("option", name="+", exact=True).click()
@@ -473,25 +473,26 @@ class WebTests(unittest.TestCase):
         page.get_by_role("tab", name="Controls", exact=True).focus()
         page.keyboard.press("ArrowRight")
         expect(page.get_by_role("tab", name="Editing", exact=True)).to_have_attribute("aria-selected", "true")
-        expect(page.get_by_text("Layout inspector", exact=True).filter(visible=True)).to_be_visible()
+        expect(page.get_by_text("Layout debugger", exact=True).filter(visible=True)).to_be_visible()
         page.get_by_role("button", name="Close", exact=True).click()
-        expect(page.get_by_text("Layout inspector", exact=True).filter(visible=True)).to_have_count(0)
+        expect(page.get_by_text("Layout debugger", exact=True).filter(visible=True)).to_have_count(0)
         expect(page.locator(".lui-highlight")).to_have_count(0)
         page.get_by_role("tab", name="Controls", exact=True).click()
         page.get_by_role("button", name="Say hello", exact=True).click()
         expect(page.get_by_text("Hello Common Lisp (1)", exact=True).filter(visible=True)).to_be_visible()
 
-    def test_motif_inspector_selected_rows_expanded_details_and_scroll(self):
+    def test_motif_debugger_divider_drag_keyboard_and_close(self):
         self.page.set_viewport_size({"width": 1100, "height": 900})
         self.lisp('''
-          (defvar *inspector-row-picked* nil)
-          (defvar *inspector-host* (#j:document:createElement #j"section"))
-          (setf (jscl/ffi:oget *inspector-host* "id") #j"inspector-fixture"
-                (jscl/ffi:oget *inspector-host* "style" "width") #j"800px"
-                (jscl/ffi:oget *inspector-host* "style" "height") #j"520px")
-          (#j:document:body:appendChild *inspector-host*)
-          (defvar *inspector-app*
-            (lui.web:mount *inspector-host*
+          (defvar *debugger-row-picked* nil)
+          (defvar *debugger-row-clicks* 0)
+          (defvar *debugger-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *debugger-host* "id") #j"debugger-fixture"
+                (jscl/ffi:oget *debugger-host* "style" "width") #j"800px"
+                (jscl/ffi:oget *debugger-host* "style" "height") #j"520px")
+          (#j:document:body:appendChild *debugger-host*)
+          (defvar *debugger-app*
+            (lui.web:mount *debugger-host*
               (let ((first t))
                 (lambda ()
                   (when first
@@ -504,10 +505,11 @@ class WebTests(unittest.TestCase):
                       (when (lui:list-item :inspected-row
                               "A Motif selected row with full content beyond forty characters"
                               (lui:opt :width (lui.layout:fixed 340)
-                                       :selected-p *inspector-row-picked*))
-                        (setf *inspector-row-picked* t))))))))
+                                       :selected-p *debugger-row-picked*))
+                        (incf *debugger-row-clicks*)
+                        (setf *debugger-row-picked* t))))))))
         ''')
-        host = self.page.locator("#inspector-fixture")
+        host = self.page.locator("#debugger-fixture")
         app_row = host.get_by_role("option", name=
             "A Motif selected row with full content beyond forty characters",
             exact=True)
@@ -524,15 +526,58 @@ class WebTests(unittest.TestCase):
         expect(selected).to_have_css("color", "rgb(255, 255, 255)")
         expect(selected).to_have_css("border-top-style", "none")
         expect(selected).to_have_css("opacity", "1")
-        host.screenshot(path=str(ROOT / "build/inspector-motif-selected.png"))
-        host.get_by_role("button", name="Expand details", exact=True).click()
-        restore = host.get_by_role("button", name="Restore tree", exact=True)
-        expect(restore).to_be_visible()
-        expect(selected).to_have_count(0)
+        host.screenshot(path=str(ROOT / "build/debugger-motif-selected.png"))
+        divider = host.get_by_role("separator", name="Properties height")
+        expect(divider).to_have_attribute("aria-orientation", "horizontal")
+        expect(divider).to_have_attribute("tabindex", "0")
+        expect(divider).to_have_css("cursor", "ns-resize")
+        expect(host.get_by_role("separator", name="Debugger width")).to_have_attribute(
+            "aria-orientation", "vertical")
+        before = float(divider.get_attribute("aria-valuenow"))
+        box, bounds = divider.bounding_box(), host.bounding_box()
+        self.page.mouse.move(box["x"] + box["width"] / 2,
+                             box["y"] + box["height"] / 2)
+        self.page.mouse.down()
+        self.page.mouse.move(bounds["x"] + 100, bounds["y"] + 20, steps=6)
+        self.page.mouse.up()
+        self.page.wait_for_function("""before => Number(document.querySelector(
+            '#debugger-fixture [aria-label="Properties height"]')
+                .getAttribute('aria-valuenow')) > before""", arg=before)
+        self.assertEqual(self.number('*debugger-row-clicks*'), 1)
+        expect(divider).to_be_focused()
+        grown = float(divider.get_attribute("aria-valuenow"))
+        divider.press("ArrowDown")
+        self.page.wait_for_function("""before => Number(document.querySelector(
+            '#debugger-fixture [aria-label="Properties height"]')
+                .getAttribute('aria-valuenow')) < before""", arg=grown)
+        shrunk = float(divider.get_attribute("aria-valuenow"))
+        divider.press("ArrowUp")
+        self.page.wait_for_function("""before => Number(document.querySelector(
+            '#debugger-fixture [aria-label="Properties height"]')
+                .getAttribute('aria-valuenow')) > before""", arg=shrunk)
+        divider.press("ArrowDown")
+        divider.press("Home")
+        self.page.wait_for_function("""before => Number(document.querySelector(
+            '#debugger-fixture [aria-label="Properties height"]')
+                .getAttribute('aria-valuenow')) > before""", arg=shrunk)
+        self.assertLessEqual(float(divider.get_attribute("aria-valuenow")), 1)
+        close = host.get_by_role("button", name="Close", exact=True)
+        self.assertTrue(close.evaluate("""node => {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const css = getComputedStyle(node);
+            return range.getBoundingClientRect().height +
+                parseFloat(css.paddingTop) + parseFloat(css.paddingBottom) +
+                parseFloat(css.borderTopWidth) + parseFloat(css.borderBottomWidth)
+                <= node.getBoundingClientRect().height + 1;
+        }"""), "Maximized properties clipped the debugger Close button")
+        close_details = host.get_by_role("button", name="Close details", exact=True)
+        expect(close_details).to_have_text("×")
+        expect(close_details).to_have_attribute("aria-label", "Close details")
         geometry = host.get_by_text("Geometry", exact=True).filter(visible=True)
         expect(geometry).to_be_visible()
-        bar = host.get_by_role("scrollbar")
-        expect(bar).to_have_count(1)
+        bar = host.get_by_role("scrollbar").last
+        expect(bar).to_be_visible()
         self.assertGreater(float(bar.get_attribute("aria-valuemax")), 0)
         bar.press("Home")
         expect(bar).to_have_attribute("aria-valuenow", "0")
@@ -545,11 +590,11 @@ class WebTests(unittest.TestCase):
                     return range.getBoundingClientRect().height <=
                         node.getBoundingClientRect().height + 1;
                 })""")
-        self.assertTrue(labels_fit, "Inspector property labels are clipped vertically")
-        host.screenshot(path=str(ROOT / "build/inspector-motif-details.png"))
+        self.assertTrue(labels_fit, "Debugger property labels are clipped vertically")
+        host.screenshot(path=str(ROOT / "build/debugger-motif-details.png"))
         bar.press("End")
         self.page.wait_for_function("""() => {
-            const bar = document.querySelector('#inspector-fixture [role=scrollbar]');
+            const bar = [...document.querySelectorAll('#debugger-fixture [role=scrollbar]')].at(-1);
             return bar.getAttribute('aria-valuenow') === bar.getAttribute('aria-valuemax');
         }""")
         expect(host.get_by_text("Input", exact=True).filter(visible=True)).to_be_visible()
@@ -557,39 +602,52 @@ class WebTests(unittest.TestCase):
             'div[data-lui-style][data-lui-interactive=false]:not([role])')]
             .some(n => n.textContent.includes(
                 'A Motif selected row with full content beyond forty characters'))"""))
-        host.screenshot(path=str(ROOT / "build/inspector-motif-details-bottom.png"))
-        restore.click()
+        host.screenshot(path=str(ROOT / "build/debugger-motif-details-bottom.png"))
+        for _ in range(10):
+            divider.press("ArrowDown")
         expect(selected).to_be_visible()
         expect(selected).to_have_attribute("aria-selected", "true")
         selected.click()
         expect(selected).to_have_attribute("aria-selected", "false")
+        expect(divider).to_have_count(0)
         expect(geometry).to_have_count(0)
-        expand = host.get_by_role("button", name="Expand details", exact=True)
-        expect(expand).to_be_disabled()
         selected.click()
-        expect(selected).to_have_attribute("aria-selected", "true")
-        expand.click()
-        expect(restore).to_be_visible()
+        expect(divider).to_be_visible()
+        divider.press("End")
+        expect(divider).to_have_count(0)
+        expect(selected).to_have_attribute("aria-selected", "false")
+        selected.click()
+        expect(divider).to_be_visible()
+        box, bounds = divider.bounding_box(), host.bounding_box()
+        self.page.mouse.move(box["x"] + box["width"] / 2,
+                             box["y"] + box["height"] / 2)
+        self.page.mouse.down()
+        self.page.mouse.move(box["x"] + box["width"] / 2,
+                             bounds["y"] + bounds["height"] + 20, steps=8)
+        self.page.mouse.up()
+        expect(divider).to_have_count(0)
+        expect(selected).to_have_attribute("aria-selected", "false")
+        selected.click()
+        expect(divider).to_be_visible()
         host.evaluate("node => {node.style.width = '360px';}")
         self.page.wait_for_function("""() => Math.abs(Number(
-            document.querySelector('#inspector-fixture [role=separator]')
+            document.querySelector('#debugger-fixture [aria-label="Debugger width"]')
                 .getAttribute('aria-valuenow')) - 200/360) < .001""")
         close_details = host.get_by_role("button", name="Close details", exact=True)
         expect(close_details).to_be_visible()
         close_box, host_box = close_details.bounding_box(), host.bounding_box()
         self.assertLessEqual(close_box["x"] + close_box["width"],
                              host_box["x"] + host_box["width"])
-        host.screenshot(path=str(ROOT / "build/inspector-motif-details-narrow.png"))
-        close_details.click()
-        expect(restore).to_have_count(0)
+        host.screenshot(path=str(ROOT / "build/debugger-motif-details-narrow.png"))
+        close_details.press("Space")
+        expect(divider).to_have_count(0)
         expect(selected).to_be_visible()
         expect(selected).to_have_attribute("aria-selected", "false")
-        expect(host.get_by_text("Layout inspector", exact=True)
+        expect(host.get_by_text("Layout debugger", exact=True)
                .filter(visible=True)).to_be_visible()
-        expect(expand).to_be_disabled()
         host.get_by_role("button", name="Close", exact=True).click()
-        expect(restore).to_have_count(0)
-        self.lisp('(lui.web:unmount *inspector-app*)')
+        expect(divider).to_have_count(0)
+        self.lisp('(lui.web:unmount *debugger-app*)')
 
     def test_debugger_narrow_style_close_and_disclosures(self):
         page = self.page
@@ -597,9 +655,9 @@ class WebTests(unittest.TestCase):
         previous = None
         for toolkit in ("Glass", "Motif", "Garnet"):
             if previous:
-                page.get_by_role("button", name=previous, exact=True).click()
-                expect(page.get_by_role("button", name=toolkit, exact=True)).to_be_visible()
-            page.get_by_role("button", name="Debug", exact=True).click()
+                page.get_by_role("button", name="Cycle toolkit", exact=True).click()
+                expect(page.get_by_text("Toolkit: " + toolkit, exact=True).filter(visible=True)).to_be_visible()
+            page.get_by_role("button", name="Show debugger", exact=True).click()
             close = page.get_by_role("button", name="Close", exact=True)
             expect(close).to_be_visible()
             box = close.bounding_box()
@@ -762,7 +820,7 @@ class WebTests(unittest.TestCase):
             .filter(visible=True)).to_be_visible()
 
     def test_seven_circle_modal_preview_cancel_apply_undo_redo(self):
-        self.page.get_by_role("button", name="Glass", exact=True).click()
+        self.page.get_by_role("button", name="Cycle toolkit", exact=True).click()
         self.open_seven("Circles")
         canvas = self.page.locator("main svg")
         expect(canvas).to_be_visible()
@@ -866,10 +924,10 @@ class WebTests(unittest.TestCase):
         expect(self.cell(2)).to_have_text("11")
         self.page.screenshot(path=str(ROOT / "build/seven-cells.png"))
 
-    def test_seven_cells_flat_readable_style_across_collections(self):
+    def test_seven_cells_flat_readable_style_across_toolkits(self):
         self.open_seven("Cells")
         for name in ("Glass", "Motif", "Garnet"):
-            expect(self.page.get_by_role("button", name=name, exact=True)).to_be_visible()
+            expect(self.page.get_by_text("Toolkit: " + name, exact=True).filter(visible=True)).to_be_visible()
             normal = self.cell(1)
             selected = self.cell(0)
             expect(normal).to_have_attribute("role", "gridcell")
@@ -890,11 +948,11 @@ class WebTests(unittest.TestCase):
             normal.hover()
             expect(normal).to_have_css("background-color", "rgb(255, 255, 255)")
             self.page.screenshot(path=str(ROOT / f"build/seven-cells-{name.lower()}.png"))
-            self.page.get_by_role("button", name=name, exact=True).click()
+            self.page.get_by_role("button", name="Cycle toolkit", exact=True).click()
 
     def test_seven_cells_garnet_editor_identity_colors_and_readline(self):
-        self.page.get_by_role("button", name="Glass", exact=True).click()
-        self.page.get_by_role("button", name="Motif", exact=True).click()
+        self.page.get_by_role("button", name="Cycle toolkit", exact=True).click()
+        self.page.get_by_role("button", name="Cycle toolkit", exact=True).click()
         self.open_seven("Cells")
         self.cell(0).dblclick()
         editor = self.page.get_by_role("textbox")
@@ -1203,7 +1261,7 @@ class WebTests(unittest.TestCase):
         expect(bar).to_have_count(0)
         self.lisp('(lui.web:unmount *scrollbar-app*)')
 
-    def test_scrollbar_collection_appearance_and_inheritance(self):
+    def test_scrollbar_toolkit_appearance_and_inheritance(self):
         self.lisp('''
           (lui:register-toolkit :garnet-scroll-child :parent :garnet)
           (defvar *scroll-style* :glass)
@@ -1274,7 +1332,7 @@ class WebTests(unittest.TestCase):
                                bar.bounding_box()["width"])
         self.lisp('(lui.web:unmount *scroll-style-app*)')
 
-    def test_wrapped_list_rows_fit_content_across_collections(self):
+    def test_wrapped_list_rows_fit_content_across_toolkits(self):
         self.lisp('''
           (defvar *wrap-row-toolkit* :glass)
           (defvar *wrap-row-width* 120)
@@ -1701,8 +1759,8 @@ class WebTests(unittest.TestCase):
 
     def test_checkbox_theme_keyboard_and_disabled_cursor(self):
         page = self.page
-        page.get_by_role("button", name="Glass", exact=True).click()
-        expect(page.get_by_role("button", name="Motif", exact=True)).to_be_visible()
+        page.get_by_role("button", name="Cycle toolkit", exact=True).click()
+        expect(page.get_by_text("Toolkit: Motif", exact=True).filter(visible=True)).to_be_visible()
         check = page.get_by_role("checkbox", name="Enabled", exact=True)
         expect(check).to_be_checked()
         self.assertEqual(check.evaluate("n => getComputedStyle(n).appearance"), "none")

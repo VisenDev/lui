@@ -188,15 +188,19 @@
                (jscl/ffi:jsstring (if (< cursor anchor)
                                       "backward" "forward")))))))))
 
-(fn native-tab-key ((app web-app) id event)
+(fn native-tab-key
+    ((app web-app) id event &optional ((vertical-motion-p boolean) nil))
   (unless (or (jscl/ffi:clbool (jscl/ffi:oget event "isComposing"))
               (jscl/ffi:clbool (jscl/ffi:oget event "ctrlKey"))
               (jscl/ffi:clbool (jscl/ffi:oget event "altKey"))
               (jscl/ffi:clbool (jscl/ffi:oget event "metaKey")))
     (let ((key (cdr (assoc
                      (jscl/ffi:clstring (jscl/ffi:oget event "key"))
-                     '(("ArrowLeft" . :left) ("ArrowRight" . :right)
-                       ("Home" . :home) ("End" . :end))
+                     (append '(("Home" . :home) ("End" . :end))
+                             (if vertical-motion-p
+                                 '(("ArrowUp" . :up) ("ArrowDown" . :down))
+                                 '(("ArrowLeft" . :left)
+                                   ("ArrowRight" . :right))))
                      :test #'string=))))
       (when key
         ((jscl/ffi:oget event "preventDefault"))
@@ -326,7 +330,11 @@
                     (case kind
                       (:canvas (native-application-key app id event))
                       (:scrollbar (native-scrollbar-key app id event))
-                      (otherwise (native-tab-key app id event)))))
+                      (otherwise
+                       (native-tab-key
+                        app id event
+                        (eq (jscl/ffi:oget dom "luiOrientation")
+                            :horizontal))))))
           (listen app dom "contextmenu"
                   (lambda (event)
                     ((jscl/ffi:oget event "preventDefault"))))
@@ -450,6 +458,9 @@
                 (widget-frost widget)
                 (widget-opacity widget) (widget-disabled-p widget)
                 (widget-web-style widget) (toolkit-revision)
+                (widget-orientation widget)
+                (when (widget-accessible-name widget)
+                  (jscl/ffi:jsstring (widget-accessible-name widget)))
                 (jscl/ffi:jsstring (widget-foreground widget))
                 (jscl/ffi:jsstring (widget-background widget))
                 (jscl/ffi:jsstring (widget-accent widget))
@@ -555,10 +566,11 @@
       (property control "disabled"
                 (jscl/ffi:jsbool (widget-disabled-p widget)))
       (attribute control "aria-label"
-                 (if (plusp (length (widget-text widget)))
-                     (widget-text widget)
-                     (if (eq kind :cell) "Empty cell"
-                         (princ-to-string key)))))
+                 (or (widget-accessible-name widget)
+                     (if (plusp (length (widget-text widget)))
+                         (widget-text widget)
+                         (if (eq kind :cell) "Empty cell"
+                             (princ-to-string key))))))
     (case kind
       (:scrollbar
        (let ((owner (cdr (gethash (second (element-id node))
@@ -592,18 +604,26 @@
          (style thumb "height" (px (box-height bounds)))
          (style thumb "background" (widget-accent widget))))
       (:splitter
-       (attribute dom "aria-orientation" "vertical")
-       (attribute dom "aria-label" (if (plusp (length (widget-text widget)))
-                                       (widget-text widget) "Panel width"))
-       (attribute dom "aria-valuemin" "0")
-       (attribute dom "aria-valuemax" "1")
-       (attribute dom "aria-valuenow"
-                  (jscl/ffi:clstring (#j:String (widget-value widget))))
-       (style dom "cursor" "ew-resize")
-       (style dom "user-select" "none")
-       (style dom "background"
-              (format nil "linear-gradient(90deg, transparent calc(50% - 1px), ~A calc(50% - 1px), ~A calc(50% + 1px), transparent calc(50% + 1px))"
-                      (widget-accent widget) (widget-accent widget))))
+       (let ((horizontal (eq (widget-orientation widget) :horizontal)))
+         (setf (jscl/ffi:oget dom "luiOrientation")
+               (widget-orientation widget))
+         (attribute dom "aria-orientation"
+                    (if horizontal "horizontal" "vertical"))
+         (attribute dom "aria-label"
+                    (or (widget-accessible-name widget)
+                        (if (plusp (length (widget-text widget)))
+                            (widget-text widget)
+                            (if horizontal "Panel height" "Panel width"))))
+         (attribute dom "aria-valuemin" "0")
+         (attribute dom "aria-valuemax" "1")
+         (attribute dom "aria-valuenow"
+                    (jscl/ffi:clstring (#j:String (widget-value widget))))
+         (style dom "cursor" (if horizontal "ns-resize" "ew-resize"))
+         (style dom "user-select" "none")
+         (style dom "background"
+                (format nil "linear-gradient(~Ddeg, transparent calc(50% - 1px), ~A calc(50% - 1px), ~A calc(50% + 1px), transparent calc(50% + 1px))"
+                        (if horizontal 0 90)
+                        (widget-accent widget) (widget-accent widget)))))
       (:highlight
        (attribute dom "aria-hidden" "true")
        (style dom "pointer-events" "none")
