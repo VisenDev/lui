@@ -104,7 +104,8 @@
     (return-from measure-widget (values 0 0)))
   (let* ((font (widget-font renderer widget))
          (kind (widget-kind widget))
-         (extra (case kind (:label 0) (:cell 8) (:checkbox 48)
+         (extra (case kind (:label 0) (:cell 8) (:list-item 12)
+                       (:checkbox 48)
                        (otherwise 24))))
     (let ((lines (wrap-text font
                             (if (eq kind :text-field)
@@ -290,6 +291,14 @@
     (when paths
       (funcall (renderer-polygons renderer) paths "#000000" 1))))
 
+(fn garnet-slider ((renderer renderer) (track box) (thumb box)
+                  (background string) hover)
+  (garnet-fill renderer track "#ffffff")
+  (garnet-stipple renderer (inset-box track 1))
+  (garnet-outline renderer track)
+  (garnet-fill renderer thumb background)
+  (garnet-outline renderer thumb (if hover 2 1)))
+
 (fn garnet-face ((renderer renderer) (box box) (background string)
                 &optional pressed ((band integer) 3))
   (let* ((shadow (make-box :x (+ (box-x box) 4) :y (+ (box-y box) 4)
@@ -388,11 +397,8 @@
                                     (* fraction
                                        (max 0 (- (box-width track) 18))))
                                :y (- (box-y track) 3) :width 18 :height 18)))
-         (garnet-fill renderer track "#ffffff")
-         (garnet-stipple renderer (inset-box track 1))
-         (garnet-outline renderer track)
-         (garnet-fill renderer thumb (widget-background widget))
-         (garnet-outline renderer thumb (if hover 2 1))))
+         (garnet-slider renderer track thumb (widget-background widget)
+                        hover)))
       (:text-field
        (garnet-fill renderer box (widget-background widget))
        (garnet-outline renderer box)
@@ -441,10 +447,26 @@
       ((widget-painter widget)
        (funcall (widget-painter widget) renderer node))
       ((eq kind :scrollbar)
-       (let ((rounding (if glass (/ (box-width box) 2) 0)))
-         (shape renderer box rounding foreground 0.15)
-         (shape renderer (scrollbar-thumb node) rounding
-                (widget-accent widget) 1)))
+       (let* ((thumb (scrollbar-thumb node))
+              (hover (or (hovered-p (element-id node))
+                         (equal (element-id node)
+                                (context-active *context*))))
+              (inset (min 2 (/ (min (box-width thumb) (box-height thumb))
+                               4))))
+         (case (toolkit-surface (widget-style widget))
+           (:garnet
+            (garnet-slider renderer box (inset-box thumb (min 1 inset))
+                           (widget-background widget) hover))
+           (:glass
+            (let* ((face (inset-box thumb inset))
+                   (radius (/ (box-width face) 2)))
+              (shape renderer box (/ (box-width box) 2) foreground 0.08)
+              (shape renderer face radius foreground (if hover 0.5 0.32))
+              (outline renderer face radius foreground 0.4
+                       (min 1 (/ (box-width face) 2)))))
+           (otherwise
+            (shape renderer box 0 foreground 0.15)
+            (shape renderer thumb 0 (widget-accent widget) 1)))))
       ((eq kind :splitter)
        (shape renderer
               (make-box :x (+ (box-x box) (/ (box-width box) 2) -1)
@@ -473,9 +495,13 @@
        (when (and (not (widget-value widget))
                   (hovered-p (element-id node)))
          (shape renderer box 0 foreground 0.12))
-       (paint-text renderer (widget-text widget)
-                   (+ (box-x box) 6) (+ (box-y box) 6 (baseline font))
-                   (if (widget-value widget) "#ffffff" foreground)))
+       (loop :for line :in (wrap-text font (widget-text widget)
+                                      (max 0 (- (box-width box) 12)))
+             :for top :from (+ (box-y box) 6 (baseline font))
+               :by (line-height font)
+             :do (paint-text renderer line (+ (box-x box) 6) top
+                             (if (widget-value widget)
+                                 "#ffffff" foreground))))
       ((eq kind :gauge)
        (shape renderer box radius (widget-background widget) 1)
        (let ((fill (make-box :x (box-x box) :y (box-y box)

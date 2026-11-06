@@ -293,7 +293,11 @@
                                     (setf (aref cells row column)
                                           (if (and (<= thumb-top row)
                                                    (< row thumb-end))
-                                              "█" "│")
+                                              "█"
+                                              (if (eq (toolkit-surface
+                                                       (widget-style widget))
+                                                      :garnet)
+                                                  "░" "│"))
                                           (aref colors row column) style))
                                    (highlight-p
                                     (when (or (plusp (widget-opacity widget))
