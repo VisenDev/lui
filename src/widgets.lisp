@@ -122,8 +122,8 @@ An optional terminal-label callback overrides the standard kind-based label."
                  (dolist (node tabs)
                    (remhash (element-id node) (context-activated *context*)))
                  (setf (context-focus-visible-p *context*) t
-                       (context-focus *context*) target
-                       (gethash target (context-activated *context*)) t)))
+                       (context-focus *context*) target)
+                 (record-activation *context* target)))
              (when arrows
                (setf (gethash id (context-events *context*))
                      (remove-if (lambda (event) (member event arrows))

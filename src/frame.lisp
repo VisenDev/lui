@@ -10,7 +10,7 @@
            #:context-events #:events-for
            #:previous-box
            #:context-state #:context-width #:context-height #:emit
-           #:activated-p
+           #:activated-p #:activated-ids #:record-activation
            #:make-event #:begin-frame #:end-frame #:context-hover #:hovered-p
            #:context-previous-root #:context-activated
            #:context-focus-visible-p #:frame-time #:request-frame
@@ -73,6 +73,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (events (make-hash-table :test 'equal) :type hash-table)
   (scroll (make-hash-table :test 'equal) :type hash-table)
   (scroll-motion nil :type (or null scroll-motion))
+  (activation-order nil :type list)
   (activated (make-hash-table :test 'equal) :type hash-table)
   (ids (make-hash-table :test 'equal) :type hash-table)
   (building-p nil :type boolean)
@@ -233,6 +234,16 @@ Native key translators use this to interpret a key after a batched click or Tab.
                                        :last-input now :level level)))))
       (t (setf (context-scroll-motion context) nil)))))
 
+(fn record-activation ((context context) id)
+  (push id (context-activation-order context))
+  (setf (gethash id (context-activated context)) t))
+
+(fn (activated-ids list) (&optional ((context context) *context*))
+  "Return active widget IDs in input order, including repeated activations."
+  (reverse (remove-if-not
+            (lambda (id) (gethash id (context-activated context)))
+            (context-activation-order context))))
+
 (fn begin-frame ((context context) (width real) (height real) (events list))
   "Begin rebuilding CONTEXT at WIDTH and HEIGHT after routing EVENTS.
 Input is resolved against the previous completed tree; this resets the frame
@@ -247,6 +258,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
              (= height (context-height context)))
         (funcall (context-input-handler context) context events)
         (setf (context-selection context) nil)))
+  (setf (context-activation-order context) nil)
   (clrhash (context-activated context))
   (clrhash (context-events context))
   ;; Old hit regions are invalid after resizing. Establish new geometry first.
@@ -262,8 +274,10 @@ clock, redraw deadline, declarations, and per-frame activation state."
       (setf (context-scroll-motion context) nil))
     (unless resized (advance-scroll context (context-time context)))
     (dolist (event events)
-      (let ((target (unless resized
-                      (hit context (event-x event) (event-y event))))
+      (let ((target (or (and (member (event-kind event) '(:press :release))
+                             (event-id event))
+                        (unless resized
+                          (hit context (event-x event) (event-y event)))))
             (captured (context-active context)))
         (when (member (event-kind event)
                       '(:press :release :tab :key :text :activate :change))
@@ -296,7 +310,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
           (:release
            (when (and (eq (event-button event) :primary)
                       target (equal target (context-active context)))
-             (setf (gethash target (context-activated context)) t))
+             (record-activation context target))
            (when (eq (event-button event) :primary)
              (setf (context-active context) nil)))
           (:tab
@@ -306,7 +320,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
           (:activate
            (let ((id (or (event-id event) (context-focus context))))
              (when id
-               (setf (gethash id (context-activated context)) t))))
+               (record-activation context id))))
           (otherwise nil))
         (let ((id (or (event-id event)
                       (if (member (event-kind event) '(:press :move :release))

@@ -59,6 +59,36 @@ class DocsWebTests(unittest.TestCase):
                     symbol_bar.get_attribute("aria-valuemax"))
                 symbol_bar.press("Home")
                 expect(symbol_bar).to_have_attribute("aria-valuenow", "0")
+                # Hold the next draw to exercise two real clicks in one frame.
+                page.evaluate("""() => {
+                    const raf = window.requestAnimationFrame.bind(window);
+                    const pending = [];
+                    window.requestAnimationFrame = cb => pending.push(cb);
+                    window.resumeDocs = () => {
+                        window.requestAnimationFrame = raf;
+                        pending.forEach(cb => raf(cb));
+                    };
+                }""")
+                for symbol in ("lui:CHECKBOX", "lui:BUTTON"):
+                    box = page.get_by_role("option", name=symbol,
+                                           exact=True).bounding_box()
+                    page.mouse.click(box["x"] + 15, box["y"] + 12)
+                page.evaluate("window.resumeDocs()")
+                expect(page.locator("main > div[data-lui-style]").filter(
+                    has_text=re.compile(r"^lui:BUTTON$"))).to_be_visible()
+                # Releasing over a different row cancels the click.
+                check = page.get_by_role("option", name="lui:CHECKBOX",
+                                         exact=True).bounding_box()
+                cell = page.get_by_role("option", name="lui:CELL",
+                                        exact=True).bounding_box()
+                page.mouse.move(check["x"] + 15, check["y"] + 10)
+                page.mouse.down()
+                page.mouse.move(cell["x"] + 15, cell["y"] + 10)
+                page.mouse.up()
+                page.evaluate("""() => new Promise(resolve =>
+                    requestAnimationFrame(() => requestAnimationFrame(resolve)))""")
+                expect(page.locator("main > div[data-lui-style]").filter(
+                    has_text=re.compile(r"^lui:BUTTON$"))).to_be_visible()
                 search.fill("button")
                 expect(search).to_have_value("button")
                 entries = page.get_by_role("option", name="lui:BUTTON", exact=True)

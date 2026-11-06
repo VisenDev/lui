@@ -34,11 +34,11 @@
   (#j:document:createElementNS #j"http://www.w3.org/2000/svg"
                               (jscl/ffi:jsstring tag)))
 
-(fn queue-pointer ((app web-app) event kind)
+(fn queue-pointer ((app web-app) event kind &optional id)
   (let ((rect ((jscl/ffi:oget (web-app-host app)
                              "getBoundingClientRect"))))
     (queue-event
-     app (make-event :kind kind
+     app (make-event :kind kind :id id
                      :button (if (= 2 (jscl/ffi:oget event "button"))
                                  :secondary :primary)
                      :clicks (max 1 (jscl/ffi:oget event "detail"))
@@ -372,8 +372,8 @@
            (listen app dom "click"
                    (lambda (event)
                      (if (plusp (jscl/ffi:oget event "detail"))
-                         (progn (queue-pointer app event :press)
-                                (queue-pointer app event :release))
+                         (progn (queue-pointer app event :press id)
+                                (queue-pointer app event :release id))
                          (queue-event
                           app (make-event :kind :activate :id id))))))
           ((:slider :text-field :checkbox)
