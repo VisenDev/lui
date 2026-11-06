@@ -4,7 +4,7 @@
 
 (in-package #:lui.web.input)
 
-(defun install-input (host canvas context queue &key mobile-page-p)
+(defun install-input (host canvas context queue &key mobile-page-p scroll-page)
   "Install canvas input and one shared IME sink. Return an idempotent cleanup."
   (let ((sink (#j:document:createElement #j"textarea"))
         (listeners nil)
@@ -12,6 +12,11 @@
         (pending-root (context-root context))
         (pointer nil)
         (touch-start nil)
+        (touch-motion nil)
+        (touch-y nil)
+        (touch-native nil)
+        (touch-time nil)
+        (touch-velocity 0)
         (composing nil)
         (alive t)
         (old-copy (context-copy context))
@@ -48,6 +53,7 @@
                             ((jscl/ffi:oget canvas "hasPointerCapture") id)))
                ((jscl/ffi:oget canvas "releasePointerCapture") id))))
          (cancel ()
+           (setf touch-start nil touch-motion nil touch-y nil)
            (release)
            (send (make-event :kind :cancel :buttons 0)))
          (current-p (event)
@@ -89,7 +95,7 @@
             #j"position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none"
             (jscl/ffi:oget canvas "tabIndex") 0
             (jscl/ffi:oget canvas "style" "touchAction")
-            (if mobile-page-p #j"pan-y pinch-zoom" #j"none"))
+            (if mobile-page-p #j"pinch-zoom" #j"none"))
       ((jscl/ffi:oget host "appendChild") sink)
       (setf (context-copy context)
             (lambda (value)
@@ -102,29 +108,81 @@
       (listen canvas "focus"
               (lambda (event) (declare (ignore event))
                 (unless mobile-page-p (focus-without-scroll sink))))
-      (listen canvas "pointerdown"
+      (listen host "pointerdown"
               (lambda (event)
-                (when (current-p event)
+                (when (and (current-p event)
+                           (or (eq (jscl/ffi:oget event "target") canvas)
+                               (and mobile-page-p
+                                    (not (eq (jscl/ffi:oget event "target") sink))
+                                    (equal (jscl/ffi:oget event "pointerType") #j"touch"))))
+                  (setf touch-native (not (eq (jscl/ffi:oget event "target") canvas)))
                   (let ((touch (and mobile-page-p
                                     (equal (jscl/ffi:oget event "pointerType") #j"touch"))))
+                    (when touch (funcall scroll-page 0))
                     (setf touch-start (when touch
                                         (cons (jscl/ffi:oget event "clientX")
                                               (jscl/ffi:oget event "clientY"))))
                     ;; Suppress the compatibility mouse click that would refocus
-                    ;; the canvas after we focus the editor. Touch-action owns panning.
-                    (stop event)
+                    ;; the canvas after we focus the editor.
+                    (setf touch-time (jscl/ffi:oget event "timeStamp")
+                          touch-velocity 0
+                          touch-motion (when touch :pending)
+                          touch-y (when touch (jscl/ffi:oget event "clientY")))
+                    (unless touch-native (stop event))
                     (unless touch (focus-without-scroll sink))
                     (setf pointer (jscl/ffi:oget event "pointerId"))
-                    (unless touch ((jscl/ffi:oget canvas "setPointerCapture") pointer))
-                    (pointer-event event :press)))))
-      (listen canvas "pointermove"
+                    (unless touch-native
+                      ((jscl/ffi:oget canvas "setPointerCapture") pointer)
+                      (pointer-event event :press))))))
+      (listen host "pointermove"
               (lambda (event)
-                (when (current-p event) (pointer-event event :move))))
-      (listen canvas "pointerup"
+                (when (and (current-p event)
+                           (or pointer (eq (jscl/ffi:oget event "target") canvas)))
+                  (cond
+                    (touch-start
+                     (let* ((x (jscl/ffi:oget event "clientX"))
+                            (y (jscl/ffi:oget event "clientY"))
+                            (dx (- x (car touch-start)))
+                            (dy (- y (cdr touch-start)))
+                            (selection (#j:window:getSelection))
+                            (selecting (and touch-native
+                                            (not (eq selection #j:null))
+                                            (jscl/ffi:clbool
+                                             ((jscl/ffi:oget selection "containsNode")
+                                              (jscl/ffi:oget event "target") #j:true))
+                                            (not (jscl/ffi:clbool
+                                                  (jscl/ffi:oget selection "isCollapsed"))))))
+                       ;; Delay the shared drag until the gesture has a direction.
+                       ;; A pan cancels the press, so lifting cannot activate it.
+                       (when selecting (setf touch-motion :selection))
+                       (when (and (eq touch-motion :pending)
+                                  (>= (max (abs dx) (abs dy)) 8))
+                         (setf touch-motion
+                               (if (and scroll-page (> (abs dy) (abs dx)))
+                                   :pan :horizontal))
+                         (when (and (eq touch-motion :pan) (not touch-native))
+                           (send (make-event :kind :cancel :buttons 0))))
+                       (case touch-motion
+                         (:pan
+                          (stop event)
+                          (let ((elapsed (- (jscl/ffi:oget event "timeStamp") touch-time)))
+                            (when (plusp elapsed)
+                              (setf touch-velocity (/ (- touch-y y) elapsed))))
+                          (funcall scroll-page (- touch-y y)))
+                         (:horizontal (unless touch-native (pointer-event event :move))))
+                       (unless (eq touch-motion :pending)
+                         (setf touch-y y touch-time (jscl/ffi:oget event "timeStamp")))))
+                    (t (pointer-event event :move))))))
+      (listen host "pointerup"
               (lambda (event)
-                (when (current-p event)
-                  (pointer-event event :release)
-                  (when (and touch-start
+                (when (and pointer (current-p event))
+                  (when (eq touch-motion :pan)
+                    (funcall scroll-page 0
+                             (if (< (- (jscl/ffi:oget event "timeStamp") touch-time) 100)
+                                 touch-velocity 0)))
+                  (unless (or touch-native (eq touch-motion :pan))
+                    (pointer-event event :release))
+                  (when (and (not touch-native) (not (eq touch-motion :pan)) touch-start
                              (< (abs (- (car touch-start) (jscl/ffi:oget event "clientX"))) 8)
                              (< (abs (- (cdr touch-start) (jscl/ffi:oget event "clientY"))) 8))
                     (let ((input (input-context)) (position (position-event event :release)))
@@ -133,10 +191,10 @@
                                 (equal (context-focus input)
                                        (lui.frame::hit input (event-x position) (event-y position))))
                            sink canvas))))
-                  (setf touch-start nil)
+                  (setf touch-start nil touch-motion nil touch-y nil touch-native nil)
                   (release))))
       (dolist (name '("pointercancel" "lostpointercapture"))
-        (listen canvas name
+        (listen host name
                 (lambda (event)
                   (when (and pointer (current-p event)) (cancel)))))
       (listen canvas "pointerleave"
@@ -145,20 +203,23 @@
       (listen canvas "contextmenu" #'stop)
       (listen host "wheel"
               (lambda (event)
-                (unless mobile-page-p
+                ;; Keep browser zoom shortcuts native.
+                (unless (and mobile-page-p (flag event "ctrlKey"))
                   (stop event)
                   (let* ((mode (jscl/ffi:oget event "deltaMode"))
-                         (delta (jscl/ffi:oget event "deltaY")))
-                    (send (position-event
-                           event :scroll
-                           :scroll-mode (if (and (zerop mode)
-                                                 (< (abs delta) 20))
-                                            :immediate :smooth)
-                           :value (* delta
-                                     (case mode
-                                       (1 16)
-                                       (2 (context-height context))
-                                       (otherwise 1)))))))))
+                         (delta (jscl/ffi:oget event "deltaY"))
+                         (pixels (* delta (case mode
+                                            (1 16)
+                                            (2 (context-height context))
+                                            (otherwise 1)))))
+                    (if (and mobile-page-p scroll-page)
+                        (funcall scroll-page pixels)
+                        (send (position-event
+                               event :scroll
+                               :scroll-mode (if (and (zerop mode)
+                                                     (< (abs delta) 20))
+                                                :immediate :smooth)
+                               :value pixels)))))))
       ;; Touch taps can focus the canvas without summoning the software keyboard.
       (listen host "keydown"
               (lambda (event)

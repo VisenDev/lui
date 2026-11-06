@@ -429,8 +429,9 @@ without launching a server.
 
 On touch-first devices, a standalone web app with no explicit height grows
 to fit its content. Swipe vertically to scroll the page. The canvas draws
-the visible window, and labels support browser text selection. Embedded
-apps can use the same behavior with `:mobile-page-p t` on `lui.web:mount`.
+the next scroll position before moving the page, and labels support browser
+text selection. Direct calls to `lui.web:mount` use the same touch behavior
+by default. Pass `:mobile-page-p nil` for a fixed-height embedded surface.
 
 ## Rendering differences
 

@@ -5,9 +5,38 @@
 
 (defstruct* web-app
   host stage overlay canvas graphics renderer context callback cleanup observer resize
-  mobile-page-p (viewport-offset 0)
+  scrollport (viewport-offset 0) (scroll-delta 0) (velocity 0) (scroll-time 0)
   overlay-order overlay-geometry overlay-cache
   animation-frame deadline-timer events pending-p (alive-p t))
+
+(fn page-scrollport (host)
+  (do ((element host (jscl/ffi:oget element "parentElement")))
+      ((eq element #j:null) #j:window)
+    (let ((overflow (jscl/ffi:oget
+                     (#j:window:getComputedStyle element) "overflowY")))
+      (when (or (equal overflow #j"auto") (equal overflow #j"scroll"))
+        (return element)))))
+
+(fn page-viewport-height (port)
+  (if (eq port #j:window)
+      #j:window:innerHeight
+      (jscl/ffi:oget port "clientHeight")))
+
+(fn page-offset (stage port)
+  (let ((top (jscl/ffi:oget
+              ((jscl/ffi:oget stage "getBoundingClientRect")) "top")))
+    (if (eq port #j:window)
+        (- top)
+        (- (+ (jscl/ffi:oget
+               ((jscl/ffi:oget port "getBoundingClientRect")) "top")
+              (jscl/ffi:oget port "clientTop"))
+           top))))
+
+(fn page-scroll-by (port delta)
+  (let ((options (jscl/ffi:new #j:Object)))
+    (setf (jscl/ffi:oget options "top") delta
+          (jscl/ffi:oget options "behavior") #j"instant")
+    ((jscl/ffi:oget port "scrollBy") options)))
 
 (fn rounded-path (g (box box) radius &optional (inset 0))
   ((jscl/ffi:oget g "beginPath"))
@@ -333,12 +362,33 @@
           (setf (dom-widget-text record) text))))
     external))
 
+(defun queue-page-scroll (app delta &optional (velocity 0))
+  (incf (web-app-scroll-delta app) delta)
+  (setf (web-app-velocity app) (max -4 (min 4 velocity))
+        (web-app-scroll-time app) (#j:performance:now))
+  (refresh app))
+
+(defun frame-scroll-delta (app)
+  (let ((delta (shiftf (web-app-scroll-delta app) 0))
+        (speed (web-app-velocity app)))
+    (unless (zerop speed)
+      (let* ((now (#j:performance:now))
+             (elapsed (min 50 (- now (web-app-scroll-time app))))
+             (decay (exp (/ (- elapsed) 190))))
+        (incf delta (* speed 190 (- 1 decay)))
+        (setf (web-app-scroll-time app) now
+              (web-app-velocity app) (if (< (* (abs speed) decay) 0.02) 0 (* speed decay)))))
+    delta))
+
 (fn draw-frame ((app web-app))
   (let* ((canvas (web-app-canvas app)) (g (web-app-graphics app))
          (context (web-app-context app)) (*unit* 8)
          (width (jscl/ffi:oget canvas "clientWidth"))
-         (mobile (web-app-mobile-page-p app))
-         (height (if mobile #j:window:innerHeight
+         (port (web-app-scrollport app))
+         (stage (web-app-stage app))
+         (origin (if port (page-offset stage port) 0))
+         (delta (if port (frame-scroll-delta app) 0))
+         (height (if port (page-viewport-height port)
                      (jscl/ffi:oget canvas "clientHeight")))
          (scale #j:window:devicePixelRatio)
          (events (nreverse (shiftf (web-app-events app) nil))))
@@ -347,30 +397,19 @@
         (setf (jscl/ffi:oget canvas "width") w))
       (unless (= h (jscl/ffi:oget canvas "height"))
         (setf (jscl/ffi:oget canvas "height") h)))
-    (setf (lui.frame::context-page-height-p context) mobile
+    (setf (lui.frame::context-page-height-p context) (not (null port))
           (lui.frame::context-page-top context)
-          (if mobile
-              (max 0 (- (jscl/ffi:oget
-                         ((jscl/ffi:oget (web-app-stage app) "getBoundingClientRect"))
-                         "top")))
-              0))
+          (max 0 (min (- (context-height context) height) (+ origin delta))))
     (with-frame (context width height :events events)
       (funcall (web-app-callback app)))
-    (when mobile
-      (let ((stage (web-app-stage app))
-            (page-height (context-height context))
-            (requested (shiftf (lui.frame::context-requested-page-top context) nil)))
-        (setf (jscl/ffi:oget stage "style" "height") (css-pixels page-height))
-        (when requested
-          (#j:window:scrollBy
-           0 (+ requested (jscl/ffi:oget
-                           ((jscl/ffi:oget stage "getBoundingClientRect")) "top"))))
-        (let* ((rect ((jscl/ffi:oget stage "getBoundingClientRect")))
-               (offset (max 0 (min (max 0 (- page-height height))
-                                   (- (jscl/ffi:oget rect "top"))))))
+    (when port
+      (let* ((page-height (context-height context))
+             (requested (shiftf (lui.frame::context-requested-page-top context) nil)))
+        (when requested (setf delta (- requested origin)))
+        (let ((offset (max 0 (min (- page-height height) (+ origin delta)))))
           (setf (web-app-viewport-offset app) offset
                 (jscl/ffi:oget canvas "luiViewportOffset") offset
-                (jscl/ffi:oget canvas "style" "top") (css-pixels offset)
+                (jscl/ffi:oget stage "style" "height") (css-pixels page-height)
                 (jscl/ffi:oget canvas "style" "height") (css-pixels height)))))
     ((jscl/ffi:oget g "setTransform") scale 0 0 scale 0 0)
     (setf (jscl/ffi:oget g "fillStyle") #j"#202432")
@@ -379,10 +418,16 @@
     ((jscl/ffi:oget g "save"))
     (unwind-protect
          (paint-frame (web-app-renderer app) context (sync-overlay app)
-                      (when mobile
+                      (when port
                         (make-box :x 0 :y (web-app-viewport-offset app)
                                   :width width :height height)))
       ((jscl/ffi:oget g "restore")))
+    ;; Commit the matching scroll position only after the pixels and DOM are ready.
+    (when (and port (not (zerop delta)))
+      (page-scroll-by port delta)
+      (when (< (abs (- (page-offset stage port) origin)) 0.01)
+        (setf (web-app-velocity app) 0)))
+    (unless (zerop (web-app-velocity app)) (refresh app))
     (when (some (lambda (e) (not (eq :move (event-kind e)))) events)
       (refresh app))
     (lui.web.input:update-accessibility canvas context)
@@ -411,11 +456,15 @@
             (setf (web-app-deadline-timer app)
                   (#j:setTimeout #'enqueue (ceiling (* wait 1000)))))))))
 
+(defun touch-page-p ()
+  (jscl/ffi:clbool (jscl/ffi:oget (#j:window:matchMedia #j"(pointer: coarse)") "matches")))
+
 (fn mount (host (callback function) &key (min-fps lui.frame::*min-fps*)
-           (max-fps lui.frame::*max-fps*) mobile-page-p)
+           (max-fps lui.frame::*max-fps*) (mobile-page-p (touch-page-p)))
   "Mount a Canvas 2D application inside HOST and return its lifetime handle."
   (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
-  (let* ((stage (#j:document:createElement #j"div"))
+  (let* ((port (and mobile-page-p (page-scrollport host)))
+         (stage (#j:document:createElement #j"div"))
          (labels (#j:document:createElement #j"div"))
          (canvas (#j:document:createElement #j"canvas"))
          (g ((jscl/ffi:oget canvas "getContext") #j"2d"))
@@ -426,7 +475,7 @@
                               (measure-widget renderer widget width))))
          (app (make-web-app :host host :stage stage :overlay labels :canvas canvas :graphics g
                             :renderer renderer :context context
-                            :callback callback :mobile-page-p mobile-page-p))
+                            :callback callback :scrollport port))
          (resize (lambda (&rest ignored)
                    (declare (ignore ignored)) (refresh app))))
     (setf (jscl/ffi:oget canvas "style" "cssText")
@@ -438,21 +487,27 @@
           (jscl/ffi:oget labels "style" "cssText")
           #j"position:absolute;inset:0;pointer-events:none")
     (when mobile-page-p
-      (setf (jscl/ffi:oget canvas "style" "position") #j"absolute"
-            (jscl/ffi:oget canvas "style" "height") (css-pixels #j:window:innerHeight)
-            (jscl/ffi:oget stage "style" "height") (css-pixels #j:window:innerHeight)))
+      (setf (jscl/ffi:oget stage "style" "touchAction") #j"pinch-zoom"
+            (jscl/ffi:oget stage "style" "overflow") #j"clip"
+            (jscl/ffi:oget canvas "style" "position") #j"sticky"
+            (jscl/ffi:oget canvas "style" "top") #j"0"
+            (jscl/ffi:oget canvas "style" "height") (css-pixels (page-viewport-height port))
+            (jscl/ffi:oget stage "style" "height") (css-pixels (page-viewport-height port))))
     ((jscl/ffi:oget stage "appendChild") canvas)
     ((jscl/ffi:oget stage "appendChild") labels)
     ((jscl/ffi:oget host "appendChild") stage)
     (setf (web-app-cleanup app)
           (lui.web.input:install-input
            stage canvas context (lambda (event) (queue-event app event))
-           :mobile-page-p mobile-page-p)
+           :mobile-page-p mobile-page-p
+           :scroll-page (lambda (delta &optional (speed 0)) (queue-page-scroll app delta speed)))
           (web-app-resize app) resize
           (web-app-observer app) (jscl/ffi:new #j:ResizeObserver resize))
     ((jscl/ffi:oget (web-app-observer app) "observe") host)
+    (when (and port (not (eq port #j:window)) (not (eq port host)))
+      ((jscl/ffi:oget (web-app-observer app) "observe") port))
     (#j:window:addEventListener #j"resize" resize)
-    (when mobile-page-p (#j:window:addEventListener #j"scroll" resize))
+    (when port ((jscl/ffi:oget port "addEventListener") #j"scroll" resize))
     (refresh app)
     app))
 
@@ -465,7 +520,8 @@
       (#j:cancelAnimationFrame (web-app-animation-frame app)))
     ((jscl/ffi:oget (web-app-observer app) "disconnect"))
     (#j:window:removeEventListener #j"resize" (web-app-resize app))
-    (#j:window:removeEventListener #j"scroll" (web-app-resize app))
+    (when (web-app-scrollport app)
+      ((jscl/ffi:oget (web-app-scrollport app) "removeEventListener") #j"scroll" (web-app-resize app)))
     (funcall (web-app-cleanup app))
     (lui.font:close-font (renderer-font (web-app-renderer app)))
     (setf (web-app-overlay-order app) nil
@@ -479,9 +535,7 @@
 (fn run-web ((draw function) &key title width height (interactive t))
   (declare (ignore interactive))
   (setf (jscl/ffi:oget #j:document "title") (jscl/ffi:jsstring title))
-  (let* ((mobile (and (null height)
-                      (jscl/ffi:clbool
-                       (jscl/ffi:oget (#j:window:matchMedia #j"(pointer: coarse)") "matches"))))
+  (let* ((mobile (and (null height) (touch-page-p)))
          (host (#j:document:createElement #j"main")))
     ((jscl/ffi:oget host "setAttribute") #j"aria-label"
      (jscl/ffi:jsstring title))

@@ -322,6 +322,140 @@ class WebTests(unittest.TestCase):
         finally:
             page.close()
 
+    def test_mobile_mount_scroll_waits_for_painted_frame(self):
+        page = self.browser.new_page(viewport={"width": 390, "height": 844},
+                                     device_scale_factor=2, is_mobile=True,
+                                     has_touch=True)
+        page.on("pageerror", lambda error: self.errors.append(str(error)))
+        try:
+            # Gate application frame callbacks without freezing browser input or
+            # scrolling, including callbacks already scheduled before the pause.
+            page.add_init_script("""(() => {
+                const raf = window.requestAnimationFrame.bind(window);
+                window.pausedFrames = false;
+                window.pendingFrames = [];
+                window.requestAnimationFrame = callback => raf(time => {
+                    if (window.pausedFrames) window.pendingFrames.push(callback);
+                    else callback(time);
+                });
+                window.resumeFrames = () => {
+                    window.pausedFrames = false;
+                    window.pendingFrames.splice(0).forEach(callback => raf(callback));
+                };
+            })()""")
+            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+            page.wait_for_function("document.querySelector('main canvas')?.luiApp")
+            ui = WebTests()
+            ui.page = page
+            ui.lisp('''
+              (declaim (special lui.frame:*context* lui.frame:*parent* lui:*unit*))
+              (lui.web:unmount (jscl/ffi:oget
+                (#j:document:querySelector #j"main canvas") "luiApp"))
+              ((jscl/ffi:oget (#j:document:querySelector #j"main") "remove"))
+              (defvar *web-test-clicks* -1)
+              (defvar *web-test-host* (#j:document:createElement #j"main"))
+              (#j:document:body:appendChild *web-test-host*)
+              (defvar *web-test-app*
+                (lui.web:mount *web-test-host*
+                  (lambda ()
+                    (lui.frame:column (:width (lui.layout:grow))
+                      (dotimes (i 60)
+                        (when (lui.glass:button (list :row i)
+                                (format nil "Row ~D" i)
+                                (lui:opt :height (lui.layout:fixed 48)
+                                         :width (lui.layout:grow)))
+                          (setf *web-test-clicks* i)))))))''')
+            ui.frames()
+            page.wait_for_function("document.documentElement.scrollHeight > innerHeight * 2")
+            canvas = page.locator("main canvas")
+            painted = canvas.evaluate("c => c.toDataURL()")
+            page.evaluate("window.pausedFrames = true")
+            cdp = page.context.new_cdp_session(page)
+            self.assertEqual(page.evaluate("document.elementFromPoint(190,700).tagName"),
+                             "CANVAS")
+            cdp.send("Input.dispatchTouchEvent", {
+                "type": "touchStart", "touchPoints": [{"x": 190, "y": 700}]})
+            for y in (620, 540, 460, 380):
+                cdp.send("Input.dispatchTouchEvent", {
+                    "type": "touchMove", "touchPoints": [{"x": 190, "y": y}]})
+            page.wait_for_timeout(125)  # release at rest, without a fling
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            page.wait_for_timeout(150)
+            self.assertEqual(page.evaluate("window.scrollY"), 0)
+            self.assertEqual(canvas.evaluate("c => c.luiViewportOffset"), 0)
+            self.assertEqual(canvas.evaluate("c => c.getBoundingClientRect().top"), 0)
+            self.assertEqual(canvas.evaluate("c => c.toDataURL()"), painted)
+            page.evaluate("window.resumeFrames()")
+            page.wait_for_function("window.scrollY > 100")
+            ui.frames()
+            self.assertAlmostEqual(page.evaluate("window.scrollY"),
+                                   canvas.evaluate("c => c.luiViewportOffset"), delta=1)
+            self.assertAlmostEqual(canvas.evaluate("c => c.getBoundingClientRect().top"),
+                                   0, delta=1)
+            self.assertNotEqual(canvas.evaluate("c => c.toDataURL()"), painted)
+            # A newly revealed row must receive a real canvas tap using its
+            # page geometry, rather than an accessibility button activation.
+            offset = page.evaluate("window.scrollY")
+            visible = [node for node in ui.nodes()
+                       if node["y"] > 844 and node["y"] >= offset
+                       and node["y"] + node["height"] < offset + 844]
+            self.assertTrue(visible)
+            chosen = visible[0]
+            x, y = ui.point(chosen)
+            self.assertEqual(page.evaluate(
+                "([x,y]) => document.elementFromPoint(x,y).tagName",
+                [x, y - offset]), "CANVAS")
+            page.touchscreen.tap(x, y - offset)
+            ui.frames()
+            self.assertEqual(ui.number("*web-test-clicks*"),
+                             int(chosen["text"].split()[1]))
+        finally:
+            page.close()
+
+    def test_mobile_embedded_scrollport_and_native_labels(self):
+        page = self.browser.new_page(viewport={"width": 390, "height": 844},
+                                     is_mobile=True, has_touch=True)
+        page.on("pageerror", lambda error: self.errors.append(str(error)))
+        try:
+            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+            page.wait_for_function("document.querySelector('main canvas')?.luiApp")
+            ui = WebTests()
+            ui.page = page
+            ui.lisp('''
+              (declaim (special lui.frame:*context* lui.frame:*parent* lui:*unit*))
+              (defvar *mobile-port* (#j:document:createElement #j"section"))
+              (setf (jscl/ffi:oget *mobile-port* "id") #j"mobile-port"
+                    (jscl/ffi:oget *mobile-port* "style" "cssText")
+                    #j"position:fixed;top:40px;left:0;width:300px;height:320px;overflow:auto")
+              (#j:document:body:appendChild *mobile-port*)
+              (lui.web:mount *mobile-port*
+                (lambda ()
+                  (lui.frame:column (:width (lui.layout:grow))
+                    (dotimes (i 40)
+                      (lui.glass:label (format nil "Embedded row ~D" i)
+                        (lui:opt :width (lui.layout:grow) :height (lui.layout:fixed 48)))))))''')
+            port = page.locator("#mobile-port")
+            label = port.get_by_text("Embedded row 4", exact=True)
+            expect(label).to_be_visible()
+            box = label.bounding_box()
+            x, y = box["x"] + 30, box["y"] + 12
+            cdp = page.context.new_cdp_session(page)
+            cdp.send("Input.dispatchTouchEvent", {
+                "type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+            for distance in (25, 70, 120):
+                cdp.send("Input.dispatchTouchEvent", {
+                    "type": "touchMove", "touchPoints": [{"x": x, "y": y - distance}]})
+            page.wait_for_timeout(125)
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            page.wait_for_function("document.querySelector('#mobile-port').scrollTop >= 100")
+            self.assertEqual(page.evaluate("window.scrollY"), 0)
+            self.assertAlmostEqual(port.evaluate("el => el.scrollTop"),
+                                   port.locator("canvas").evaluate("c => c.luiViewportOffset"), delta=1)
+            label.evaluate("el => getSelection().selectAllChildren(el)")
+            self.assertEqual(page.evaluate("getSelection().toString()"), "Embedded row 4")
+        finally:
+            page.close()
+
     def test_mobile_standalone_gallery_scrolls_on_canvas_swipe(self):
         page = self.browser.new_page(viewport={"width": 390, "height": 844},
                                      device_scale_factor=2, is_mobile=True,
