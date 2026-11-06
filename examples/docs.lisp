@@ -19,15 +19,15 @@
      "Other optional native systems include lui/x11, lui/win32, lui/cocoa, and lui/terminal. The browser backend is compiled with JSCL rather than loaded as an ASDF system. Core LUI has no dependencies. Native graphical backends use CFFI, zpb-ttf, and platform libraries. The raw terminal adds CFFI; plain terminal output remains dependency-free."
      "Use make demo for the gallery, make docs for this browser, and make test for the detected platform. Backend availability depends on which systems are loaded; an explicit :backend argument selects one.")
     (:debug "Debugger"
-     "Debug toggles this window's layout inspector; Open inspector also opens it. Close dismisses it. Each window owns its inspector state."
+     "Show debugger opens this window's layout inspector. Close dismisses it. Each window owns its inspector state."
      "The tree shows the previous completed application frame. Click a row for details; - / + collapses or expands containers. Tree and details scroll independently. Inspector controls are excluded from their own tree."
      "Hover a tree row to outline bounds in orange and clipping in cyan. Highlights pass input through. Offscreen and clipped badges describe visibility, rather than errors."
-     "Selecting a tree row gives its properties more height. Choose Expand details to use the full height, or Restore tree to bring the hierarchy back. Click the selected tree row again or use Close details to dismiss its properties and continue browsing. Read the property names on the left and their current values on the right. Compare Bounds with Clip to see how much of a widget is visible, or compare Width and Height with Bounds to see the result of its sizing rules."
+     "Selecting a tree row gives its properties more height. Drag the top edge of the properties pane up or down to resize it. Drag it to the bottom, click ×, or click the selected row again to close the pane. With the divider focused, Up and Down adjust its height, Home enlarges it, and End closes it. Read the property names on the left and their current values on the right. Compare Bounds with Clip to see how much of a widget is visible, or compare Width and Height with Bounds to see the result of its sizing rules."
      "Drag the left edge to resize the inspector. From the keyboard, Tab to its rail and use Left/Right to adjust the width or Home/End to choose its minimum or maximum."
      "(asdf:load-system \"lui/debug\")
 ;; Inside an ordinary draw callback:
-(when (lui:button :debug \"Debug\")
-  (lui.debug:set-enabled (not (lui.debug:enabled-p))))"
+(when (lui:button :debug \"Show debugger\")
+  (lui.debug:set-enabled t))"
      "Call set-enabled on an action, rather than every draw. enabled-p reads the current context; both APIs also accept an explicit context. Stable IDs preserve inspection across frames; anonymous nodes use position-based identity, and vanished selections are cleared.")
     (:frames "Frames and state"
      "Keep application state in ordinary lexical variables or structures. A drawing function declares the current interface on every frame; it does not create a persistent widget object."
@@ -453,16 +453,16 @@
       (row (:width (grow) :gap (units 1) :cross-align :center)
         (lui:label "LUI documentation"
                    (lui:opt :font-weight :bold :width (grow)))
-        (when (lui:button :docs-toolkit
-                          (ecase (browser-toolkit state)
-                            (:glass "Glass") (:motif "Motif")
-                            (:garnet "Garnet")))
+        (lui:label (ecase (browser-toolkit state)
+                     (:glass "Toolkit: Glass") (:motif "Toolkit: Motif")
+                     (:garnet "Toolkit: Garnet")))
+        (when (lui:button :docs-toolkit "Cycle toolkit")
           (setf (browser-toolkit state)
                 (case (browser-toolkit state)
                   (:glass :motif) (:motif :garnet) (otherwise :glass)))
           (request-frame))
-        (when (lui:button :docs-debug "Debug")
-          (lui.debug:set-enabled (not (lui.debug:enabled-p)))))
+        (when (lui:button :docs-debug "Show debugger")
+          (lui.debug:set-enabled t)))
       (row (:width (grow) :height (grow) :gap (units 1))
         (navigation state)
         (if (>= (context-width *context*) (units 80))

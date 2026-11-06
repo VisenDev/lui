@@ -449,15 +449,16 @@ new `make benchmark` runs also record the current cloc source report.
 
 ## Layout debugger
 
-The gallery's **Debug** button opens a Clay-style inspector in the current
+The gallery's **Show debugger** button opens a Clay-style inspector in the current
 widget collection. Expand or collapse the element tree, hover a row to highlight
 its bounds and clipping rectangle, and select it for sizing, alignment, spacing,
 scrolling, and widget details. Tree rows are virtualized. The highlight preserves
 pointer input and terminal text; the inspector is excluded from its own tree.
 
-Selecting a tree row gives its properties more vertical space. **Expand details**
-uses the full sidebar height. **Restore tree** brings the hierarchy back.
-Click the selected row again or choose **Close details** to dismiss its properties.
+Select a tree row to inspect its properties. Drag the pane’s top edge up or
+down to resize it. With the divider focused, use Up and Down to adjust the
+height, Home to enlarge it, or End to dismiss it. Dragging the edge to the
+bottom, clicking ×, or clicking the selected row again also dismisses the pane.
 Bounds shows
 the allocated rectangle, while Clip shows the part visible through its
 ancestors. Compare these with the widget’s width and height rules to diagnose

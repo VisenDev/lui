@@ -153,7 +153,11 @@
                 (t argument)))
             arguments)))
 
-(defun collect-entries (&optional (paths (directory "src/*.lisp"))
+(defun source-files ()
+  (remove-if (lambda (path) (char= #\. (char (pathname-name path) 0)))
+             (directory "src/*.lisp")))
+
+(defun collect-entries (&optional (paths (source-files))
                        (policy *public-api*))
   "Extract curated application/extension exports, resolving internal reexports.
 POLICY maps package names to symbol-name lists or :ALL. All source declarations

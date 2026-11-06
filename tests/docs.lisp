@@ -184,7 +184,7 @@
          (other (make-terminal-context))
          (draw (lui.docs:make-docs)) (second (lui.docs:make-docs)))
     (frame context draw)
-    (assert (string= "Debug"
+    (assert (string= "Show debugger"
                      (widget-text
                       (element-content (node-with-id context :docs-debug)))))
     (frame context draw
@@ -203,7 +203,7 @@
     (frame context draw (make-event :kind :activate :id :docs-debug))
     (assert (lui.debug:enabled-p context))
     (frame context draw (make-event :kind :activate :id :docs-debug))
-    (assert (not (lui.debug:enabled-p context)))))
+    (assert (lui.debug:enabled-p context))))
 
 (defun run-tests ()
   (test-debugger-guide)

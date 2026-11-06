@@ -32,7 +32,7 @@ class DocsWebTests(unittest.TestCase):
                 self.assertEqual(page.locator("script[src]").count(), 0)
                 title = page.get_by_text("LUI documentation", exact=True)
                 expect(title.filter(visible=True)).to_be_visible()
-                page.get_by_role("button", name="Debug", exact=True).click()
+                page.get_by_role("button", name="Show debugger", exact=True).click()
                 inspector = page.get_by_text("Layout inspector", exact=True)
                 expect(inspector.filter(visible=True)).to_be_visible()
                 page.get_by_role("button", name="Close", exact=True).click()
@@ -44,16 +44,15 @@ class DocsWebTests(unittest.TestCase):
                 root_row = page.get_by_role("option", name=re.compile(
                     r"^:?COLUMN$")).first
                 root_row.click()
-                page.get_by_role("button", name="Expand details").click()
-                expect(root_row).to_have_count(0)
-                page.get_by_role("button", name="Restore tree").click()
-                expect(root_row).to_be_visible()
+                divider = page.get_by_role("separator", name="Properties height")
+                expect(divider).to_have_attribute("aria-orientation", "horizontal")
                 root_row.click()
-                expect(page.get_by_role("button", name="Close details",
-                                        exact=True)).to_have_count(0)
+                expect(divider).to_have_count(0)
                 root_row.click()
-                page.get_by_role("button", name="Expand details").click()
-                page.get_by_role("button", name="Close details").click()
+                close_details = page.get_by_role("button", name="Close details")
+                expect(close_details).to_have_text("×")
+                close_details.click()
+                expect(divider).to_have_count(0)
                 expect(root_row).to_be_visible()
                 expect(inspector.filter(visible=True)).to_be_visible()
                 page.get_by_role("button", name="Close", exact=True).click()
@@ -191,8 +190,10 @@ class DocsWebTests(unittest.TestCase):
                             r.left >= box.left - 1 && r.right <= box.right + 1
                             && r.top >= box.top - 1 && r.bottom <= box.bottom + 1);
                     }"""), width)
-                page.get_by_role("button", name="Glass", exact=True).click()
-                page.get_by_role("button", name="Motif", exact=True).click()
+                page.get_by_role("button", name="Cycle toolkit", exact=True).click()
+                expect(page.get_by_text("Toolkit: Motif", exact=True)
+                       .filter(visible=True)).to_be_visible()
+                page.get_by_role("button", name="Cycle toolkit", exact=True).click()
                 guides = ("Controls and options", "Layout and scrolling",
                           "Input and inspection", "Backends and running")
                 for name in guides:

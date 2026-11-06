@@ -226,13 +226,14 @@
     (row (:width (grow) :gap (units 1) :cross-align :center)
       (lui:label "LUI feature gallery"
                  (lui:opt :width (grow)))
-      (lui:button :toolkit
-                  (ecase (gallery-toolkit g)
-                    (:glass "Glass") (:motif "Motif") (:garnet "Garnet"))
+      (lui:label (ecase (gallery-toolkit g)
+                   (:glass "Toolkit: Glass") (:motif "Toolkit: Motif")
+                   (:garnet "Toolkit: Garnet")))
+      (lui:button :toolkit "Cycle toolkit"
                   (lui:opt :disabled-p (modal-p g)))
-      (when (lui:button :debugger-toggle "Debug"
+      (when (lui:button :debugger-toggle "Show debugger"
                         (lui:opt :disabled-p (modal-p g)))
-        (lui.debug:set-enabled (not (lui.debug:enabled-p)))))
+        (lui.debug:set-enabled t)))
     (lui:label (if (context-text-mode-p *context*)
                    "Terminal: event-driven rendering"
                    (format nil "~,1F FPS · ~,2F ms/frame"
