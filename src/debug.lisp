@@ -1,7 +1,7 @@
 (defpackage #:lui.debug
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets)
-  (:export #:set-enabled #:enabled-p #:wrap #:draw #:state #:make-state
-           #:*state* #:state-open-p
+  (:export #:set-enabled #:enabled-p #:state #:make-state
+           #:state-open-p
            #:state-selected #:state-width))
 (in-package #:lui.debug)
 
@@ -16,9 +16,6 @@
   (collapsed (make-hash-table :test 'equal) :type hash-table)
   (nodes (make-hash-table :test 'equal) :type hash-table)
   (rows (make-array 0 :adjustable t :fill-pointer 0) :type vector))
-(defvar *state* (make-state)
-  "Default state for the legacy DRAW/WRAP helpers; SET-ENABLED owns context state.")
-
 (fn id (name &optional key) (list :lui.debug name key))
 
 (fn own-node-p ((node element))
@@ -518,15 +515,3 @@
                   (setf (context-overlay context) nil))))))
     (let ((*context* context)) (request-frame))
     enabled))
-
-(fn draw ((function function) &key ((state state) *state*) (toolkit :glass))
-  "Draw FUNCTION followed by an debugger using STATE and TOOLKIT.
-Compatibility entry point; prefer SET-ENABLED for context-owned inspection."
-  (funcall function)
-  (draw-debugger state toolkit (context-previous-root *context*)))
-
-(fn (wrap function) ((function function) &key ((state state) *state*)
-                                           (toolkit :glass))
-  "Return a drawing closure that calls FUNCTION and then draws STATE's debugger.
-Compatibility helper; SET-ENABLED attaches an debugger without wrapping callbacks."
-  (lambda () (draw function :state state :toolkit toolkit)))

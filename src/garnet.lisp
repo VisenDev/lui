@@ -15,4 +15,4 @@
 Bind this plist to change its colors or typography for a group of controls.")
 
 (define-toolkit :garnet *defaults* panel
-  label button tab checkbox slider text-field cell list-item gauge canvas radio)
+  label button tab checkbox radio slider text-field cell list-item gauge canvas)

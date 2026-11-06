@@ -4,12 +4,12 @@
            #:*unit* #:with-toolkit #:current-toolkit #:toolkit-defaults
            #:register-toolkit #:toolkit-revision #:toolkit-surface
            #:control
-           #:define-toolkit #:define-collection
+           #:define-toolkit
            #:table #:table-row #:table-cell
            #:opt #:panel #:label
            #:button #:tab #:checkbox #:radio #:slider
            #:text-field #:cell #:list-item #:gauge #:canvas
-           #:date-picker #:date-time-picker #:searchable-combobox))
+           #:date-picker #:searchable-combobox))
 
 (in-package #:lui)
 
@@ -127,7 +127,7 @@ CONTROLS maps control names to functions taking the public arguments and options
      ,@body))
 
 (defmacro opt (&rest forms &key width height padding gap align cross-align
-               id direction clip-p scroll-p scrollbar-p scrollbar-width mode
+               id direction clip-p scroll-p scrollbar-p scrollbar-width
                floating-p offset-x offset-y
                interactive-p keyboard-focus-p pointer-focus-p
                foreground background radius frost minimum maximum step
@@ -136,7 +136,7 @@ CONTROLS maps control names to functions taking the public arguments and options
                placeholder max-results selected-p text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align
-                   id direction mode
+                   id direction
                    clip-p scroll-p scrollbar-p scrollbar-width
                    floating-p offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
@@ -238,27 +238,23 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
          (append options defaults)))
 
 (defmacro define-toolkit (name defaults panel-name &rest names)
-  "Define toolkit controls in the standard order; RADIO may be appended to NAMES."
-  (let ((functions '(label button tab checkbox slider text-field cell
-                     list-item gauge canvas radio))
-        (args '((text) (id text) (id text) (id value text) (id value)
-                (id value) (id text) (id text) (id fraction) (id commands)
-                (id value choice text))))
+  "Register NAME with drawing-time DEFAULTS. Generate PANEL-NAME and local
+control functions in label/button/tab/checkbox/radio/slider/text-field/cell/
+list-item/gauge/canvas order. Each control accepts a final OPT form."
+  (let ((functions '(label button tab checkbox radio slider text-field cell
+                     list-item gauge canvas))
+        (args '((text) (id text) (id text) (id value text) (id value choice text)
+                (id value) (id value) (id text) (id text) (id fraction)
+                (id commands))))
     `(progn
        (register-toolkit ,name :surface ,name :defaults (lambda () ,defaults))
        ,@(loop :for local :in names :for fn :in functions :for a :in args
                :collect
-               `(defun ,local (,@a &optional options &rest legacy)
+               `(defun ,local (,@a &optional options)
                   (with-toolkit (,name)
-                    (,fn ,@a (if legacy (cons options legacy) options)))))
+                    (,fn ,@a options))))
        (defmacro ,panel-name (options &body body)
-         (let ((form (if (and (consp options) (keywordp (car options)))
-                         (cons 'opt options) options)))
-           (list 'with-toolkit (list ,name) (list* 'panel form body)))))))
-
-(defmacro define-collection (name defaults panel-name &rest names)
-  "Compatibility alias for DEFINE-TOOLKIT with the same arguments."
-  `(define-toolkit ,name ,defaults ,panel-name ,@names))
+         (list 'with-toolkit (list ,name) (list* 'panel options body))))))
 
 (defstruct picker-state
   (year 2000 :type integer) (month 1 :type integer)
@@ -383,42 +379,28 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
           29 28)
       (if (member month '(4 6 9 11)) 30 31)))
 
-(defun picker-parts (text mode)
-  (let ((date-p (not (eq mode :time)))
-        (time-p (not (eq mode :date))))
-    (when (and (stringp text)
-               (= (length text) (ecase mode (:date 10) (:time 5)
-                                                  (:datetime 16))))
-      (labels ((number-at (start end)
-                 (when (every #'digit-char-p (subseq text start end))
-                   (parse-integer text :start start :end end))))
-        (let* ((year (if date-p (number-at 0 4) 2000))
-               (month (if date-p (number-at 5 7) 1))
-               (day (if date-p (number-at 8 10) 1))
-               (offset (if date-p 11 0))
-               (hour (if time-p (number-at offset (+ offset 2)) 0))
-               (minute (if time-p (number-at (+ offset 3) (+ offset 5)) 0)))
-          (when (and year month day hour minute
-                     (<= 1 year 9999) (<= 1 month 12)
-                     (<= 1 day (month-days year month))
-                     (<= 0 hour 23) (<= 0 minute 59)
-                     (or (not date-p)
-                         (and (char= (char text 4) #\-)
-                              (char= (char text 7) #\-)))
-                     (or (not time-p)
-                         (char= (char text (+ offset 2)) #\:))
-                     (or (not (eq mode :datetime))
-                         (char= (char text 10) #\T)))
-            (list year month day hour minute)))))))
+(defun parse-picker-date (text)
+  "Parse YYYY-MM-DD or MM/DD/YYYY into (year month day), checking leap years."
+  (when (and (stringp text) (= 10 (length text)))
+    (flet ((number-at (start end)
+             (when (every #'digit-char-p (subseq text start end))
+               (parse-integer text :start start :end end))))
+      (multiple-value-bind (year month day)
+          (cond ((and (char= (char text 4) #\-) (char= (char text 7) #\-))
+                 (values (number-at 0 4) (number-at 5 7) (number-at 8 10)))
+                ((and (char= (char text 2) #\/) (char= (char text 5) #\/))
+                 (values (number-at 6 10) (number-at 0 2) (number-at 3 5))))
+        (when (and year month day (<= 1 year 9999) (<= 1 month 12)
+                   (<= 1 day (month-days year month)))
+          (list year month day))))))
 
-(defun picker-string (parts mode)
-  (destructuring-bind (year month day hour minute) parts
-    (concatenate 'string
-                 (if (eq mode :time) ""
-                     (format nil "~4,'0D-~2,'0D-~2,'0D" year month day))
-                 (if (eq mode :datetime) "T" "")
-                 (if (eq mode :date) ""
-                     (format nil "~2,'0D:~2,'0D" hour minute)))))
+(defun picker-display (date)
+  (if date (destructuring-bind (year month day) date
+             (format nil "~2,'0D/~2,'0D/~4,'0D" month day year))
+      ""))
+
+(defun picker-value (date)
+  (when date (apply #'format nil "~4,'0D-~2,'0D-~2,'0D" date)))
 
 (defun calendar-start (year month)
   ;; Gregorian weekday, Sunday = 0, independent of time zones and OS clocks.
@@ -433,9 +415,14 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     "September" "October" "November" "December"))
 
 (defun local-today ()
+  #+jscl
+  (let ((date (jscl/ffi:new #j:Date)))
+    (list ((jscl/ffi:oget date "getFullYear")) (1+ ((jscl/ffi:oget date "getMonth")))
+          ((jscl/ffi:oget date "getDate"))))
+  #-jscl
   (multiple-value-bind (s m h day month year) (get-decoded-time)
     (declare (ignore s m h))
-    (list year month day 0 0)))
+    (list year month day)))
 
 (defun shift-month (year month delta)
   (multiple-value-bind (year-offset index) (floor (+ month -1 delta) 12)
@@ -493,7 +480,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
             (dotimes (c 3)
               (let ((m (+ 1 (* r 3) c)))
                 (when (calendar-item (list id :month m) (subseq (aref *month-names* (1- m)) 0 3)
-                                     :width (lui.layout:percent 1/3) :selected-p (= m month))
+                                     :width (lui.layout:percent (/ 1 3)) :selected-p (= m month))
                   (setf (picker-state-month state) m (picker-state-months-p state) nil))))))
         (let* ((start (calendar-start year month)) (count (month-days year month)))
           (row (:width (lui.layout:grow))
@@ -512,32 +499,15 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                            (princ-to-string day) :width width :center-text-p t
                                            :disabled-p (not (<= 1 y 9999))
                                            :foreground (if (zerop offset) foreground muted)
-                                           :selected-p (and selected (equal (list y m day) (subseq selected 0 3))))
+                                           :selected-p (equal (list y m day) selected))
                         (return-from picker-calendar (values (list y m day) t)))))))))))
     (row (:width (lui.layout:grow))
       (when (calendar-item (list id :clear) "Clear" :foreground ink)
         (return-from picker-calendar (values nil t)))
       (column (:width (lui.layout:grow)))
       (when (calendar-item (list id :today) "Today" :foreground ink)
-        (return-from picker-calendar (values (subseq (local-today) 0 3) t))))
+        (return-from picker-calendar (values (local-today) t))))
     (values nil nil)))
-
-(defun picker-display (parts mode)
-  (if (eq mode :time) (picker-string parts mode)
-      (format nil "~2,'0D/~2,'0D/~4,'0D~A" (second parts) (third parts) (first parts)
-              (if (eq mode :datetime) (concatenate 'string " " (picker-string parts :time)) ""))))
-
-(defun parse-picker-input (draft mode)
-  (or (picker-parts draft mode)
-      (when (and (member mode '(:date :datetime))
-                 (= (length draft) (if (eq mode :date) 10 16))
-                 (char= #\/ (char draft 2)) (char= #\/ (char draft 5))
-                 (or (eq mode :date) (char= #\Space (char draft 10))))
-        (picker-parts (concatenate 'string (subseq draft 6 10) "-" (subseq draft 0 2)
-                                   "-" (subseq draft 3 5)
-                                   (if (eq mode :date) ""
-                                       (concatenate 'string "T" (subseq draft 11))))
-                      mode))))
 
 (defun calendar-popup (id state parts)
   (let* ((trigger (list id :calendar)) (popup (list id :popup))
@@ -580,59 +550,39 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                      (return-from calendar-popup (values date t)))))))))
     (values nil nil)))
 
-(defun date-time-picker (id value &optional options)
-  "Edit a local date, time, or datetime. The field displays MM/DD/YYYY and
-returns ISO strings. The calendar opens at the selected date or today's month."
-  (let* ((mode (getf options :mode :datetime)) (parts (picker-parts value mode))
+(defun date-picker (id value &optional options)
+  "Type a date as MM/DD/YYYY or pick it from the calendar. Return YYYY-MM-DD
+or NIL when cleared. An incomplete or invalid draft preserves the model value."
+  (let* ((date (parse-picker-date value))
          (state (or (gethash id (context-state *context*))
                     (setf (gethash id (context-state *context*)) (make-picker-state))))
-         (input (list id :input))
          (result value))
     (unless (equal value (picker-state-value state))
       (setf (picker-state-value state) value
-            (picker-state-draft state) (if parts (picker-display parts mode) (or value ""))))
+            (picker-state-draft state) (if date (picker-display date) (or value ""))))
     (column (:id id :width (getf options :width (lui.layout:fit)))
-      (panel (append (unless (eq mode :time)
-                       (opt :id (list id :field) :interactive-p t :keyboard-focus-p nil))
-                     (without-option :mode options) (opt :direction :row :padding 1 :gap 0))
+      (panel (append (opt :id (list id :field) :interactive-p t :keyboard-focus-p nil)
+                     options (opt :direction :row :padding 1 :gap 0))
         (let* ((old (picker-state-draft state))
-               (draft (text-field input old
-                        (opt :width (lui.layout:grow) :accessible-name
-                             (ecase mode (:date "Date") (:time "Time") (:datetime "Date and time"))
-                             :placeholder (ecase mode (:date "mm/dd/yyyy") (:time "hh:mm")
-                                                 (:datetime "mm/dd/yyyy hh:mm")))))
-               (parsed (parse-picker-input draft mode)))
+               (draft (text-field (list id :input) old
+                                  (opt :width (lui.layout:grow) :accessible-name "Date"
+                                       :placeholder "mm/dd/yyyy"))))
           (unless (equal old draft)
-            (setf (picker-state-draft state) draft)
-            (cond (parsed (setf parts parsed result (picker-string parsed mode)
-                                (picker-state-year state) (first parts)
-                                (picker-state-month state) (second parts)))
-                  ((zerop (length draft)) (setf result nil parts nil)))))
-        (unless (eq mode :time)
-          (multiple-value-bind (date action) (calendar-popup id state parts)
-            (when action
-              (let ((next (and date (append date (or (nthcdr 3 parts) '(0 0))))))
-                (setf result (and next (picker-string next mode))
-                      (picker-state-draft state) (if next (picker-display next mode) ""))
-                (request-frame))))))
-      (when (eq mode :time)
-        (unless parts (setf parts (list 2000 1 1 0 0)))
-        (dolist (field '((:hour "Hour" 3 23) (:minute "Minute" 4 59)))
-          (destructuring-bind (key title index maximum) field
-            (label title)
-            (let ((next (round (slider (list id key) (nth index parts)
-                                 (opt :minimum 0 :maximum maximum :step 1
-                                      :accessible-name title)))))
-              (unless (= next (nth index parts))
-                (setf (nth index parts) next result (picker-string parts mode))))))))
+            (let ((parsed (parse-picker-date draft)))
+              (setf (picker-state-draft state) draft)
+              (when (or parsed (zerop (length draft)))
+                (setf date parsed result (picker-value parsed)))
+              (when parsed
+                (setf (picker-state-year state) (first parsed)
+                      (picker-state-month state) (second parsed))))))
+        (multiple-value-bind (chosen action) (calendar-popup id state date)
+          (when action
+            (setf date chosen result (picker-value chosen)
+                  (picker-state-draft state) (picker-display chosen))
+            (request-frame)))))
     (unless (equal result value)
-      (let ((parsed (picker-parts result mode)))
-        (setf (picker-state-draft state) (if parsed (picker-display parsed mode) "")
-              (picker-state-value state) result)))
-    (when (or (picker-state-open-p state) (not (equal result value)))
-      (when (or (activated-ids) (not (equal result value))) (request-frame)))
+      (setf (picker-state-draft state) (picker-display date)
+            (picker-state-value state) result)
+      (request-frame))
+    (when (and (picker-state-open-p state) (activated-ids)) (request-frame))
     result))
-
-(defun date-picker (id value &optional options)
-  "Pick a date by typing or clicking the field. Return YYYY-MM-DD, or NIL when cleared."
-  (date-time-picker id value (list* :mode :date options)))

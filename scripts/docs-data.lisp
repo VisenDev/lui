@@ -10,9 +10,9 @@
   '(("lui" "RUN" "REGISTER-BACKEND" "AVAILABLE-BACKENDS" "UNITS" "*BACKEND*"
      "*UNIT*" "WITH-TOOLKIT" "CURRENT-TOOLKIT" "TOOLKIT-DEFAULTS"
      "REGISTER-TOOLKIT" "TOOLKIT-SURFACE" "CONTROL"
-     "DEFINE-TOOLKIT" "DEFINE-COLLECTION" "OPT" "PANEL" "LABEL" "BUTTON"
+     "DEFINE-TOOLKIT" "OPT" "PANEL" "LABEL" "BUTTON"
      "TAB" "CHECKBOX"
-     "DATE-TIME-PICKER" "SLIDER" "TEXT-FIELD" "CELL" "LIST-ITEM" "GAUGE" "CANVAS")
+     "DATE-PICKER" "SLIDER" "TEXT-FIELD" "CELL" "LIST-ITEM" "GAUGE" "CANVAS")
     ("lui.layout" "SIZING" "FIT" "GROW" "FIXED" "PERCENT" "BOX" "MAKE-BOX"
      "BOX-X" "BOX-Y" "BOX-WIDTH" "BOX-HEIGHT" "ELEMENT-BOX")
     ("lui.frame" "ROW" "COLUMN" "FRAME-TIME" "REQUEST-FRAME" "PREVIOUS-BOX"
@@ -291,8 +291,7 @@ are read for resolution; only explicitly selected exports enter the reference."
                                 (when entry
                                   (setf (getf entry :documentation)
                                         value)))))
-                 ((member head '("DEFINE-TOOLKIT" "DEFINE-COLLECTION")
-                          :test #'string=)
+                 ((string= head "DEFINE-TOOLKIT")
                   ;; These package-qualified controls forward to the LUI API.
                   (dolist (name (cdddr form))
                     (record name :shared-widget nil nil)))))))

@@ -660,8 +660,7 @@ executable and passing Linux ABI checks do not establish a passing macOS runtime
 Use `(lui:date-picker :appointment value)` for a date field. Click anywhere
 in the field to open the calendar, or type a date as MM/DD/YYYY. The widget
 returns YYYY-MM-DD or NIL when cleared. The gallery’s Editing page includes
-an example. For appointments that also need a time, `lui:date-time-picker`
-returns YYYY-MM-DDTHH:MM by default and accepts `:mode :time` for HH:MM.
+an example.
 
 ### Tables
 

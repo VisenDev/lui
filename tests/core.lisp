@@ -124,7 +124,7 @@
                    (column (:id :scroll :width (fixed 20) :height (fixed 10)
                             :padding 2 :scroll-p t)
                      (setf clicked
-                           (lui.motif:button :row "Row" :height (fixed 16))))))
+                           (lui.motif:button :row "Row" (lui:opt :height (fixed 16)))))))
           (with-frame (context 20 10) (draw))
           (check (eq :default (lui.widgets:cursor-at context 3 1)))
           (check (eq :pointer (lui.widgets:cursor-at context 3 2)))

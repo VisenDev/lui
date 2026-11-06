@@ -153,7 +153,7 @@ class WebTests(unittest.TestCase):
           (lui.frame:column (:width (lui.layout:grow) :gap 8)
             (setf *web-test-value*
               (lui.glass:text-field :fixture *web-test-value*
-                :width (lui.layout:grow)))
+                (lui:opt :width (lui.layout:grow))))
             (when (lui.glass:button :push "Fixture push")
               (incf *web-test-clicks*)))'''
         self.lisp(f'''
@@ -343,8 +343,9 @@ class WebTests(unittest.TestCase):
                             :height (lui.layout:fixed 280) :scroll-p t)
             (dotimes (i 30)
               (when (lui.glass:button (list :row i)
-                      (format nil "Row ~D" i) :height (lui.layout:fixed 32)
-                      :width (lui.layout:grow))
+                      (format nil "Row ~D" i)
+                       (lui:opt :height (lui.layout:fixed 32)
+                                :width (lui.layout:grow)))
                 (setf *web-test-clicks* i))))''')
         before = self.widget(text="Row 1", host=host)["y"]
         self.hover_widget(text="Row 1", host=host)

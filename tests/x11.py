@@ -383,10 +383,13 @@ class X11Tests(unittest.TestCase):
     def test_divider_lost_release_and_focus_loss_stop_dragging(self):
         source = r'''
 (asdf:load-system "lui/debug")
-(let ((state (lui.debug:make-state :open-p t :selected '(:id :target))))
+(let ((state (lui.debug:make-state :selected '(:id :target))) (first t))
   (lui.x11:run-x11
    (lambda ()
-     (lui.debug:draw (lambda () (lui:button :target "Target")) :state state)
+     (when first
+       (setf first nil)
+       (lui.debug:set-enabled t :state state))
+     (lui:button :target "Target")
      (let ((rail (lui.frame:previous-box '(:lui.debug :details-resize nil)))
            (pane (lui.frame:previous-box '(:lui.debug :property-pane nil))))
        (when (and rail pane)
@@ -513,21 +516,21 @@ class X11Tests(unittest.TestCase):
 (lui.x11:run-x11
  (lambda ()
    (lui.glass:button
-    :blur "" :width (lui.layout:grow) :height (lui.layout:grow)
-    :painter
-    (lambda (renderer node)
-      (let* ((box (lui.layout:element-box node))
-             (width (lui.layout:box-width box))
-             (height (lui.layout:box-height box)))
-        (loop :for x :from 0 :below width :by 8
-              :do (funcall (lui.draw:renderer-polygons renderer)
-                           (list (lui.draw:rounded-polygon
-                                  (lui.layout:make-box
-                                   :x x :width 8 :height height) 0))
-                           (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
-        (funcall (lui.draw:renderer-glass renderer)
-                 (lui.layout:make-box :width width :height height)
-                 20 FROST)))))
+    :blur "" (lui:opt :width (lui.layout:grow) :height (lui.layout:grow)
+                      :painter
+                      (lambda (renderer node)
+                        (let* ((box (lui.layout:element-box node))
+                               (width (lui.layout:box-width box))
+                               (height (lui.layout:box-height box)))
+                          (loop :for x :from 0 :below width :by 8
+                                :do (funcall (lui.draw:renderer-polygons renderer)
+                                             (list (lui.draw:rounded-polygon
+                                                    (lui.layout:make-box
+                                                     :x x :width 8 :height height) 0))
+                                             (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
+                          (funcall (lui.draw:renderer-glass renderer)
+                                   (lui.layout:make-box :width width :height height)
+                                   20 FROST))))))
  :title WINDOW_TITLE :width 241 :height 123)
 '''
         variances = []
@@ -564,20 +567,20 @@ class X11Tests(unittest.TestCase):
  (lambda ()
    (lui.frame:column (:width (lui.layout:grow))
      (lui.glass:button
-      :blur "" :width (lui.layout:fixed 240) :height (lui.layout:fixed 120)
-      :painter
-      (lambda (renderer node)
-        (declare (ignore node))
-        ;; Native stripes are drawn first; the glass callback samples them.
-        (loop :for x :from 0 :below 240 :by 8
-              :do (funcall (lui.draw:renderer-polygons renderer)
-                           (list (lui.draw:rounded-polygon
-                                  (lui.layout:make-box :x x :width 8 :height 120)
-                                  0))
-                           (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
-        (funcall (lui.draw:renderer-glass renderer)
-                 (lui.layout:make-box :x 40 :y 20 :width 160 :height 80)
-                 20 8)))))
+      :blur "" (lui:opt :width (lui.layout:fixed 240) :height (lui.layout:fixed 120)
+                        :painter
+                        (lambda (renderer node)
+                          (declare (ignore node))
+                          ;; Native stripes are drawn first; the glass callback samples them.
+                          (loop :for x :from 0 :below 240 :by 8
+                                :do (funcall (lui.draw:renderer-polygons renderer)
+                                             (list (lui.draw:rounded-polygon
+                                                    (lui.layout:make-box :x x :width 8 :height 120)
+                                                    0))
+                                             (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
+                          (funcall (lui.draw:renderer-glass renderer)
+                                   (lui.layout:make-box :x 40 :y 20 :width 160 :height 80)
+                                   20 8))))))
  :title WINDOW_TITLE :width 240 :height 120)
 '''
         with self.application("glass", source) as (window, path):

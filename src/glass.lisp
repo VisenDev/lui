@@ -14,4 +14,4 @@
 tint, corner radius, opacity, or frost for a group of controls.")
 
 (define-toolkit :glass *defaults* panel
-  label button tab checkbox slider text-field cell list-item gauge canvas radio)
+  label button tab checkbox radio slider text-field cell list-item gauge canvas)

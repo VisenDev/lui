@@ -14,4 +14,4 @@
 Bind this plist to adjust the surface, text, or selection accent colors.")
 
 (define-toolkit :motif *defaults* panel
-  label button tab checkbox slider text-field cell list-item gauge canvas radio)
+  label button tab checkbox radio slider text-field cell list-item gauge canvas)
