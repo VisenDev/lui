@@ -137,9 +137,11 @@ class DocsWebTests(unittest.TestCase):
                     checked = preview.is_checked()
                     preview.click()
                     self.assertNotEqual(preview.is_checked(), checked)
-                    page.get_by_role("button", name=current, exact=True).click()
-                    expect(page.get_by_role("button", name=following,
-                                            exact=True)).to_be_visible()
+                    expect(page.get_by_text("Toolkit: " + current, exact=True)
+                           .filter(visible=True)).to_be_visible()
+                    page.get_by_role("button", name="Cycle toolkit").click()
+                    expect(page.get_by_text("Toolkit: " + following, exact=True)
+                           .filter(visible=True)).to_be_visible()
                     self.assertNotEqual(preview.is_checked(), checked)
                 self.assertEqual(page.get_by_role(
                     "option", name="lui.wayland-protocol", exact=True).count(), 0)
