@@ -115,6 +115,24 @@ class DocsWebTests(unittest.TestCase):
                 expect(page.get_by_role("option", name="lui:CHECKBOX", exact=True)
                        .first).to_be_visible()
                 page.screenshot(path=str(ROOT / "build/docs-web-narrow.png"))
+                for width in (520, 720, 1000):
+                    page.set_viewport_size({"width": width, "height": 600})
+                    search.fill("text-input-event")
+                    full_name = "lui.interaction:TEXT-INPUT-EVENT"
+                    wrapped = re.compile(r"\s*".join(map(re.escape, full_name)))
+                    option = page.get_by_role("option", name=wrapped)
+                    expect(option).to_be_visible()
+                    self.assertTrue(option.evaluate(r"""node => {
+                        const text = node.textContent.replace(/\s/g, '');
+                        if (text.toLowerCase() !==
+                            'lui.interaction:text-input-event') return false;
+                        const box = node.getBoundingClientRect();
+                        const range = document.createRange();
+                        range.selectNodeContents(node);
+                        return [...range.getClientRects()].every(r =>
+                            r.left >= box.left - 1 && r.right <= box.right + 1
+                            && r.top >= box.top - 1 && r.bottom <= box.bottom + 1);
+                    }"""), width)
                 self.assertEqual(errors, [])
                 self.assertEqual(requests, [isolated.as_uri()])
             finally:
