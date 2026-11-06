@@ -14,6 +14,12 @@
 (defmacro call-gl (name &rest args)
   `(cffi:foreign-funcall ,name ,@args))
 
+(defmacro call-egl (name &rest args)
+  ;; Resolve EGL only when using an EGL context, including on early-binding
+  ;; FFI implementations. GLX needs libGL but does not require libEGL.
+  `(cffi:foreign-funcall-pointer
+    (cffi:foreign-symbol-pointer ,name :library 'egl) () ,@args))
+
 (defstruct gpu
   display surface context renderer
   (geometry (make-hash-table :test 'equal) :type hash-table)
@@ -232,7 +238,7 @@ void main() {
   (when (or (null result) (eql result 0)
             (and (cffi:pointerp result) (cffi:null-pointer-p result)))
     (error "~A failed (EGL ~X)." operation
-           (call-gl "eglGetError" :int)))
+           (call-egl "eglGetError" :int)))
   result)
 
 (fn initialize-gpu ((gpu gpu) (font font))
@@ -275,8 +281,8 @@ void main() {
   (cffi:use-foreign-library egl)
   (let* ((display
            (if native-display
-               (call-gl "eglGetDisplay" :pointer native-display :pointer)
-               (call-gl "eglGetPlatformDisplay" :uint #x31dd
+               (call-egl "eglGetDisplay" :pointer native-display :pointer)
+               (call-egl "eglGetPlatformDisplay" :uint #x31dd
                         :pointer (cffi:null-pointer)
                         :pointer (cffi:null-pointer) :pointer)))
          (gpu (make-gpu :display display :width width :height height
@@ -286,11 +292,11 @@ void main() {
          (progn
            (egl-check display "eglGetDisplay")
            (egl-check
-            (call-gl "eglInitialize" :pointer display
+            (call-egl "eglInitialize" :pointer display
                      :pointer (cffi:null-pointer)
                      :pointer (cffi:null-pointer) :uint)
             "eglInitialize")
-           (egl-check (call-gl "eglBindAPI" :uint #x30a2 :uint)
+           (egl-check (call-egl "eglBindAPI" :uint #x30a2 :uint)
                       "eglBindAPI")
            (cffi:with-foreign-objects ((attributes :int 17)
                                       (config :pointer) (count :int))
@@ -301,7 +307,7 @@ void main() {
                    :for i :from 0
                    :do (setf (cffi:mem-aref attributes :int i) value))
              (egl-check
-              (call-gl "eglChooseConfig" :pointer display
+              (call-egl "eglChooseConfig" :pointer display
                        :pointer attributes :pointer config
                        :int 1 :pointer count :uint)
               "eglChooseConfig")
@@ -309,14 +315,14 @@ void main() {
                ;; Multisampling is optional; retain the same rendering API.
                (setf (cffi:mem-aref attributes :int 12) #x3038)
                (egl-check
-                (call-gl "eglChooseConfig" :pointer display
+                (call-egl "eglChooseConfig" :pointer display
                          :pointer attributes :pointer config
                          :int 1 :pointer count :uint)
                 "eglChooseConfig without multisampling"))
              (assert (plusp (cffi:mem-ref count :int)))
              (setf (gpu-context gpu)
                    (egl-check
-                    (call-gl "eglCreateContext" :pointer display
+                    (call-egl "eglCreateContext" :pointer display
                              :pointer (cffi:mem-ref config :pointer)
                              :pointer (cffi:null-pointer)
                              :pointer (cffi:null-pointer) :pointer)
@@ -329,18 +335,18 @@ void main() {
              (setf (gpu-surface gpu)
                    (egl-check
                     (if native-window
-                        (call-gl "eglCreateWindowSurface"
+                        (call-egl "eglCreateWindowSurface"
                                  :pointer display
                                  :pointer (cffi:mem-ref config :pointer)
                                  :pointer native-window
                                  :pointer (cffi:null-pointer) :pointer)
-                        (call-gl "eglCreatePbufferSurface"
+                        (call-egl "eglCreatePbufferSurface"
                                  :pointer display
                                  :pointer (cffi:mem-ref config :pointer)
                                  :pointer attributes :pointer))
                     "eglCreateSurface")))
            (egl-check
-            (call-gl "eglMakeCurrent" :pointer display
+            (call-egl "eglMakeCurrent" :pointer display
                      :pointer (gpu-surface gpu) :pointer (gpu-surface gpu)
                      :pointer (gpu-context gpu) :uint)
             "eglMakeCurrent")
@@ -372,7 +378,7 @@ void main() {
 
 (fn present-gpu ((gpu gpu))
   (egl-check
-   (call-gl "eglSwapBuffers" :pointer (gpu-display gpu)
+   (call-egl "eglSwapBuffers" :pointer (gpu-display gpu)
             :pointer (gpu-surface gpu) :uint)
    "eglSwapBuffers"))
 
@@ -385,13 +391,13 @@ void main() {
       (setf (cffi:mem-ref texture :uint) (gpu-texture gpu))
       (call-gl "glDeleteTextures" :int 1 :pointer texture :void)))
   (when (gpu-display gpu)
-    (call-gl "eglMakeCurrent" :pointer (gpu-display gpu)
+    (call-egl "eglMakeCurrent" :pointer (gpu-display gpu)
              :pointer (cffi:null-pointer) :pointer (cffi:null-pointer)
              :pointer (cffi:null-pointer) :uint)
     (when (gpu-surface gpu)
-      (call-gl "eglDestroySurface" :pointer (gpu-display gpu)
+      (call-egl "eglDestroySurface" :pointer (gpu-display gpu)
                :pointer (gpu-surface gpu) :uint))
     (when (gpu-context gpu)
-      (call-gl "eglDestroyContext" :pointer (gpu-display gpu)
+      (call-egl "eglDestroyContext" :pointer (gpu-display gpu)
                :pointer (gpu-context gpu) :uint))
-    (call-gl "eglTerminate" :pointer (gpu-display gpu) :uint)))
+    (call-egl "eglTerminate" :pointer (gpu-display gpu) :uint)))
