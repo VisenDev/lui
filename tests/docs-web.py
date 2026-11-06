@@ -66,6 +66,11 @@ class DocsWebTests(unittest.TestCase):
                 page.get_by_role("tab", name="Garnet", exact=True).click()
                 sample = page.get_by_role("button", name="Try this button")
                 expect(sample).to_have_attribute("data-lui-style", "garnet")
+                cycle = page.get_by_role("button", name="Cycle toolkit")
+                for style in ("motif", "garnet", "glass"):
+                    cycle.click()
+                    expect(cycle).to_have_attribute("data-lui-style", style)
+                    expect(sample).to_have_attribute("data-lui-style", "garnet")
                 sample.click()
                 expect(page.get_by_text("Button clicks: 1", exact=True)
                        .filter(visible=True)).to_be_visible()
