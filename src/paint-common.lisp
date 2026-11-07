@@ -208,9 +208,7 @@
                  (renderer-glass renderer))
         (funcall (renderer-glass renderer)
                  box radius (widget-frost widget)))
-      (shape renderer box radius
-             (if (and flat (member kind '(:button :tab :text-field)))
-                 (widget-color widget :light) (widget-background widget))
+      (shape renderer box radius (widget-background widget)
              (if translucent (widget-opacity widget) 1))
       (if translucent
           (outline renderer box radius (widget-color widget :light)

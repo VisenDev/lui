@@ -158,32 +158,34 @@ inherit only from an explicit PARENT."
   "Return scoped semantic colors followed by NAME's inherited palette."
   (resolve-palette (defaults-of (find-toolkit name))))
 
-(fn (toolkit-defaults (values list list)) (&optional (name *toolkit*))
-  "Return resolved appearance defaults and the captured palette as a second value."
+(fn (toolkit-defaults (values list list)) (&optional (name *toolkit*) kind)
+  "Return appearance defaults for KIND and the captured palette as a second value."
   (let* ((defaults (defaults-of (find-toolkit name)))
          (palette (copy-list (resolve-palette defaults))))
     (values (list* :palette palette
                    :foreground (lui.widgets::palette-color palette :foreground)
-                   :background (lui.widgets::palette-color palette :background)
+                   :background (or (when (member kind '(:button :tab :text-field))
+                                     (lui.widgets::palette-color palette :control-background))
+                                   (lui.widgets::palette-color palette :background))
                    :accent (lui.widgets::palette-color palette :accent)
                    (without-option :palette defaults))
             palette)))
 
 (defparameter *named-palettes*
   '((:default)
-    (:light :background "#eeeeee" :foreground "#202124" :accent "#2563eb"
+    (:light :control-background "#ffffff" :background "#eeeeee" :foreground "#202124" :accent "#2563eb"
      :window-background "#e4e7eb" :selection "#dbeafe" :border "#808891")
-    (:dark :background "#292d35" :foreground "#eeeeee" :accent "#79b8ff"
+    (:dark :control-background "#424954" :background "#292d35" :foreground "#eeeeee" :accent "#79b8ff"
      :disabled "#89919d" :disabled-accent "#626c7a" :disabled-surface "#343a44"
      :disabled-bevel-light "#424954" :disabled-bevel-dark "#242830"
      :window-background "#1d2026" :selection "#34465e" :border "#78818f"
      :outline "#aab4c3" :light "#424954" :shadow "#111318"
      :bevel-light "#505866" :bevel-dark "#171a20" :track "#626c7a"
      :cell-background "#23272e" :cell-foreground "#eeeeee" :on-accent "#101820")
-    (:ocean :background "#dceef3" :foreground "#123544" :accent "#087e9a"
+    (:ocean :control-background "#f1fbfd" :background "#dceef3" :foreground "#123544" :accent "#087e9a"
      :window-background "#bfdce5" :selection "#b7e5ef" :border "#4c8696"
      :cell-background "#f1fbfd" :cell-foreground "#123544")
-    (:forest :background "#e4ecdf" :foreground "#243b28" :accent "#387348"
+    (:forest :control-background "#f5faf1" :background "#e4ecdf" :foreground "#243b28" :accent "#387348"
      :window-background "#cbdac4" :selection "#c5dfbd" :border "#6b8762"
      :cell-background "#f5faf1" :cell-foreground "#243b28")))
 
@@ -258,7 +260,7 @@ Nested scopes inherit unspecified roles and restore their parent on exit."
               (custom (override ,kind entry)))
          (if custom (funcall custom ,@args options)
              (let ((style *toolkit*))
-               (multiple-value-bind (defaults palette) (toolkit-defaults)
+               (multiple-value-bind (defaults palette) (toolkit-defaults *toolkit* ,kind)
                  (declare (ignorable palette))
                  ,@body)))))))
 

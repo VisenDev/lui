@@ -671,6 +671,33 @@ class WebTests(unittest.TestCase):
         self.click_widget(text="Editing", kind="tab")
         self.assertEqual(self.text_value(":EDITOR"), "Persistent editor")
 
+    def test_macos_styles_preserve_explicit_button_colors(self):
+        for _ in range(4):
+            self.click_widget(text="Cycle toolkit")
+        self.widget(text="Toolkit: macOS")
+        self.click_widget(text="Styles", kind="tab")
+        node = self.widget(id='(:SAMPLE "Ocean")')
+        pixel = self.page.locator("main canvas").evaluate("""(canvas, node) => {
+            const scale = canvas.width / canvas.getBoundingClientRect().width;
+            return [...canvas.getContext('2d').getImageData(
+                Math.floor((node.x + 5) * scale),
+                Math.floor((node.y + node.height / 2) * scale), 1, 1).data];
+        }""", node)
+        self.assertEqual(pixel, [51, 93, 145, 255])
+        ink = self.page.locator("main canvas").evaluate("""(canvas, node) => {
+            const scale = canvas.width / canvas.getBoundingClientRect().width;
+            const pixels = canvas.getContext('2d').getImageData(
+                Math.floor((node.x + 10) * scale), Math.floor((node.y + 5) * scale),
+                Math.floor((node.width - 20) * scale), Math.floor((node.height - 10) * scale)).data;
+            let white = 0;
+            for (let i = 0; i < pixels.length; i += 4)
+                if (pixels[i] > 240 && pixels[i+1] > 240 && pixels[i+2] > 240) white++;
+            return white;
+        }""", node)
+        self.assertGreater(ink, 10)
+        self.click_widget(text="Try this style")
+        self.widget(text="Activated 1 times")
+
     def test_palette_switching_preserves_toolkit_and_values(self):
         self.replace_text(":NAME", "Palette state")
         for toolkit in ("Qt", "Glass", "Motif", "Garnet", "macOS"):
