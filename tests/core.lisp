@@ -9,12 +9,22 @@
   (declare (ignorable value))
   (1+ value))
 
+(fn (supplied-option list) (&optional (value nil value-p))
+  (list value value-p))
+
+(fn (supplied-key list) (&key ((paint (or null function)) nil paint-p))
+  (list paint paint-p))
+
 (defun run-tests ()
   (let ((checks 0))
     (flet ((check (value)
              (incf checks)
              (assert value () "Check ~D failed." checks)))
       (check (= (typed-example 2) 3))
+      (check (equal '(nil nil) (supplied-option)))
+      (check (equal '(nil t) (supplied-option nil)))
+      (check (equal '(nil nil) (supplied-key)))
+      (check (equal '(nil t) (supplied-key :paint nil)))
       (check (stringp (documentation 'typed-example 'function)))
       (let ((lui::*backends* (make-hash-table :test 'eq))
             (lui::*default-backend-function* (constantly :terminal))

@@ -1,6 +1,6 @@
 (defpackage #:lui.fn
   (:use #:cl)
-  (:export #:fn #:symbolicate #:defstruct*))
+  (:export #:fn #:symbolicate))
 
 (in-package #:lui.fn)
 
@@ -16,7 +16,7 @@
     (name nil :type symbol)
     (type t)
     (kind nil :type (member :required :optional :key :rest :aux))
-    initform)
+    initform supplied-p)
 
   (defun parse-typed-lambda-list (params)
     (let ((state :required)
@@ -45,12 +45,14 @@
                              (push (make-param :name (first (first val))
                                                :kind state
                                                :type (second (first val))
-                                               :initform (second val))
+                                               :initform (second val)
+                                               :supplied-p (third val))
                                    results))
                             ((listp val)
                              (push (make-param :name (first val)
                                                :kind state
-                                               :initform (second val))
+                                               :initform (second val)
+                                               :supplied-p (third val))
                                    results))
                             (t
                              (push (make-param :name val :kind state)
@@ -102,7 +104,10 @@
                   (setf active-kind kind))
                 (push (ecase kind
                         ((:required :rest) name)
-                        ((:optional :aux :key) (list name initform)))
+                        ((:optional :aux :key)
+                         (append (list name initform)
+                                 (when (param-supplied-p param)
+                                   (list (param-supplied-p param))))))
                       results))
           :finally (return (nreverse results)))))
 
@@ -129,22 +134,24 @@
          ,@declarations
          (the ,return-type (progn ,@body))))))
 
-(defmacro defstruct* (name &rest slots)
-  "Internal hot structures: native DEFSTRUCT, without JSCL's generated checks."
-  ;; JSCL checks even untyped slots in constructors and writers. Retain slot
-  ;; metadata but drop those generated checks; leave user initforms untouched.
-  #-jscl `(defstruct ,name ,@slots)
-  #+jscl
-  (labels ((without-slot-checks (form)
-             (cond ((atom form) form)
-                   ((eq (car form) 'quote) form)
-                   ((eq (car form) 'defun)
-                    (append (subseq form 0 3)
-                            (mapcar #'without-slot-checks
-                                    (remove-if
-                                     (lambda (body)
-                                       (and (consp body)
-                                            (eq (car body) 'check-type)))
-                                     (cdddr form)))))
-                   (t (mapcar #'without-slot-checks form)))))
-    (without-slot-checks (macroexpand `(defstruct ,name ,@slots)))))
+#+jscl
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; JSCL emits costly slot checks even for type T. Preserve metadata and
+  ;; initializer expressions, removing only generated constructor/writer checks.
+  (let ((original (macro-function 'defstruct)))
+    (setf (macro-function 'defstruct)
+          (lambda (form environment)
+            (labels ((without-slot-checks (form)
+                       (cond ((atom form) form)
+                             ((eq (car form) 'quote) form)
+                             ((eq (car form) 'defun)
+                              (append (subseq form 0 3)
+                                      (mapcar #'without-slot-checks
+                                              (remove-if
+                                               (lambda (body)
+                                                 (and (consp body)
+                                                      (eq (car body) 'check-type)))
+                                               (cdddr form)))))
+                             (t (mapcar #'without-slot-checks form)))))
+              (without-slot-checks
+               (macroexpand (funcall original form environment) environment)))))))

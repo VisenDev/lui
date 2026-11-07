@@ -178,6 +178,34 @@ class WebTests(unittest.TestCase):
             (lui.frame:context-focus (lui.web::web-app-context {app}))))))''')
         return self.page.evaluate("window.testFocus")
 
+    def test_font_caches_preserve_alternating_sizes(self):
+        self.lisp('''
+          (let ((font (lui.font:open-font)))
+            (unwind-protect
+              (let ((small (lui.font::measure-text font "alpha beta"))
+                    (lines (lui.font:wrap-text font "alpha beta gamma" 100)))
+                (setf (lui.font:font-size font) 32)
+                (assert (> (lui.font:text-width font "alpha beta")
+                           (jscl/ffi:oget small "width")))
+                (lui.font:wrap-text font "alpha beta gamma" 100)
+                (setf (lui.font:font-size font) 16)
+                (assert (eq small (lui.font::measure-text font "alpha beta")))
+                (assert (eq lines (lui.font:wrap-text font "alpha beta gamma" 100))))
+              (lui.font:close-font font)))
+        ''')
+
+    def test_explicit_page_scroll_on_desktop(self):
+        host = self.fixture("""
+          (lui:label "Page policy"
+            (lui:opt :height (lui.layout:fixed 1200)))
+        """, options=":scroll-mode :page")
+        self.assertGreater(self.page.locator(host).evaluate(
+            "host => host.firstElementChild.getBoundingClientRect().height"), 1000)
+        self.lisp('''
+          (assert (lui.frame::context-page-height-p
+                   (lui.web::web-app-context *web-test-app*)))
+        ''')
+
     def test_custom_toolkit_paints_labels_and_inherits_native_label_policy(self):
         self.lisp('''
           (defvar *custom-label-paints* 0)

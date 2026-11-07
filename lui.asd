@@ -99,7 +99,8 @@
   :serial t
   :components ((:module "src"
                 :serial t
-                :components ((:file "font")
+                :components ((:file "text-wrap")
+                             (:file "font")
                              (:file "draw")
                              (:file "text-selection")
                              (:file "paint-common")

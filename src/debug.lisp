@@ -5,8 +5,8 @@
            #:state-selected #:state-width))
 (in-package #:lui.debug)
 
-(defstruct* entry node key (depth 0 :type integer))
-(defstruct* state
+(defstruct entry node key (depth 0 :type integer))
+(defstruct state
   "Debugger state: visibility, selected snapshot node, expansion, and pane width."
   (open-p nil :type boolean) selected
   (details-height nil :type (or null real))
@@ -86,7 +86,7 @@
           (lui.layout::sizing-value rule) (lui.layout::sizing-minimum rule)
           (or (lui.layout::sizing-maximum rule) "none")))
 
-(defun property-text (value)
+(fn (property-text string) (value)
   (cond
     ((stringp value)
      (if (> (length value) 160)
@@ -114,12 +114,12 @@
     (t (let ((type (type-of value)))
          (format nil "#<~A>" (if (symbolp type) (symbol-name type) "Object"))))))
 
-(defun flag-label (pairs empty)
+(fn (flag-label string) ((pairs list) (empty string))
   (let ((names (loop :for (name . enabled) :in pairs
                     :when enabled :collect name)))
     (if names (format nil "~{~A~^, ~}" names) empty)))
 
-(defun properties (title width &rest pairs)
+(fn properties ((title string) (width real) &rest pairs)
   (let ((accent (getf (toolkit-defaults) :accent "#258bff")))
     (row (:width (grow) :gap (units 0.5))
       (lui:label "—" (lui:opt :width (fixed (units 2)) :font-size 14
@@ -239,12 +239,13 @@
                                  :background "#ffb347"
                                  :accent accent :opacity opacity)))))
 
-(defun close-details (state)
+(fn close-details ((state state))
   (setf (state-selected state) nil (state-details-height state) nil
         (state-details-grab state) nil (state-reveal-selection-p state) nil)
   (request-frame))
 
-(defun reveal-selection (state rows step height offset)
+(fn (reveal-selection real)
+    ((state state) (rows vector) (step (real 0 *)) (height real) (offset real))
   (when (state-reveal-selection-p state)
     (setf (state-reveal-selection-p state) nil)
     (let ((index (position (state-selected state) rows :key #'entry-key
@@ -361,7 +362,7 @@
                            :text "Debugger width"
                            (lui:toolkit-defaults))))))
 
-(defun details-height (state maximum)
+(fn (details-height real) ((state state) (maximum (real 0 *)))
   (let* ((minimum (min maximum (units (if (context-text-mode-p *context*)
                                          6 12))))
          (height (min maximum
@@ -402,7 +403,7 @@
       (setf (state-details-grab state) nil))
     height))
 
-(defun details-divider (height)
+(fn details-divider ((height real))
   (emit (make-element
          :id (id :details-resize) :interactive-p t :pointer-focus-p t
          :width (grow) :height (fixed (units 1))
@@ -473,7 +474,7 @@
               (lui:label "Select a tree row for properties."
                          (lui:opt :width (grow) :font-size 14))))))))
 
-(defun draw-debugger (state toolkit previous)
+(fn draw-debugger ((state state) (toolkit symbol) previous)
   (when (and (state-open-p state) (null previous)) (request-frame))
   (when (and (state-open-p state) previous)
     (snapshot state previous)
@@ -496,7 +497,7 @@
   (let ((state (context-overlay-state context)))
     (and state (state-open-p state))))
 
-(defun set-enabled (enabled &key (context *context*) state toolkit)
+(fn (set-enabled boolean) ((enabled boolean) &key ((context context) *context*) state toolkit)
   "Enable the context's debugger. Call on a toggle, not on every draw."
   (let ((state (or state (context-overlay-state context) (make-state))))
     (setf (state-open-p state) enabled

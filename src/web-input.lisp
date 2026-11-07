@@ -1,10 +1,11 @@
 (defpackage #:lui.web.input
-  (:use #:cl #:lui.frame #:lui.widgets)
+  (:use #:cl #:lui.fn #:lui.frame #:lui.widgets)
   (:export #:install-input #:update-accessibility))
 
 (in-package #:lui.web.input)
 
-(defun install-input (host canvas context queue &key mobile-page-p scroll-page)
+(fn (install-input function)
+    (host canvas (context context) (queue function) &key page-scroll-p scroll-page)
   "Install canvas input and one shared IME sink. Return an idempotent cleanup."
   (let ((sink (#j:document:createElement #j"textarea"))
         (listeners nil)
@@ -95,7 +96,7 @@
             #j"position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none"
             (jscl/ffi:oget canvas "tabIndex") 0
             (jscl/ffi:oget canvas "style" "touchAction")
-            (if mobile-page-p #j"pinch-zoom" #j"none"))
+            (if page-scroll-p #j"pinch-zoom" #j"none"))
       ((jscl/ffi:oget host "appendChild") sink)
       (setf (context-copy context)
             (lambda (value)
@@ -107,16 +108,16 @@
                      (lambda (error) (declare (ignore error)))))))))
       (listen canvas "focus"
               (lambda (event) (declare (ignore event))
-                (unless mobile-page-p (focus-without-scroll sink))))
+                (unless page-scroll-p (focus-without-scroll sink))))
       (listen host "pointerdown"
               (lambda (event)
                 (when (and (current-p event)
                            (or (eq (jscl/ffi:oget event "target") canvas)
-                               (and mobile-page-p
+                               (and page-scroll-p
                                     (not (eq (jscl/ffi:oget event "target") sink))
                                     (equal (jscl/ffi:oget event "pointerType") #j"touch"))))
                   (setf touch-native (not (eq (jscl/ffi:oget event "target") canvas)))
-                  (let ((touch (and mobile-page-p
+                  (let ((touch (and page-scroll-p
                                     (equal (jscl/ffi:oget event "pointerType") #j"touch"))))
                     (when touch (funcall scroll-page 0))
                     (setf touch-start (when touch
@@ -203,7 +204,7 @@
       (listen host "wheel"
               (lambda (event)
                 ;; Keep browser zoom shortcuts native.
-                (unless (and mobile-page-p (flag event "ctrlKey"))
+                (unless (and page-scroll-p (flag event "ctrlKey"))
                   (stop event)
                   (let* ((mode (jscl/ffi:oget event "deltaMode"))
                          (delta (jscl/ffi:oget event "deltaY"))
@@ -211,7 +212,7 @@
                                             (1 16)
                                             (2 (context-height context))
                                             (otherwise 1)))))
-                    (if (and mobile-page-p scroll-page)
+                    (if (and page-scroll-p scroll-page)
                         (funcall scroll-page pixels)
                         (send (position-event
                                event :scroll
@@ -362,7 +363,7 @@
           (setf listeners nil (context-copy context) old-copy))))))
 
 
-(defun update-accessibility (canvas context)
+(fn update-accessibility (canvas (context context))
   "Describe the focused canvas control through the shared browser input sink."
   (let* ((host (jscl/ffi:oget canvas "parentNode"))
          (sink ((jscl/ffi:oget host "querySelector") #j"textarea"))

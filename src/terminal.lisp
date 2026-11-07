@@ -34,9 +34,12 @@
     (loop
       (let* ((newline (position #\Newline text :start start))
              (end (or newline length))
+             (remaining-width
+               (loop :for index :from start :below end
+                     :sum (character-width (char text index))))
              (limit (if width (max 1 (floor width))
-                        (max 1 (text-width (subseq text start end))))))
-        (loop :while (> (text-width (subseq text start end)) limit)
+                        (max 1 remaining-width))))
+        (loop :while (> remaining-width limit)
               :do (let* ((split (loop :with columns := 0
                                      :for index :from start :below end
                                      :do (incf columns
@@ -52,6 +55,9 @@
                                                             :end end)))
                     (unless space (return))
                     (push (subseq text start space) lines)
+                    (loop :for index :from start :below (1+ space)
+                          :do (decf remaining-width
+                                    (character-width (char text index))))
                     (setf start (1+ space))))
         (push (subseq text start end) lines)
         (unless newline (return))
@@ -156,18 +162,23 @@
         (assert (eq kind :circle))
         (let ((center-x (+ (box-x box) cx))
               (center-y (+ (box-y box) cy))
+              (extent (+ radius (if stroke 0.6 0)))
               (outline-style (list (or stroke (widget-foreground widget))
                                    (widget-background widget) nil))
               (fill-style (list (or fill (widget-foreground widget))
                                 (or fill (widget-background widget)) nil)))
-          (loop :for row :from (max 0 (cell-edge (box-y clip)))
+          (loop :for row :from (max 0 (cell-edge (box-y clip))
+                                    (ceiling (- center-y extent 0.5)))
                 :below (min (array-dimension cells 0)
-                            (cell-edge (+ (box-y clip) (box-height clip))))
+                            (cell-edge (+ (box-y clip) (box-height clip)))
+                            (1+ (floor (+ center-y extent -0.5))))
                 :do (loop :for column
-                          :from (max 0 (cell-edge (box-x clip)))
+                          :from (max 0 (cell-edge (box-x clip))
+                                     (ceiling (- center-x extent 0.5)))
                           :below (min (array-dimension cells 1)
                                       (cell-edge (+ (box-x clip)
-                                                    (box-width clip))))
+                                                    (box-width clip)))
+                                      (1+ (floor (+ center-x extent -0.5))))
                           :unless (aref borders row column)
                             :do (let* ((distance
                                          (sqrt (+ (expt (- (+ column 0.5)

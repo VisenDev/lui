@@ -70,10 +70,10 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 
 (defvar *toolkit-revision* 0)
 
-(defun find-toolkit (name)
+(fn (find-toolkit toolkit) ((name symbol))
   (or (gethash name *toolkits*) (error "Unknown toolkit ~S." name)))
 
-(defun rendering-option (name key)
+(fn rendering-option ((name symbol) (key symbol))
   (let* ((entry (find-toolkit name)) (options (%toolkit-rendering entry)))
     (multiple-value-bind (found value) (get-properties options (list key))
       (if found value
@@ -82,23 +82,23 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
                          (not (nth-value 0 (get-properties options '(:paint :measure))))))
             (rendering-option (%toolkit-parent entry) key))))))
 
-(defun toolkit-paint (name)
+(fn (toolkit-paint (or null function)) ((name symbol))
   "Return NAME's graphical painter, inherited through its parent, or NIL."
   (rendering-option name :paint))
 
-(defun toolkit-measure (name)
+(fn (toolkit-measure (or null function)) ((name symbol))
   "Return NAME's graphical text measurer, inherited through its parent, or NIL."
   (rendering-option name :measure))
 
-(defun toolkit-text-insets (name)
+(fn (toolkit-text-insets (or null function)) ((name symbol))
   "Return NAME's selectable-text inset callback (widget -> x, y), or NIL."
   (rendering-option name :text-insets))
 
-(defun toolkit-native-labels-p (name)
+(fn (toolkit-native-labels-p boolean) ((name symbol))
   "Return whether NAME delegates graphical labels to native text rendering."
   (not (null (rendering-option name :native-labels))))
 
-(defun register-toolkit-rendering (name &key (paint nil paint-p)
+(fn (register-toolkit-rendering symbol) ((name symbol) &key (paint nil paint-p)
                                            (measure nil measure-p)
                                            (native-labels nil labels-p)
                                            (text-insets nil insets-p))
@@ -115,7 +115,7 @@ settings or inherit from :PARENT; explicit NIL disables the inherited setting."
     (incf *toolkit-revision*))
   name)
 
-(defun register-toolkit (name &key parent defaults controls
+(fn (register-toolkit symbol) ((name symbol) &key parent defaults controls
                                    (paint nil paint-p) (measure nil measure-p)
                                    (native-labels nil labels-p) (text-insets nil insets-p))
   "Register a toolkit. DEFAULTS is a plist or a zero-argument function.
@@ -138,27 +138,27 @@ inherit only from an explicit PARENT."
                                          (when insets-p (list :text-insets text-insets)))))
   name)
 
-(defun current-toolkit ()
+(fn (current-toolkit symbol) ()
   "Return the toolkit name active in this drawing scope."
   *toolkit*)
 
-(defun defaults-of (entry)
+(fn (defaults-of list) ((entry toolkit))
   (let* ((parent (%toolkit-parent entry))
          (source (%toolkit-defaults entry))
          (defaults (if (functionp source) (funcall source) source)))
     (if parent (append defaults (defaults-of (find-toolkit parent)))
         defaults)))
 
-(defun toolkit-defaults (&optional (name *toolkit*))
+(fn (toolkit-defaults list) (&optional (name *toolkit*))
   "Return appearance defaults with child overrides before inherited values."
   (defaults-of (find-toolkit name)))
 
-(defun override (kind entry)
+(fn override ((kind symbol) (entry toolkit))
   (or (cdr (assoc kind (%toolkit-controls entry)))
       (let ((parent (%toolkit-parent entry)))
         (when parent (override kind (find-toolkit parent))))))
 
-(defun control (kind &rest arguments)
+(fn control ((kind symbol) &rest arguments)
   "Invoke a user-defined control from the current toolkit or its ancestors."
   (apply (or (override kind (or *toolkit-definition*
                                 (find-toolkit *toolkit*)))
@@ -200,7 +200,7 @@ inherit only from an explicit PARENT."
 
 (defmacro define-control (name args doc &body body)
   (let ((kind (intern (symbol-name name) :keyword)))
-    `(defun ,name (,@args &optional options)
+    `(fn ,name (,@args &optional options)
        ,doc
        (let* ((entry (or *toolkit-definition* (find-toolkit *toolkit*)))
               (custom (override ,kind entry)))
@@ -216,14 +216,15 @@ inherit only from an explicit PARENT."
   "Return true in the frame where the control with this ID activates."
   (apply #'declare-widget :button style id text (append options defaults)))
 
-(defun without-option (key options)
+(fn (without-option list) ((key symbol) (options list))
   (let ((result nil))
     (do ((tail options (cddr tail))) ((null tail) (nreverse result))
       (unless (eq (car tail) key)
         (push (car tail) result)
         (push (cadr tail) result)))))
 
-(defun selectable (kind style id text options defaults)
+(fn selectable ((kind symbol) (style symbol) id (text string)
+                (options list) (defaults list))
   ;; Extract selection while removing its public option in one pass. Preserve
   ;; GETF's first-value rule, including an explicitly supplied NIL.
   (let ((selected nil) (selected-seen nil) (appearance nil))
@@ -305,7 +306,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
        (register-toolkit ,name :defaults (lambda () ,defaults))
        ,@(loop :for local :in names :for fn :in functions :for a :in args
                :collect
-               `(defun ,local (,@a &optional options)
+               `(fn ,local (,@a &optional options)
                   (with-toolkit (,name)
                     (,fn ,@a options))))
        (defmacro ,panel-name (options &body body)
@@ -319,7 +320,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
 (defstruct (combobox-state (:include edit-state))
   open-p focused-p filter-p highlight)
 
-(defun combobox-matches (query choices limit)
+(fn (combobox-matches list) ((query string) (choices sequence) (limit (integer 1 *)))
   ;; Keep the source index for IDs so filtering never retargets a pointer event.
   (let ((index 0) (count 0) matches)
     (block collect
@@ -331,7 +332,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
            choices))
     (nreverse matches)))
 
-(defun anchored-popup (id anchor options)
+(fn (anchored-popup lui.layout:element) (id (anchor lui.layout:element) (options list))
   (let* ((*parent* (lui.layout:make-element))
          (pane (declare-panel *toolkit*
                  (append options (opt :id id :floating-p t :opacity 1
@@ -342,7 +343,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
     (push pane (lui.frame::context-popups *context*))
     pane))
 
-(defun combobox-popup (id matches index anchor reveal)
+(fn combobox-popup (id (matches list) index (anchor lui.layout:element) reveal)
   (let* ((pane (anchored-popup (list id :popup) anchor nil))
          (*parent* pane))
     (loop for match in matches for i from 0
@@ -354,7 +355,9 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
                (when (and reveal (eql index i))
                  (setf (lui.layout:element-popup-reveal pane) row))))))
 
-(defun combobox-completion (id state text choices limit events anchor)
+(fn combobox-completion (id (state combobox-state) (text string)
+                         (choices sequence) (limit (integer 1 *))
+                         (events list) (anchor lui.layout:element))
   (let ((navigate (find-if (lambda (event)
                              (and (eq :key (event-kind event))
                                   (member (event-key event) '(:up :down)))) events)))
@@ -388,7 +391,8 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
           (combobox-popup id matches index anchor navigate)))))
   nil)
 
-(defun searchable-combobox (id value choices &optional options)
+(fn (searchable-combobox (values t boolean))
+    (id value (choices sequence) &optional ((options list) nil))
   "Edit a string, returning the text and a change flag just like TEXT-FIELD.
 Suggestions open on focus or typing. Up/Down highlight a suggestion and
 Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
@@ -427,14 +431,14 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
           (request-frame))))
     (values result (not (equal result value)))))
 
-(defun month-days (year month)
+(fn (month-days (integer 28 31)) ((year integer) (month (integer 1 12)))
   (if (= month 2)
       (if (and (zerop (mod year 4))
                (or (not (zerop (mod year 100))) (zerop (mod year 400))))
           29 28)
       (if (member month '(4 6 9 11)) 30 31)))
 
-(defun parse-picker-date (text)
+(fn (parse-picker-date (or null list)) (text)
   "Parse YYYY-MM-DD or MM/DD/YYYY into (year month day), checking leap years."
   (when (and (stringp text) (= 10 (length text)))
     (flet ((number-at (start end)
@@ -449,15 +453,15 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                    (<= 1 day (month-days year month)))
           (list year month day))))))
 
-(defun picker-display (date)
+(fn (picker-display string) ((date list))
   (if date (destructuring-bind (year month day) date
              (format nil "~2,'0D/~2,'0D/~4,'0D" month day year))
       ""))
 
-(defun picker-value (date)
+(fn (picker-value (or null string)) ((date list))
   (when date (apply #'format nil "~4,'0D-~2,'0D-~2,'0D" date)))
 
-(defun calendar-start (year month)
+(fn (calendar-start (integer 0 6)) ((year integer) (month (integer 1 12)))
   ;; Gregorian weekday, Sunday = 0, independent of time zones and OS clocks.
   (let* ((previous (1- year))
          (days (+ (* 365 previous) (floor previous 4)
@@ -475,14 +479,15 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         (declare (ignore s m h))
     (list year month day)))
 
-(defun shift-month (year month delta)
+(fn (shift-month (values integer (integer 1 12)))
+    ((year integer) (month (integer 1 12)) (delta integer))
   (multiple-value-bind (year-offset index) (floor (+ month -1 delta) 12)
     (values (+ year year-offset) (1+ index))))
 
-(defun calendar-item (id text &rest options)
+(fn calendar-item (id (text string) &rest options)
   (list-item id text (append options (opt :font-size 14))))
 
-(defun calendar-arrow-focus (id state)
+(fn calendar-arrow-focus (id (state picker-state))
   (let ((focus (context-focus *context*)))
     (when (and (consp focus) (equal (first focus) id) (eq (second focus) :day))
       (let ((day (third focus)))
@@ -500,7 +505,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                           (picker-state-year state) y (picker-state-month state) m
                           (context-focus *context*) (list id :day day))))))))))))
 
-(defun picker-calendar (id state selected)
+(fn (picker-calendar (values (or null list) boolean))
+    (id (state picker-state) (selected (or null list)))
   "Return the selected date parts (or NIL for Clear) and an action flag."
   (calendar-arrow-focus id state)
   (let* ((year (picker-state-year state)) (month (picker-state-month state))
@@ -560,7 +566,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         (return-from picker-calendar (values (local-today) t))))
     (values nil nil)))
 
-(defun calendar-popup (id state parts)
+(fn (calendar-popup (values (or null list) boolean))
+    (id (state picker-state) (parts (or null list)))
   (let* ((trigger (list id :calendar)) (popup (list id :popup))
          (focus (context-focus *context*))
          (terminal (context-text-mode-p *context*)))
@@ -601,7 +608,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                      (return-from calendar-popup (values date t)))))))))
     (values nil nil)))
 
-(defun date-picker (id value &optional options)
+(fn (date-picker (or null string)) (id value &optional ((options list) nil))
   "Type a date as MM/DD/YYYY or pick it from the calendar. Return YYYY-MM-DD
 or NIL when cleared. An incomplete or invalid draft preserves the model value."
   (let* ((date (parse-picker-date value))

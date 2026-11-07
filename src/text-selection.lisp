@@ -1,6 +1,6 @@
 (in-package #:lui.draw)
 
-(defstruct* text-selection
+(defstruct text-selection
   anchor focus anchor-text focus-text anchor-key focus-key field
   (node-count 0 :type integer)
   (pending-copy-p nil :type boolean)

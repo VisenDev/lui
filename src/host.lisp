@@ -1,8 +1,8 @@
 (defpackage #:lui.host
-  (:use #:cl))
+  (:use #:cl #:lui.fn))
 (in-package #:lui.host)
 
-(defun wayland-session-p ()
+(fn (wayland-session-p (or null string pathname)) ()
   "Recognize a current Wayland socket without opening a display connection."
   (or (uiop:getenvp "WAYLAND_SOCKET")
       (let ((name (uiop:getenvp "WAYLAND_DISPLAY"))
@@ -16,7 +16,7 @@
                                     (uiop:ensure-directory-pathname
                                      directory))))))))))
 
-(defun preferred-backend ()
+(fn (preferred-backend (or null symbol)) ()
   "Choose a registered host backend from the environment at run time."
   (let ((backends (lui:available-backends)))
     (flet ((available (name) (when (member name backends) name)))

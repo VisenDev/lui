@@ -466,8 +466,9 @@ without launching a server.
 On touch-first devices, a standalone web app with no explicit height grows
 to fit its content. Swipe vertically to scroll the page. The canvas draws
 the next scroll position before moving the page, and labels support browser
-text selection. Direct calls to `lui.web:mount` use the same touch behavior
-by default. Pass `:mobile-page-p nil` for a fixed-height embedded surface.
+text selection. Direct calls to `lui.web:mount` use the same default.
+Pass `:scroll-mode :viewport` for a fixed-height embedded view, or
+`:scroll-mode :page` to expand into the page on any device.
 
 ## Rendering differences
 
@@ -551,8 +552,9 @@ The recorded 240-frame run across Glass and Motif and all five pages completed a
 59.65–60.45 FPS, with means of 3.97–10.56 ms. The benchmark also verifies that
 wheel input over a row moves the content. Improvements come from cached text
 measurements and unchanged DOM styles, lazy terminal strings, and direct layout
-traversal. JSCL's generated generic slot checks are omitted for trusted internal
-structures; native Lisp type declarations remain intact. Direct child traversal
+traversal. The JSCL build overrides standard `defstruct` expansion to omit
+generated constructor and writer slot checks, retaining slot metadata and
+initializer checks. Native builds use the implementation’s standard `defstruct`. Direct child traversal
 also avoids JSCL's exception-based jumps in general LOOP expansions.
 
 Recorded local evidence is in generated logs under `build/`:

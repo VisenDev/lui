@@ -196,7 +196,7 @@
   (paint-shared-widget renderer node 0 +garnet-shadow-offset+
                        #'paint-garnet-scrollbar #'paint-garnet))
 
-(defun garnet-text-insets (widget)
+(fn (garnet-text-insets (values real real)) ((widget widget))
   (standard-text-insets widget 6))
 
 (lui:register-toolkit-rendering :garnet :paint #'paint-garnet-widget

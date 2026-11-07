@@ -23,10 +23,10 @@
                 (+ (if (eq kind :label) 0 12)
                    (* count (line-height font))))))))
 
-(defun standard-text-insets (widget &optional (field-inset 12))
+(fn (standard-text-insets (values real real)) ((widget widget) &optional ((field-inset real) 12))
   (if (eq (widget-kind widget) :label) (values 0 0) (values field-inset 6)))
 
-(defun paint-calendar-icon (renderer box color)
+(fn paint-calendar-icon ((renderer renderer) (box box) (color string))
   (let ((x (+ (box-x box) (/ (- (box-width box) 14) 2)))
         (y (+ (box-y box) (/ (- (box-height box) 14) 2))))
     (flet ((bar (dx dy w h)

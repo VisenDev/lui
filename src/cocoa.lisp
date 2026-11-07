@@ -508,6 +508,7 @@
    method implementation))
 
 (fn call-with-stacktrace-guard ((function function))
+  ;; Prevent the AppKit startup crash with menu-bar autohide and empty traces.
   ;; Ported from cc/tools/macos/cocoa-stacktrace.lisp. Keep real traces intact.
   (assert (null *stacktrace-method*))
   (let* ((method

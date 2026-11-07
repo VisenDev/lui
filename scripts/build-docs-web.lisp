@@ -11,7 +11,7 @@
  '("src/fn.lisp" "src/layout.lisp" "src/frame.lisp" "src/widgets.lisp"
    "src/app.lisp" "src/interaction.lisp"
    "src/glass.lisp" "src/motif.lisp" "src/garnet.lisp"
-   "src/web-font.lisp" "src/draw.lisp" "src/text-selection.lisp" "src/paint-common.lisp"
+   "src/text-wrap.lisp" "src/web-font.lisp" "src/draw.lisp" "src/text-selection.lisp" "src/paint-common.lisp"
    "src/paint-glass.lisp" "src/paint-motif.lisp" "src/paint-garnet.lisp" "src/web-input.lisp"
    "src/debug.lisp" "src/web.lisp" "examples/docs.lisp"
    "build/docs-data.lisp" "build/start-docs.lisp")

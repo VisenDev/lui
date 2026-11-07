@@ -114,6 +114,23 @@
     (assert (equal '("a" "" "b" "")
                    (wrap-text font (format nil "a~%~%b~%") nil)))))
 
+(defun test-shared-wrapping ()
+  (flet ((measure (text start end)
+           (declare (ignore text)) (- end start)))
+    (dolist (case '(("" nil ("")) ("a b c" 3 ("a b" "c"))
+                    ("long word" 1 ("long" "word"))
+                    ("a  b " 2 ("a " "b ")) ("  a" 1 (" " "a"))))
+      (destructuring-bind (text width expected) case
+        (assert (equal expected (lui.text:wrap-lines text width #'measure))))))
+  (let ((longest 0)
+        (text (format nil "~{~A~^ ~}" (make-list 1000 :initial-element "word"))))
+    (lui.text:wrap-lines text 10
+      (lambda (text start end)
+        (declare (ignore text))
+        (setf longest (max longest (- end start)))
+        (- end start)))
+    (assert (<= longest 14))))
+
 (defun test-measurement (font)
   (let* ((renderer (make-renderer :font font))
          (widget (make-widget :kind :button :text "alpha beta gamma")))
@@ -763,6 +780,7 @@
                     (+ (box-y box) (/ (box-height box) 2)))))))
 
 (defun run-tests ()
+  (test-shared-wrapping)
   (paint-text (make-renderer
                :text (lambda (&rest arguments)
                        (declare (ignore arguments))

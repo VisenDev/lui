@@ -221,6 +221,9 @@
       (frame (make-event :kind :change :id '(:date :input) :value "11/07/2026"))
       (assert (equal value "2026-11-07"))))
   (assert (= 4 (lui::calendar-start 2026 1)))
+  ;; Adjacent days at the lower bound use year zero before being disabled.
+  (assert (equal '(0 12) (multiple-value-list (lui::shift-month 1 1 -1))))
+  (assert (= 31 (lui::month-days 0 12)))
   (let ((context (lui.terminal:make-terminal-context))
         (value "2024-02-28"))
     (flet ((draw ()

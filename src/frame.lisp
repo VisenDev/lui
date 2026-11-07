@@ -21,7 +21,7 @@
 
 (in-package #:lui.frame)
 
-(defstruct* event
+(defstruct event
   "Backend-neutral input: a kind, target ID, optional key/value, and coordinates.
 BUTTONS is NIL when unknown; otherwise bit 0 means primary and bit 1 secondary,
 with zero meaning no buttons held. :CANCEL ends capture without activation.
@@ -42,7 +42,7 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
   (x 0 :type real)
   (y 0 :type real))
 
-(defstruct* scroll-motion
+(defstruct scroll-motion
   (path nil :type list)
   (remaining 0 :type real)
   (time 0 :type real)
@@ -52,7 +52,7 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
 (defvar *min-fps* 1)
 (defvar *max-fps* 240)
 
-(defstruct* context
+(defstruct context
   "Per-window frame state: completed tree, focus, events, editing, and scrolling.
 The backend supplies measurement, clipboard, and optional input callbacks."
   (root nil :type (or null element))
@@ -105,7 +105,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   "Monotonic seconds sampled once for the current frame."
   (context-time *context*))
 
-(defstruct* frame-rate
+(defstruct frame-rate
   (fps 0.0 :type real)
   (count 0 :type integer)
   (start nil :type (or null real)))

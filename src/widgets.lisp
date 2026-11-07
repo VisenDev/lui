@@ -17,7 +17,7 @@
 
 (in-package #:lui.widgets)
 
-(defun muted-ink (foreground background)
+(fn (muted-ink string) ((foreground string) (background string))
   "Soften a foreground color against its surface for secondary text."
   (if (every (lambda (color) (and (= (length color) 7) (char= (char color 0) #\#)))
              (list foreground background))
@@ -29,7 +29,7 @@
               do (format stream "~2,'0X" (round (+ (* 2 fg) bg) 3))))
       foreground))
 
-(defstruct* widget
+(defstruct widget
   "Backend-neutral control content, values, appearance, and extension callbacks."
   (kind :label :type symbol)
   (style :glass :type symbol)
@@ -172,7 +172,7 @@ Most applications should use the public LUI controls with LUI:OPT instead."
              (eq kind :list-item) (eq kind :cell))
          (activated-p id))))
 
-(defstruct* edit-state
+(defstruct edit-state
   "Persistent text-editor caret, selection anchor, kill buffer, and command history."
   (cursor 0 :type integer)
   (anchor 0 :type integer)
@@ -471,7 +471,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
     (values value (not (equal original value)))))
 
 
-(defstruct* scrollbar-state
+(defstruct scrollbar-state
   node
   grab)
 

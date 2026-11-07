@@ -3,7 +3,7 @@
   (:export #:mount #:unmount #:refresh))
 (in-package #:lui.web)
 
-(defstruct* web-app
+(defstruct web-app
   host stage overlay canvas graphics renderer context callback cleanup observer resize
   scrollport (viewport-offset 0) (scroll-delta 0) (velocity 0) (scroll-time 0)
   overlay-order overlay-geometry overlay-cache
@@ -168,13 +168,13 @@
                 (#j:setTimeout (lambda () (refresh app))
                                (ceiling (* delay 1000))))))))
 
-(defstruct* dom-widget key element text style state geometry hidden-p)
+(defstruct dom-widget key element text style state geometry hidden-p)
 
 (defparameter *overlay-cache-limit* 32)
 
-(defstruct* overlay-region x y right bottom candidate visible)
+(defstruct overlay-region x y right bottom candidate visible)
 
-(defun overlay-candidates (app root)
+(fn (overlay-candidates list) ((app web-app) (root element))
   ;; Earlier regions in this walk paint in front of later ones. An unchanged
   ;; prefix therefore has exactly the same occlusion as on the previous frame.
   (let ((previous (web-app-overlay-geometry app)) seen bands entries)
@@ -230,10 +230,10 @@
     (setf (web-app-overlay-geometry app) (nreverse seen))
     entries))
 
-(defun css-pixels (n)
+(fn css-pixels ((n real))
   ((jscl/ffi:oget (#j:String n) "concat") #j"px"))
 
-(defun position-dom-widget (record box clip)
+(fn position-dom-widget ((record dom-widget) (box box) (clip box))
   (let* ((x (box-x box)) (y (box-y box)) (w (box-width box)) (h (box-height box))
          (left (- (box-x clip) x)) (top (- (box-y clip) y))
          (right (- w left (box-width clip))) (bottom (- h top (box-height clip)))
@@ -253,7 +253,7 @@
                        top #j"px " right #j"px " bottom #j"px " left #j"px)"))))
           (setf (dom-widget-geometry record) (list x y w h top right bottom left)))))))
 
-(defun make-semantic-button (app node kind)
+(fn make-semantic-button ((app web-app) (node element) (kind symbol))
   ;; The canvas keeps pointer capture and toolkit keyboard navigation. Native
   ;; button activation also lets assistive technology invoke the same action.
   (let ((button (#j:document:createElement #j"button")) (id (element-id node)))
@@ -268,14 +268,14 @@
        (jscl/ffi:jsstring (string-downcase (symbol-name kind)))))
     button))
 
-(defun same-overlay-order-p (records entries)
+(fn same-overlay-order-p ((records list) (entries list))
   ;; Compare both lists in one pass; JSCL's sequence EVERY indexes into lists.
   (do ((r records (cdr r)) (e entries (cdr e)))
       ((or (null r) (null e)
            (not (equal (dom-widget-key (car r)) (second (car e)))))
        (and (null r) (null e)))))
 
-(defun reconcile-overlay (app entries)
+(fn (reconcile-overlay list) ((app web-app) (entries list))
   ;; Look up keyed nodes and inspect DOM order only when membership or order changes.
   (let ((order (web-app-overlay-order app)))
     (when (same-overlay-order-p order entries)
@@ -321,7 +321,7 @@
             (setf cursor (jscl/ffi:oget element "nextSibling")))))
       (setf (web-app-overlay-order app) order))))
 
-(defun sync-overlay (app)
+(fn (sync-overlay hash-table) ((app web-app))
   (let* ((entries (overlay-candidates app (context-root (web-app-context app))))
          (records (reconcile-overlay app entries))
          (external (make-hash-table :test 'eq)))
@@ -364,13 +364,13 @@
           (setf (dom-widget-text record) text))))
     external))
 
-(defun queue-page-scroll (app delta &optional (velocity 0))
+(fn queue-page-scroll ((app web-app) (delta real) &optional ((velocity real) 0))
   (incf (web-app-scroll-delta app) delta)
   (setf (web-app-velocity app) (max -4 (min 4 velocity))
         (web-app-scroll-time app) (#j:performance:now))
   (refresh app))
 
-(defun frame-scroll-delta (app)
+(fn (frame-scroll-delta real) ((app web-app))
   (let ((delta (shiftf (web-app-scroll-delta app) 0))
         (speed (web-app-velocity app)))
     (unless (zerop speed)
@@ -458,14 +458,19 @@
             (setf (web-app-deadline-timer app)
                   (#j:setTimeout #'enqueue (ceiling (* wait 1000)))))))))
 
-(defun touch-page-p ()
-  (jscl/ffi:clbool (jscl/ffi:oget (#j:window:matchMedia #j"(pointer: coarse)") "matches")))
+(fn (default-scroll-mode symbol) ()
+  (if (jscl/ffi:clbool
+       (jscl/ffi:oget (#j:window:matchMedia #j"(pointer: coarse)") "matches"))
+      :page :viewport))
 
 (fn mount (host (callback function) &key (min-fps lui.frame::*min-fps*)
-           (max-fps lui.frame::*max-fps*) (mobile-page-p (touch-page-p)))
-  "Mount a Canvas 2D application inside HOST and return its lifetime handle."
+           (max-fps lui.frame::*max-fps*)
+           ((scroll-mode (member :page :viewport)) (default-scroll-mode)))
+  "Mount a Canvas 2D app in HOST. SCROLL-MODE is :PAGE for content expansion or
+:VIEWPORT for a fixed embedded view; the default is :PAGE on coarse pointers."
   (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
-  (let* ((port (and mobile-page-p (page-scrollport host)))
+  (let* ((page-scroll-p (eq scroll-mode :page))
+         (port (and page-scroll-p (page-scrollport host)))
          (stage (#j:document:createElement #j"div"))
          (labels (#j:document:createElement #j"div"))
          (canvas (#j:document:createElement #j"canvas"))
@@ -488,7 +493,7 @@
           #j"position:relative;width:100%;height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent"
           (jscl/ffi:oget labels "style" "cssText")
           #j"position:absolute;inset:0;pointer-events:none")
-    (when mobile-page-p
+    (when page-scroll-p
       (setf (jscl/ffi:oget stage "style" "touchAction") #j"pinch-zoom"
             (jscl/ffi:oget stage "style" "overflow") #j"clip"
             (jscl/ffi:oget canvas "style" "position") #j"sticky"
@@ -501,7 +506,7 @@
     (setf (web-app-cleanup app)
           (lui.web.input:install-input
            stage canvas context (lambda (event) (queue-event app event))
-           :mobile-page-p mobile-page-p
+           :page-scroll-p page-scroll-p
            :scroll-page (lambda (delta &optional (speed 0)) (queue-page-scroll app delta speed)))
           (web-app-resize app) resize
           (web-app-observer app) (jscl/ffi:new #j:ResizeObserver resize))
@@ -537,15 +542,15 @@
 (fn run-web ((draw function) &key title width height (interactive t))
   (declare (ignore interactive))
   (setf (jscl/ffi:oget #j:document "title") (jscl/ffi:jsstring title))
-  (let* ((mobile (and (null height) (touch-page-p)))
+  (let* ((scroll-mode (if height :viewport (default-scroll-mode)))
          (host (#j:document:createElement #j"main")))
     ((jscl/ffi:oget host "setAttribute") #j"aria-label"
      (jscl/ffi:jsstring title))
     (setf (jscl/ffi:oget host "style" "width")
           (css-size width #j"100%")
           (jscl/ffi:oget host "style" "height")
-          (css-size height (if mobile #j"auto" #j"100vh")))
+          (css-size height (if (eq scroll-mode :page) #j"auto" #j"100vh")))
     (#j:document:body:appendChild host)
-    (mount host draw :mobile-page-p mobile)))
+    (mount host draw :scroll-mode scroll-mode)))
 
 (register-backend :web #'run-web)

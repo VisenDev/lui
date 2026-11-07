@@ -19,7 +19,7 @@
 
 (in-package #:lui.layout)
 
-(defstruct* (sizing (:constructor %sizing (kind value minimum maximum)))
+(defstruct (sizing (:constructor %sizing (kind value minimum maximum)))
   "Axis sizing policy with a kind, value, minimum, and optional maximum."
   (kind :fit :type (member :fit :grow :fixed :percent))
   (value 0 :type real)
@@ -47,14 +47,14 @@
   (assert (<= 0 fraction 1))
   (checked-size :percent fraction 0 nil))
 
-(defstruct* box
+(defstruct box
   "Axis-aligned bounds in backend coordinates: X, Y, WIDTH, and HEIGHT."
   (x 0 :type real)
   (y 0 :type real)
   (width 0 :type real)
   (height 0 :type real))
 
-(defstruct* element
+(defstruct element
   "One layout declaration with children, sizing, solved geometry, and clip state.
 Floating children use offsets; interactive nodes participate in input routing."
   id
@@ -146,7 +146,7 @@ Floating children use offsets; interactive nodes participate in input routing."
       (unless (element-floating-p child) (incf count)))
     (* (element-gap node) (max 0 (1- count)))))
 
-(defun measure-table-columns (table)
+(fn measure-table-columns ((table element))
   ;; Track widths start with single-column cells. Spanning cells then add
   ;; any missing width equally to the columns they cover.
   (let ((count 0) (gap (element-column-gap table)))
@@ -399,7 +399,7 @@ With PAGE-TOP, HEIGHT is the minimum page height and popups stay in the viewport
                                      (+ (box-y b) (box-height b)))
                                 y)))))
 
-(defun position-popup (popup viewport)
+(fn position-popup ((popup element) (viewport box))
   ;; The anchor has already been positioned and clipped by its scroll parents.
   (let* ((anchor-clip (element-clip (element-popup-anchor popup)))
          (anchor (if *popup-viewport* (intersect-boxes anchor-clip viewport) anchor-clip))

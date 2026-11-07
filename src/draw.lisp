@@ -8,7 +8,7 @@
 
 (in-package #:lui.draw)
 
-(defstruct* renderer
+(defstruct renderer
   "Native drawing callbacks and font shared by the graphical backends."
   (font nil :type (or null font))
   ;; POLYGONS takes contours, #rrggbb color, and opacity. Native API does rasterization.

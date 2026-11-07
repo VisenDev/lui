@@ -1,12 +1,12 @@
 (defpackage #:lui.pdf
-  (:use #:cl #:lui.frame #:lui.layout #:lui.draw)
+  (:use #:cl #:lui.fn #:lui.frame #:lui.layout #:lui.draw)
   (:export #:render-pdf #:*output*))
 
 (in-package #:lui.pdf)
 
 (defvar *output* #p"lui.pdf" "Destination used by the :PDF backend of LUI:RUN.")
 
-(defun pdf-renderer (font)
+(fn (pdf-renderer renderer) ((font lui.font:font))
   (let (clip)
     (make-renderer
      :font font
@@ -32,7 +32,8 @@
                (pdf:close-path)))
            (pdf:fill-path)))))))
 
-(defun render-pdf (draw pathname &key (width 612) (height 792) (title "LUI")
+(fn (render-pdf pathname) ((draw function) pathname &key ((width real) 612)
+                         ((height real) 792) ((title string) "LUI")
                                       (background "#1f2430"))
   "Render DRAW once to PATHNAME and return the pathname. Sizes are PDF points."
   (assert (and (plusp width) (plusp height)))
@@ -56,7 +57,7 @@
            (pathname pathname))
       (lui.font:close-font font))))
 
-(defun run-pdf (draw &key title width height interactive)
+(fn run-pdf ((draw function) &key title width height interactive)
   (declare (ignore interactive))
   (render-pdf draw *output* :title title :width (or width 612)
                             :height (or height 792)))

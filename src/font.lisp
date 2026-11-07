@@ -42,7 +42,7 @@
      "courbd.ttf" "Courier New Bold.ttf"))
   "Candidate filenames in preference order for each (family weight).")
 
-(defun resolve-face (family weight)
+(fn resolve-face ((family symbol) (weight symbol))
   (let ((key (list family weight)))
     (or (cdr (assoc key *font-paths* :test #'equal))
         (loop :with extra := (uiop:getenvp "LUI_FONT_DIR")
@@ -56,7 +56,7 @@
                                        (merge-pathnames name dir))))
         (error "No TrueType font for ~S. Set LUI.FONT:*FONT-PATHS*." key))))
 
-(defun default-font ()
+(fn default-font ()
   (or *font-path* (uiop:getenvp "LUI_FONT")
       (resolve-face :sans-serif :normal)))
 
@@ -118,38 +118,10 @@
     (* (scale-font font) width)))
 
 (fn (wrap-text list) ((font font) (text string) width)
-  "Split TEXT into lines at newlines and spaces; NIL width preserves only explicit breaks."
-  (let ((start 0)
-        (lines nil)
-        (length (length text)))
-    (loop
-      (let ((end (or (position #\Newline text :start start) length)))
-        (when width
-          (loop :while (> (text-width font (subseq text start end)) width)
-                :do (let ((break nil))
-                      (loop :for space :=
-                              (position #\Space text
-                                        :start (1+ start) :end end)
-                            :then (position #\Space text
-                                            :start (1+ space) :end end)
-                            :while space
-                            :do (if (<= (text-width
-                                         font (subseq text start space))
-                                        width)
-                                    (setf break space)
-                                    (return)))
-                      (unless break
-                        (setf break
-                              (position #\Space text
-                                        :start (min end (1+ start))
-                                        :end end)))
-                      (unless break (return))
-                      (push (subseq text start break) lines)
-                      (setf start (1+ break)))))
-        (push (subseq text start end) lines)
-        (when (= end length) (return))
-        (setf start (1+ end))))
-    (nreverse lines)))
+  "Split TEXT into lines at newlines and spaces; NIL width preserves explicit breaks."
+  (lui.text:wrap-lines text width
+                      (lambda (text start end)
+                        (text-width font (subseq text start end)))))
 
 (fn (glyph-polygons list) ((font font) (char character))
   "Flatten TrueType curves into geometric contours, never pixels. Cache in font units."
