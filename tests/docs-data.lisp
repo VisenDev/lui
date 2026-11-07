@@ -104,7 +104,7 @@
         (dolist (name (cdr scope))
           (assert (entry entries (car scope) name) ()
                   "Stale public API entry ~A:~A." (car scope) name))))
-    (dolist (package '("lui.glass" "lui.motif" "lui.garnet"))
+    (dolist (package '("lui.glass" "lui.motif" "lui.garnet" "lui.macos" "lui.qt"))
       (assert (entry entries package "*DEFAULTS*"))
       (assert (null (entry entries package "BUTTON")))
       (assert (null (entry entries package "PANEL"))))

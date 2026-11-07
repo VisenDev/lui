@@ -9,7 +9,7 @@ import time
 
 from web import WebTests
 
-toolkits = tuple(os.environ.get("BENCH_TOOLKITS", "Glass,Motif,Garnet").split(","))
+toolkits = tuple(os.environ.get("BENCH_TOOLKITS", "Glass,Motif,Garnet,macOS,Qt").split(","))
 pages = ("Controls", "Editing", "Layout", "Scroll", "Styles") + tuple(
     "7GUIs/" + task for task in
     ("Counter", "Temperature", "Flight", "Timer", "CRUD", "Circles", "Cells")
@@ -248,7 +248,7 @@ try:
         while current_toolkit != toolkit:
             click(page, "Cycle toolkit", "button")
             current_toolkit = {"Glass": "Motif", "Motif": "Garnet",
-                               "Garnet": "Glass"}[current_toolkit]
+                               "Garnet": "macOS", "macOS": "Qt", "Qt": "Glass"}[current_toolkit]
             assert has_text(page, f"Toolkit: {current_toolkit}")
         for tab_name in name.replace("Cells-scroll", "Cells").split("/"):
             click(page, tab_name, "tab")

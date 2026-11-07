@@ -7,7 +7,7 @@
 
 (dolist (file '("src/fn.lisp" "src/text-wrap.lisp" "src/layout.lisp" "src/frame.lisp"
                 "src/widgets.lisp" "src/app.lisp" "src/interaction.lisp"
-                "src/glass.lisp" "src/motif.lisp" "src/garnet.lisp"
+                "src/glass.lisp" "src/motif.lisp" "src/desktop.lisp" "src/garnet.lisp"
                 "tests/support.lisp" "tests/core.lisp"))
   (load file))
 

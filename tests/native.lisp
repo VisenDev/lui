@@ -710,7 +710,7 @@
     (assert (= 4096 (lui.draw::selection-index renderer node 100000 1)))))
 
 (defun test-flat-cells (font)
-  (dolist (style '(:glass :motif :garnet))
+  (dolist (style '(:glass :motif :garnet :macos :qt))
     (let* ((paths nil) (glass 0) (texts nil)
            (renderer (make-renderer
                       :font font
@@ -745,7 +745,7 @@
       (assert (find "#e7effa" paths :key #'second :test #'equal)))))
 
 (defun test-debug-highlight (font)
-  (dolist (style '(:glass :motif :garnet))
+  (dolist (style '(:glass :motif :garnet :macos :qt))
     (let* ((paints nil)
            (renderer (make-renderer
                       :font font :clip (constantly nil)

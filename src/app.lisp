@@ -2,6 +2,7 @@
   (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
   (:export #:run #:register-backend #:available-backends #:units #:*backend*
            #:*unit* #:with-toolkit #:with-palette #:toolkit-palette #:widget-color #:current-toolkit #:toolkit-defaults
+           #:available-palettes #:named-palette
            #:register-toolkit #:toolkit-revision
            #:register-toolkit-rendering #:toolkit-paint #:toolkit-geometry
            #:toolkit-native-labels-p
@@ -167,6 +168,34 @@ inherit only from an explicit PARENT."
                    :accent (lui.widgets::palette-color palette :accent)
                    (without-option :palette defaults))
             palette)))
+
+(defparameter *named-palettes*
+  '((:default)
+    (:light :background "#eeeeee" :foreground "#202124" :accent "#2563eb"
+     :window-background "#e4e7eb" :selection "#dbeafe" :border "#808891")
+    (:dark :background "#292d35" :foreground "#eeeeee" :accent "#79b8ff"
+     :disabled "#89919d" :disabled-accent "#626c7a" :disabled-surface "#343a44"
+     :disabled-bevel-light "#424954" :disabled-bevel-dark "#242830"
+     :window-background "#1d2026" :selection "#34465e" :border "#78818f"
+     :outline "#aab4c3" :light "#424954" :shadow "#111318"
+     :bevel-light "#505866" :bevel-dark "#171a20" :track "#626c7a"
+     :cell-background "#23272e" :cell-foreground "#eeeeee" :on-accent "#101820")
+    (:ocean :background "#dceef3" :foreground "#123544" :accent "#087e9a"
+     :window-background "#bfdce5" :selection "#b7e5ef" :border "#4c8696"
+     :cell-background "#f1fbfd" :cell-foreground "#123544")
+    (:forest :background "#e4ecdf" :foreground "#243b28" :accent "#387348"
+     :window-background "#cbdac4" :selection "#c5dfbd" :border "#6b8762"
+     :cell-background "#f5faf1" :cell-foreground "#243b28")))
+
+(fn (available-palettes (vector symbol)) ()
+  "Return built-in palette names; :DEFAULT preserves the toolkit's own colors."
+  (make-array 5 :element-type 'symbol :initial-contents '(:default :light :dark :ocean :forest)))
+
+(fn (named-palette list) ((name symbol))
+  "Return a fresh semantic color plist for NAME, suitable for WITH-PALETTE."
+  (let ((entry (assoc name *named-palettes*)))
+    (unless entry (error "Unknown palette ~S." name))
+    (copy-list (cdr entry))))
 
 (fn (call-with-palette t) ((palette list) (draw function))
   (let ((*palette* (append palette *palette*))) (funcall draw)))

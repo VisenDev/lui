@@ -22,7 +22,7 @@ work.
 - Width-dependent text wrapping: horizontal sizing precedes measurement of height
   and vertical positioning. Percentage sizes exclude padding and inter-child gaps.
   Fixed sizes and minimum bounds may overflow instead of silently shrinking.
-- Glass, Motif, and Garnet toolkits with labels, buttons, checkboxes, sliders, text
+- Glass, Motif, Garnet, classic macOS, and Qt-inspired toolkits with labels, buttons, checkboxes, sliders, text
   fields, tabs, single-selection rows, progress gauges, circle canvases, and
   styled layout panels. Toolkits share interaction logic.
 - Stable IDs, pointer capture, release activation, hover feedback, and keyboard
@@ -78,15 +78,31 @@ value and its own choice, then returns the updated value and a change flag:
 Use the optional final `lui:opt` form for widget customization. Its keyword
 lambda list is visible to SLIME; layout keys such as `:gap` apply to panels,
 whereas `:step` configures a slider. To change toolkit defaults, bind
-`lui.glass:*defaults*`, `lui.motif:*defaults*`, or `lui.garnet:*defaults*` for a
+`lui.glass:*defaults*`, `lui.motif:*defaults*`, `lui.garnet:*defaults*`,
+`lui.macos:*defaults*`, or `lui.qt:*defaults*` for a
 group. Options include foreground/background, radius, frost, opacity, accent,
 font size, `:font-family` (`:sans-serif` or `:monospace`), and `:font-weight`
 (`:normal` or `:bold`). Graphical
 widgets also support a custom painter callback.
 
+Palettes change colors independently of the toolkit's geometry. Both the demo
+and docs have a **Cycle palette** control for Default, Light, Dark, Ocean, and
+Forest. Default restores the chosen toolkit's colors; edited values survive
+palette and toolkit changes. Applications can use the same presets:
+
+```lisp
+(lui:with-toolkit (:qt)
+  (lui:with-palette ((lui:named-palette :ocean))
+    (lui:button :save "Save")))
+```
+
+`lui:available-palettes` returns a vector of preset names. Custom semantic color
+plists work with `lui:with-palette` too. `:macos` evokes classic Macintosh controls;
+`:qt` is Fusion-inspired. Both render through LUI's existing backends.
+
 Toolkits choose terminal panel borders independently of graphical corner radius.
 `:terminal-border` is a six-character string: top-left, top-right, bottom-left,
-bottom-right, horizontal, and vertical. Glass uses `"╭╮╰╯─│"`; Motif and Garnet
+bottom-right, horizontal, and vertical. Glass uses `"╭╮╰╯─│"`; the other built-in toolkits
 use `"++++-|"`. Custom toolkits can supply their own characters in their defaults.
 
 User widgets can be ordinary functions composed from these controls. For
@@ -182,7 +198,7 @@ sequence operations, or `loop ... across` to consume these results. Configuratio
 plists, control alists, Lisp forms, and internal pending-event queues remain lists.
 
 There is one [demo gallery](examples/demo.lisp), with Controls, Editing, Layout,
-Scroll, Styles, and 7GUIs pages. Its Glass/Motif/Garnet selector changes the toolkit for
+Scroll, Styles, and 7GUIs pages. Its toolkit selector changes the toolkit for
 the whole gallery, so each page uses one toolkit consistently. Style Preview
 buttons select an interactive sample. Motif uses an opaque matching background,
 beveled checkboxes, and visually distinct disabled buttons. Garnet uses bold
@@ -267,9 +283,9 @@ records output. `make test-core` and `make test-native` run individual checks.
 build files, examples, and test code are outside that source count.
 
 `make benchmark` defaults to 240 measured frames total after 30 warmup frames,
-spread across all three toolkits, five gallery pages, and every 7GUIs task
-(36 cases; 6–7 measured frames per case by default). Use 720 frames and 144
-warmup frames for 20 samples per case. `BENCH_FRAMES` must be at least 36
+spread across all five toolkits, five gallery pages, and every 7GUIs task
+(60 cases; 4 measured frames per case by default). Use 1200 frames and 240
+warmup frames for 20 samples per case. `BENCH_FRAMES` must be at least 60
 and `WARMUP` nonnegative. Reports
 include per-toolkit/page FPS, mean, median, 95th-percentile, and maximum frame
 time, plus timer/settings information.

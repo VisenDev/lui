@@ -62,10 +62,18 @@ class DocsWebTests(unittest.TestCase):
                 self.assertTrue(any("FPS" in n["text"] for n in ui.nodes()))
                 ui.click_widget(text="Cycle toolkit")
                 ui.widget(text="Toolkit: Motif")
+                for toolkit in ("Garnet", "macOS", "Qt", "Glass", "Motif"):
+                    ui.click_widget(text="Cycle toolkit")
+                    ui.widget(text="Toolkit: " + toolkit)
+                for palette in ("Light", "Dark", "Ocean", "Forest", "Default"):
+                    ui.click_widget(text="Cycle palette")
+                    ui.widget(text="Palette: " + palette)
                 ui.click_widget(text="Show debugger")
                 ui.widget(text="Layout debugger")
                 ui.click_widget(text="Close")
                 ui.click_widget(text="Toolkits", kind="list-item")
+                for toolkit in ("macOS", "Qt", "Glass"):
+                    ui.click_widget(text=toolkit, kind="tab")
                 ui.click_widget(text="Try this button")
                 ui.widget(text="Button clicks: 1")
                 ui.click_widget(id=":DOCS-SEARCH")

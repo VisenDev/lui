@@ -8,6 +8,7 @@
   (seven (lui.example.seven:make-state))
   (page :controls)
   (toolkit :glass)
+  (palette :default)
   (name "Common Lisp")
   (volume 0.4)
   (enabled t)
@@ -30,7 +31,7 @@
   (filtered-items nil)
   (last-filter nil))
 
-(defparameter *toolkits* '(:glass :motif :garnet))
+(defparameter *toolkits* '(:glass :motif :garnet :macos :qt))
 (defparameter *pages*
   '((:controls "Controls") (:editing "Editing") (:layout "Layout")
     (:scroll "Scroll") (:styles "Styles") (:seven "7GUIs")))
@@ -224,9 +225,8 @@
 
 (defun draw-gallery (g)
   (lui:panel (lui:opt :id :window :width (grow) :height (grow)
-                      :background (ecase (gallery-toolkit g)
-                                    (:glass "#202430") (:motif "#b8b8b8")
-                                    (:garnet "#ffffff"))
+                      :background (let ((colors (lui:toolkit-palette)))
+                                    (getf colors :window-background (getf colors :background)))
                       :opacity 1 :radius 0 :frost 0
                       :padding (units 1) :gap (units 1))
     (row (:width (grow) :gap (units 1) :cross-align :center)
@@ -234,12 +234,15 @@
                  (lui:opt :width (grow)))
       (lui:label (ecase (gallery-toolkit g)
                    (:glass "Toolkit: Glass") (:motif "Toolkit: Motif")
-                   (:garnet "Toolkit: Garnet")))
+                   (:garnet "Toolkit: Garnet") (:macos "Toolkit: macOS") (:qt "Toolkit: Qt")))
       (lui:button :toolkit "Cycle toolkit"
                   (lui:opt :disabled-p (modal-p g)))
       (when (lui:button :debugger-toggle "Show debugger"
                         (lui:opt :disabled-p (modal-p g)))
         (lui.debug:set-enabled t)))
+    (row (:width (grow) :gap (units 1) :cross-align :center)
+      (lui:label (format nil "Palette: ~A" (string-capitalize (symbol-name (gallery-palette g)))))
+      (lui:button :palette "Cycle palette" (lui:opt :disabled-p (modal-p g))))
     (lui:label (lui.frame::frame-rate-label (gallery-frame-rate g)))
     (row (:width (grow) :gap (units 1))
       (dolist (page *pages*)
@@ -266,8 +269,13 @@
     (setf (gallery-toolkit g) (or (second (member (gallery-toolkit g)
                                                   *toolkits*))
                                   (first *toolkits*))))
+  (when (and (not (modal-p g)) (activated-p :palette))
+    (let ((names (lui:available-palettes)))
+      (setf (gallery-palette g)
+            (aref names (mod (1+ (position (gallery-palette g) names)) (length names))))))
   (lui:with-toolkit ((gallery-toolkit g))
-    (draw-gallery g)))
+    (lui:with-palette ((lui:named-palette (gallery-palette g)))
+      (draw-gallery g))))
 
 (defun make-demo (&optional (gallery (make-gallery)))
   (lambda () (draw gallery)))

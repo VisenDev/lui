@@ -71,10 +71,15 @@
       (activate :docs-preview-panel)
       (assert (has-label context "Panel actions: 1"))
       ;; The same live declarations follow every selected toolkit.
-      (dolist (style '(:motif :garnet :glass))
+      (dolist (style '(:motif :garnet :macos :qt :glass))
         (activate :docs-toolkit)
         (frame context draw)
         (assert (eq style (widget-style (widget :docs-preview-checkbox)))))
+      (dolist (palette '(:light :dark :ocean :forest :default))
+        (activate :docs-palette)
+        (frame context draw)
+        (assert (has-label context (format nil "Palette: ~A" (string-capitalize (symbol-name palette)))))
+        (assert (string= "Changed" (widget-value (widget :docs-preview-text)))))
       (frame second other (make-event :kind :activate
                                       :id '(:docs-guide :previews)))
       (assert (has-label second "Button clicks: 0"))

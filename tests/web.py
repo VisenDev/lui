@@ -663,13 +663,29 @@ class WebTests(unittest.TestCase):
             self.click_widget(text=name, kind="tab")
         self.assertEqual(self.text_value(":NAME"), "Persistent name")
         shots = []
-        for name in ("Motif", "Garnet", "Glass"):
+        for name in ("Motif", "Garnet", "macOS", "Qt", "Glass"):
             self.click_widget(text="Cycle toolkit")
             self.widget(text="Toolkit: " + name)
             shots.append(self.page.locator("main canvas").screenshot())
-        self.assertEqual(len(set(shots)), 3)
+        self.assertEqual(len(set(shots)), 5)
         self.click_widget(text="Editing", kind="tab")
         self.assertEqual(self.text_value(":EDITOR"), "Persistent editor")
+
+    def test_palette_switching_preserves_toolkit_and_values(self):
+        self.replace_text(":NAME", "Palette state")
+        for toolkit in ("Glass", "Motif", "Garnet", "macOS", "Qt"):
+            self.widget(text="Toolkit: " + toolkit)
+            for palette in ("Light", "Dark", "Ocean", "Forest", "Default"):
+                self.click_widget(text="Cycle palette")
+                self.widget(text="Palette: " + palette)
+                if palette != "Default":
+                    expected = {"Light": "rgb(32, 33, 36)", "Dark": "rgb(238, 238, 238)",
+                                "Ocean": "rgb(18, 53, 68)", "Forest": "rgb(36, 59, 40)"}[palette]
+                    label = self.page.locator("main").get_by_text("LUI feature gallery", exact=True)
+                    self.assertEqual(label.evaluate("el => getComputedStyle(el).color"), expected)
+                self.assertEqual(self.text_value(":NAME"), "Palette state")
+                self.widget(text="Toolkit: " + toolkit)
+            self.click_widget(text="Cycle toolkit")
 
     def test_keyboard_focus_activation_and_readline(self):
         host = self.fixture()

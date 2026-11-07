@@ -22,7 +22,7 @@
      "EVENT-KIND" "EVENT-X" "EVENT-Y" "EVENT-ID" "EVENT-VALUE" "EVENT-KEY"
      "EVENT-BUTTON" "EVENT-BUTTONS" "EVENT-CLICKS" "EVENT-DRAGGING-P")
     ("lui.interaction" . :all)
-    ("lui.glass" . :all) ("lui.motif" . :all) ("lui.garnet" . :all)
+    ("lui.glass" . :all) ("lui.motif" . :all) ("lui.garnet" . :all) ("lui.macos" . :all) ("lui.qt" . :all)
     ("lui.debug" "SET-ENABLED" "ENABLED-P" "STATE" "MAKE-STATE"
      "STATE-OPEN-P" "STATE-SELECTED" "STATE-WIDTH")
     ("lui.font" "FONT" "OPEN-FONT" "CLOSE-FONT" "FONT-SIZE" "FONT-FACE"

@@ -198,7 +198,7 @@
                        (equal (element-id node)
                               (context-active *context*))))
          (foreground (if disabled (widget-color widget :disabled) (widget-foreground widget)))
-         (radius (if translucent (widget-radius widget) 0))
+         (radius (widget-radius widget))
          (inset (if (eq kind :label) 0 12))
          (x (+ (box-x box) inset))
          (y (+ (box-y box) (if (eq kind :label) 0 6))))

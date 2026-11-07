@@ -64,9 +64,13 @@
       (assert (string= "Cycle toolkit" (widget-text (control :toolkit))))
       (assert (string= "Show debugger"
                        (widget-text (control :debugger-toggle))))
-      (dolist (style '("Glass" "Motif" "Garnet" "Glass"))
+      (dolist (style '("Glass" "Motif" "Garnet" "macOS" "Qt" "Glass"))
         (assert (toolkit-label (format nil "Toolkit: ~A" style)))
         (frame (make-event :kind :activate :id :toolkit)))
+      (dolist (palette '(:light :dark :ocean :forest :default))
+        (frame (make-event :kind :activate :id :palette))
+        (assert (eq palette (lui.example::gallery-palette gallery)))
+        (assert (toolkit-label (format nil "Palette: ~A" (string-capitalize (symbol-name palette))))))
       (frame (make-event :kind :activate :id :debugger-toggle))
       (assert (lui.debug:enabled-p context))
       ;; The named action shows the debugger; repeated activation keeps it open.

@@ -66,13 +66,13 @@
      "Scrolling panels show a scrollbar by default. :scrollbar-p NIL hides it; :scrollbar-width customizes the reserved track width in backend coordinates. The default is 12 graphical pixels or one terminal cell. Drag the thumb to move continuously, or click the track above/below it to page by a viewport. Wheel scrolling supports momentum; nested scrollers pass unused motion to an ancestor."
      "A scrolling viewport needs a bounded size. Nested scrollers pass wheel input to an ancestor when they cannot scroll further. lui.frame:previous-box exposes completed geometry; lui.frame:scroll-position and scroll-to support application-controlled navigation. Virtualize very large lists instead of declaring every row.")
     (:toolkits "Toolkits"
-     "The lui package documents the shared widget API once. The toolkit packages document their own settings and any additional controls. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. A window background remains opaque."
+     "The lui package documents the shared widget API once. The toolkit packages document their own settings and any additional controls. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. Classic macOS uses crisp double outlines; Qt uses restrained raised desktop controls. Cycle palette to try Default, Light, Dark, Ocean, and Forest on the page and live samples. A window background remains opaque."
      "(lui:with-toolkit (:motif)
   (lui:button :ok \"OK\"))
 (lui:with-toolkit (:garnet)
   (lui:label \"A different toolkit\"))"
-     "lui:with-toolkit chooses defaults and control implementations for a lexical drawing scope. Nested scopes restore the previous toolkit. lui:current-toolkit returns the current name; lui:toolkit-defaults exposes its inherited options."
-     "Custom toolkits register defaults, a parent, control overrides, and optional web styling. Use lui:define-toolkit or lui:register-toolkit; the API reference shows their exact signatures. Backend implementations may approximate optical effects differently: X11 and Wayland share the OpenGL renderer through GLX/EGL, while Cocoa uses whole-window material.")
+     "lui:with-toolkit chooses defaults and control implementations for a lexical drawing scope. Nested scopes restore the previous toolkit. Use lui:with-palette with (lui:named-palette :ocean) to apply a built-in color theme without changing geometry. lui:available-palettes lists the presets. lui:current-toolkit returns the current name; lui:toolkit-defaults exposes its inherited options."
+     "Custom toolkits register defaults, a parent, control overrides, and shared geometry and painting callbacks. Use lui:define-toolkit or lui:register-toolkit; the API reference shows their exact signatures. Backend implementations may approximate optical effects differently: X11 and Wayland share the OpenGL renderer through GLX/EGL, while Cocoa uses whole-window material.")
     (:input "Input and inspection"
      "Tab and Shift-Tab move keyboard focus. Enter and Space activate a focused button, checkbox, or tab; Space inserts a space in an editor. Pointer clicks do not display a keyboard focus ring. Arrow keys navigate tabs."
      "When implementing a draggable control, handle :cancel by clearing its drag state. event-buttons reports the physical buttons on pointer motion when the backend knows them. Zero means all buttons are up, bit 0 means primary, bit 1 means secondary, and NIL means unknown."
@@ -95,6 +95,7 @@
   (circles '((4 4)) :type list)
   (sample :glass :type symbol)
   (toolkit :glass :type symbol)
+  (palette :default :type symbol)
   (entries #() :type vector)
   (packages nil :type list)
   (guide :start :type (or null symbol))
@@ -397,13 +398,15 @@
           (lui:label "Third child")))))
 
 (defparameter *toolkit-packages*
-  '(("lui.glass" . :glass) ("lui.motif" . :motif) ("lui.garnet" . :garnet)))
+  '(("lui.glass" . :glass) ("lui.motif" . :motif) ("lui.garnet" . :garnet)
+    ("lui.macos" . :macos) ("lui.qt" . :qt)))
 
 (defun toolkit-sample (state toolkit)
   (with-toolkit (toolkit)
     (lui:panel (lui:opt :width (grow) :padding (units 1) :gap (units 1)
                         :opacity 1)
-      (lui:label (string-capitalize (symbol-name toolkit)))
+      (lui:label (case toolkit (:macos "macOS") (:qt "Qt")
+                   (otherwise (string-capitalize (symbol-name toolkit)))))
       (when (lui:button :docs-sample-button "Try this button")
         (incf (browser-clicks state)))
       (setf (browser-checked-p state)
@@ -435,7 +438,8 @@
              (dolist (pair *toolkit-packages*)
                (let ((name (cdr pair)))
                  (when (lui:tab (list :docs-sample name)
-                                (string-capitalize (symbol-name name))
+                                (case name (:macos "macOS") (:qt "Qt")
+                                  (otherwise (string-capitalize (symbol-name name))))
                                 (lui:opt :selected-p
                                          (eq name (browser-sample state))))
                    (setf (browser-sample state) name)))))
@@ -493,11 +497,11 @@
 (defun draw-docs (state)
   (select-reference state)
   (with-toolkit ((browser-toolkit state))
+   (lui:with-palette ((lui:named-palette (browser-palette state)))
     (lui:panel (lui:opt :width (grow) :height (grow)
                         :background
-                        (case (browser-toolkit state)
-                          (:motif "#b8b8b8") (:garnet "#ffffff")
-                          (otherwise "#202430"))
+                        (let ((colors (lui:toolkit-palette)))
+                          (getf colors :window-background (getf colors :background)))
                         :opacity 1 :frost 0 :radius 0
                         :padding (units 1) :gap (units 1))
       (row (:width (grow) :gap (units 1) :cross-align :center)
@@ -505,14 +509,21 @@
                    (lui:opt :font-weight :bold :width (grow)))
         (lui:label (ecase (browser-toolkit state)
                      (:glass "Toolkit: Glass") (:motif "Toolkit: Motif")
-                     (:garnet "Toolkit: Garnet")))
+                     (:garnet "Toolkit: Garnet") (:macos "Toolkit: macOS") (:qt "Toolkit: Qt")))
         (when (lui:button :docs-toolkit "Cycle toolkit")
           (setf (browser-toolkit state)
                 (case (browser-toolkit state)
-                  (:glass :motif) (:motif :garnet) (otherwise :glass)))
+                  (:glass :motif) (:motif :garnet) (:garnet :macos) (:macos :qt) (otherwise :glass)))
           (request-frame))
         (when (lui:button :docs-debug "Show debugger")
           (lui.debug:set-enabled t)))
+      (row (:width (grow) :gap (units 1) :cross-align :center)
+        (lui:label (format nil "Palette: ~A" (string-capitalize (symbol-name (browser-palette state)))))
+        (when (lui:button :docs-palette "Cycle palette")
+          (let ((names (lui:available-palettes)))
+            (setf (browser-palette state)
+                  (aref names (mod (1+ (position (browser-palette state) names)) (length names)))))
+          (request-frame)))
       (lui:label (lui.frame::frame-rate-label (browser-frame-rate state)))
       (row (:width (grow) :height (grow) :gap (units 1))
         (navigation state)
@@ -528,7 +539,7 @@
                       (not (browser-symbols-p state))))
               (if (browser-symbols-p state)
                   (entry-list state (grow))
-                  (detail state))))))))
+                  (detail state)))))))))
 
 (defun make-docs (&key (toolkit :glass) (entries *entries*))
   "Return a fresh documentation browser drawing function for ENTRIES."

@@ -39,6 +39,7 @@
                              (:file "interaction")
                              (:file "glass")
                              (:file "motif")
+                             (:file "desktop")
                              (:file "garnet"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
 
@@ -106,6 +107,7 @@
                              (:file "paint-common")
                              (:file "paint-glass")
                              (:file "paint-motif")
+                             (:file "paint-desktop")
                              (:file "paint-garnet")))))
 
 (defsystem "lui/pdf"

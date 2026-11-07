@@ -203,6 +203,11 @@
           do (assert (equal value (getf (lui:toolkit-defaults :test-modern) key))))))
 
 (defun test-palettes ()
+  (assert (equalp (lui:available-palettes) #(:default :light :dark :ocean :forest)))
+  (assert (null (lui:named-palette :default)))
+  (let ((colors (lui:named-palette :dark)))
+    (setf (getf colors :foreground) "#ff0000")
+    (assert (equal (getf (lui:named-palette :dark) :foreground) "#eeeeee")))
   ;; Resolve a provider once per control, while observing changes within a frame.
   (let ((reads 0) (color "#112233") (context (make-test-context)))
     (lui:register-toolkit :palette-provider :parent :glass

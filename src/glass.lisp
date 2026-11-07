@@ -8,7 +8,7 @@
 (in-package #:lui.glass)
 
 (defvar *defaults*
-  '(:palette (:background "#303040" :foreground "#ffffff" :accent "#258bff") :opacity 0.35
+  '(:palette (:window-background "#202430" :background "#303040" :foreground "#ffffff" :accent "#258bff") :opacity 0.35
     :radius 12 :frost 12 :terminal-border "╭╮╰╯─│")
   "Glass uses rounded, translucent surfaces. Bind this plist to change their
 tint, corner radius, opacity, or frost for a group of controls.")
