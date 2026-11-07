@@ -1,7 +1,7 @@
 """Exercise the shared demo through real raw terminal I/O on a POSIX PTY.
 
 Run `python3 tests/terminal.py` for SBCL, CLISP and ECL, or pass --lisp sbcl.
-The optional backend needs CFFI registered with ASDF or installed in Quicklisp.
+The optional backend needs uncursed and its dependencies registered with ASDF.
 """
 
 import argparse
@@ -61,6 +61,11 @@ def script(error=False, debug=False):
   (error () (uiop:symbol-call :ql :quickload "cffi" :silent t)))
 (asdf:load-system "lui/terminal")
 (asdf:load-system "lui/demo")
+(defun test-mouse (input sequence &optional context)
+  (let* ((*standard-input* (make-string-input-stream
+                            (concatenate 'string (string #\\Escape) "[<" sequence)))
+         (event (uncursed-sys:read-event)))
+    (lui.terminal.io::mouse-event input (uncursed:event-kind event) context)))
 (assert (= (lui.terminal:text-width "A界é") 4))
 (assert (equal (lui.terminal:text-lines "界 ab" 3) '("界" "ab")))
 (let ((context (lui.terminal:make-terminal-context)))
@@ -97,7 +102,7 @@ def script(error=False, debug=False):
     (lui.frame:with-frame (context 20 2) (draw))
     (dolist (entry '((16 1) (1 0) (9 0.5)))
       (let ((input (lui.terminal.io::make-input)))
-        (lui.terminal.io::mouse-event input
+        (test-mouse input
           (format nil "0;~D;1M" (first entry)) context)
         (lui.frame:with-frame
             (context 20 2 :events
@@ -148,7 +153,7 @@ def script(error=False, debug=False):
                             :height (lui.layout:fixed 1) :step 0.01))))
              (mouse (button x y &optional release)
                (let ((input (lui.terminal.io::make-input)))
-                 (lui.terminal.io::mouse-event
+                 (test-mouse
                    input (format nil "~D;~D;~D~A" button x y
                                  (if release "m" "M")) context)
                  (lui.frame:with-frame
@@ -188,7 +193,7 @@ def script(error=False, debug=False):
            (batch (&rest sequences)
              (let ((input (lui.terminal.io::make-input)))
                (dolist (sequence sequences)
-                 (lui.terminal.io::mouse-event input sequence context))
+                 (test-mouse input sequence context))
                (lui.frame:with-frame
                    (context 20 2 :events
                      (reverse (lui.terminal.io::input-events input)))
@@ -232,13 +237,13 @@ def script(error=False, debug=False):
     (assert (search "[38;2;255;0;0m" colored))
     (assert (search "[48;2;0;255;0m" colored))))
 (let ((input (lui.terminal.io::make-input)))
-  (lui.terminal.io::mouse-event input "2;3;4M")
+  (test-mouse input "2;3;4M")
   (assert (eq (lui.frame:event-button
                (first (lui.terminal.io::input-events input))) :secondary))
-  (lui.terminal.io::mouse-event input "32;3;4M")
+  (test-mouse input "32;3;4M")
   (assert (lui.frame:event-dragging-p
            (first (lui.terminal.io::input-events input))))
-  (lui.terminal.io::mouse-event input "35;3;4M")
+  (test-mouse input "35;3;4M")
   (assert (not (lui.frame:event-dragging-p
                 (first (lui.terminal.io::input-events input))))))
 ;; Physical SGR state distinguishes released motion from a retained capture.
@@ -246,7 +251,7 @@ def script(error=False, debug=False):
                  ("35;3;4M" 0) ("2;3;4M" 2) ("34;3;4M" 2)
                  ("64;3;4M" nil)))
   (let ((input (lui.terminal.io::make-input)))
-    (lui.terminal.io::mouse-event input (first entry))
+    (test-mouse input (first entry))
     (assert (eql (second entry)
                  (lui.frame:event-buttons
                    (first (lui.terminal.io::input-events input)))))))
@@ -311,12 +316,16 @@ def command(lisp, path):
 
 
 class Terminal:
-    def __init__(self, cmd):
+    def __init__(self, cmd, term="xterm-direct"):
         self.master, self.slave = pty.openpty()
         self.before = termios.tcgetattr(self.slave)
         self.resize(90, 35)
         self.output = b""
         environment = os.environ.copy()
+        if term is None:
+            environment.pop("TERM", None)
+        else:
+            environment["TERM"] = term
         software = Path.home() / "quicklisp/dists/quicklisp/software"
         environment["CL_SOURCE_REGISTRY"] = (
             f'(:source-registry (:directory "{ROOT}/") '
@@ -324,8 +333,7 @@ class Terminal:
         )
         cache = Path(cmd[-1]).parent / "cache"
         environment["ASDF_OUTPUT_TRANSLATIONS"] = (
-            f'(:output-translations ("{ROOT}/" "{cache}/") '
-            ':inherit-configuration)'
+            f'(:output-translations (t "{cache}/") :ignore-inherited-configuration)'
         )
         self.process = subprocess.Popen(
             cmd, cwd=ROOT, stdin=self.slave, stdout=self.slave,
@@ -371,7 +379,8 @@ class Terminal:
         self.pump()
         assert self.process.returncode == 0, self.output.decode("utf-8", "replace")
         assert termios.tcgetattr(self.slave) == self.before, "termios not restored"
-        for sequence in (b"\x1b[?1049l", b"\x1b[?25h", b"\x1b[?1006l",
+        assert re.search(rb"\x1b\[\?(?:12;)?25h", self.output), "Cursor not restored"
+        for sequence in (b"\x1b[?1049l", b"\x1b[?1006l",
                          b"\x1b[?1003l"):
             assert sequence in self.output, f"Missing cleanup: {sequence!r}"
 
@@ -384,7 +393,7 @@ class Terminal:
 
 
 def last_frame(output):
-    return output.rsplit(b"\x1b[?25l\x1b[H", 1)[-1]
+    return re.split(rb"\x1b\[\?25l\x1b\[(?:1;1)?H", output)[-1]
 
 
 def text_style(frame, text):
@@ -642,6 +651,43 @@ def exercise_debugger(lisp, path):
         terminal.close()
 
 
+def exercise_fallback(lisp, path):
+    """Pipes and terminals without capabilities retain line-command input."""
+    path.write_text("""(load "scripts/setup.lisp")
+(asdf:load-system "lui/terminal")
+(let ((context (lui:run (lambda () (lui:label "Fallback frame"))
+                        :backend :terminal :width 24 :height 2)))
+  (format t "~&@@FALLBACK ~Dx~D~%" (lui.frame:context-width context)
+          (lui.frame:context-height context)))
+""", encoding="utf-8")
+    environment = os.environ.copy()
+    environment["TERM"] = "xterm-direct"
+    environment["ASDF_OUTPUT_TRANSLATIONS"] = (
+        f'(:output-translations (t "{path.parent}/cache/") '
+        ':ignore-inherited-configuration)'
+    )
+    result = subprocess.run(command(lisp, path), cwd=ROOT, env=environment,
+                            input=b":quit\n", stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, timeout=180)
+    assert result.returncode == 0, result.stdout.decode("utf-8", "replace")
+    assert b"@@FALLBACK 24x2" in result.stdout
+    assert b"\x1b[?1049h" not in result.stdout
+    assert b"\x1b[?1003h" not in result.stdout
+    for term in (None, "dumb"):
+        terminal = Terminal(command(lisp, path), term=term)
+        try:
+            terminal.until(b"Fallback frame", timeout=180)
+            assert termios.tcgetattr(terminal.slave) == terminal.before
+            terminal.send(b":quit\n")
+            terminal.until(b"@@FALLBACK 24x2")
+            terminal.process.wait(timeout=10)
+            assert terminal.process.returncode == 0
+            assert b"\x1b[?1049h" not in terminal.output
+            assert b"\x1b[?1003h" not in terminal.output
+        finally:
+            terminal.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lisp", choices=("sbcl", "clisp", "ecl"))
@@ -663,8 +709,9 @@ def main():
                 terminal.close()
             path.write_text(script(debug=True), encoding="utf-8")
             exercise_debugger(lisp, path)
+            exercise_fallback(lisp, path)
             print(f"{lisp}: raw input, Unicode, debugger drag/keyboard resize "
-                  "and restoration pass")
+                  "restoration and redirected/TERM fallback pass")
 
 
 if __name__ == "__main__":

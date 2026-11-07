@@ -4,68 +4,16 @@
 
 (in-package #:lui.terminal.io)
 
-;; LUI/CORE never loads this file or CFFI. Only this optional backend
-;; accesses the terminal, through libc and the standard input/output descriptors.
-(cffi:defcstruct pollfd
-  (fd :int)
-  (events :short)
-  (revents :short))
-
+;; Terminal state, terminal capabilities and input decoding belong to uncursed.
 (defstruct input
-  (bytes nil :type list)
+  (pending "" :type string)
+  (escape-time nil)
   (events nil :type list)
   (quit-p nil :type boolean))
 
-(fn write-escape ((stream stream) (command string) &rest arguments)
-  (write-char #\Escape stream)
-  (apply #'format stream command arguments))
-
-(fn write-terminal ((text string))
-  (cffi:with-foreign-string ((buffer allocated) text :encoding :utf-8)
-    (let ((size (1- allocated)))
-      (loop :with offset := 0
-            :while (< offset size)
-            :for written := (cffi:foreign-funcall
-                             "write" :int 1
-                             :pointer (cffi:inc-pointer buffer offset)
-                             :size (- size offset) :long)
-            :do (when (<= written 0)
-                  (error "Terminal output failed."))
-                (incf offset written)))))
-
 (fn terminal-size ()
-  (cffi:with-foreign-object (size :unsigned-short 4)
-    (if (zerop (cffi:foreign-funcall
-                "ioctl" :int 1 :unsigned-long
-                #+(or linux lui-linux-host) #x5413
-                #+(or darwin freebsd openbsd netbsd
-                      lui-bsd-host lui-darwin-host)
-                #x40087468
-                #-(or linux darwin freebsd openbsd netbsd lui-posix-host) 0
-                :pointer size :int))
-        (values (max 1 (cffi:mem-aref size :unsigned-short 1))
-                (max 1 (cffi:mem-aref size :unsigned-short 0)))
-        (values 80 24))))
-
-(fn read-input ((input input) &optional ((timeout integer) 100))
-  (cffi:with-foreign-object (descriptor '(:struct pollfd))
-    (setf (cffi:foreign-slot-value descriptor '(:struct pollfd) 'fd) 0
-          (cffi:foreign-slot-value descriptor '(:struct pollfd) 'events) 1
-          (cffi:foreign-slot-value descriptor '(:struct pollfd) 'revents) 0)
-    (let ((ready (cffi:foreign-funcall "poll" :pointer descriptor
-                                     :unsigned-long 1 :int timeout :int)))
-      (when (plusp ready)
-        (cffi:with-foreign-object (buffer :unsigned-char 4096)
-          (let ((count (cffi:foreign-funcall "read" :int 0 :pointer buffer
-                                           :size 4096 :long)))
-            (cond ((plusp count)
-                   (setf (input-bytes input)
-                         (nconc (input-bytes input)
-                                (loop :for index :below count
-                                      :collect (cffi:mem-aref
-                                                buffer :unsigned-char
-                                                index)))))
-                  ((zerop count) (setf (input-quit-p input) t)))))))))
+  (let ((size (uncursed:terminal-dimensions)))
+    (values (max 1 (cdr size)) (max 1 (car size)))))
 
 (fn focused-node ((context context))
   (let ((found nil))
@@ -156,144 +104,125 @@
                                      (max 1 (1- length))))))))
                   (input-events input))))))))
 
-(fn mouse-event ((input input) (sequence string) &optional context)
-  (let* ((first (position #\; sequence))
-         (second (and first (position #\; sequence :start (1+ first))))
-         (end (1- (length sequence)))
-         (button (and first (parse-integer sequence :end first
-                                                   :junk-allowed t)))
-         (x (and second (parse-integer sequence :start (1+ first)
-                                               :end second :junk-allowed t)))
-         (y (and second (parse-integer sequence :start (1+ second)
-                                               :end end :junk-allowed t))))
-    (when (and button x y (plusp x) (plusp y))
-      (push (make-event
-             :kind (cond ((logbitp 6 button) :scroll)
-                         ((char= (char sequence end) #\m) :release)
-                         ((logbitp 5 button) :move)
-                         (t :press))
-             ;; Pick just below cell centers to match painted half-cell edge ties.
-             :x (- x 0.500001d0) :y (- y 0.500001d0)
-             :button (if (= (logand button 3) 2) :secondary :primary)
-             :buttons (unless (logbitp 6 button)
-                        (if (char= (char sequence end) #\m) 0
-                            (case (logand button 3)
-                              (0 1) (1 4) (2 2) (otherwise 0))))
-             :dragging-p (and (logbitp 5 button)
-                              (zerop (logand button 3)))
-             :scroll-mode :smooth :value (if (logbitp 0 button) 3 -3))
-            (input-events input))
-      (when (and context (zerop (logand button 3))
-                 (not (logbitp 6 button))
-                 (char= (char sequence end) #\M))
-        (slider-change input context (first (input-events input)))))))
+(fn mouse-event ((input input) (data uncursed:mouse-data) &optional context)
+  (let* ((button (uncursed:mouse-data-button data))
+         (state (uncursed:mouse-data-state data))
+         (wheel (member button '(:wheel-up :wheel-down)))
+         (release (eq state :release))
+         (move (or (eq state :drag) (eq button :hover))))
+    (push (make-event
+           :kind (cond (wheel :scroll) (release :release) (move :move)
+                       (t :press))
+           :x (- (uncursed:mouse-data-col data) 0.500001d0)
+           :y (- (uncursed:mouse-data-row data) 0.500001d0)
+           :button (if (eq button :right) :secondary :primary)
+           :buttons (unless wheel
+                      (if release 0
+                          (case button (:left 1) (:middle 4) (:right 2)
+                                (otherwise 0))))
+           :dragging-p (and move (eq button :left))
+           :scroll-mode :smooth :value (if (eq button :wheel-down) 3 -3))
+          (input-events input))
+    (when (and context (eq button :left) (not release))
+      (slider-change input context (first (input-events input))))))
 
-(fn escape-event ((input input) (sequence string) (context context))
-  (cond ((string= sequence "Z")
-         (push (make-event :kind :tab :key :backward) (input-events input)))
-        ((and (plusp (length sequence))
-              (char= (char sequence 0) #\<))
-         (mouse-event input (subseq sequence 1) context))
-        (t
-         (let ((key (cdr (assoc sequence
-                                '(("A" . :up) ("B" . :down)
-                                  ("C" . :right) ("D" . :left)
-                                  ("H" . :home) ("F" . :end)
-                                  ("1~" . :home) ("4~" . :end)
-                                  ("7~" . :home) ("8~" . :end)
-                                  ("3~" . :delete)
-                                  ("1;2C" . :shift-right)
-                                  ("1;2D" . :shift-left)
-                                  ("1;5C" . :word-right)
-                                  ("1;5D" . :word-left)
-                                  ("1;6C" . :shift-word-right)
-                                  ("1;6D" . :shift-word-left)
-                                  ("97;6u" . :select-all)
-                                  ("65;6u" . :select-all))
-                                :test #'string=))))
-           (when key (key-event input key))))))
+(fn decode-event ((input input) event (context context))
+  (let* ((kind (uncursed:event-kind event))
+         (control (uncursed:event-controlp event))
+         (alt (uncursed:event-altp event))
+         (shift (uncursed:event-shiftp event))
+         (key (case kind (:left-arrow :left) (:right-arrow :right)
+                         (:up-arrow :up) (:down-arrow :down)
+                         (otherwise (when (keywordp kind) kind))))
+         (name (if (characterp kind) (string kind)
+                   (and key (symbol-name key))))
+         (editing (editing-input-p input context))
+         (command (and name editing
+                       (readline-key name :control control :alt alt
+                                          :shift shift))))
+    (cond
+      ((uncursed:mouse-event-p event) (mouse-event input kind context))
+      ((and control (characterp kind) (find kind "cq" :test #'char-equal))
+       (setf (input-quit-p input) t))
+      ((and (characterp kind) (char= kind #\i) control)
+       (push (make-event :kind :tab :key (when shift :backward))
+             (input-events input)))
+      ((eql kind #\Tab)
+       (push (make-event :kind :tab :key (when shift :backward))
+             (input-events input)))
+      ((or (eql kind #\Newline) (eql kind #\Return))
+       (push (make-event :kind :activate) (input-events input)))
+      (command (key-event input command))
+      ((or (eql kind #\Rubout) (eq key :backspace))
+       (key-event input :backspace))
+      ((eql kind #\Escape) (key-event input :escape))
+      (key
+       (key-event input (if shift
+                            (case key (:left :shift-left) (:right :shift-right)
+                                      (:home :shift-home) (:end :shift-end)
+                                      (otherwise key)) key)))
+      ((and (characterp kind) (not control) (not alt))
+       (let* ((node (input-focus input context))
+              (widget (and node (element-content node))))
+         (push (if (and (eql kind #\Space) (widget-p widget)
+                        (member (widget-kind widget)
+                                '(:button :checkbox :radio :tab :list-item :cell)))
+                   (make-event :kind :activate)
+                   (make-event :kind :text :value (string kind)))
+               (input-events input)))))))
 
-(fn decode-input ((input input) (context context))
-  ;; Incomplete CSI sequences and UTF-8 code points stay buffered between polls.
-  (when (intersection (input-bytes input) '(3 17))
-    (setf (input-quit-p input) t))
-  (loop :while (input-bytes input)
-        :for bytes := (input-bytes input)
-        :for byte := (first bytes)
-        :do (cond
-              ((= byte 27)
-               (unless (rest bytes) (return))
-               (if (member (second bytes) '(79 91))
-                   (let ((end (position-if (lambda (value) (<= 64 value 126))
-                                           bytes :start 2)))
-                     (unless end (return))
-                     (escape-event input
-                                   (coerce (mapcar #'code-char
-                                                   (subseq bytes 2 (1+ end)))
-                                           'string) context)
-                     (setf (input-bytes input) (nthcdr (1+ end) bytes)))
-                   (let ((key (and (editing-input-p input context)
-                                   (readline-key
-                                    (if (= (second bytes) 127) "Backspace"
-                                        (string (code-char (second bytes))))
-                                    :alt t))))
-                     (if key
-                         (progn (key-event input key)
-                                (setf (input-bytes input) (cddr bytes)))
-                         (setf (input-bytes input) (rest bytes))))))
-              ((< byte 32)
-               (pop (input-bytes input))
-               (case byte
-                 ((3 17) (setf (input-quit-p input) t))
-                 (9 (push (make-event :kind :tab) (input-events input)))
-                 ((10 13)
-                  (push (make-event :kind :activate) (input-events input)))
-                 (otherwise
-                  (when (editing-input-p input context)
-                    (let ((key (readline-key
-                                (string (code-char (+ byte 64))) :control t)))
-                      (when key (key-event input key)))))))
-              ((= byte 127)
-               (pop (input-bytes input))
-               (key-event input :backspace))
-              ((= byte 32)
-               (pop (input-bytes input))
-               (let* ((node (input-focus input context))
-                      (widget (and node (element-content node))))
-                 (push (if (and (widget-p widget)
-                                (member (widget-kind widget)
-                                        '(:button :checkbox :radio :tab
-                                          :list-item :cell)))
-                           (make-event :kind :activate)
-                           (make-event :kind :text :value " "))
-                       (input-events input))))
-              (t
-               (let* ((size (cond ((< byte 128) 1) ((<= 194 byte 223) 2)
-                                  ((<= 224 byte 239) 3)
-                                  ((<= 240 byte 244) 4) (t 1)))
-                      (code (logand byte (case size
-                                          (1 127) (2 31) (3 15) (4 7))))
-                      (valid (or (< byte 128) (> size 1))))
-                 (when (< (length bytes) size)
-                   (if (every (lambda (next) (<= 128 next 191)) (rest bytes))
-                       (return)
-                       (setf size 1 valid nil)))
-                 (loop :for next :in (subseq bytes 1 size)
-                       :do (unless (<= 128 next 191) (setf valid nil))
-                           (setf code (+ (ash code 6) (logand next 63))))
-                 (setf valid (and valid
-                                  (>= code (case size
-                                             (1 0) (2 128)
-                                             (3 2048) (4 65536)))
-                                  (<= code #x10ffff)
-                                  (not (<= #xd800 code #xdfff))))
-                 (setf (input-bytes input) (nthcdr (if valid size 1) bytes))
-                 (when valid
-                   (let ((character (code-char code)))
-                     (when character
-                       (push (make-event :kind :text
-                                         :value (string character))
-                             (input-events input))))))))))
+(fn input-sequence-length ((text string))
+  ;; Frame complete character sequences; uncursed owns their interpretation.
+  (cond ((zerop (length text)) nil)
+        ((char/= (char text 0) #\Escape) 1)
+        ((= (length text) 1) nil)
+        ((find (char text 1) "[O")
+         (let ((end (position-if (lambda (character)
+                                  (<= 64 (char-code character) 126))
+                                text :start 2)))
+           (and end (1+ end))))
+        (t 2)))
+
+(fn read-input ((input input) (context context) (timeout real))
+  (let ((end (+ (get-internal-real-time)
+                (* timeout internal-time-units-per-second))))
+    (loop
+      (let ((chunk (with-output-to-string (stream)
+                     (loop :for character := (read-char-no-hang
+                                              *terminal-io* nil :eof)
+                           :while (characterp character)
+                           :do (write-char character stream)
+                           :finally (when (eq character :eof)
+                                      (setf (input-quit-p input) t))))))
+        (setf (input-pending input) (concatenate 'string
+                                                (input-pending input) chunk))
+        ;; Emergency quit stays available even after a truncated control sequence.
+        (when (or (find (code-char 3) chunk) (find (code-char 17) chunk))
+          (setf (input-quit-p input) t))
+        (loop :for size := (input-sequence-length (input-pending input))
+              :while size
+              :do (let* ((*standard-input*
+                           (make-string-input-stream
+                             (subseq (input-pending input) 0 size)))
+                         (event (uncursed-sys:read-event)))
+                    (decode-event input event context)
+                    (setf (input-pending input)
+                          (subseq (input-pending input) size)
+                          (input-escape-time input) nil)))
+        (when (string= (input-pending input) (string #\Escape))
+          (let ((now (get-internal-real-time)))
+            (if (and (input-escape-time input)
+                     (>= (- now (input-escape-time input))
+                         (* 0.1 internal-time-units-per-second)))
+                (progn (key-event input :escape)
+                       (setf (input-pending input) ""
+                             (input-escape-time input) nil))
+                (unless (input-escape-time input)
+                  (setf (input-escape-time input) now)))))
+        (when (or (input-events input) (input-quit-p input)
+                  (>= (get-internal-real-time) end))
+          (return))
+        (sleep 0.005)))))
 
 (fn (slice-cells string) ((text string) (start integer) (width integer))
   (with-output-to-string (stream)
@@ -305,7 +234,7 @@
                     ((> (+ column size) start) (write-char #\Space stream)))
               (incf column size))))
 
-(fn draw-focus ((stream stream) (context context))
+(fn draw-focus ((context context))
   (let* ((node (focused-node context))
          (widget (and node (element-content node))))
     (when (and (widget-p widget)
@@ -342,115 +271,83 @@
         (when (and (plusp width) (<= 0 y) (< y (context-height context))
                    (<= (cell-edge (box-y clip)) y)
                    (< y (cell-edge (+ (box-y clip) (box-height clip)))))
-          (write-escape stream "[~D;~DH" (1+ y) (1+ x))
-          (write-escape stream "[7m")
+          (uncursed-sys:set-cursor-position y x)
+          (uncursed-sys:set-style (uncursed:make-style :reversep t))
           (write-string (slice-cells text (+ offset (- x origin)) width)
-                        stream)
-          (write-escape stream "[0m")
+                        *terminal-io*)
+          (uncursed-sys:set-style uncursed:*default-style*)
           (when field-p
             (let ((column (+ origin cursor (- offset))))
               (when (and (<= x column) (< column right))
-                (write-escape stream "[~D;~DH" (1+ y) (1+ column))
-                (write-escape stream "[?25h")))))))))
+                (uncursed-sys:set-cursor-position y column)
+                (uncursed:set-cursor-shape :bar)))))))))
 
 (fn display-frame ((context context))
-  (write-terminal
-   (with-output-to-string (stream)
-     (write-escape stream "[?25l")
-     (write-escape stream "[H")
-     ;; Explicit positioning avoids ONLCR changes and last-column autowrap.
-     (let* ((frame (render-terminal context :ansi t))
-            (start 0)
-            (row 1))
-       (loop :for end := (position #\Newline frame :start start)
-             :while end
-             :do (write-escape stream "[~D;1H" row)
-                 (write-string frame stream :start start :end end)
-                 (setf start (1+ end))
-                 (incf row)))
-     (draw-focus stream context))))
+  (uncursed:set-cursor-shape :invisible)
+  (uncursed-sys:set-cursor-position 0 0)
+  (let* ((frame (render-terminal context :ansi t)) (start 0) (row 0))
+    (loop :for end := (position #\Newline frame :start start)
+          :while end
+          :do (uncursed-sys:set-cursor-position row 0)
+              (write-string frame *terminal-io* :start start :end end)
+              (setf start (1+ end))
+              (incf row)))
+  (draw-focus context)
+  (finish-output *terminal-io*))
 
 (fn wait-frame ((input input) (context context) width height)
-  ;; Poll for resize without repainting idle frames; timers shorten the wait.
   (loop
     (let ((remaining (lui.frame::frame-wait context)))
-      (when (zerop remaining)
-        (read-input input 0)
-        (decode-input input context)
-        (return))
-      (let ((escape-only (equal (input-bytes input) '(27))))
-        (read-input input (min 100 (ceiling (* remaining 1000))))
-        (when (and escape-only (equal (input-bytes input) '(27)))
-          (setf (input-bytes input) nil)
-          (key-event input :escape))))
-    (decode-input input context)
-    (when (or (input-events input) (input-quit-p input)) (return))
+      (read-input input context (max 0.001 (min 0.1 remaining)))
+      (when (or (zerop remaining) (input-events input) (input-quit-p input))
+        (return)))
     (multiple-value-bind (columns rows) (terminal-size)
       (when (or (/= (or width columns) (context-width context))
                 (/= (or height rows) (context-height context)))
         (return)))))
 
-(fn run-raw-terminal
+(fn run-uncursed-terminal
     ((draw function) &key title width height (interactive t))
-  (cond
-    ((or (not interactive)
-         (zerop (cffi:foreign-funcall "isatty" :int 0 :int))
-         (zerop (cffi:foreign-funcall "isatty" :int 1 :int)))
-     (run-terminal draw :title title :width width :height height
-                       :interactive interactive))
-    (t
-     ;; Opaque aligned storage accommodates libc's termios across POSIX targets.
-     ;; No field offsets, Lisp stream internals or implementation FD APIs occur.
-     (cffi:with-foreign-objects ((saved :unsigned-long 64)
-                                (raw :unsigned-long 64))
-       (unless (zerop (cffi:foreign-funcall "tcgetattr" :int 0
-                                          :pointer saved :int))
-         (error "Cannot read terminal attributes."))
-       (unless (zerop (cffi:foreign-funcall "tcgetattr" :int 0
-                                          :pointer raw :int))
-         (error "Cannot read terminal attributes."))
-       (cffi:foreign-funcall "cfmakeraw" :pointer raw :void)
-       (let ((context (make-terminal-context))
-             (*unit* 1)
-             (input (make-input)))
-         (unwind-protect
-              (progn
-                (unless (zerop (cffi:foreign-funcall "tcsetattr" :int 0 :int 0
-                                                   :pointer raw :int))
-                  (error "Cannot enter raw terminal mode."))
-                (write-terminal
-                 (with-output-to-string (stream)
-                   (write-escape stream "[?1049h")
-                   (write-escape stream "[?7l")
-                   (write-escape stream "[?1003h")
-                   (write-escape stream "[?1006h")
-                   (write-escape stream "[2J")))
-                (loop
-                  (multiple-value-bind (columns rows) (terminal-size)
-                    (let ((events (nreverse (input-events input))))
-                      (with-frame (context (or width columns) (or height rows)
-                                           :events events)
-                        (funcall draw))
-                      (when events
-                        (let ((*context* context)) (request-frame)))))
-                  (setf (input-events input) nil)
-                  (display-frame context)
-                  (wait-frame input context width height)
-                  (when (input-quit-p input) (return context))
-                  (lui.frame::limit-frame-rate context)))
-           ;; Restore termios even if output fails, or DRAW signals an error.
-           (unwind-protect
-                (write-terminal
-                 (with-output-to-string (stream)
-                   (write-escape stream "[0m")
-                   (write-escape stream "[?1006l")
-                   (write-escape stream "[?1003l")
-                   (write-escape stream "[?7h")
-                   (write-escape stream "[?25h")
-                   (write-escape stream "[?1049l")))
-             (cffi:foreign-funcall "tcsetattr" :int 0 :int 0
-                                             :pointer saved :int))))))))
+  (if (or (not interactive)
+          (not (interactive-stream-p *standard-input*))
+          (not (interactive-stream-p *standard-output*))
+          #+unix (let ((term (uiop:getenv "TERM")))
+                   (or (null term) (zerop (length term))
+                       (string-equal term "dumb"))))
+      (run-terminal draw :title title :width width :height height
+                         :interactive interactive)
+      (let ((context (make-terminal-context)) (*unit* 1) (input (make-input))
+            (saved nil))
+        (unwind-protect
+             (progn
+               #+unix (terminfo:set-terminal (uiop:getenv "TERM"))
+               (setf saved (uncursed-sys:setup-terminal
+                            #+unix uncursed-sys:+stdin+))
+               (uncursed-sys:enable-alternate-screen)
+               (uncursed:enable-mouse :hover t)
+               (uncursed-sys:clear-screen)
+               (loop
+                 (multiple-value-bind (columns rows) (terminal-size)
+                   (let ((events (nreverse (input-events input))))
+                     (with-frame (context (or width columns) (or height rows)
+                                          :events events)
+                       (funcall draw))
+                     (when events
+                       (let ((*context* context)) (request-frame)))))
+                 (setf (input-events input) nil)
+                 (display-frame context)
+                 (wait-frame input context width height)
+                 (when (input-quit-p input) (return context))
+                 (lui.frame::limit-frame-rate context)))
+          (when saved
+            (unwind-protect
+                 (progn
+                   (uncursed-sys:set-style uncursed:*default-style*)
+                   (uncursed:disable-mouse)
+                   (uncursed:set-cursor-shape :block)
+                   (uncursed-sys:disable-alternate-screen)
+                   (finish-output *terminal-io*))
+              (uncursed-sys:restore-terminal saved
+                                             #+unix uncursed-sys:+stdin+)))))))
 
-;; Other platforms retain the portable line-input backend.
-#+(or linux darwin freebsd openbsd netbsd lui-posix-host)
-(register-backend :terminal #'run-raw-terminal)
+(register-backend :terminal #'run-uncursed-terminal)

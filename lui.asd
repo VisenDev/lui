@@ -123,7 +123,7 @@
              (uiop:symbol-call :lui.tests.pdf :run-tests)))
 
 (defsystem "lui/x11"
-  :depends-on ("lui/gl")
+  :depends-on ("lui/gl" "clx")
   :components ((:module "src"
                 :components ((:file "x11")))))
 
@@ -133,7 +133,7 @@
                 :components ((:file "gl")))))
 
 (defsystem "lui/wayland"
-  :depends-on ("lui/gl")
+  :depends-on ("lui/gl" "wayflan")
   :serial t
   :components ((:module "src"
                 :serial t
@@ -141,7 +141,7 @@
                              (:file "wayland")))))
 
 (defsystem "lui/win32"
-  :depends-on ("lui/native")
+  :depends-on ("lui/native" "ftw")
   :components ((:module "src"
                 :components ((:file "win32")))))
 
@@ -151,10 +151,8 @@
                 :components ((:file "cocoa")))))
 
 (defsystem "lui/terminal"
-  :depends-on ("lui/core"
-               #+lui-posix-host "cffi")
-  :components (#+lui-posix-host
-               (:module "src" :components ((:file "terminal-io")))))
+  :depends-on ("lui/core" "uncursed")
+  :components ((:module "src" :components ((:file "terminal-io")))))
 
 (defsystem "lui/native/tests"
   :depends-on ("lui/native")
