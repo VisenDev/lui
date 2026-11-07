@@ -2,33 +2,20 @@
   (:use #:cl #:lui.frame #:lui.layout))
 (in-package #:lui.tests.x11)
 
-(defun translated-key (display symbol state context)
-  (cffi:with-foreign-object (event '(:struct lui.x11::key-event))
-    (loop :for index :below
-            (cffi:foreign-type-size '(:struct lui.x11::key-event))
-          :do (setf (cffi:mem-aref event :uint8 index) 0))
-    (setf (cffi:foreign-slot-value event '(:struct lui.x11::key-event)
-                                  'lui.x11::type) 2
-          (cffi:foreign-slot-value event '(:struct lui.x11::key-event)
-                                  'lui.x11::display) display
-          (cffi:foreign-slot-value event '(:struct lui.x11::key-event)
-                                  'lui.x11::state) state
-          (cffi:foreign-slot-value event '(:struct lui.x11::key-event)
-                                  'lui.x11::code)
-          (cffi:foreign-funcall "XKeysymToKeycode" :pointer display
-                                                  :ulong symbol :uint))
-    (lui.x11::key-input event context)))
+(lui.fn:fn translated-key (display symbol state context)
+  (let ((keycode (xlib:keysym->keycodes display symbol)))
+    (lui.x11::key-input display keycode state context)))
 
 (assert (= 0 (lui.x11::pointer-buttons 0)))
 (assert (= 1 (lui.x11::pointer-buttons #x100)))
 (assert (= 2 (lui.x11::pointer-buttons #x400)))
 (assert (= 3 (lui.x11::pointer-buttons #x500)))
 
-(let* ((display (lui.x11::open-display (cffi:null-pointer)))
+(let* ((display (xlib:open-default-display))
        (window (lui.x11::make-x-window :display display))
        (context (make-context :focus :button))
        (widget (lui.widgets:make-widget :kind :button)))
-  (assert (not (cffi:null-pointer-p display)))
+  (assert (xlib:display-p display))
   (unwind-protect
        (progn
          (setf (context-root context)
@@ -63,9 +50,26 @@
                          context (list (make-event :kind :tab)))))))
          (dolist (kind '(:default :pointer :text :not-allowed
                          :resize-horizontal :resize-vertical))
-           (assert (plusp (lui.x11::cursor-for window kind))))
+           (assert (xlib:cursor-p (lui.x11::cursor-for window kind))))
          (format t "X11 reverse Tab, Space, and native cursor checks passed.~%"))
     (maphash (lambda (kind cursor)
-               (declare (ignore kind)) (lui.x11::free-cursor display cursor))
+               (declare (ignore kind)) (xlib:free-cursor cursor))
              (lui.x11::x-window-cursors window))
-    (lui.x11::close-display display)))
+    (xlib:close-display display)))
+
+#+sbcl
+(let ((before (sb-int:get-floating-point-modes)))
+  (assert (eq :native-result
+              (lui.x11::call-glx
+               (lambda ()
+                 (assert (null (getf (sb-int:get-floating-point-modes) :traps)))
+                 (sb-int:set-floating-point-modes :rounding-mode :zero)
+                 :native-result))))
+  (assert (equal before (sb-int:get-floating-point-modes)))
+  (handler-case
+      (lui.x11::call-glx
+       (lambda ()
+         (sb-int:set-floating-point-modes :rounding-mode :zero)
+         (error "test native failure")))
+    (error ()))
+  (assert (equal before (sb-int:get-floating-point-modes))))

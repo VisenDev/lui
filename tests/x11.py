@@ -1,7 +1,7 @@
 """Native GLX window, rendering, glass, input, and resize regressions.
 
 Run python tests/x11.py with DISPLAY set. Requires SBCL, CFFI, zpb-ttf,
-libX11/libGL, ImageMagick import, and Pillow. Captures only LUI windows.
+libX11/libGL and Pillow. Captures only LUI windows.
 """
 
 from contextlib import contextmanager
@@ -78,6 +78,16 @@ class WindowAttributes(C.Structure):
                 ("screen", C.c_void_p)]
 
 
+class XImage(C.Structure):
+    _fields_ = [("width", C.c_int), ("height", C.c_int),
+                ("xoffset", C.c_int), ("format", C.c_int), ("data", C.c_void_p),
+                ("byte_order", C.c_int), ("bitmap_unit", C.c_int),
+                ("bitmap_bit_order", C.c_int), ("bitmap_pad", C.c_int),
+                ("depth", C.c_int), ("bytes_per_line", C.c_int),
+                ("bits_per_pixel", C.c_int), ("red_mask", C.c_ulong),
+                ("green_mask", C.c_ulong), ("blue_mask", C.c_ulong)]
+
+
 class XErrorEvent(C.Structure):
     _fields_ = [("type", C.c_int), ("display", C.c_void_p),
                 ("resource", C.c_ulong), ("serial", C.c_ulong),
@@ -89,6 +99,10 @@ class X11:
     def __init__(self):
         self.lib = C.CDLL(find_library("X11"))
         signatures = {
+            "XGetImage": (C.POINTER(XImage), [C.c_void_p, C.c_ulong,
+                C.c_int, C.c_int, C.c_uint, C.c_uint, C.c_ulong, C.c_int]),
+            "XGetPixel": (C.c_ulong, [C.POINTER(XImage), C.c_int, C.c_int]),
+            "XDestroyImage": (C.c_int, [C.POINTER(XImage)]),
             "XOpenDisplay": (C.c_void_p, [C.c_char_p]),
             "XDefaultRootWindow": (C.c_ulong, [C.c_void_p]),
             "XQueryTree": (C.c_int, [C.c_void_p, C.c_ulong,
@@ -268,8 +282,7 @@ class X11Tests(unittest.TestCase):
             directory = Path(directory)
             state = directory / "state.json"
             program = directory / "test.lisp"
-            program.write_text('''(require :asdf)
-(asdf:load-asd (truename "lui.asd"))
+            program.write_text('''(load "scripts/setup.lisp")
 (asdf:load-system "lui/x11")
 (load "tests/x11.lisp")
 ''' + source.replace("STATE_PATH", json.dumps(str(state))).replace(
@@ -325,9 +338,25 @@ class X11Tests(unittest.TestCase):
         attributes = WindowAttributes()
         self.x.lib.XGetWindowAttributes(self.x.display, window, C.byref(attributes))
         self.assertEqual(attributes.map_state, 2, "Test window is not viewable")
-        subprocess.run(["import", "-window", hex(window), str(path)],
-                       check=True, timeout=10)
-        return Image.open(path).convert("RGB")
+        native = self.x.lib.XGetImage(self.x.display, window, 0, 0,
+                                     attributes.width, attributes.height,
+                                     C.c_ulong(-1).value, 2)
+        self.assertTrue(native, "XGetImage failed for the test window")
+        try:
+            masks = [native.contents.red_mask, native.contents.green_mask,
+                     native.contents.blue_mask]
+            shifts = [(mask & -mask).bit_length() - 1 for mask in masks]
+            def rgb(pixel):
+                return tuple(((pixel & mask) >> shift) * 255 // (mask >> shift)
+                             for mask, shift in zip(masks, shifts))
+            image = Image.new("RGB", (attributes.width, attributes.height))
+            image.putdata([rgb(self.x.lib.XGetPixel(native, x, y))
+                           for y in range(attributes.height)
+                           for x in range(attributes.width)])
+        finally:
+            self.x.lib.XDestroyImage(native)
+        image.save(path)
+        return image
 
     def test_native_clipboard_utf8_targets_and_ownership(self):
         source = r'''
