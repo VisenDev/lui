@@ -64,7 +64,7 @@
       (assert (string= "Cycle toolkit" (widget-text (control :toolkit))))
       (assert (string= "Show debugger"
                        (widget-text (control :debugger-toggle))))
-      (dolist (style '("Glass" "Motif" "Garnet" "macOS" "Qt" "Glass"))
+      (dolist (style '("Qt" "Glass" "Motif" "Garnet" "macOS" "Qt"))
         (assert (toolkit-label (format nil "Toolkit: ~A" style)))
         (frame (make-event :kind :activate :id :toolkit)))
       (dolist (palette '(:light :dark :ocean :forest :default))

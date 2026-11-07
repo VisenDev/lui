@@ -742,7 +742,7 @@
                      paths))
       (assert (member '("2" "#202430") texts :test #'equal))
       (assert (member '("3" "#202430") texts :test #'equal))
-      (assert (find "#e7effa" paths :key #'second :test #'equal)))))
+      (assert (find (getf (lui:toolkit-palette style) :selection) paths :key #'second :test #'equal)))))
 
 (defun test-debug-highlight (font)
   (dolist (style '(:glass :motif :garnet :macos :qt))
@@ -841,6 +841,32 @@
       (declare (ignore w))
       (assert (near h (+ 12 (* 2 (line-height font))))))))
 
+(defun test-macos-surfaces (font)
+  (dolist (palette '(:default :dark))
+    (let* ((surfaces nil)
+           (renderer (make-renderer :font font
+                       :clip (lambda (&rest args) (declare (ignore args)))
+                       :text (lambda (&rest args) (declare (ignore args)))
+                       :polygons (lambda (&rest args) (declare (ignore args)))
+                       :surface (lambda (box radius color alpha &optional stroke)
+                                  (declare (ignore alpha))
+                                  (push (list (box-width box) (box-height box) radius color stroke) surfaces))))
+           (context (make-context :measure (lambda (widget width)
+                                            (measure-widget renderer widget width)))))
+      (with-frame (context 300 200)
+        (lui:with-toolkit (:macos)
+          (lui:with-palette ((lui:named-palette palette))
+            (lui:checkbox :check t "Checked")
+            (lui:radio :radio :one :one "Selected")
+            (lui:slider :slider 0.5))))
+      (paint-frame renderer context)
+      ;; Indicators use accent color; slider has a round thumb and no outer frame.
+      (assert (find (if (eq palette :dark) "#79b8ff" "#007aff") surfaces
+                    :key #'fourth :test #'equal))
+      (assert (find-if (lambda (surface) (and (equal (subseq surface 0 3) '(14 14 7))
+                                             (equal (fourth surface) "#ffffff") (null (fifth surface)))) surfaces))
+      (assert (notany (lambda (surface) (and (> (first surface) 30) (> (second surface) 10))) surfaces)))))
+
 (defun run-tests ()
   (test-shared-wrapping)
   (paint-text (make-renderer
@@ -862,6 +888,7 @@
            (test-button-feedback font)
            (test-button-text-centering font)
            (test-motif-states font)
+           (test-macos-surfaces font)
            (test-font-faces)
            (test-garnet-states font)
            (test-pointer-selection font)

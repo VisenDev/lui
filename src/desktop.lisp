@@ -7,9 +7,12 @@
 (in-package #:lui.macos)
 
 (defvar *defaults*
-  '(:palette (:background "#dddddd" :foreground "#000000" :accent "#000000")
-    :terminal-border "++++-|" :opacity 1 :radius 4 :frost 0)
-  "Classic Macintosh gray controls with crisp double outlines.
+  '(:palette (:window-background "#f5f2ef" :background "#f0edeb"
+               :foreground "#303030" :accent "#007aff" :selection "#dbeaff"
+               :border "#c7c4c1" :track "#b6b4b2" :light "#ffffff"
+               :disabled "#969390" :disabled-surface "#e3e0dd")
+    :terminal-border "++++-|" :opacity 1 :radius 6 :frost 0)
+  "Ventura-inspired warm surfaces, rounded controls, subtle borders, and blue accents.
 Bind this plist to customize the surface, ink, and selection colors.")
 
 (define-toolkit :macos *defaults* panel

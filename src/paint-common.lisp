@@ -189,7 +189,8 @@
       (t (funcall body renderer node)))
     (paint-focus-ring renderer node radius)))
 
-(fn (paint-standard-body t) ((renderer renderer) (node element) translucent bevel)
+(fn (paint-standard-body t) ((renderer renderer) (node element) translucent bevel
+                                      &optional flat)
   (let* ((widget (element-content node))
          (box (element-box node))
          (kind (widget-kind widget))
@@ -202,12 +203,14 @@
          (inset (if (eq kind :label) 0 12))
          (x (+ (box-x box) inset))
          (y (+ (box-y box) (if (eq kind :label) 0 6))))
-    (unless (eq kind :label)
+    (unless (or (eq kind :label) (and flat (member kind '(:checkbox :radio :slider))))
       (when (and translucent (< (widget-opacity widget) 1)
                  (renderer-glass renderer))
         (funcall (renderer-glass renderer)
                  box radius (widget-frost widget)))
-      (shape renderer box radius (widget-background widget)
+      (shape renderer box radius
+             (if (and flat (member kind '(:button :tab :text-field)))
+                 (widget-color widget :light) (widget-background widget))
              (if translucent (widget-opacity widget) 1))
       (if translucent
           (outline renderer box radius (widget-color widget :light)
@@ -226,11 +229,12 @@
         ((hovered-p (element-id node))
          (shape renderer box radius (widget-color widget :light) 0.14f0)))
       (when (and (eq kind :tab) (widget-value widget))
+        (if flat (shape renderer (inset-box box 1) radius (widget-color widget :selection) 1)
         (shape renderer
                (make-box :x (+ (box-x box) 3)
                          :y (+ (box-y box) (box-height box) -3)
                          :width (max 0 (- (box-width box) 6)) :height 3)
-               0 (widget-accent widget) 1)))
+               0 (widget-accent widget) 1))))
     (case kind
       (:panel nil)
       (:slider
@@ -246,19 +250,21 @@
          (setf (box-width track) (* fraction (box-width track)))
          (shape renderer track 2
                 (if disabled (widget-color widget :disabled-accent) (widget-accent widget)) 1)
-         (shape renderer
-                (make-box :x (+ (box-x track) (box-width track) -7)
-                          :y (- (box-y track) 5) :width 14 :height 14)
-                (if translucent 7 0) (if disabled (widget-color widget :disabled-surface) (widget-color widget :light)) 1)))
+         (let ((thumb (make-box :x (+ (box-x track) (box-width track) -7)
+                                :y (- (box-y track) 5) :width 14 :height 14)))
+           (shape renderer thumb (if (or translucent flat) 7 0)
+                  (widget-color widget (if disabled :disabled-surface (if flat :thumb :light))) 1)
+           (when flat (outline renderer thumb 7 (widget-color widget :border) 0.6 1)))))
       (:checkbox
        (let ((indicator (make-box :x x :y y :width 16 :height 16)))
-         (shape renderer indicator (if translucent 4 0)
-                (if translucent
+         (shape renderer indicator (if (or translucent flat) 4 0)
+                (if (or translucent flat)
                     (if (widget-value widget)
-                        (widget-accent widget) (widget-color widget :track))
+                        (if (and flat disabled) (widget-color widget :disabled-accent) (widget-accent widget))
+                        (widget-color widget (if flat :light :track)))
                     (widget-background widget))
                 1)
-         (unless translucent
+         (unless (or translucent (and flat (widget-value widget)))
            (funcall bevel renderer widget indicator
                         (or pressed (widget-value widget)) disabled))
          (when (widget-value widget)
@@ -270,19 +276,20 @@
                             (cons (+ x (car point)) (+ y (cdr point))))
                           '((3 . 7) (6 . 10) (12 . 3) (14 . 5)
                             (6 . 13) (2 . 9)))))
-            (if translucent (widget-color widget :on-accent) foreground) 1)))
+            (if (or translucent flat) (widget-color widget :on-accent) foreground) 1)))
        (paint-widget-text renderer node foreground))
       (:radio
        (let ((indicator (make-box :x x :y (+ y 1)
                                   :width 16 :height 16)))
          (shape renderer indicator 8
-                (if translucent (widget-color widget :light) (widget-background widget)) 1)
+                (if (or translucent flat) (widget-color widget :light) (widget-background widget)) 1)
          (outline renderer indicator 8
-                  (if disabled (widget-color widget :disabled) foreground) 1 1)
+                  (if disabled (widget-color widget :disabled)
+                      (if flat (widget-color widget :border) foreground)) 1 1)
          (when (widget-value widget)
            (shape renderer (inset-box indicator 5) 3
                   (if disabled (widget-color widget :disabled)
-                      (if translucent (widget-accent widget) foreground)) 1))
+                      (if (or translucent flat) (widget-accent widget) foreground)) 1))
          (paint-widget-text renderer node foreground)))
       (:text-field (paint-text-field renderer node))
       (otherwise (paint-widget-text renderer node foreground)))))

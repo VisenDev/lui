@@ -32,7 +32,7 @@
 (defparameter *base-palette*
   '(:foreground "#ffffff" :background "#303040" :accent "#258bff"
     :disabled "#777777" :selection "#e7effa" :border "#939ba5" :outline "#000000"
-    :on-accent "#ffffff" :light "#ffffff" :shadow "#000000" :track "#777777"
+    :thumb "#ffffff" :on-accent "#ffffff" :light "#ffffff" :shadow "#000000" :track "#777777"
     :disabled-accent "#999999" :disabled-surface "#a0a0a0"
     :bevel-light "#ffffff" :bevel-dark "#505050"
     :disabled-bevel-light "#d0d0d0" :disabled-bevel-dark "#989898"

@@ -273,7 +273,7 @@ class WebTests(unittest.TestCase):
         # Labels are native, read-only DOM text layered over the canvas. They
         # expose the rendered content to accessibility APIs and browser text
         # selection while control graphics stay on the canvas.
-        label = self.page.get_by_text("Toolkit: Glass", exact=True)
+        label = self.page.get_by_text("Toolkit: Qt", exact=True)
         expect(label).to_be_visible()
         self.assertTrue(label.evaluate("n => n.isContentEditable === false"))
         colors = self.page.locator("main canvas").evaluate("""c => {
@@ -376,9 +376,9 @@ class WebTests(unittest.TestCase):
             page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
             page.wait_for_function("""() => {
               const c=document.querySelector('main canvas');
-              return c && c.luiApp && document.body.innerText.includes('Toolkit: Glass');
+              return c && c.luiApp && document.body.innerText.includes('Toolkit: Qt');
             }""")
-            label = page.get_by_text("Toolkit: Glass", exact=True)
+            label = page.get_by_text("Toolkit: Qt", exact=True)
             expect(label).to_be_visible()
             cdp = page.context.new_cdp_session(page)
             def long_press(element):
@@ -397,7 +397,7 @@ class WebTests(unittest.TestCase):
                 return page.evaluate("getSelection().toString()")
 
             snapshot = label.aria_snapshot()
-            self.assertIn("Toolkit: Glass", snapshot)
+            self.assertIn("Toolkit: Qt", snapshot)
             self.assertEqual(label.evaluate("n => getComputedStyle(n).userSelect"), "text")
             # Some headless engines never synthesize Android's selection UI.
             # Check an ordinary paragraph before judging the mounted app.
@@ -563,7 +563,7 @@ class WebTests(unittest.TestCase):
             page.wait_for_function("""() => {
               const c=document.querySelector('main canvas');
               return c && c.luiApp && c.width > 0 &&
-                     document.body.innerText.includes('Toolkit: Glass');
+                     document.body.innerText.includes('Toolkit: Qt');
             }""")
             def tap_button(name):
                 bounds = page.get_by_role("button", name=name, exact=True).bounding_box()
@@ -663,7 +663,7 @@ class WebTests(unittest.TestCase):
             self.click_widget(text=name, kind="tab")
         self.assertEqual(self.text_value(":NAME"), "Persistent name")
         shots = []
-        for name in ("Motif", "Garnet", "macOS", "Qt", "Glass"):
+        for name in ("Glass", "Motif", "Garnet", "macOS", "Qt"):
             self.click_widget(text="Cycle toolkit")
             self.widget(text="Toolkit: " + name)
             shots.append(self.page.locator("main canvas").screenshot())
@@ -673,7 +673,7 @@ class WebTests(unittest.TestCase):
 
     def test_palette_switching_preserves_toolkit_and_values(self):
         self.replace_text(":NAME", "Palette state")
-        for toolkit in ("Glass", "Motif", "Garnet", "macOS", "Qt"):
+        for toolkit in ("Qt", "Glass", "Motif", "Garnet", "macOS"):
             self.widget(text="Toolkit: " + toolkit)
             for palette in ("Light", "Dark", "Ocean", "Forest", "Default"):
                 self.click_widget(text="Cycle palette")

@@ -60,9 +60,10 @@ class DocsWebTests(unittest.TestCase):
                 ui.frames()
                 self.assertEqual(ui.page.locator("main canvas").count(), 1)
                 self.assertTrue(any("FPS" in n["text"] for n in ui.nodes()))
+                ui.widget(text="Toolkit: Qt")
                 ui.click_widget(text="Cycle toolkit")
-                ui.widget(text="Toolkit: Motif")
-                for toolkit in ("Garnet", "macOS", "Qt", "Glass", "Motif"):
+                ui.widget(text="Toolkit: Glass")
+                for toolkit in ("Motif", "Garnet", "macOS", "Qt", "Glass"):
                     ui.click_widget(text="Cycle toolkit")
                     ui.widget(text="Toolkit: " + toolkit)
                 for palette in ("Light", "Dark", "Ocean", "Forest", "Default"):

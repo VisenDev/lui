@@ -66,7 +66,7 @@
      "Scrolling panels show a scrollbar by default. :scrollbar-p NIL hides it; :scrollbar-width customizes the reserved track width in backend coordinates. The default is 12 graphical pixels or one terminal cell. Drag the thumb to move continuously, or click the track above/below it to page by a viewport. Wheel scrolling supports momentum; nested scrollers pass unused motion to an ancestor."
      "A scrolling viewport needs a bounded size. Nested scrollers pass wheel input to an ancestor when they cannot scroll further. lui.frame:previous-box exposes completed geometry; lui.frame:scroll-position and scroll-to support application-controlled navigation. Virtualize very large lists instead of declaring every row.")
     (:toolkits "Toolkits"
-     "The lui package documents the shared widget API once. The toolkit packages document their own settings and any additional controls. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. Classic macOS uses crisp double outlines; Qt uses restrained raised desktop controls. Cycle palette to try Default, Light, Dark, Ocean, and Forest on the page and live samples. A window background remains opaque."
+     "The lui package documents the shared widget API once. The toolkit packages document their own settings and any additional controls. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. macOS uses warm surfaces, rounded controls, subtle borders, and blue accents; Qt uses restrained raised desktop controls. Cycle palette to try Default, Light, Dark, Ocean, and Forest on the page and live samples. A window background remains opaque."
      "(lui:with-toolkit (:motif)
   (lui:button :ok \"OK\"))
 (lui:with-toolkit (:garnet)
@@ -93,8 +93,8 @@
   (text "Edit this example" :type string) (value 0.4 :type real)
   (tab :one :type symbol) (item :one :type symbol)
   (circles '((4 4)) :type list)
-  (sample :glass :type symbol)
-  (toolkit :glass :type symbol)
+  (sample :qt :type symbol)
+  (toolkit :qt :type symbol)
   (palette :default :type symbol)
   (entries #() :type vector)
   (packages nil :type list)
@@ -416,7 +416,7 @@
 
 (defun entry-preview-kind (entry)
   (when (member (getf entry :package)
-                '("lui" "lui.glass" "lui.motif" "lui.garnet" "lui.frame")
+                '("lui" "lui.glass" "lui.motif" "lui.garnet" "lui.macos" "lui.qt" "lui.frame")
                 :test #'string=)
     (cdr (assoc (getf entry :name) *preview-kinds* :test #'string-equal))))
 
@@ -541,7 +541,7 @@
                   (entry-list state (grow))
                   (detail state)))))))))
 
-(defun make-docs (&key (toolkit :glass) (entries *entries*))
+(defun make-docs (&key (toolkit :qt) (entries *entries*))
   "Return a fresh documentation browser drawing function for ENTRIES."
   (let* ((entries (append (remove-if-not
                            (lambda (entry)

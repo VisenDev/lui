@@ -7,7 +7,7 @@
 (defstruct gallery
   (seven (lui.example.seven:make-state))
   (page :controls)
-  (toolkit :glass)
+  (toolkit :qt)
   (palette :default)
   (name "Common Lisp")
   (volume 0.4)

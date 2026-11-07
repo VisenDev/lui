@@ -240,8 +240,8 @@ try:
           "Raw timing: only draw entry/exit and one browser layout flush")
     print("toolkit page frames draw_mean_ms flush_mean_ms work_mean_ms "
           "work_p50_ms work_p95_ms work_max_ms active_fps scroll_delta_px")
-    current_toolkit = "Glass"
-    assert has_text(page, "Toolkit: Glass")
+    current_toolkit = "Qt"
+    assert has_text(page, "Toolkit: Qt")
     for case, (toolkit, name) in enumerate(
         (toolkit, name) for toolkit in toolkits for name in pages
     ):

@@ -2,12 +2,9 @@
 
 (fn (macos-bevel t) ((renderer renderer) (widget widget) (box box)
                     &optional recessed disabled)
-  (let ((ink (widget-color widget (if disabled :disabled :outline))))
-    (outline renderer box (widget-radius widget) ink 1 1)
-    (when (> (min (box-width box) (box-height box)) 4)
-      (outline renderer (inset-box box 2) (max 0 (- (widget-radius widget) 2))
-               (if recessed (widget-color widget :shadow)
-                   (widget-color widget :light)) 1 1))))
+  (declare (ignore recessed))
+  (outline renderer box (min 6 (widget-radius widget))
+           (widget-color widget (if disabled :disabled-surface :border)) 0.65 1))
 
 (fn (qt-bevel t) ((renderer renderer) (widget widget) (box box)
                  &optional recessed disabled)
@@ -23,7 +20,7 @@
              0 (if recessed light dark) 1))))
 
 (fn (paint-macos-body t) ((renderer renderer) (node element))
-  (paint-standard-body renderer node nil #'macos-bevel))
+  (paint-standard-body renderer node nil #'macos-bevel t))
 
 (fn (paint-qt-body t) ((renderer renderer) (node element))
   (paint-standard-body renderer node nil #'qt-bevel))
@@ -35,13 +32,14 @@
     (funcall bevel renderer widget thumb nil (widget-disabled-p widget))))
 
 (fn (paint-macos-scrollbar t) ((renderer renderer) (node element))
-  (paint-desktop-scrollbar renderer node #'macos-bevel))
+  (shape renderer (inset-box (scrollbar-thumb node) 2) 4
+         (widget-color (element-content node) :track) 0.8))
 
 (fn (paint-qt-scrollbar t) ((renderer renderer) (node element))
   (paint-desktop-scrollbar renderer node #'qt-bevel))
 
 (fn (paint-macos-widget t) ((renderer renderer) (node element))
-  (paint-shared-widget renderer node 4 0 #'paint-macos-scrollbar #'paint-macos-body))
+  (paint-shared-widget renderer node 6 0 #'paint-macos-scrollbar #'paint-macos-body))
 
 (fn (paint-qt-widget t) ((renderer renderer) (node element))
   (paint-shared-widget renderer node 2 0 #'paint-qt-scrollbar #'paint-qt-body))

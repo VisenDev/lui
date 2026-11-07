@@ -22,7 +22,7 @@ work.
 - Width-dependent text wrapping: horizontal sizing precedes measurement of height
   and vertical positioning. Percentage sizes exclude padding and inter-child gaps.
   Fixed sizes and minimum bounds may overflow instead of silently shrinking.
-- Glass, Motif, Garnet, classic macOS, and Qt-inspired toolkits with labels, buttons, checkboxes, sliders, text
+- Glass, Motif, Garnet, Ventura-inspired macOS, and Qt-inspired toolkits with labels, buttons, checkboxes, sliders, text
   fields, tabs, single-selection rows, progress gauges, circle canvases, and
   styled layout panels. Toolkits share interaction logic.
 - Stable IDs, pointer capture, release activation, hover feedback, and keyboard
@@ -86,7 +86,7 @@ font size, `:font-family` (`:sans-serif` or `:monospace`), and `:font-weight`
 widgets also support a custom painter callback.
 
 Palettes change colors independently of the toolkit's geometry. Both the demo
-and docs have a **Cycle palette** control for Default, Light, Dark, Ocean, and
+and docs start with Qt selected and have a **Cycle palette** control for Default, Light, Dark, Ocean, and
 Forest. Default restores the chosen toolkit's colors; edited values survive
 palette and toolkit changes. Applications can use the same presets:
 
@@ -97,7 +97,7 @@ palette and toolkit changes. Applications can use the same presets:
 ```
 
 `lui:available-palettes` returns a vector of preset names. Custom semantic color
-plists work with `lui:with-palette` too. `:macos` evokes classic Macintosh controls;
+plists work with `lui:with-palette` too. `:macos` evokes modern macOS controls;
 `:qt` is Fusion-inspired. Both render through LUI's existing backends.
 
 Toolkits choose terminal panel borders independently of graphical corner radius.
