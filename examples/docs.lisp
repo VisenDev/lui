@@ -1,5 +1,5 @@
 (defpackage #:lui.docs
-  (:use #:cl #:lui #:lui.layout #:lui.frame)
+  (:use #:cl)
   (:export #:main #:make-docs #:*entries*))
 (in-package #:lui.docs)
 
@@ -91,7 +91,7 @@
   (date nil :type (or null string))
   (checked-p t :type boolean) (cell-p nil :type boolean)
   (text "Edit this example" :type string) (value 0.4 :type real)
-  (tab :one :type symbol) (item :one :type symbol)
+  (lui:tab :one :type symbol) (item :one :type symbol)
   (circles '((4 4)) :type list)
   (sample :qt :type symbol)
   (toolkit :qt :type symbol)
@@ -126,19 +126,19 @@
               :collect index))
   (unless (member (browser-selected state) (browser-matches state))
     (setf (browser-selected state) (first (browser-matches state))))
-  (scroll-to :docs-entries 0 0)
-  (scroll-to :docs-detail 0 0))
+  (lui.frame:scroll-to :docs-entries 0 0)
+  (lui.frame:scroll-to :docs-detail 0 0))
 
 (defun navigation-width ()
-  (min (units (if (< (context-width *context*) (units 105)) 18 28))
-       (* 0.3 (context-width *context*))))
+  (min (lui:units (if (< (lui.frame:context-width lui.frame:*context*) (lui:units 105)) 18 28))
+       (* 0.3 (lui.frame:context-width lui.frame:*context*))))
 
 (defun reference-width ()
-  (if (>= (context-width *context*) (units 80))
-      (min (units 40)
-           (* 0.44 (- (context-width *context*)
-                      (navigation-width) (units 4))))
-      (- (context-width *context*) (navigation-width) (units 3))))
+  (if (>= (lui.frame:context-width lui.frame:*context*) (lui:units 80))
+      (min (lui:units 40)
+           (* 0.44 (- (lui.frame:context-width lui.frame:*context*)
+                      (navigation-width) (lui:units 4))))
+      (- (lui.frame:context-width lui.frame:*context*) (navigation-width) (lui:units 3))))
 
 (defun wrap-symbol (text columns)
   (format nil "~{~A~^~%~}"
@@ -155,14 +155,14 @@
 
 (defun symbol-rows (state)
   (let* ((width (reference-width))
-         (key (list width (current-toolkit) *toolkit-revision* *unit*
-                    (context-text-mode-p *context*))))
+         (key (list width (lui:current-toolkit) lui:*toolkit-revision* lui:*unit*
+                    (lui.frame:context-text-mode-p lui.frame:*context*))))
     (unless (equal key (browser-row-key state))
-      (let* ((defaults (toolkit-defaults))
-             (measure (context-measure *context*))
-             (text-p (context-text-mode-p *context*))
+      (let* ((defaults (lui:toolkit-defaults))
+             (measure (lui.frame:context-measure lui.frame:*context*))
+             (text-p (lui.frame:context-text-mode-p lui.frame:*context*))
              (inset (if text-p 0 24)) (gutter (if text-p 1 12))
-             (available (max 1 (- width (units 1) gutter inset)))
+             (available (max 1 (- width (lui:units 1) gutter inset)))
              (top 0))
         (flet ((probe (text)
                  (funcall measure
@@ -193,14 +193,14 @@
 
 (defun navigation (state)
   (lui:panel (lui:opt :id :docs-navigation
-                      :width (fixed (navigation-width))
-                      :height (grow) :scroll-p (not (lui.frame::context-page-height-p *context*))
-                      :padding (units 1)
-                      :gap (units 0.5) :opacity 1 :frost 0)
+                      :width (lui.layout:fixed (navigation-width))
+                      :height (lui.layout:grow) :scroll-p (not (lui.frame::context-page-height-p lui.frame:*context*))
+                      :padding (lui:units 1)
+                      :gap (lui:units 0.5) :opacity 1 :frost 0)
     (lui:label "Guides")
     (dolist (guide *guides*)
       (when (lui:list-item (list :docs-guide (first guide))
-                           (if (< (context-width *context*) (units 105))
+                           (if (< (lui.frame:context-width lui.frame:*context*) (lui:units 105))
                                (case (first guide)
                                  (:start "Start") (:debug "Debugger")
                                  (:frames "Frames")
@@ -208,23 +208,23 @@
                                  (:toolkits "Toolkits") (:input "Input")
                                  (:backends "Backends"))
                                (second guide))
-                           (lui:opt :width (grow)
+                           (lui:opt :width (lui.layout:grow)
                                     :selected-p
                                     (eq (browser-guide state) (first guide))))
         (setf (browser-guide state) (first guide)
               (browser-symbols-p state) nil)
-        (scroll-to :docs-detail 0 0)))
+        (lui.frame:scroll-to :docs-detail 0 0)))
     (when (lui:list-item '(:docs-guide :previews) "Live widgets"
-                         (lui:opt :width (grow) :selected-p
+                         (lui:opt :width (lui.layout:grow) :selected-p
                                   (eq (browser-guide state) :previews)))
       (setf (browser-guide state) :previews
             (browser-symbols-p state) nil)
-      (scroll-to :docs-detail 0 0))
+      (lui.frame:scroll-to :docs-detail 0 0))
     (lui:label "API reference")
     (dolist (package (cons nil (browser-packages state)))
       (when (lui:list-item (list :docs-package package)
                            (or package "All packages")
-                           (lui:opt :width (grow)
+                           (lui:opt :width (lui.layout:grow)
                                     :selected-p
                                     (and (null (browser-guide state))
                                          (equal package
@@ -242,27 +242,27 @@
       (setf (browser-selected state) (second id)
             (browser-guide state) nil
             (browser-symbols-p state) nil)
-      (scroll-to :docs-detail 0 0)
-      (when (lui.frame::context-page-height-p *context*)
-        (setf (lui.frame::context-requested-page-top *context*) 0))
-      (request-frame))))
+      (lui.frame:scroll-to :docs-detail 0 0)
+      (when (lui.frame::context-page-height-p lui.frame:*context*)
+        (setf (lui.frame::context-requested-page-top lui.frame:*context*) 0))
+      (lui.frame:request-frame))))
 
 (defun entry-list (state height)
-  (lui:panel (lui:opt :id :docs-entries :width (grow) :height height
-                      :scroll-p (not (lui.frame::context-page-height-p *context*))
-                      :padding (units 0.5) :opacity 1 :frost 0)
+  (lui:panel (lui:opt :id :docs-entries :width (lui.layout:grow) :height height
+                      :scroll-p (not (lui.frame::context-page-height-p lui.frame:*context*))
+                      :padding (lui:units 0.5) :opacity 1 :frost 0)
     (let* ((rows (symbol-rows state)) (count (length rows))
-           (viewport (previous-box :docs-entries))
-           (page-p (lui.frame::context-page-height-p *context*))
+           (viewport (lui.frame:previous-box :docs-entries))
+           (page-p (lui.frame::context-page-height-p lui.frame:*context*))
            (offset (if page-p
                        (if viewport
-                           (- (lui.frame::context-page-top *context*)
-                              (box-y viewport) (units 0.5))
+                           (- (lui.frame::context-page-top lui.frame:*context*)
+                              (lui.layout:box-y viewport) (lui:units 0.5))
                            0)
-                       (nth-value 1 (scroll-position :docs-entries))))
+                       (nth-value 1 (lui.frame:scroll-position :docs-entries))))
            (bottom (+ offset (if page-p
-                                 (lui.frame::context-viewport-height *context*)
-                                 (if viewport (box-height viewport) (units 18)))))
+                                 (lui.frame::context-viewport-height lui.frame:*context*)
+                                 (if viewport (lui.layout:box-height viewport) (lui:units 18)))))
            (start (max 0 (1- (or (position-if
                                   (lambda (row)
                                     (> (+ (third row) (fourth row)) offset))
@@ -273,20 +273,20 @@
            (total (if (plusp count)
                       (+ (third (aref rows (1- count)))
                          (fourth (aref rows (1- count)))) 0)))
-      (emit (make-element :height (fixed (if (< start count)
+      (lui.frame:emit (lui.layout:make-element :height (lui.layout:fixed (if (< start count)
                                              (third (aref rows start))
                                              total))))
       (loop :for i :from start :below end
             :for (index caption top height) := (aref rows i)
             :do (lui:list-item
                  (list :docs-entry index) caption
-                 (lui:opt :width (grow) :height (fixed height)
+                 (lui:opt :width (lui.layout:grow) :height (lui.layout:fixed height)
                           :font-family :monospace
                           :selected-p
                           (and (null (browser-guide state))
                                (= index (browser-selected state))))))
-      (emit (make-element
-             :height (fixed (- total (if (plusp end)
+      (lui.frame:emit (lui.layout:make-element
+             :height (lui.layout:fixed (- total (if (plusp end)
                                          (+ (third (aref rows (1- end)))
                                             (fourth (aref rows (1- end))))
                                          0)))))
@@ -301,31 +301,31 @@
     ("PANEL" . :panel) ("ROW" . :row) ("COLUMN" . :column)))
 
 (defun canvas-preview (state)
-  (let ((box (previous-box :docs-preview-canvas)))
+  (let ((box (lui.frame:previous-box :docs-preview-canvas)))
     (when box
-      (loop for event across (events-for :docs-preview-canvas) do
-        (when (and (eq (event-kind event) :press)
-                   (eq (event-button event) :primary))
-          (push (list (/ (- (event-x event) (box-x box)) *unit*)
-                      (/ (- (event-y event) (box-y box)) *unit*))
+      (loop for event across (lui.frame:events-for :docs-preview-canvas) do
+        (when (and (eq (lui.frame:event-kind event) :press)
+                   (eq (lui.frame:event-button event) :primary))
+          (push (list (/ (- (lui.frame:event-x event) (lui.layout:box-x box)) lui:*unit*)
+                      (/ (- (lui.frame:event-y event) (lui.layout:box-y box)) lui:*unit*))
                 (browser-circles state)))))
     (lui:canvas :docs-preview-canvas
                 (loop :for (x y) :in (browser-circles state)
-                      :collect (list :circle (units x) (units y) (units 1)
+                      :collect (list :circle (lui:units x) (lui:units y) (lui:units 1)
                                      "#258bff" "#a7caff"))
-                (lui:opt :width (grow) :height (fixed (units 8))
+                (lui:opt :width (lui.layout:grow) :height (lui.layout:fixed (lui:units 8))
                          :background "#ffffff")))
-  (lui:label "Click the canvas to add a circle." (lui:opt :width (grow))))
+  (lui:label "Click the canvas to add a circle." (lui:opt :width (lui.layout:grow))))
 
 (defun preview (state kind)
   (lui:label (format nil "Live preview: ~A" (string-downcase
                                              (symbol-name kind)))
-             (lui:opt :width (grow) :font-weight :bold))
+             (lui:opt :width (lui.layout:grow) :font-weight :bold))
   (case kind
     (:date-picker
      (setf (browser-date state) (lui:date-picker :docs-date (browser-date state))))
     (:label (lui:label "A label wraps naturally as the window narrows."
-                       (lui:opt :width (grow))))
+                       (lui:opt :width (lui.layout:grow))))
     (:button
      (when (lui:button :docs-preview-button "Try this button")
        (incf (browser-clicks state)))
@@ -337,62 +337,62 @@
     (:slider
      (setf (browser-value state)
            (lui:slider :docs-preview-slider (browser-value state)
-                       (lui:opt :width (grow))))
+                       (lui:opt :width (lui.layout:grow))))
      (lui:label (format nil "Value: ~D%" (round (* 100 (browser-value state))))))
     (:text-field
      (setf (browser-text state)
            (lui:text-field :docs-preview-text (browser-text state)
-                           (lui:opt :width (grow))))
+                           (lui:opt :width (lui.layout:grow))))
      (lui:label (format nil "~D characters" (length (browser-text state)))))
     (:tab
-     (row (:width (grow) :gap (units 0.5))
+     (lui.frame:row (:width (lui.layout:grow) :gap (lui:units 0.5))
        (dolist (item '(:one :two))
          (when (lui:tab (list :docs-preview-tab item)
                         (if (eq item :one) "First tab" "Second tab")
                         (lui:opt :selected-p
                                  (eq item (browser-tab state))))
            (setf (browser-tab state) item)
-           (request-frame))))
+           (lui.frame:request-frame))))
      (lui:label (if (eq (browser-tab state) :one)
                     "First page is selected." "Second page is selected.")))
     (:list-item
      (dolist (item '(:one :two))
        (when (lui:list-item (list :docs-preview-item item)
                             (if (eq item :one) "First item" "Second item")
-                            (lui:opt :width (grow) :selected-p
+                            (lui:opt :width (lui.layout:grow) :selected-p
                                      (eq item (browser-item state))))
          (setf (browser-item state) item)
-         (request-frame))))
+         (lui.frame:request-frame))))
     (:cell
      (when (lui:cell :docs-preview-cell "Cell A1"
-                     (lui:opt :width (fixed (units 16))
+                     (lui:opt :width (lui.layout:fixed (lui:units 16))
                               :selected-p (browser-cell-p state)))
        (setf (browser-cell-p state) (not (browser-cell-p state)))
-       (request-frame)))
+       (lui.frame:request-frame)))
     (:gauge
      (lui:gauge :docs-preview-gauge (browser-value state)
-                (lui:opt :width (grow)))
+                (lui:opt :width (lui.layout:grow)))
      (when (lui:button :docs-preview-progress "Advance progress")
        (setf (browser-value state)
              (if (>= (browser-value state) 1) 0
                  (min 1 (+ (browser-value state) 0.2))))
-       (request-frame)))
+       (lui.frame:request-frame)))
     (:canvas (canvas-preview state))
     (:panel
-     (lui:panel (lui:opt :width (grow) :padding (units 1) :gap (units 0.5))
+     (lui:panel (lui:opt :width (lui.layout:grow) :padding (lui:units 1) :gap (lui:units 0.5))
        (lui:label "A panel groups and styles its children."
-                  (lui:opt :width (grow)))
+                  (lui:opt :width (lui.layout:grow)))
        (when (lui:button :docs-preview-panel "Panel action")
          (incf (browser-panel-clicks state)))
        (lui:label (format nil "Panel actions: ~D"
                           (browser-panel-clicks state)))))
     (:row
-        (row (:width (grow) :gap (units 1) :cross-align :center)
-          (lui:label "Left" (lui:opt :width (grow)))
-          (lui:label "Center" (lui:opt :width (grow)))
-          (lui:label "Right" (lui:opt :width (grow)))))
+        (lui.frame:row (:width (lui.layout:grow) :gap (lui:units 1) :cross-align :center)
+          (lui:label "Left" (lui:opt :width (lui.layout:grow)))
+          (lui:label "Center" (lui:opt :width (lui.layout:grow)))
+          (lui:label "Right" (lui:opt :width (lui.layout:grow)))))
     (:column
-        (column (:width (grow) :gap (units 0.5))
+        (lui.frame:column (:width (lui.layout:grow) :gap (lui:units 0.5))
           (lui:label "First child")
           (lui:label "Second child")
           (lui:label "Third child")))))
@@ -402,8 +402,8 @@
     ("lui.macos" . :macos) ("lui.qt" . :qt)))
 
 (defun toolkit-sample (state toolkit)
-  (with-toolkit (toolkit)
-    (lui:panel (lui:opt :width (grow) :padding (units 1) :gap (units 1)
+  (lui:with-toolkit (toolkit)
+    (lui:panel (lui:opt :width (lui.layout:grow) :padding (lui:units 1) :gap (lui:units 1)
                         :opacity 1)
       (lui:label (case toolkit (:macos "macOS") (:qt "Qt")
                    (otherwise (string-capitalize (symbol-name toolkit)))))
@@ -421,20 +421,20 @@
     (cdr (assoc (getf entry :name) *preview-kinds* :test #'string-equal))))
 
 (defun detail (state)
-  (lui:panel (lui:opt :id :docs-detail :width (grow) :height (grow)
-                      :scroll-p (not (lui.frame::context-page-height-p *context*)) :padding (units 1) :gap (units 1)
+  (lui:panel (lui:opt :id :docs-detail :width (lui.layout:grow) :height (lui.layout:grow)
+                      :scroll-p (not (lui.frame::context-page-height-p lui.frame:*context*)) :padding (lui:units 1) :gap (lui:units 1)
                       :opacity 1 :frost 0)
     (cond
       ((eq (browser-guide state) :previews)
        (lui:label "Interactive widgets and containers"
-                  (lui:opt :width (grow) :font-weight :bold))
+                  (lui:opt :width (lui.layout:grow) :font-weight :bold))
        (dolist (pair *preview-kinds*) (preview state (cdr pair))))
       ((browser-guide state)
        (let ((guide (assoc (browser-guide state) *guides*)))
          (lui:label (second guide)
-                    (lui:opt :width (grow) :font-weight :bold))
+                    (lui:opt :width (lui.layout:grow) :font-weight :bold))
          (when (eq (browser-guide state) :toolkits)
-           (row (:width (grow) :gap (units 0.5))
+           (lui.frame:row (:width (lui.layout:grow) :gap (lui:units 0.5))
              (dolist (pair *toolkit-packages*)
                (let ((name (cdr pair)))
                  (when (lui:tab (list :docs-sample name)
@@ -450,7 +450,7 @@
              (lui.debug:set-enabled t)))
          (dolist (paragraph (cddr guide))
            (lui:label paragraph
-                      (lui:opt :width (grow)
+                      (lui:opt :width (lui.layout:grow)
                                :font-family
                                (if (and (plusp (length paragraph))
                                         (char= (char paragraph 0) #\())
@@ -460,18 +460,18 @@
          (if index
              (let ((entry (aref (browser-entries state) index)))
                (lui:label (entry-title entry)
-                          (lui:opt :width (grow) :font-weight :bold))
+                          (lui:opt :width (lui.layout:grow) :font-weight :bold))
                (lui:label (string-downcase
                            (symbol-name (getf entry :kind :function))))
                (lui:label (or (getf entry :signature) "")
-                          (lui:opt :width (grow) :font-family :monospace))
+                          (lui:opt :width (lui.layout:grow) :font-family :monospace))
                (lui:label (or (getf entry :documentation)
                               "No docstring is available for this entry.")
-                          (lui:opt :width (grow)))
+                          (lui:opt :width (lui.layout:grow)))
                (let ((kind (entry-preview-kind entry))
                      (toolkit (cdr (assoc (getf entry :package)
                                           *toolkit-packages* :test #'equal))))
-                 (cond (kind (with-toolkit ((or toolkit (current-toolkit)))
+                 (cond (kind (lui:with-toolkit ((or toolkit (lui:current-toolkit)))
                                (preview state kind)))
                        ((and toolkit (string= "*DEFAULTS*" (getf entry :name)))
                         ;; (toolkit-sample state toolkit)
@@ -481,7 +481,7 @@
 (defun search-reference (state)
   (lui:label "Search API")
   (let ((query (lui:text-field :docs-search (browser-query state)
-                               (lui:opt :width (grow)))))
+                               (lui:opt :width (lui.layout:grow)))))
     (unless (equal query (browser-query state))
       (setf (browser-query state) query (browser-guide state) nil
             (browser-symbols-p state) t)
@@ -489,24 +489,24 @@
   (lui:label (format nil "~D API entries" (length (browser-matches state)))))
 
 (defun references (state)
-  (column (:width (fixed (reference-width)) :height (grow)
-                  :gap (units 0.5))
+  (lui.frame:column (:width (lui.layout:fixed (reference-width)) :height (lui.layout:grow)
+                  :gap (lui:units 0.5))
     (search-reference state)
-    (entry-list state (grow))))
+    (entry-list state (lui.layout:grow))))
 
 (defun draw-docs (state)
   (select-reference state)
-  (with-toolkit ((browser-toolkit state))
+  (lui:with-toolkit ((browser-toolkit state))
    (lui:with-palette ((lui:named-palette (browser-palette state)))
-    (lui:panel (lui:opt :width (grow) :height (grow)
+    (lui:panel (lui:opt :width (lui.layout:grow) :height (lui.layout:grow)
                         :background
                         (let ((colors (lui:toolkit-palette)))
                           (getf colors :window-background (getf colors :background)))
                         :opacity 1 :frost 0 :radius 0
-                        :padding (units 1) :gap (units 1))
-      (row (:width (grow) :gap (units 1) :cross-align :center)
+                        :padding (lui:units 1) :gap (lui:units 1))
+      (lui.frame:row (:width (lui.layout:grow) :gap (lui:units 1) :cross-align :center)
         (lui:label "LUI documentation"
-                   (lui:opt :font-weight :bold :width (grow)))
+                   (lui:opt :font-weight :bold :width (lui.layout:grow)))
         (lui:label (ecase (browser-toolkit state)
                      (:glass "Toolkit: Glass") (:motif "Toolkit: Motif")
                      (:garnet "Toolkit: Garnet") (:macos "Toolkit: macOS") (:qt "Toolkit: Qt")))
@@ -514,31 +514,31 @@
           (setf (browser-toolkit state)
                 (case (browser-toolkit state)
                   (:glass :motif) (:motif :garnet) (:garnet :macos) (:macos :qt) (otherwise :glass)))
-          (request-frame))
+          (lui.frame:request-frame))
         (when (lui:button :docs-debug "Show debugger")
           (lui.debug:set-enabled t)))
-      (row (:width (grow) :gap (units 1) :cross-align :center)
+      (lui.frame:row (:width (lui.layout:grow) :gap (lui:units 1) :cross-align :center)
         (lui:label (format nil "Palette: ~A" (string-capitalize (symbol-name (browser-palette state)))))
         (when (lui:button :docs-palette "Cycle palette")
           (let ((names (lui:available-palettes)))
             (setf (browser-palette state)
                   (aref names (mod (1+ (position (browser-palette state) names)) (length names)))))
-          (request-frame)))
+          (lui.frame:request-frame)))
       (lui:label (lui.frame::frame-rate-label (browser-frame-rate state)))
-      (row (:width (grow) :height (grow) :gap (units 1))
+      (lui.frame:row (:width (lui.layout:grow) :height (lui.layout:grow) :gap (lui:units 1))
         (navigation state)
-        (if (>= (context-width *context*) (units 80))
+        (if (>= (lui.frame:context-width lui.frame:*context*) (lui:units 80))
             (progn (references state) (detail state))
-            (column (:width (grow) :height (grow) :gap (units 0.5))
+            (lui.frame:column (:width (lui.layout:grow) :height (lui.layout:grow) :gap (lui:units 0.5))
               (search-reference state)
               (when (lui:button :docs-symbols
                                 (if (browser-symbols-p state)
                                     "Read selected" "Browse symbols")
-                                (lui:opt :width (grow)))
+                                (lui:opt :width (lui.layout:grow)))
                 (setf (browser-symbols-p state)
                       (not (browser-symbols-p state))))
               (if (browser-symbols-p state)
-                  (entry-list state (grow))
+                  (entry-list state (lui.layout:grow))
                   (detail state)))))))))
 
 (defun make-docs (&key (toolkit :qt) (entries *entries*))
@@ -564,5 +564,5 @@
 
 (defun main (&key backend width height (interactive t))
   "Open a fresh documentation browser on a loaded backend."
-  (run (make-docs) :backend backend :title "LUI documentation"
+  (lui:run (make-docs) :backend backend :title "LUI documentation"
        :width width :height height :interactive interactive))

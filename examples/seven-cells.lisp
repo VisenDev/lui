@@ -1,12 +1,11 @@
 (defpackage #:lui.example.seven.cells
-  (:use #:cl #:lui #:lui.layout #:lui.frame #:lui.interaction
-        #:lui.seven.model)
+  (:use #:cl)
   (:export #:draw-content #:make-state #:state-sheet
            #:state-selected #:state-editing))
 (in-package #:lui.example.seven.cells)
 
 (defstruct state
-  (sheet (make-sheet) :type sheet)
+  (sheet (lui.seven.model:make-sheet) :type lui.seven.model:sheet)
   (selected 0 :type integer) editing (draft "" :type string)
   (frame-width 0 :type real) (frame-height 0 :type real)
   (view-width nil :type (or null real))
@@ -17,31 +16,31 @@
 
 (defun id-index (id)
   (when (and (consp id) (eq (first id) :seven-cell))
-    (cell-index (second id))))
+    (lui.seven.model:cell-index (second id))))
 
 (defun finish-edit (state &optional cancel)
   (when (state-editing state)
     (unless cancel
-      (sheet-set (state-sheet state) (state-editing state)
+      (lui.seven.model:sheet-set (state-sheet state) (state-editing state)
                  (state-draft state)))
     (setf (state-editing state) nil)
-    (request-frame)))
+    (lui.frame:request-frame)))
 
 (defun start-edit (state index &optional text)
   (setf (state-selected state) index
         (state-editing state) index
         (state-draft state)
-        (or text (cell-text (sheet-cell (state-sheet state) index)))
-        (context-focus *context*) (cell-id index))
-  (reset-editor (cell-id index) (state-draft state))
-  (request-frame))
+        (or text (lui.seven.model:cell-text (lui.seven.model:sheet-cell (state-sheet state) index)))
+        (lui.frame:context-focus lui.frame:*context*) (cell-id index))
+  (lui.interaction:reset-editor (cell-id index) (state-draft state))
+  (lui.frame:request-frame))
 
 (defun ensure-visible (index)
-  (reveal-rect :seven-grid
-               (+ (units 4) (* (mod index 26) (units 10)))
-               (* (1+ (floor index 26)) (units 3))
-               (units 10) (units 3)
-               :leading-x (units 4) :leading-y (units 3)))
+  (lui.interaction:reveal-rect :seven-grid
+               (+ (lui:units 4) (* (mod index 26) (lui:units 10)))
+               (* (1+ (floor index 26)) (lui:units 3))
+               (lui:units 10) (lui:units 3)
+               :leading-x (lui:units 4) :leading-y (lui:units 3)))
 
 (defun move-selection (state key)
   (let* ((index (state-selected state))
@@ -54,50 +53,50 @@
                  (:home 0) (:end 2599))))
     (when next
       (setf (state-selected state) next
-            (context-focus *context*) (cell-id next))
+            (lui.frame:context-focus lui.frame:*context*) (cell-id next))
       (ensure-visible next)
-      (request-frame))))
+      (lui.frame:request-frame))))
 
 (defun edit-event (state id event)
   (setf (state-draft state)
-        (edit-value id (state-draft state) (list event))))
+        (lui.interaction:edit-value id (state-draft state) (list event))))
 
 (defun handle-cell-events (state index)
-  (let* ((id (cell-id index)) (events (take-events id)))
+  (let* ((id (cell-id index)) (events (lui.interaction:take-events id)))
     (when (and (plusp (length events)) (state-editing state)
                (not (eql index (state-editing state))))
       (finish-edit state))
     (loop for raw across events do
-      (let ((event (text-input-event
+      (let ((event (lui.interaction:text-input-event
                     raw (eql index (state-editing state)))))
         (when event
           (cond
-            ((and (eq (event-kind event) :press)
-                  (eq (event-button event) :primary))
+            ((and (eq (lui.frame:event-kind event) :press)
+                  (eq (lui.frame:event-button event) :primary))
              (unless (eql index (state-editing state)) (finish-edit state))
              (setf (state-selected state) index
-                   (context-focus *context*) id)
-             (when (and (>= (event-clicks event) 2)
+                   (lui.frame:context-focus lui.frame:*context*) id)
+             (when (and (>= (lui.frame:event-clicks event) 2)
                         (not (state-editing state)))
                (start-edit state index)))
             ((state-editing state)
-             (cond ((and (eq (event-kind event) :key)
-                         (eq (event-key event) :escape))
+             (cond ((and (eq (lui.frame:event-kind event) :key)
+                         (eq (lui.frame:event-key event) :escape))
                     (finish-edit state t))
-                   ((or (eq (event-kind event) :activate)
-                        (and (eq (event-kind event) :key)
-                             (eq (event-key event) :enter)))
+                   ((or (eq (lui.frame:event-kind event) :activate)
+                        (and (eq (lui.frame:event-kind event) :key)
+                             (eq (lui.frame:event-key event) :enter)))
                     (finish-edit state))
                    (t (edit-event state id event))))
-            ((or (eq (event-kind event) :activate)
-                 (and (eq (event-kind event) :key)
-                      (eq (event-key event) :enter)))
+            ((or (eq (lui.frame:event-kind event) :activate)
+                 (and (eq (lui.frame:event-kind event) :key)
+                      (eq (lui.frame:event-key event) :enter)))
              (start-edit state index))
-            ((eq (event-kind event) :key)
+            ((eq (lui.frame:event-kind event) :key)
              (setf (state-selected state) index)
-             (move-selection state (event-key event)))
-            ((and (eq (event-kind event) :text)
-                  (stringp (event-value event)))
+             (move-selection state (lui.frame:event-key event)))
+            ((and (eq (lui.frame:event-kind event) :text)
+                  (stringp (lui.frame:event-value event)))
              (start-edit state index "")
              (edit-event state id event))))))
     ;; Shared text-field declaration receives the already edited draft.
@@ -108,13 +107,13 @@
     ;; Apply pending text before a blur or Enter commits in the same frame.
     (when editing (handle-cell-events state editing))
     (when (and (state-editing state)
-               (not (equal (context-focus *context*)
+               (not (equal (lui.frame:context-focus lui.frame:*context*)
                            (cell-id (state-editing state)))))
       (finish-edit state))
-    (let ((focused (id-index (context-focus *context*))))
+    (let ((focused (id-index (lui.frame:context-focus lui.frame:*context*))))
       (when (and focused (not (state-editing state)))
         (setf (state-selected state) focused)))
-    (loop for id across (event-targets) do
+    (loop for id across (lui.interaction:event-targets) do
       (let ((index (id-index id)))
         (when (and index (not (eql index editing)))
           (handle-cell-events state index))))))
@@ -122,55 +121,55 @@
 
 (defun header (text x y width height)
   (lui:cell nil text
-            (lui:opt :width (fixed width) :height (fixed height)
+            (lui:opt :width (lui.layout:fixed width) :height (lui.layout:fixed height)
                      :floating-p t :offset-x x :offset-y y
-                     :disabled-p t :padding (units 0.5)
+                     :disabled-p t :padding (lui:units 0.5)
                      :background "#e5e9ee" :foreground "#202430")))
 
 (defun draw-cell (state index x y width height)
   (if (eql index (state-editing state))
       (setf (state-draft state)
             (lui:text-field (cell-id index) (state-draft state)
-                            (lui:opt :width (fixed width)
-                                     :height (fixed height)
+                            (lui:opt :width (lui.layout:fixed width)
+                                     :height (lui.layout:fixed height)
                                      :floating-p t :offset-x x :offset-y y
                                      :radius 0 :frost 0 :opacity 1
                                      :background "#ffffff"
                                      :foreground "#000000")))
       (lui:cell (cell-id index)
-                (cell-display (sheet-cell (state-sheet state) index))
-                (lui:opt :width (fixed width) :height (fixed height)
+                (lui.seven.model:cell-display (lui.seven.model:sheet-cell (state-sheet state) index))
+                (lui:opt :width (lui.layout:fixed width) :height (lui.layout:fixed height)
                          :floating-p t :offset-x x :offset-y y
                          :selected-p (= index (state-selected state))))))
 
 (defun draw-content (state)
-  (when (or (/= (state-frame-width state) (context-width *context*))
-            (/= (state-frame-height state) (context-height *context*)))
-    (setf (state-frame-width state) (context-width *context*)
-          (state-frame-height state) (context-height *context*)
+  (when (or (/= (state-frame-width state) (lui.frame:context-width lui.frame:*context*))
+            (/= (state-frame-height state) (lui.frame:context-height lui.frame:*context*)))
+    (setf (state-frame-width state) (lui.frame:context-width lui.frame:*context*)
+          (state-frame-height state) (lui.frame:context-height lui.frame:*context*)
           (state-view-width state) nil
           (state-view-height state) nil)
-    (request-frame))
+    (lui.frame:request-frame))
   (handle-input state)
   (lui:label "Double-click or Enter to edit; Enter commits, Esc cancels. Arrows move; Home/End reach A0/Z99.")
   (lui:label (format nil "Selected: ~A"
-                     (cell-address (state-selected state))))
-  (let* ((page-p (lui.frame::context-page-height-p *context*))
-         (previous (context-previous-root *context*))
+                     (lui.seven.model:cell-address (state-selected state))))
+  (let* ((page-p (lui.frame::context-page-height-p lui.frame:*context*))
+         (previous (lui.frame:context-previous-root lui.frame:*context*))
          (viewport (when (and previous
-                              (= (box-width (element-box previous))
-                                 (context-width *context*))
+                              (= (lui.layout:box-width (lui.layout:element-box previous))
+                                 (lui.frame:context-width lui.frame:*context*))
                               (or page-p
-                                  (= (box-height (element-box previous))
-                                     (context-height *context*))))
-                     (previous-box :seven-grid)))
-         (width (units 10)) (height (units 3)) (header (units 4))
+                                  (= (lui.layout:box-height (lui.layout:element-box previous))
+                                     (lui.frame:context-height lui.frame:*context*))))
+                     (lui.frame:previous-box :seven-grid)))
+         (width (lui:units 10)) (height (lui:units 3)) (header (lui:units 4))
          (cached (eq (state-view-toolkit state) (lui:current-toolkit)))
-         (view-width (if viewport (box-width viewport)
+         (view-width (if viewport (lui.layout:box-width viewport)
                          (or (and cached (state-view-width state)) 0)))
          (view-height (if (and page-p viewport)
-                          (lui.frame::context-viewport-height *context*)
-                          (if viewport (box-height viewport)
+                          (lui.frame::context-viewport-height lui.frame:*context*)
+                          (if viewport (lui.layout:box-height viewport)
                               (or (and cached (state-view-height state)) 0))))
          (full-width (+ header (* 26 width)))
          (full-height (* 101 height)))
@@ -179,36 +178,36 @@
             (state-view-height state) view-height
             (state-view-toolkit state) (lui:current-toolkit)))
     ;; The cold geometry pass avoids constructing rows for a whole-window guess.
-    (unless viewport (request-frame))
-    (multiple-value-bind (x y) (scroll-position :seven-grid)
+    (unless viewport (lui.frame:request-frame))
+    (multiple-value-bind (x y) (lui.frame:scroll-position :seven-grid)
       ;; The page owns vertical scrolling; retain the grid's horizontal
       ;; viewport and paint only rows near the visible part of its full extent.
       (when page-p
         (setf y (if viewport
                     (max 0 (min (- full-height view-height)
-                                (- (lui.frame::context-page-top *context*)
-                                   (box-y viewport))))
+                                (- (lui.frame::context-page-top lui.frame:*context*)
+                                   (lui.layout:box-y viewport))))
                     0)))
       (let* ((maximum (max 0 (- full-width view-width)))
              (next (lui:slider :seven-grid-horizontal x
                                (lui:opt :minimum 0 :maximum (max 1 maximum)
-                                        :step 1 :width (grow)
+                                        :step 1 :width (lui.layout:grow)
                                         :disabled-p (zerop maximum)))))
         (unless (= x next)
           (setf x next)
-          (scroll-to :seven-grid x (if page-p 0 y))
-          (request-frame)))
+          (lui.frame:scroll-to :seven-grid x (if page-p 0 y))
+          (lui.frame:request-frame)))
       (multiple-value-bind (first-column last-column)
-          (visible-span x view-width width header 26)
+          (lui.interaction:visible-span x view-width width header 26)
         (multiple-value-bind (first-row last-row)
-            (visible-span y view-height height height 100)
-          (lui:panel (lui:opt :id :seven-grid :width (grow)
-                              :height (if page-p (fixed full-height) (grow))
+            (lui.interaction:visible-span y view-height height height 100)
+          (lui:panel (lui:opt :id :seven-grid :width (lui.layout:grow)
+                              :height (if page-p (lui.layout:fixed full-height) (lui.layout:grow))
                               :scroll-p t :radius 0 :frost 0 :opacity 1)
-            (column (:width (fixed full-width) :height (fixed full-height))
+            (lui.frame:column (:width (lui.layout:fixed full-width) :height (lui.layout:fixed full-height))
               ;; This clip also prevents clicks passing through headers.
-              (column (:width (fixed (max 0 (- view-width header)))
-                              :height (fixed (max 0 (- view-height height)))
+              (lui.frame:column (:width (lui.layout:fixed (max 0 (- view-width header)))
+                              :height (lui.layout:fixed (max 0 (- view-height height)))
                               :floating-p t :offset-x (+ x header)
                               :offset-y (+ y height) :clip-p t)
                 (do ((row first-row (1+ row))) ((>= row last-row))

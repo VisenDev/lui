@@ -758,9 +758,10 @@ Performance tuning and broader platform/implementation coverage remain open.
 
 ## Conventions
 
-One package per source file; internal packages use `:use`, while external symbols
-are qualified or explicitly imported. Data uses `defstruct`, with typed slots and
-functions through `lui.fn`, adapted from `open-orders`. Normal Lisp code wraps at
+One package per source file. Implementation packages may use `:use`. Demos and
+examples use only Common Lisp and qualify their LUI API references. Other external
+symbols are qualified or explicitly imported. Data uses `defstruct`, with typed
+slots and functions through `lui.fn`, adapted from `open-orders`. Normal Lisp code wraps at
 78 columns; LOOP clauses use keyword symbols.
 
 Run `mallet src --strict --disable no-package-use --disable error-without-custom-condition`.
