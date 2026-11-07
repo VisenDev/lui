@@ -167,7 +167,7 @@
   (setf (gpu-logical-width gpu) 720 (gpu-logical-height gpu) 520))
 
 (let* ((font (open-font))
-       (gpu (open-gpu nil nil font 720 520))
+       (gpu (open-gpu font 720 520))
        (renderer (gpu-renderer gpu))
        (context (make-context
                  :measure (lambda (widget width)
@@ -190,6 +190,23 @@
            (paint-frame renderer context)
            (assert (= builds (lui.gl::gpu-geometry-builds gpu))))
          (present-gpu gpu)
+         ;; Wayflan presents SHM copies of an EGL pbuffer. Resizing that target
+         ;; must keep font/geometry caches and draw into the entire new extent.
+         (let ((context (lui.gl::gpu-context gpu))
+               (geometry (lui.gl::gpu-geometry gpu)))
+           (resize-gpu-pbuffer gpu 900 600)
+           (assert (eq context (lui.gl::gpu-context gpu)))
+           (assert (eq renderer (gpu-renderer gpu)))
+           (assert (eq geometry (lui.gl::gpu-geometry gpu)))
+           (assert (= 900 (gpu-width gpu)))
+           (assert (= 600 (gpu-height gpu)))
+           (begin-gpu-frame gpu)
+           (cffi:with-foreign-object (pixel :uint8 4)
+             (cffi:foreign-funcall "glReadPixels" :int 899 :int 599
+                                  :int 1 :int 1 :uint #x1908 :uint #x1401
+                                  :pointer pixel :void)
+             (assert (= 255 (cffi:mem-aref pixel :uint8 3))))
+           (assert (zerop (cffi:foreign-funcall "glGetError" :uint))))
          (format t "EGL/OpenGL shared demo and glass shader passed.~%"))
     (close-gpu gpu)
     (close-font font)))

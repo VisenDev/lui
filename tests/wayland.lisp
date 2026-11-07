@@ -2,11 +2,22 @@
   (:use #:cl #:lui #:lui.layout #:lui.frame))
 (in-package #:lui.tests.wayland)
 
+(lui.fn:fn dispatch-event (handler proxy &rest arguments)
+  ;; Exercise the same public hook installation used by the backend. Arguments
+  ;; already have Wayflan's decoded representation (keywords and real values).
+  (let ((object (make-instance 'wayflan-client:wl-proxy :version 1)))
+    (lui.wayland::on-event object :input
+                          (lambda (object &rest values)
+                            (declare (ignore object)) (apply handler proxy values)))
+    (dolist (hook (wayflan-client:wl-proxy-hooks object))
+      (funcall hook :unrelated)
+      (apply hook :input arguments))))
+
 (cffi:defcstruct keymap-names
   (rules :pointer) (model :pointer) (layout :pointer)
   (variant :pointer) (options :pointer))
 
-(defun install-us-keymap (window)
+(lui.fn:fn install-us-keymap (window)
   (lui.wayland::release-keymap window)
   (cffi:with-foreign-object (names '(:struct keymap-names))
     (cffi:with-foreign-string (layout-name "us")
@@ -29,38 +40,27 @@
   (assert (not (cffi:null-pointer-p
                 (lui.wayland::wl-window-key-state window)))))
 
-(defun keyboard-key (code pressed)
+(lui.fn:fn keyboard-key (code pressed)
   (let ((null (cffi:null-pointer)))
-    (cffi:foreign-funcall-pointer
-     (cffi:callback lui.wayland::keyboard-key) ()
-     :pointer null :pointer null :uint32 0 :uint32 0
-     :uint32 code :uint32 pressed :void)))
+    (dispatch-event #'lui.wayland::keyboard-key null 0 0 code (if (zerop pressed) :released :pressed))))
 
-(defun repeat-info (rate delay)
+(lui.fn:fn repeat-info (rate delay)
   (let ((null (cffi:null-pointer)))
-    (cffi:foreign-funcall-pointer
-     (cffi:callback lui.wayland::keyboard-repeat-info) ()
-     :pointer null :pointer null :int32 rate :int32 delay :void)))
+    (dispatch-event #'lui.wayland::keyboard-repeat-info null rate delay)))
 
-(defun take-input ()
+(lui.fn:fn take-input ()
   (nreverse (shiftf
              (lui.wayland::wl-window-events lui.wayland::*window*) nil)))
 
-(defun pointer-motion (x y)
+(lui.fn:fn pointer-motion (x y)
   (let ((null (cffi:null-pointer)))
-    (cffi:foreign-funcall-pointer
-     (cffi:callback lui.wayland::pointer-motion) ()
-     :pointer null :pointer null :uint32 0
-     :int32 (round (* x 256)) :int32 (round (* y 256)) :void)))
+    (dispatch-event #'lui.wayland::pointer-motion null 0 (/ (round (* x 256)) 256) (/ (round (* y 256)) 256))))
 
-(defun pointer-button (pressed)
+(lui.fn:fn pointer-button (pressed)
   (let ((null (cffi:null-pointer)))
-    (cffi:foreign-funcall-pointer
-     (cffi:callback lui.wayland::pointer-button) ()
-     :pointer null :pointer null :uint32 0 :uint32 0
-     :uint32 #x110 :uint32 pressed :void)))
+    (dispatch-event #'lui.wayland::pointer-button null 0 0 #x110 (if (zerop pressed) :released :pressed))))
 
-(defun test-pointer-cancellation ()
+(lui.fn:fn test-pointer-cancellation ()
   (let* ((lui:*unit* 1) (context (lui.terminal:make-terminal-context))
          (state (lui.debug:make-state :selected '(:id :target)))
          (lui.wayland::*window* (lui.wayland::make-wl-window)))
@@ -92,21 +92,13 @@
             (case mode
               (:enter
                ;; A new enter re-synchronizes buttons after a lost release.
-               (cffi:foreign-funcall-pointer
-                (cffi:callback lui.wayland::pointer-enter) ()
-                :pointer null :pointer null :uint32 0 :pointer null
-                :int32 (round (* x 256)) :int32 (round (* (- y 2) 256))
-                :void))
+               (dispatch-event #'lui.wayland::pointer-enter null 0 null (/ (round (* x 256)) 256) (/ (round (* (- y 2) 256)) 256)))
               (:device
-               (cffi:foreign-funcall-pointer
-                (cffi:callback lui.wayland::seat-capabilities) ()
-                :pointer null :pointer null :uint32 0 :void))
+               (dispatch-event #'lui.wayland::seat-capabilities null nil))
               (otherwise
-               (cffi:foreign-funcall-pointer
-                (if (eq mode :leave)
-                    (cffi:callback lui.wayland::pointer-leave)
-                    (cffi:callback lui.wayland::keyboard-leave)) ()
-                :pointer null :pointer null :uint32 0 :pointer null :void)))
+               (funcall (if (eq mode :leave)
+                    #'lui.wayland::pointer-leave
+                    #'lui.wayland::keyboard-leave) null 0 null)))
             (frame)
             (assert (null (context-active context)))
             (assert (null (lui.debug::state-details-grab state)))
@@ -115,9 +107,9 @@
             (assert (= before (height)))
             (assert (equal '(:id :target)
                            (lui.debug:state-selected state))))))
-      (format t "Wayland pointer ABI cancellation and re-entry passed.~%"))))
+      (format t "Wayflan pointer hook cancellation and re-entry passed.~%"))))
 
-(defun test-key-repeat ()
+(lui.fn:fn test-key-repeat ()
   (let* ((context (cffi:foreign-funcall "xkb_context_new" :uint 0 :pointer))
          (lui.wayland::*window*
            (lui.wayland::make-wl-window :xkb-context context)))
@@ -142,10 +134,7 @@
              (assert (= 30 (lui.wayland::wl-window-repeat-code
                             lui.wayland::*window*)))
              (let ((null (cffi:null-pointer)))
-               (cffi:foreign-funcall-pointer
-                (cffi:callback lui.wayland::keyboard-modifiers) ()
-                :pointer null :pointer null :uint32 0 :uint32 1
-                :uint32 0 :uint32 0 :uint32 0 :void))
+               (dispatch-event #'lui.wayland::keyboard-modifiers null 0 1 0 0 0))
              (lui.wayland::repeat-input (+ deadline (* 4 interval)))
              (assert (equal '("A") (mapcar #'event-value (take-input))))
              (keyboard-key 48 0)
@@ -184,9 +173,7 @@
            (repeat-info 20 100)
            (keyboard-key 30 1)
            (let ((null (cffi:null-pointer)))
-             (cffi:foreign-funcall-pointer
-              (cffi:callback lui.wayland::keyboard-leave) ()
-              :pointer null :pointer null :uint32 0 :pointer null :void))
+             (dispatch-event #'lui.wayland::keyboard-leave null 0 null))
            (assert (null (lui.wayland::wl-window-repeat-code
                           lui.wayland::*window*)))
            (keyboard-key 30 1)
@@ -196,17 +183,15 @@
            (install-us-keymap lui.wayland::*window*)
            (keyboard-key 30 1)
            (let ((null (cffi:null-pointer)))
-             (cffi:foreign-funcall-pointer
-              (cffi:callback lui.wayland::seat-capabilities) ()
-              :pointer null :pointer null :uint32 0 :void))
+             (dispatch-event #'lui.wayland::seat-capabilities null nil))
            (assert (null (lui.wayland::wl-window-repeat-code
                           lui.wayland::*window*))))
       (lui.wayland::release-keymap lui.wayland::*window*)
       (cffi:foreign-funcall "xkb_context_unref" :pointer context :void)))
   (format t "Wayland keyboard repeat timing, modifiers, and cancellation passed.~%"))
 
-(defun test-clipboard-transfer ()
-  (let* ((source (cffi:make-pointer 1))
+(lui.fn:fn test-clipboard-transfer ()
+  (let* ((source (gensym "SOURCE"))
          (text "Clipboard café 🦊")
          (lui.wayland::*window*
            (lui.wayland::make-wl-window :clipboard-source source
@@ -218,11 +203,7 @@
               (write-fd (cffi:mem-aref fds :int 1)))
           (unwind-protect
                (progn
-                 (cffi:with-foreign-string (type mime)
-                   (cffi:foreign-funcall-pointer
-                    (cffi:callback lui.wayland::clipboard-send) ()
-                    :pointer (cffi:null-pointer) :pointer source
-                    :pointer type :int write-fd :void))
+                 (dispatch-event #'lui.wayland::clipboard-send source mime write-fd)
                  (cffi:with-foreign-object (bytes :char 128)
                    (let ((count (cffi:foreign-funcall
                                  "read" :int read-fd :pointer bytes
@@ -241,7 +222,7 @@
 
 (test-clipboard-transfer)
 
-(defun test-clipboard-source (window context)
+(lui.fn:fn test-clipboard-source (window context)
   (if (lui.wayland::wl-window-clipboard-device window)
       (let ((serial (lui.wayland::wl-window-clipboard-serial window))
             (text (copy-seq "Native café 🦊")))
@@ -257,109 +238,82 @@
                                 (lui.wayland::wl-window-clipboard-text
                                  window)))
                (let ((first-id
-                       (cffi:foreign-funcall "wl_proxy_get_id" :pointer
-                         (lui.wayland::wl-window-clipboard-source window)
-                         :uint32)))
+                       (wayflan-client:wl-proxy-id (lui.wayland::wl-window-clipboard-source window))))
                  (funcall (context-copy context) "Replacement")
                  (assert (/= first-id
-                             (cffi:foreign-funcall "wl_proxy_get_id" :pointer
-                               (lui.wayland::wl-window-clipboard-source
-                                window) :uint32))))
-               (assert (not (minusp
-                             (lui.wayland-protocol:roundtrip
-                              (lui.wayland::wl-window-display window)))))
+                             (wayflan-client:wl-proxy-id (lui.wayland::wl-window-clipboard-source
+                                window)))))
+               (wayflan-client:wl-display-roundtrip (lui.wayland::wl-window-display window))
                (let ((source
                        (lui.wayland::wl-window-clipboard-source window)))
                  (when source
-                   (cffi:foreign-funcall-pointer
-                    (cffi:callback lui.wayland::clipboard-cancelled) ()
-                    :pointer (cffi:null-pointer) :pointer source :void)))
+                   (dispatch-event #'lui.wayland::clipboard-cancelled source)))
                (assert (null (lui.wayland::wl-window-clipboard-source
                               window)))
-               (assert (null (lui.wayland::wl-window-clipboard-listener
-                              window))))
+               )
           (setf (lui.wayland::wl-window-clipboard-serial window) serial)
           (lui.wayland::release-clipboard-source window)))
       (assert (null (context-copy context)))))
 
-(defun test-themed-cursor (window)
-  (when (lui.wayland::wl-window-shm window)
-    (let ((image (lui.wayland::cursor-image-for window :not-allowed))
-          (serial (lui.wayland::wl-window-cursor-serial window)))
-      (assert image)
-      (assert (lui.wayland::cursor-image-for window :resize-horizontal))
-      (assert (lui.wayland::cursor-image-for window :resize-vertical))
-      (assert (plusp (cffi:foreign-slot-value
-                      image '(:struct lui.wayland::cursor-image)
-                      'lui.wayland::width)))
-      (when (lui.wayland::wl-window-pointer window)
-        ;; Serial 0 cannot change the real pointer. Still exercise native
-        ;; theme-buffer attachment/commit and check server protocol errors.
-        (unwind-protect
-             (progn
-               (setf (lui.wayland::wl-window-cursor-serial window) 0)
-               (assert (lui.wayland::set-themed-cursor :not-allowed))
-               (assert (lui.wayland::set-themed-cursor :resize-horizontal))
-               (assert (lui.wayland::set-themed-cursor :resize-vertical)))
-          (setf (lui.wayland::wl-window-cursor-serial window) serial))
-        (assert (not (minusp
-                      (lui.wayland-protocol:roundtrip
-                       (lui.wayland::wl-window-display window)))))))))
+(lui.fn:fn test-fallback-cursor (window)
+  (when (lui.wayland::wl-window-pointer window)
+    (let ((serial (lui.wayland::wl-window-cursor-serial window)))
+      (unwind-protect
+           (progn
+             (setf (lui.wayland::wl-window-cursor-serial window) 0)
+             (lui.wayland::set-fallback-cursor)
+             (let ((buffer (lui.wayland::wl-window-cursor-buffer window)))
+               (assert buffer)
+               (assert (= 24 (lui.wayland::shm-buffer-width buffer)))
+               (assert (= #xff000000
+                          (cffi:mem-aref (lui.wayland::shm-buffer-memory buffer) :uint32 0)))))
+        (setf (lui.wayland::wl-window-cursor-serial window) serial)))
+    (wayflan-client:wl-display-roundtrip (lui.wayland::wl-window-display window))))
 
-(defun test-pointer-cursor-state ()
+(lui.fn:fn test-pointer-cursor-state ()
   (let ((lui.wayland::*window* (lui.wayland::make-wl-window))
         (null (cffi:null-pointer)))
-    (cffi:foreign-funcall-pointer
-     (cffi:callback lui.wayland::pointer-enter) ()
-     :pointer null :pointer null :uint32 41 :pointer null
-     :int32 768 :int32 1024 :void)
+    (dispatch-event #'lui.wayland::pointer-enter null 41 null (/ 768 256) (/ 1024 256))
     (let ((event (first (take-input))))
       (assert (eq :move (event-kind event)))
       (assert (= 3 (event-x event)))
       (assert (= 4 (event-y event))))
     (dolist (state '(1 0))
-      (cffi:foreign-funcall-pointer
-       (cffi:callback lui.wayland::pointer-button) ()
-       :pointer null :pointer null :uint32 42 :uint32 0
-       :uint32 #x110 :uint32 state :void)
+      (dispatch-event #'lui.wayland::pointer-button null 42 0 #x110 (if (zerop state) :released :pressed))
       (assert (= 42 (lui.wayland::wl-window-clipboard-serial
                      lui.wayland::*window*)))
       ;; Cursor-shape requests require ENTER's serial, never BUTTON's serial.
       (assert (= 41 (lui.wayland::wl-window-cursor-serial
                      lui.wayland::*window*))))
-    (cffi:foreign-funcall-pointer
-     (cffi:callback lui.wayland::pointer-leave) ()
-     :pointer null :pointer null :uint32 43 :pointer null :void)
+    (dispatch-event #'lui.wayland::pointer-leave null 43 null)
     (assert (null (lui.wayland::wl-window-cursor-serial
                    lui.wayland::*window*)))
     (assert (= 15 (lui.wayland::cursor-shape :not-allowed)))
     (assert (= 26 (lui.wayland::cursor-shape :resize-horizontal)))
     (assert (= 27 (lui.wayland::cursor-shape :resize-vertical)))))
 
-(defun test-surface-scaling ()
+(lui.fn:fn test-surface-scaling ()
   (let ((lui.wayland::*window*
-          (lui.wayland::make-wl-window :width 101 :height 55))
-        (null (cffi:null-pointer)))
-    (cffi:foreign-funcall-pointer
-     (cffi:callback lui.wayland::preferred-buffer-scale) ()
-     :pointer null :pointer null :int32 2 :void)
+          (lui.wayland::make-wl-window :width 101 :height 55)))
+    (let ((output (gensym "OUTPUT")))
+      (setf (gethash output (lui.wayland::wl-window-outputs lui.wayland::*window*)) 2
+            (lui.wayland::wl-window-entered-outputs lui.wayland::*window*) (list output))
+      (lui.wayland::update-output-scale))
     (assert (equal '(202 110)
                    (multiple-value-list
                     (lui.wayland::framebuffer-size lui.wayland::*window*))))
     ;; Fractional scaling overrides the integer fallback without rounding
     ;; logical input/layout coordinates or truncating physical coverage.
     (setf (lui.wayland::wl-window-fractional-object lui.wayland::*window*)
-          (cffi:make-pointer 1))
-    (cffi:foreign-funcall-pointer
-     (cffi:callback lui.wayland::fractional-preferred-scale) ()
-     :pointer null :pointer null :uint32 150 :void)
+          (gensym "SOURCE"))
+    (setf (lui.wayland::wl-window-scale120 lui.wayland::*window*) 150)
     (assert (equal '(127 69)
                    (multiple-value-list
                     (lui.wayland::framebuffer-size lui.wayland::*window*))))
     (assert (= 101 (lui.wayland::wl-window-width lui.wayland::*window*)))
     (assert (= 55 (lui.wayland::wl-window-height lui.wayland::*window*)))))
 
-(defun test-readline-translation ()
+(lui.fn:fn test-readline-translation ()
   (let* ((xkb (cffi:foreign-funcall "xkb_context_new" :uint 0 :pointer))
          (lui.wayland::*window*
            (lui.wayland::make-wl-window :xkb-context xkb))
@@ -373,10 +327,7 @@
          (progn
            (install-us-keymap lui.wayland::*window*)
            (flet ((modifiers (mask)
-                    (cffi:foreign-funcall-pointer
-                     (cffi:callback lui.wayland::keyboard-modifiers) ()
-                     :pointer null :pointer null :uint32 0 :uint32 mask
-                     :uint32 0 :uint32 0 :uint32 0 :void))
+                    (dispatch-event #'lui.wayland::keyboard-modifiers null 0 mask 0 0 0))
                   (expect (code command)
                     (keyboard-key code 1)
                     (let ((events (take-input)))
@@ -419,7 +370,7 @@
       (lui.wayland::release-keymap lui.wayland::*window*)
       (cffi:foreign-funcall "xkb_context_unref" :pointer xkb :void))))
 
-(defun test-batched-focus ()
+(lui.fn:fn test-batched-focus ()
   (let* ((xkb (cffi:foreign-funcall "xkb_context_new" :uint 0 :pointer))
          (lui.wayland::*window*
            (lui.wayland::make-wl-window :xkb-context xkb
@@ -442,14 +393,8 @@
                    (lui.wayland::wl-window-y lui.wayland::*window*)
                    (+ 1 (box-y box)))
              (dolist (pressed '(1 0))
-               (cffi:foreign-funcall-pointer
-                (cffi:callback lui.wayland::pointer-button) ()
-                :pointer null :pointer null :uint32 42 :uint32 0
-                :uint32 #x110 :uint32 pressed :void)))
-           (cffi:foreign-funcall-pointer
-            (cffi:callback lui.wayland::keyboard-modifiers) ()
-            :pointer null :pointer null :uint32 0 :uint32 5
-            :uint32 0 :uint32 0 :uint32 0 :void)
+               (dispatch-event #'lui.wayland::pointer-button null 42 0 #x110 (if (zerop pressed) :released :pressed))))
+           (dispatch-event #'lui.wayland::keyboard-modifiers null 0 5 0 0 0)
            (keyboard-key 30 1)
            (assert (null (context-focus context)))
            (let ((events (take-input)))
@@ -466,7 +411,7 @@
 
 (test-batched-focus)
 
-(defun test-decoration-configure ()
+(lui.fn:fn test-decoration-configure ()
   (let ((lui.wayland::*window* (lui.wayland::make-wl-window))
         (null (cffi:null-pointer)))
     ;; Missing manager is a valid compositor configuration.
@@ -476,9 +421,7 @@
     (dolist (mode '(2 1))
       (let ((old (lui.wayland::wl-window-decoration-mode
                   lui.wayland::*window*)))
-        (cffi:foreign-funcall-pointer
-         (cffi:callback lui.wayland::decoration-configure) ()
-         :pointer null :pointer null :uint32 mode :void)
+        (dispatch-event #'lui.wayland::decoration-configure null mode)
         (assert (eql old (lui.wayland::wl-window-decoration-mode
                          lui.wayland::*window*)))
         (assert (= mode (lui.wayland::wl-window-pending-decoration-mode
@@ -495,7 +438,44 @@
 
 (test-key-repeat)
 
-(let ((frames 0) (native nil) (gallery (lui.example:make-gallery)))
+(lui.fn:fn test-shm-presentation (window)
+  ;; A fresh native buffer exercises the public release hook without forging a
+  ;; compositor release for any buffer it might still be reading.
+  (let ((buffer (lui.wayland::allocate-buffer window 8 8)))
+    (unwind-protect
+         (progn
+           (setf (lui.wayland::wl-window-buffers window) (list buffer)
+                 (lui.wayland::shm-buffer-busy-p buffer) t)
+           (dolist (hook (wayflan-client:wl-proxy-hooks
+                          (lui.wayland::shm-buffer-proxy buffer)))
+             (funcall hook :release))
+           (assert (not (lui.wayland::shm-buffer-busy-p buffer)))
+           (assert (eq buffer (lui.wayland::acquire-buffer window 8 8))))
+      (setf (lui.wayland::wl-window-buffers window) nil)
+      (lui.wayland::free-buffer buffer)))
+  (let* ((gpu (lui.wayland::wl-window-gpu window))
+         (width (lui.gl:gpu-width gpu)) (height (lui.gl:gpu-height gpu)))
+    (lui.gl:begin-gpu-frame gpu)
+    (cffi:foreign-funcall "glDisable" :uint #x0c11 :void)
+    (cffi:foreign-funcall "glClearColor" :float 1.0 :float 0.0 :float 0.0 :float 1.0 :void)
+    (cffi:foreign-funcall "glClear" :uint #x4000 :void)
+    (cffi:foreign-funcall "glEnable" :uint #x0c11 :void)
+    (cffi:foreign-funcall "glScissor" :int 0 :int (floor height 2)
+                          :int width :int (- height (floor height 2)) :void)
+    (cffi:foreign-funcall "glClearColor" :float 0.0 :float 1.0 :float 0.0 :float 1.0 :void)
+    (cffi:foreign-funcall "glClear" :uint #x4000 :void)
+    (cffi:foreign-funcall "glDisable" :uint #x0c11 :void)
+    (lui.wayland::present-shm window)
+    (let* ((buffer (first (lui.wayland::wl-window-buffers window)))
+           (pixels (lui.wayland::shm-buffer-memory buffer)))
+      (assert (lui.wayland::shm-buffer-busy-p buffer))
+      ;; Wayland rows run top-down; pixels are native ARGB, not RGBA bytes.
+      (assert (= #xff00ff00 (cffi:mem-aref pixels :uint32 0)))
+      (assert (= #xffff0000 (cffi:mem-aref pixels :uint32 (* width (1- height)))))))
+  (format t "Wayflan SHM ARGB colors, row orientation, and release/reuse passed.~%"))
+
+(let ((frames 0) (native nil) (resize-target nil)
+      (gallery (lui.example:make-gallery)))
   (catch 'done
     (run
      (lambda ()
@@ -503,7 +483,8 @@
        (when (= frames 1)
          (setf native lui.wayland::*window*)
          (test-clipboard-source native *context*)
-         (test-themed-cursor native)
+         (test-fallback-cursor native)
+         (test-shm-presentation native)
          (let ((gpu (lui.wayland::wl-window-gpu native)))
            (assert (= (context-width *context*)
                       (lui.wayland::wl-window-width native)))
@@ -536,20 +517,14 @@
        (lui.example:draw gallery)
        (when (= frames 2)
          (setf (context-focus *context*) :name)
-         ;; Exercise the actual C callback ABI without moving the user's mouse.
+         ;; Exercise decoded Wayflan input hooks without moving the user's mouse.
          (let* ((box (previous-box :hello))
                 (x (round (* 256 (+ (box-x box) 3))))
                 (y (round (* 256 (+ (box-y box) 3))))
                 (null (cffi:null-pointer)))
-           (cffi:foreign-funcall-pointer
-            (cffi:callback lui.wayland::pointer-motion) ()
-            :pointer null :pointer null :uint32 0
-            :int32 x :int32 y :void)
+           (dispatch-event #'lui.wayland::pointer-motion null 0 (/ x 256) (/ y 256))
            (dolist (state '(1 0))
-             (cffi:foreign-funcall-pointer
-              (cffi:callback lui.wayland::pointer-button) ()
-              :pointer null :pointer null :uint32 0 :uint32 0
-              :uint32 #x110 :uint32 state :void))))
+             (dispatch-event #'lui.wayland::pointer-button null 0 0 #x110 (if (zerop state) :released :pressed)))))
        (when (= frames 3)
          (assert (= (lui.example::gallery-count gallery) 1))
          (assert (eq :name (context-focus *context*)))
@@ -562,21 +537,42 @@
        (when (= frames 4)
          ;; Both initial and repeated input must reach the next shared frame.
          (assert (>= (count :text (events-for :name) :key #'event-kind) 2))
-         (keyboard-key 30 0))
+         (keyboard-key 30 0)
+         ;; Change physical scale while retaining the compositor-configured
+         ;; logical size (the headless compositor may require fullscreen).
+         (setf (lui.wayland::wl-window-buffer-scale native) 2
+               (lui.wayland::wl-window-scale120 native) 240
+               resize-target (multiple-value-list
+                              (lui.wayland::framebuffer-size native))))
        (when (= frames 5)
+         (let ((gpu (lui.wayland::wl-window-gpu native)))
+           (assert (equal resize-target (list (lui.gl:gpu-width gpu)
+                                             (lui.gl:gpu-height gpu))))))
+       (when (= frames 6)
+         (let ((buffers (lui.wayland::wl-window-buffers native))
+               (gpu (lui.wayland::wl-window-gpu native)))
+           (assert (<= 1 (length buffers) 3))
+           (assert (find-if
+                    (lambda (buffer)
+                      (and (= (lui.wayland::shm-buffer-width buffer) (lui.gl:gpu-width gpu))
+                           (= (lui.wayland::shm-buffer-height buffer) (lui.gl:gpu-height gpu))
+                           ;; The shared buffer contains actual rendered pixels.
+                           (not (zerop (cffi:mem-aref
+                                        (lui.wayland::shm-buffer-memory buffer) :uint32 0)))))
+                    buffers)))
          (throw 'done t)))
      :backend :wayland))
-  (assert (= frames 5))
+  (assert (= frames 6))
   (assert (null (lui.wayland::wl-window-clipboard-source native)))
-  (assert (null (lui.wayland::wl-window-clipboard-listener native)))
+
   (assert (null (lui.wayland::wl-window-clipboard-device native)))
   (assert (null (lui.wayland::wl-window-clipboard-manager native)))
   (assert (null (lui.wayland::wl-window-decoration native)))
   (assert (null (lui.wayland::wl-window-decoration-manager native)))
-  (assert (null (lui.wayland::wl-window-cursor-theme native)))
+  (assert (null (lui.wayland::wl-window-cursor-buffer native)))
   (assert (null (lui.wayland::wl-window-cursor-surface native)))
   (assert (null (lui.wayland::wl-window-cursor-device native)))
   (assert (null (lui.wayland::wl-window-cursor-manager native)))
   (assert (null (lui.wayland::wl-window-viewport native)))
   (assert (null (lui.wayland::wl-window-fractional-object native)))
-  (format t "Wayland compositor, pointer callbacks, and cleanup passed.~%"))
+  (format t "Wayflan compositor, pointer hooks, and cleanup passed.~%"))
