@@ -66,7 +66,7 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 (defvar *palette* nil)
 
 (defstruct (toolkit (:conc-name %toolkit-))
-  parent defaults controls (rendering nil))
+  parent defaults controls (paint :inherit) (geometry :inherit) (native-labels :inherit))
 (defvar *toolkits* (make-hash-table :test 'eq))
 
 (defvar *toolkit-revision* 0)
@@ -75,13 +75,16 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
   (or (gethash name *toolkits*) (error "Unknown toolkit ~S." name)))
 
 (fn (rendering-option t) ((name symbol) (key symbol))
-  (let* ((entry (find-toolkit name)) (options (%toolkit-rendering entry)))
-    (multiple-value-bind (found value) (get-properties options (list key))
-      (if found value
-          (when (and (%toolkit-parent entry)
-                     (or (not (eq key :native-labels))
-                         (not (nth-value 0 (get-properties options '(:paint :geometry))))))
-            (rendering-option (%toolkit-parent entry) key))))))
+  (let* ((entry (find-toolkit name))
+         (value (ecase key (:paint (%toolkit-paint entry))
+                          (:geometry (%toolkit-geometry entry))
+                          (:native-labels (%toolkit-native-labels entry)))))
+    (if (not (eq value :inherit)) value
+        (when (and (%toolkit-parent entry)
+                   (or (not (eq key :native-labels))
+                       (and (eq (%toolkit-paint entry) :inherit)
+                            (eq (%toolkit-geometry entry) :inherit))))
+          (rendering-option (%toolkit-parent entry) key)))))
 
 (fn (toolkit-paint (or null function)) ((name symbol))
   "Return NAME's graphical painter, inherited through its parent, or NIL."
@@ -103,9 +106,9 @@ settings or inherit from :PARENT; explicit NIL disables the inherited setting."
   (let ((entry (find-toolkit name)))
     (when paint-p (check-type paint (or null function)))
     (when geometry-p (check-type geometry (or null function)))
-    (when paint-p (setf (getf (%toolkit-rendering entry) :paint) paint))
-    (when geometry-p (setf (getf (%toolkit-rendering entry) :geometry) geometry))
-    (when labels-p (setf (getf (%toolkit-rendering entry) :native-labels) native-labels))
+    (when paint-p (setf (%toolkit-paint entry) paint))
+    (when geometry-p (setf (%toolkit-geometry entry) geometry))
+    (when labels-p (setf (%toolkit-native-labels entry) (not (null native-labels))))
     (incf *toolkit-revision*))
   name)
 
@@ -125,9 +128,9 @@ inherit only from an explicit PARENT."
   (incf *toolkit-revision*)
   (setf (gethash name *toolkits*)
         (make-toolkit :parent parent :defaults defaults :controls controls
-                      :rendering (append (when paint-p (list :paint paint))
-                                         (when geometry-p (list :geometry geometry))
-                                         (when labels-p (list :native-labels native-labels)))))
+                      :paint (if paint-p paint :inherit)
+                      :geometry (if geometry-p geometry :inherit)
+                      :native-labels (if labels-p (not (null native-labels)) :inherit)))
   name)
 
 (fn (current-toolkit symbol) ()
@@ -142,26 +145,28 @@ inherit only from an explicit PARENT."
         defaults)))
 
 (fn (resolve-palette list) ((defaults list))
-  (append *palette*
-          (loop for (key value) on defaults by #'cddr
-                append (cond ((eq key :palette) value)
-                             ((member key '(:foreground :background :accent))
-                              (list key value))))
-          lui.widgets::*base-palette*))
+  (labels ((colors (tail)
+             (cond ((null tail) lui.widgets::*base-palette*)
+                   ((eq (car tail) :palette) (append (cadr tail) (colors (cddr tail))))
+                   ((member (car tail) '(:foreground :background :accent))
+                    (list* (car tail) (cadr tail) (colors (cddr tail))))
+                   (t (colors (cddr tail))))))
+    (append *palette* (colors defaults))))
 
 (fn (toolkit-palette list) (&optional (name *toolkit*))
   "Return scoped semantic colors followed by NAME's inherited palette."
   (resolve-palette (defaults-of (find-toolkit name))))
 
-(fn (toolkit-defaults list) (&optional (name *toolkit*))
-  "Return resolved appearance defaults and a captured semantic palette."
+(fn (toolkit-defaults (values list list)) (&optional (name *toolkit*))
+  "Return resolved appearance defaults and the captured palette as a second value."
   (let* ((defaults (defaults-of (find-toolkit name)))
          (palette (copy-list (resolve-palette defaults))))
-    (append (list :palette palette)
-            (loop for key in '(:foreground :background :accent)
-                  when (getf palette key) append (list key (getf palette key)))
-            (loop for (key value) on defaults by #'cddr
-                  unless (eq key :palette) append (list key value)))))
+    (values (list* :palette palette
+                   :foreground (lui.widgets::palette-color palette :foreground)
+                   :background (lui.widgets::palette-color palette :background)
+                   :accent (lui.widgets::palette-color palette :accent)
+                   (without-option :palette defaults))
+            palette)))
 
 (fn (call-with-palette t) ((palette list) (draw function))
   (let ((*palette* (append palette *palette*))) (funcall draw)))
@@ -223,8 +228,10 @@ Nested scopes inherit unspecified roles and restore their parent on exit."
        (let* ((entry (or *toolkit-definition* (find-toolkit *toolkit*)))
               (custom (override ,kind entry)))
          (if custom (funcall custom ,@args options)
-             (let ((style *toolkit*) (defaults (toolkit-defaults)))
-               ,@body))))))
+             (let ((style *toolkit*))
+               (multiple-value-bind (defaults palette) (toolkit-defaults)
+                 (declare (ignorable palette))
+                 ,@body)))))))
 
 (define-control label (text)
   "Display selectable text. Width determines wrapping; no ID is needed."
@@ -280,8 +287,8 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
 (define-control cell (id text)
   "Display a compact grid cell. Use :selected-p to mark the active cell."
   (selectable :cell style id text options
-              (list* :background (getf (toolkit-palette) :cell-background "#ffffff")
-                     :foreground (getf (toolkit-palette) :cell-foreground "#202430") defaults)))
+              (list* :background (lui.widgets::palette-color palette :cell-background "#ffffff")
+                     :foreground (lui.widgets::palette-color palette :cell-foreground "#202430") defaults)))
 
 (define-control checkbox (id value text)
   "Return the new boolean and a second value indicating a change."

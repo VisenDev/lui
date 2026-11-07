@@ -203,6 +203,21 @@
           do (assert (equal value (getf (lui:toolkit-defaults :test-modern) key))))))
 
 (defun test-palettes ()
+  ;; Resolve a provider once per control, while observing changes within a frame.
+  (let ((reads 0) (color "#112233") (context (make-test-context)))
+    (lui:register-toolkit :palette-provider :parent :glass
+      :defaults (lambda () (incf reads) (list :palette (list :cell-background color))))
+    (with-frame (context 80 30)
+      (lui:with-toolkit (:palette-provider)
+        (lui:cell :first "First")
+        (setf color "#445566")
+        (lui:cell :second "Second")))
+    (assert (= reads 2))
+    (dolist (entry '((:first . "#112233") (:second . "#445566")))
+      (assert (equal (cdr entry)
+                     (lui:widget-color
+                      (element-content (gethash (car entry) (lui.frame::context-ids context)))
+                      :background)))))
   (lui:register-toolkit :palette-parent :parent :glass
                        :defaults '(:palette (:accent "#123456" :outline "#654321")))
   (lui:register-toolkit :palette-child :parent :palette-parent

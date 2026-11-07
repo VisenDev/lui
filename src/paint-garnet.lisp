@@ -4,8 +4,7 @@
   (let ((x (box-x box)) (y (box-y box))
         (right (+ (box-x box) (box-width box)))
         (bottom (+ (box-y box) (box-height box))))
-    (make-array 4 :element-type 'point :initial-contents
-                (list (cons x y) (cons right y) (cons right bottom) (cons x bottom)))))
+    (typed-vector point (cons x y) (cons right y) (cons right bottom) (cons x bottom))))
 
 (fn (garnet-fill t) ((renderer renderer) (box box) (color string))
   (when (and (plusp (box-width box)) (plusp (box-height box)))
@@ -18,8 +17,7 @@
     (let ((inner (inset-box box thickness)))
       (funcall (renderer-polygons renderer)
                (if (and (plusp (box-width inner)) (plusp (box-height inner)))
-                   (make-array 2 :element-type 'contour :initial-contents
-                               (list (rectangle-path box) (reverse (rectangle-path inner))))
+                   (typed-vector contour (rectangle-path box) (reverse (rectangle-path inner)))
                    (make-array 1 :element-type 'contour :initial-element (rectangle-path box)))
                (widget-color widget :outline) 1))))
 
@@ -45,10 +43,9 @@
                                            (>= x (- right border))
                                            (< y (+ top border))
                                            (>= y (- bottom border)))
-                                   :collect (make-array 4 :element-type 'point :initial-contents
-                                                  (list (cons x y) (cons (1+ x) y)
+                                   :collect (typed-vector point (cons x y) (cons (1+ x) y)
                                                   (cons (1+ x) (1+ y))
-                                                  (cons x (1+ y))))))))
+                                                  (cons x (1+ y)))))))
           (setf paths (make-array (length squares) :element-type 'contour
                                  :initial-contents squares)
                 (gethash key cache) paths))))

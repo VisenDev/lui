@@ -11,6 +11,14 @@
 
 (in-package #:lui.draw)
 
+(defmacro typed-vector (type &rest elements)
+  "Construct a typed vector without an intermediate list of its elements."
+  (let ((result (gensym "VECTOR")))
+    `(let ((,result (make-array ,(length elements) :element-type ',type)))
+       ,@(loop for element in elements for i from 0
+               collect `(setf (aref ,result ,i) ,element))
+       ,result)))
+
 (defstruct renderer
   "Native drawing callbacks and font shared by the graphical backends."
   (font nil :type (or null font))
@@ -45,9 +53,8 @@
          (r (max 0 (min radius (/ w 2) (/ h 2)))))
     (when (zerop r)
       (return-from rounded-polygon
-        (make-array 4 :element-type 'point :initial-contents
-                    (list (cons (+ x w) y) (cons (+ x w) (+ y h))
-                          (cons x (+ y h)) (cons x y)))))
+        (typed-vector point (cons (+ x w) y) (cons (+ x w) (+ y h))
+                          (cons x (+ y h)) (cons x y))))
     (make-array 36 :element-type 'point :initial-contents
      (loop :for (cx cy base)
             :in (list (list (+ x w (- r)) (+ y r) -90)
@@ -98,11 +105,10 @@
                     (incf winding (if (< (cdar edge) (cddr edge)) 1 -1))
                     (when (and left (zerop winding))
                       (funcall emit
-                               (make-array 4 :element-type 'point :initial-contents
-                                (list (cons (at-y left top) top)
+                               (typed-vector point (cons (at-y left top) top)
                                      (cons (at-y edge top) top)
                                      (cons (at-y edge bottom) bottom)
-                                     (cons (at-y left bottom) bottom)))))))))))
+                                     (cons (at-y left bottom) bottom))))))))))
 
 (fn (widget-font font) ((renderer renderer) (widget widget))
   "Select the widget’s font face and size for this renderer."
@@ -130,8 +136,9 @@
                            (when width (max 0 (- width horizontal))))
                     (make-array 0 :element-type 'string))))
     (values (max (geometry-min-width g)
-                 (+ horizontal (loop :for line :across lines :maximize (text-width font line) :into n
-                                     :finally (return (or n 0)))))
+                 (+ horizontal (let ((widest 0))
+                                 (dotimes (i (length lines) widest)
+                                   (setf widest (max widest (text-width font (aref lines i))))))))
             (max (geometry-min-height g)
                  (+ (geometry-top g) (geometry-bottom g) (* (length lines) (line-height font)))))))
 
@@ -196,10 +203,9 @@
       (funcall (renderer-surface renderer)
                box radius color alpha thickness)
       (funcall (renderer-polygons renderer)
-               (make-array 2 :element-type 'contour :initial-contents
-                (list (rounded-polygon box radius)
+               (typed-vector contour (rounded-polygon box radius)
                       (reverse (rounded-polygon (inset-box box thickness)
-                                                (max 0 (- radius thickness))))))
+                                                (max 0 (- radius thickness)))))
                color alpha)))
 
 (fn (focused-p boolean) ((node element))

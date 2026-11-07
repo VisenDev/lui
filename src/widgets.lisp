@@ -68,13 +68,20 @@
   (radius 12 :type real)
   (frost 12 :type real))
 
+(fn (palette-color (or null string)) ((palette list) (role symbol)
+                                     &optional ((default (or null string)) nil))
+  ;; Palette lookup stays small and allocation-free in the per-widget hot path.
+  (cond ((null palette) default)
+        ((eq (car palette) role) (cadr palette))
+        (t (palette-color (cddr palette) role default))))
+
 (fn (widget-color (or null string)) ((widget widget) (role symbol))
   "Resolve ROLE using WIDGET's color overrides and captured semantic palette."
   (case role
     (:foreground (widget-foreground widget))
     (:background (widget-background widget))
     (:accent (widget-accent widget))
-    (otherwise (getf (widget-palette widget) role))))
+    (otherwise (palette-color (widget-palette widget) role))))
 
 (fn (widget-terminal-text string) ((widget widget))
   "Return WIDGET's portable text representation, computing it lazily as needed.

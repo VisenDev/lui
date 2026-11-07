@@ -80,12 +80,14 @@
          (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color)
                (jscl/ffi:oget g "globalAlpha") alpha)
          ((jscl/ffi:oget g "beginPath"))
-         (loop :for path :across paths :do
-           (when (plusp (length path))
-             ((jscl/ffi:oget g "moveTo") (car (aref path 0)) (cdr (aref path 0)))
-             (loop :for i :from 1 :below (length path) :for p := (aref path i) :do
-               ((jscl/ffi:oget g "lineTo") (car p) (cdr p)))
-             ((jscl/ffi:oget g "closePath"))))
+         (dotimes (index (length paths))
+           (let ((path (aref paths index)))
+             (when (plusp (length path))
+               ((jscl/ffi:oget g "moveTo") (car (aref path 0)) (cdr (aref path 0)))
+               (dotimes (i (1- (length path)))
+                 (let ((p (aref path (1+ i))))
+                   ((jscl/ffi:oget g "lineTo") (car p) (cdr p))))
+               ((jscl/ffi:oget g "closePath")))))
          ((jscl/ffi:oget g "fill")))
        :text
        (lambda (font text x y color)
