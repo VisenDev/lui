@@ -4,7 +4,7 @@
            #:visible-widget-count))
 (in-package #:lui.tests.support)
 
-(fn test-lines ((text string) width)
+(fn (test-lines (vector string)) ((text string) width)
   (lui.text:wrap-lines text width
                        (lambda (text start end)
                          (declare (ignore text)) (- end start))))
@@ -17,7 +17,7 @@ This fixture measures declarations; it does not draw or emulate a terminal."
    :measure (lambda (widget width)
               (let ((lines (test-lines (widget-terminal-text widget) width)))
                 (values (max (if (eq (widget-kind widget) :slider) 12 0)
-                             (loop for line in lines maximize (length line)))
+                             (loop for line across lines maximize (length line)))
                         (length lines))))))
 
 (fn visible-node-p ((node element))

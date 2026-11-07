@@ -33,7 +33,7 @@
          (top (+ y (if center-height
                        (max 0 (/ (- center-height (* (length lines) line-height)) 2))
                        0))))
-    (loop :for line :in lines
+    (loop :for line :across lines
           :for baseline :from (+ top (baseline font)) :by line-height
           :do (paint-text renderer line
                          (+ x (if center-width
@@ -66,7 +66,7 @@
     (when (zerop (length text))
       (paint-text renderer (widget-text widget) x (+ y (baseline font))
                   (lui.widgets::muted-ink (widget-foreground widget) (widget-background widget))))
-    (loop :for line :in (wrap-text font text width)
+    (loop :for line :across (wrap-text font text width)
           :for top :from y :by (line-height font)
           :for end := (+ start (length line))
           :do (when (and cursor (/= cursor anchor))
@@ -264,10 +264,12 @@
          (when (widget-value widget)
            (funcall
             (renderer-polygons renderer)
-            (list (mapcar (lambda (point)
+            (make-array 1 :element-type 'contour :initial-element
+             (make-array 6 :element-type 'point :initial-contents
+              (mapcar (lambda (point)
                             (cons (+ x (car point)) (+ y (cdr point))))
                           '((3 . 7) (6 . 10) (12 . 3) (14 . 5)
-                            (6 . 13) (2 . 9))))
+                            (6 . 13) (2 . 9)))))
             (if translucent (widget-color widget :on-accent) foreground) 1)))
        (paint-widget-text renderer node foreground))
       (:radio

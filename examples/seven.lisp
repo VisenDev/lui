@@ -178,7 +178,7 @@
                         (events-for id)))
           (select-person state (person-id person) t))))
     (when (and people (person-id-p focus))
-      (dolist (event (events-for focus))
+      (loop for event across (events-for focus) do
         (when (eq (event-kind event) :key)
           (let* ((index (or (position (crud-selected model) people
                                       :key #'person-id) 0))

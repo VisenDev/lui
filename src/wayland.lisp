@@ -42,8 +42,9 @@
   (events nil :type list) (listeners nil :type list))
 (defvar *window*)
 
-(fn (attach-listener list) (proxy (callbacks list))
-  (push (listen-proxy proxy callbacks) (wl-window-listeners *window*)))
+(fn (attach-listener null) (proxy (callbacks list))
+  (push (listen-proxy proxy callbacks) (wl-window-listeners *window*))
+  nil)
 
 (defmacro callback (name arguments &body body)
   `(cffi:defcallback ,name :void
@@ -51,9 +52,10 @@
      (declare (ignore data) (ignorable proxy))
      ,@body))
 
-(fn (queue-input list) ((kind symbol) &rest options)
+(fn (queue-input null) ((kind symbol) &rest options)
   (push (apply #'make-event :kind kind options)
-        (wl-window-events *window*)))
+        (wl-window-events *window*))
+  nil)
 
 (fn (release-clipboard-source null) ((window wl-window))
   (when (wl-window-clipboard-source window)
@@ -114,7 +116,7 @@
 (callback clipboard-selection ((offer :pointer))
   (declare (ignore offer)))
 
-(fn (create-clipboard-device list) ((window wl-window))
+(fn (create-clipboard-device null) ((window wl-window))
   ;; Core protocol v1 is enough for clipboard ownership on older compositors.
   (when (and (wl-window-clipboard-manager window) (wl-window-seat window))
     (let ((device
@@ -128,7 +130,8 @@
                              (cffi:callback clipboard-leave)
                              (cffi:callback clipboard-motion)
                              (cffi:callback clipboard-drop)
-                             (cffi:callback clipboard-selection))))))
+                             (cffi:callback clipboard-selection)))))
+  nil)
 
 (fn (copy-clipboard (or null integer)) ((window wl-window) (text string))
   (when (and (wl-window-clipboard-device window)
@@ -245,9 +248,10 @@
           (wl-window-cursor-kind *window*) nil)
     (update-cursor)))
 
-(fn (cancel-pointer list) ((window wl-window))
+(fn (cancel-pointer null) ((window wl-window))
   (setf (wl-window-buttons window) 0)
-  (push (make-event :kind :cancel :buttons 0) (wl-window-events window)))
+  (push (make-event :kind :cancel :buttons 0) (wl-window-events window))
+  nil)
 
 (callback pointer-enter
     ((serial :uint32) (surface :pointer) (x :int32) (y :int32))
@@ -382,7 +386,7 @@
            :alt (modifier-active-p state "Mod1")
            :shift (modifier-active-p state "Shift")))))))
 
-(fn (emit-key-input list) ((code integer))
+(fn (emit-key-input null) ((code integer))
   (when (wl-window-key-state *window*)
     (let* ((context
              (when (and (boundp '*context*) *context*)
@@ -426,7 +430,8 @@
                    (queue-input
                     :text :value
                     (cffi:foreign-string-to-lisp text :count length
-                                                    :encoding :utf-8))))))))))
+                                                    :encoding :utf-8)))))))))
+  nil)
 
 (callback keyboard-key
     ((serial :uint32) (time :uint32) (code :uint32) (pressed :uint32))
@@ -599,7 +604,7 @@
 (callback fractional-preferred-scale ((scale :uint32))
   (when (plusp scale) (setf (wl-window-scale120 *window*) scale)))
 
-(fn (create-scaling list) ((window wl-window))
+(fn (create-scaling null) ((window wl-window))
   (attach-listener
    (wl-window-surface window)
    (list (cffi:callback surface-enter) (cffi:callback surface-leave)
@@ -617,7 +622,8 @@
                    (list (cons :pointer (cffi:null-pointer))
                          (cons :pointer (wl-window-surface window)))))
     (attach-listener (wl-window-fractional-object window)
-                     (list (cffi:callback fractional-preferred-scale)))))
+                     (list (cffi:callback fractional-preferred-scale))))
+  nil)
 
 (fn (surface-scale real) ((window wl-window))
   (if (wl-window-fractional-object window)

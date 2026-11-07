@@ -18,17 +18,17 @@
              (context-events context))
     pressed))
 
-(fn (take-events list) (id)
-  "Consume a control's ordered frame events before a later declaration."
+(fn (take-events (vector event)) (id)
+  "Return and consume a vector of a control's ordered frame events."
   (prog1 (events-for id)
     (setf (gethash id (context-events *context*)) nil)))
 
-(fn (event-targets list) ()
-  "Return control IDs with unconsumed events in the current frame."
+(fn (event-targets (vector t)) ()
+  "Return a vector of control IDs with unconsumed events in the current frame."
   (let ((ids nil))
     (maphash (lambda (id events) (when events (push id ids)))
              (context-events *context*))
-    ids))
+    (make-array (length ids) :element-type t :initial-contents ids)))
 
 (fn (reset-editor lui.widgets:edit-state) (id (text string))
   "Start a fresh editor with its caret at the end of TEXT."
@@ -36,7 +36,7 @@
     (setf (gethash id (context-state *context*))
           (lui.widgets:make-edit-state :cursor length :anchor length))))
 
-(fn (edit-value string) (id (text string) &optional ((events list) (take-events id)))
+(fn (edit-value string) (id (text string) &optional ((events sequence) (take-events id)))
   "Apply editor events without declaring a widget; preserve caret and kill state."
   (let* ((state (or (gethash id (context-state *context*))
                     (reset-editor id text)))

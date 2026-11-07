@@ -140,7 +140,7 @@
                            (lambda (text start end)
                              (declare (ignore text)) (- end start)))))
                (values (max (if (eq (lui.widgets:widget-kind widget) :slider) 12 0)
-                            (loop for line in lines maximize (length line)))
+                            (loop for line across lines maximize (length line)))
                        (length lines))))))
         (lui:*unit* 1))
     (benchmark-loop

@@ -24,7 +24,7 @@
 (defstruct gpu
   "GL drawing resources and viewport dimensions for a current compatibility context."
   display surface context renderer
-  (geometry (make-hash-table :test 'equal) :type hash-table)
+  (geometry (make-hash-table :test 'equalp) :type hash-table)
   (geometry-builds 0 :type integer)
   (program 0 :type integer)
   (texture 0 :type integer)
@@ -115,13 +115,11 @@ void main() {
   (clrhash (gpu-geometry gpu)))
 
 (fn (gl-color null) ((color string) (alpha real))
-  (destructuring-bind (red green blue opacity)
-      (color-components color alpha)
-    (call-gl "glColor4f" :float (float red 1.0)
-             :float (float green 1.0) :float (float blue 1.0)
-             :float (float opacity 1.0) :void)))
+  (let ((rgba (color-components color alpha)))
+    (call-gl "glColor4f" :float (aref rgba 0) :float (aref rgba 1)
+             :float (aref rgba 2) :float (aref rgba 3) :void)))
 
-(fn (gl-geometry null) ((gpu gpu) (contours list))
+(fn (gl-geometry null) ((gpu gpu) (contours contours))
   (let ((display-list (gethash contours (gpu-geometry gpu))))
     (unless display-list
       ;; Keep resize/animation variants bounded; glyphs use font-unit contours.
@@ -138,7 +136,7 @@ void main() {
                    contours
                    (lambda (quad)
                      (dolist (index '(0 1 2 0 2 3))
-                       (let ((point (nth index quad)))
+                       (let ((point (aref quad index)))
                          (call-gl "glVertex2f"
                                   :float (float (car point) 1.0)
                                   :float (float (cdr point) 1.0) :void)))))
@@ -148,21 +146,22 @@ void main() {
       (setf (gethash contours (gpu-geometry gpu)) display-list))
     (call-gl "glCallList" :uint display-list :void)))
 
-(fn (gl-polygons null) ((gpu gpu) (contours list) (color string) (alpha real))
+(fn (gl-polygons null) ((gpu gpu) (contours contours) (color string) (alpha real))
   (gl-color color alpha)
   (gl-geometry gpu contours))
 
-(fn (gl-shape null) ((gpu gpu) (contours list) (color string) (alpha real))
+(fn (gl-shape null) ((gpu gpu) (contours contours) (color string) (alpha real))
   ;; Stipples reuse large contour batches in screen coordinates.
   ;; Submit them directly instead of copying thousands of points per frame.
-  (when (nthcdr 8 contours)
+  (when (> (length contours) 8)
     (return-from gl-shape (gl-polygons gpu contours color alpha)))
   ;; Cache the shape, not every screen position of a cell or debugger row.
-  (let ((origin (first (find-if #'consp contours))))
+  (let ((origin (let ((contour (find-if (lambda (points) (plusp (length points))) contours)))
+                  (when contour (aref contour 0)))))
     (when origin
       (let* ((x (car origin)) (y (cdr origin))
-             (local (mapcar (lambda (contour)
-                              (mapcar (lambda (point)
+             (local (map 'contours (lambda (contour)
+                              (map 'contour (lambda (point)
                                         (cons (- (car point) x)
                                               (- (cdr point) y)))
                                       contour))
@@ -263,7 +262,7 @@ void main() {
                                    (box-height box)) 1.0)
                   :float (float (box-width box) 1.0)
                   :float (float (box-height box) 1.0) :void))
-         (gl-polygons gpu (list (rounded-polygon box radius)) "#ffffff" 1))
+         (gl-polygons gpu (make-array 1 :element-type 'contour :initial-element (rounded-polygon box radius)) "#ffffff" 1))
     (call-gl "glUseProgram" :uint 0 :void)))
 
 (fn (egl-check t) (result (operation string))

@@ -1,5 +1,5 @@
 (defpackage #:lui.font
-  (:use #:cl #:lui.fn)
+  (:use #:cl #:lui.fn #:lui.layout)
   (:export #:font #:open-font #:close-font #:font-size #:font-loader
            #:text-width #:line-height #:baseline #:wrap-text #:glyph-polygons
            #:*font-path* #:*font-paths* #:*font-directories*
@@ -117,13 +117,13 @@
               (setf previous char))
     (* (scale-font font) width)))
 
-(fn (wrap-text list) ((font font) (text string) width)
+(fn (wrap-text (vector string)) ((font font) (text string) width)
   "Split TEXT into lines at newlines and spaces; NIL width preserves explicit breaks."
   (lui.text:wrap-lines text width
                       (lambda (text start end)
                         (text-width font (subseq text start end)))))
 
-(fn (glyph-polygons list) ((font font) (char character))
+(fn (glyph-polygons contours) ((font font) (char character))
   "Flatten TrueType curves into geometric contours, never pixels. Cache in font units."
   (or (gethash char (font-cache font))
       (setf (gethash char (font-cache font))
@@ -147,5 +147,5 @@
                                    points))
                         (push (cons (zpb-ttf:x p2) (zpb-ttf:y p2))
                               points)))
-                  (when points (push (nreverse points) polygons))))
-              (nreverse polygons)))))
+                  (when points (push (coerce (nreverse points) 'contour) polygons))))
+              (coerce (nreverse polygons) 'contours)))))

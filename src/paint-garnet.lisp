@@ -1,15 +1,16 @@
 (in-package #:lui.draw)
 
-(fn (rectangle-path list) ((box box))
+(fn (rectangle-path contour) ((box box))
   (let ((x (box-x box)) (y (box-y box))
         (right (+ (box-x box) (box-width box)))
         (bottom (+ (box-y box) (box-height box))))
-    (list (cons x y) (cons right y) (cons right bottom) (cons x bottom))))
+    (make-array 4 :element-type 'point :initial-contents
+                (list (cons x y) (cons right y) (cons right bottom) (cons x bottom)))))
 
 (fn (garnet-fill t) ((renderer renderer) (box box) (color string))
   (when (and (plusp (box-width box)) (plusp (box-height box)))
     (funcall (renderer-polygons renderer)
-             (list (rectangle-path box)) color 1)))
+             (make-array 1 :element-type 'contour :initial-element (rectangle-path box)) color 1)))
 
 (fn (garnet-outline t) ((renderer renderer) (widget widget) (box box)
                    &optional ((thickness real) 1))
@@ -17,9 +18,9 @@
     (let ((inner (inset-box box thickness)))
       (funcall (renderer-polygons renderer)
                (if (and (plusp (box-width inner)) (plusp (box-height inner)))
-                   (list (rectangle-path box)
-                         (reverse (rectangle-path inner)))
-                   (list (rectangle-path box)))
+                   (make-array 2 :element-type 'contour :initial-contents
+                               (list (rectangle-path box) (reverse (rectangle-path inner))))
+                   (make-array 1 :element-type 'contour :initial-element (rectangle-path box)))
                (widget-color widget :outline) 1))))
 
 (fn (garnet-stipple t) ((renderer renderer) (widget widget) (box box) &optional border)
@@ -36,8 +37,7 @@
       (let* ((left (ceiling (box-x box))) (top (ceiling (box-y box)))
              (right (floor (+ (box-x box) (box-width box))))
              (bottom (floor (+ (box-y box) (box-height box)))))
-        (setf paths
-              (loop :for y :from top :below bottom
+        (let ((squares (loop :for y :from top :below bottom
                     :nconc (loop :for x :from (+ left (mod (+ left y) 2))
                                  :below right :by 2
                                  :when (or (null border)
@@ -45,10 +45,13 @@
                                            (>= x (- right border))
                                            (< y (+ top border))
                                            (>= y (- bottom border)))
-                                   :collect (list (cons x y) (cons (1+ x) y)
+                                   :collect (make-array 4 :element-type 'point :initial-contents
+                                                  (list (cons x y) (cons (1+ x) y)
                                                   (cons (1+ x) (1+ y))
-                                                  (cons x (1+ y)))))
-              (gethash key cache) paths)))
+                                                  (cons x (1+ y))))))))
+          (setf paths (make-array (length squares) :element-type 'contour
+                                 :initial-contents squares)
+                (gethash key cache) paths))))
     (when paths
       (funcall (renderer-polygons renderer) paths (widget-color widget :outline) 1))))
 
@@ -123,7 +126,9 @@
                             (list (cons (+ x 8) y) (cons (+ x 10) y)
                                   (cons (+ x 2) (+ y 10))
                                   (cons x (+ y 10)))))
-               (funcall (renderer-polygons renderer) (list stroke) ink 1))))
+               (funcall (renderer-polygons renderer)
+                        (make-array 1 :element-type 'contour
+                                      :initial-element (make-array 4 :element-type 'point :initial-contents stroke)) ink 1))))
          (paint-widget-text renderer node ink)))
       (:radio
        (let* ((indicator (make-box :x (- (+ (box-x box) (box-width box)) 22)

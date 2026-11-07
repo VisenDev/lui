@@ -95,14 +95,14 @@
   (declare (ignore font char))
   (error "Browser text is drawn by the renderer text callback."))
 
-(fn (uncached-wrap-text list) ((font font) (text string) width)
+(fn (uncached-wrap-text (vector string)) ((font font) (text string) width)
   "Split TEXT into lines at newlines and spaces; NIL width preserves explicit breaks."
   (lui.text:wrap-lines text width
                       (lambda (text start end)
                         (text-width font (subseq text start end)))))
 
 
-(fn (wrap-text list) ((font font) (text string) (width (or null real)))
+(fn (wrap-text (vector string)) ((font font) (text string) (width (or null real)))
   (let* ((cache (font-wrapped font))
          (key (list (font-size font) text width)))
     (or (gethash key cache)

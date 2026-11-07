@@ -186,10 +186,11 @@
   (let ((word (logand value #xffff)))
     (if (logbitp 15 word) (- word #x10000) word)))
 
-(fn (queue-input list) ((window win-window) (event event))
-  (push event (win-window-events window)))
+(fn (queue-input null) ((window win-window) (event event))
+  (push event (win-window-events window))
+  nil)
 
-(fn (character-input (or null integer list)) ((window win-window) (code integer))
+(fn (character-input null) ((window win-window) (code integer))
   (cond
     ((<= #xd800 code #xdbff) (setf (win-window-surrogate window) code))
     ((<= #xdc00 code #xdfff)
@@ -203,7 +204,8 @@
         (let ((char (code-char code)))
           (when char
             (queue-input window
-              (make-event :kind :text :value (string char)))))))))
+              (make-event :kind :text :value (string char))))))))
+  nil)
 
 (fn (key-input (or null event)) ((code integer) control alt shift text-p
                &optional activation-p)
@@ -411,16 +413,16 @@
     (parse-integer color :start 1 :radix 16)))
 
 (fn (draw-polygons null)
-  ((window win-window) (contours list) (color string) (alpha real))
+  ((window win-window) (contours contours) (color string) (alpha real))
   (cffi:with-foreign-objects ((path-out :pointer) (brush-out :pointer))
     (checked (create-path 1 path-out))
     (let ((path (cffi:mem-ref path-out :pointer)) (brush nil))
       (unwind-protect
         (progn
-          (dolist (points contours)
+          (loop :for points :across contours :do
             (when (>= (length points) 3)
               (cffi:with-foreign-object (data :float (* 2 (length points)))
-                (loop :for point :in points :for i :from 0 :by 2 :do
+                (loop :for point :across points :for i :from 0 :by 2 :do
                   (setf (cffi:mem-aref data :float i)
                     (float (car point) 1.0f0)
                     (cffi:mem-aref data :float (1+ i))
@@ -518,7 +520,7 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
           (setf path (cffi:mem-ref out :pointer))
           (let ((points (rounded-polygon box radius)))
             (cffi:with-foreign-object (data :float (* 2 (length points)))
-              (loop :for point :in points :for i :from 0 :by 2 :do
+              (loop :for point :across points :for i :from 0 :by 2 :do
                 (setf (cffi:mem-aref data :float i)
                   (float (car point) 1.0f0)
                   (cffi:mem-aref data :float (1+ i))

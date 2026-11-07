@@ -179,9 +179,9 @@
           (check (= (box-height (element-box column)) 3))
           (check (= (box-y (element-box second)) 2)))
         (check (has-text-p context "ab cd ef")))
-      (check (equal (test-lines (format nil "a~%~%b~%") 3)
-                    '("a" "" "b" "")))
-      (check (equal (test-lines "longword ok" 3) '("longword" "ok")))
+      (check (equalp (test-lines (format nil "a~%~%b~%") 3)
+                    #("a" "" "b" "")))
+      (check (equalp (test-lines "longword ok" 3) #("longword" "ok")))
       ;; Previous-frame hit testing; release requires capture of the same ID.
       (let ((context (make-test-context))
             (clicked nil))

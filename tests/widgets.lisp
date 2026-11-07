@@ -420,17 +420,21 @@
                                (lui:opt :width (fixed 10) :height (fixed 5)))
              (lui.glass:gauge :gauge 0.5)))
       (with-frame (context 20 10) (draw))
+      (assert (typep received '(vector event)))
+      (assert (zerop (length received)))
       (with-frame (context 20 10 :events
                            (list (make-event :kind :move :x 2 :y 2)))
         (draw))
+      (assert (typep received '(vector event)))
+      (assert (every (lambda (event) (typep event 'event)) received))
       (assert (= 1 (length received)))
-      (assert (not (event-dragging-p (first received))))
+      (assert (not (event-dragging-p (aref received 0))))
       (with-frame (context 20 10 :events
                            (list (make-event :kind :press :x 2 :y 2)
                                  (make-event :kind :release :x 19 :y 9)))
         (draw))
-      (assert (equal '(:press :release) (mapcar #'event-kind received)))
-      (assert (event-dragging-p (second received)))
+      (assert (equal '(:press :release) (map 'list #'event-kind received)))
+      (assert (event-dragging-p (aref received 1)))
       (assert (not (gethash :canvas (context-activated context))))
       (with-frame (context 20 10 :events
                            (list (make-event :kind :press :x 2 :y 2
@@ -445,7 +449,7 @@
                                  (make-event :kind :release :x 2 :y 2)
                                  (make-event :kind :press :x 2 :y 2)))
         (draw))
-      (assert (= 2 (event-clicks (third received))))
+      (assert (= 2 (event-clicks (aref received 2))))
       (assert (not (element-interactive-p
                     (gethash :gauge (lui.frame::context-ids context)))))))
   (let ((context (make-test-context)))

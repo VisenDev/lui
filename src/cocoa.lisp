@@ -87,7 +87,7 @@
 (defstruct cocoa-app
   window view renderer context error
   (text-paths (make-hash-table :test 'equal) :type hash-table)
-  (shape-paths (make-hash-table :test 'equal) :type hash-table)
+  (shape-paths (make-hash-table :test 'equalp) :type hash-table)
   (pointer-x -1 :type real) (pointer-y -1 :type real)
   (focused-p nil :type boolean)
   (buttons 0 :type integer))
@@ -108,10 +108,10 @@
   (message object (objc-class "NSString") "stringWithUTF8String:"
            utf8-string text))
 
-(fn (make-path sb-sys:system-area-pointer) ((contours list))
+(fn (make-path sb-sys:system-area-pointer) ((contours contours))
   (let ((path (message object (objc-class "NSBezierPath") "bezierPath")))
-    (dolist (contour contours)
-      (loop :for (x . y) :in contour :for first := t :then nil
+    (loop :for contour :across contours :do
+      (loop :for (x . y) :across contour :for first := t :then nil
             :do
             (sb-alien:with-alien ((p point))
               (setf (sb-alien:slot p 'x) (float x 1.0d0)
@@ -123,25 +123,24 @@
     path))
 
 (fn (cocoa-color null) ((color string) (alpha real))
-  (destructuring-bind (red green blue opacity)
-      (color-components color alpha)
+  (let ((rgba (color-components color alpha)))
     (let ((native-color
            (message object (objc-class "NSColor")
                     "colorWithCalibratedRed:green:blue:alpha:"
-                    sb-alien:double (float red 1.0d0)
-                    sb-alien:double (float green 1.0d0)
-                    sb-alien:double (float blue 1.0d0)
-                    sb-alien:double (float opacity 1.0d0))))
+                    sb-alien:double (float (aref rgba 0) 1.0d0)
+                    sb-alien:double (float (aref rgba 1) 1.0d0)
+                    sb-alien:double (float (aref rgba 2) 1.0d0)
+                    sb-alien:double (float (aref rgba 3) 1.0d0))))
       (message sb-alien:void native-color "setFill"))))
 
-(fn (cached-shape sb-sys:system-area-pointer) ((contours list))
+(fn (cached-shape sb-sys:system-area-pointer) ((contours contours))
   (let* ((cache (cocoa-app-shape-paths *app*))
          (cached (gethash contours cache)))
     (or cached
         (let ((path (make-path contours)))
           ;; Keep stable geometry when animation introduces additional shapes.
           (when (< (hash-table-count cache) 2048)
-            (setf (gethash (copy-tree contours) cache)
+            (setf (gethash contours cache)
                   (message object path "retain")))
           path))))
 
@@ -153,7 +152,7 @@
              cache)
     (clrhash cache)))
 
-(fn (cocoa-polygons null) ((contours list) (color string) (alpha real))
+(fn (cocoa-polygons null) ((contours contours) (color string) (alpha real))
   (cocoa-color color alpha)
   (message sb-alien:void (cached-shape contours) "fill"))
 
@@ -171,13 +170,13 @@
          (graphics (objc-class "NSGraphicsContext")))
     (unless path
       (when (>= (hash-table-count cache) 256) (clear-text-paths))
-      (let ((contours nil))
+      (let ((contours (make-array 0 :element-type 'contour :adjustable t :fill-pointer 0)))
         ;; Reuse the font parser, kerning and geometry of the common renderer.
         (paint-text
          (make-renderer :font font
                        :polygons (lambda (paths ink alpha)
                                    (declare (ignore ink alpha))
-                                   (setf contours (nconc contours paths))))
+                                   (loop :for path :across paths :do (vector-push-extend path contours))))
          text 0 0 color)
         (setf path (message object (make-path contours) "retain")
               (gethash (list font (font-size font) (copy-seq text)) cache)
@@ -200,7 +199,7 @@
     (message sb-alien:void graphics "restoreGraphicsState")
     (message sb-alien:void graphics "saveGraphicsState")
     (message sb-alien:void
-             (cached-shape (list (rounded-polygon box 0))) "addClip")))
+             (cached-shape (make-array 1 :element-type 'contour :initial-element (rounded-polygon box 0))) "addClip")))
 
 (fn (callback-true (eql 1)) (view selector)
   (declare (ignore view selector))
@@ -429,7 +428,7 @@
                              type (cocoa-app-buttons *app*)))
                       :x x :y y)))))
 
-(fn (poll-cocoa-events list) (application view)
+(fn (poll-cocoa-events (vector event)) (application view)
   (let ((events nil))
     (loop :for event :=
           (message object application
@@ -461,7 +460,7 @@
                   (not (zerop (message objc-bool (cocoa-app-window *app*)
                                        "isKeyWindow")))))))
       (when cancel (push cancel events)))
-    (nreverse events)))
+    (coerce (nreverse events) '(vector event))))
 
 (fn (install-pointer-tracking null) (view frame)
   (let ((tracking
@@ -571,7 +570,7 @@
       (message sb-alien:void gl "flushBuffer"))))
 
 (fn (wait-cocoa null) (application (context context) events)
-  (let ((delay (lui.frame::frame-wait context events)))
+  (let ((delay (lui.frame::frame-wait context (plusp (length events)))))
     (when (plusp delay)
       ;; Peek so the ordinary event loop still translates and dispatches input.
       (message object application

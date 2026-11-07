@@ -13,21 +13,21 @@
      :clip (lambda (box) (setf clip box))
      :polygons
      (lambda (contours color alpha)
-       (when contours
+       (when (plusp (length contours))
          (pdf:with-saved-state
            (when clip
              (pdf:basic-rect (box-x clip) (box-y clip)
                              (box-width clip) (box-height clip))
              (pdf:clip-path)
              (pdf:end-path-no-op))
-           (destructuring-bind (r g b opacity) (color-components color alpha)
-             (pdf:set-rgb-fill r g b)
-             (unless (= opacity 1)
-               (pdf:set-fill-transparency (float opacity 1f0))))
-           (dolist (points contours)
-             (when points
-               (pdf:move-to (caar points) (cdar points))
-               (dolist (point (rest points))
+           (let ((rgba (color-components color alpha)))
+             (pdf:set-rgb-fill (aref rgba 0) (aref rgba 1) (aref rgba 2))
+             (unless (= (aref rgba 3) 1)
+               (pdf:set-fill-transparency (aref rgba 3))))
+           (loop :for points :across contours :do
+             (when (plusp (length points))
+               (pdf:move-to (car (aref points 0)) (cdr (aref points 0)))
+               (loop :for i :from 1 :below (length points) :for point := (aref points i) :do
                  (pdf:line-to (car point) (cdr point)))
                (pdf:close-path)))
            (pdf:fill-path)))))))
@@ -49,7 +49,8 @@
              (pdf:with-page (:bounds (vector 0 0 width height))
                (pdf:translate 0 height)
                (pdf:scale 1 -1)
-               (apply #'pdf:set-rgb-fill (subseq (color-components background) 0 3))
+               (let ((rgba (color-components background)))
+                 (pdf:set-rgb-fill (aref rgba 0) (aref rgba 1) (aref rgba 2)))
                (pdf:basic-rect 0 0 width height)
                (pdf:fill-path)
                (paint-frame renderer context))

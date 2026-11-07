@@ -9,7 +9,7 @@
 (fn (text-width integer) ((text string))
   (uncursed:display-width text))
 
-(fn (text-lines list) ((text string) width)
+(fn (text-lines (vector string)) ((text string) width)
   (lui.text:wrap-lines text (and width (max 1 (floor width)))
     (lambda (string start end)
       (loop :for index :from start :below end
@@ -55,7 +55,7 @@
 (fn (measure-widget (values integer integer)) ((widget widget) width)
   (let ((lines (text-lines (widget-terminal-text widget) width)))
     (values (max (if (eq (widget-kind widget) :slider) 12 0)
-                 (loop :for line :in lines :maximize (text-width line)))
+                 (loop :for line :across lines :maximize (text-width line)))
             (length lines))))
 
 (fn (make-terminal-context context) ()
@@ -291,7 +291,7 @@
                (paint-panel cells borders style node widget))
              (when (eq (widget-kind widget) :canvas)
                (paint-canvas cells borders node widget))
-             (loop :for line :in (text-lines text w)
+             (loop :for line :across (text-lines text w)
                    :for row :from y :below (min height bottom)
                    :do (loop :with column := x
                              :for char :across line
@@ -399,10 +399,11 @@
 (fn (editing-input-p boolean) ((input input) (context context))
   (text-field-focused-p (pending-input-context context (input-events input))))
 
-(fn (key-event list) ((input input) (key symbol))
-  (push (make-event :kind :key :key key) (input-events input)))
+(fn (key-event null) ((input input) (key symbol))
+  (push (make-event :kind :key :key key) (input-events input))
+  nil)
 
-(fn (slider-change list) ((input input) (context context) (event event))
+(fn (slider-change null) ((input input) (context context) (event event))
   (let ((capture (context-active context)))
     (dolist (pending (reverse (rest (input-events input))))
       (case (event-kind pending)
@@ -440,9 +441,10 @@
                                 (min 1 (max 0
                                   (/ (- (floor (event-x event)) left offset)
                                      (max 1 (1- length))))))))
-                  (input-events input))))))))
+                  (input-events input)))))))
+  nil)
 
-(fn (mouse-event list) ((input input) (data uncursed:mouse-data) &optional context)
+(fn (mouse-event null) ((input input) (data uncursed:mouse-data) &optional context)
   (let* ((button (uncursed:mouse-data-button data))
          (state (uncursed:mouse-data-state data))
          (wheel (member button '(:wheel-up :wheel-down)))
@@ -462,9 +464,10 @@
            :scroll-mode :smooth :value (if (eq button :wheel-down) 3 -3))
           (input-events input))
     (when (and context (eq button :left) (not release))
-      (slider-change input context (first (input-events input))))))
+      (slider-change input context (first (input-events input)))))
+  nil)
 
-(fn (decode-event (or list (eql t))) ((input input) event (context context))
+(fn (decode-event null) ((input input) event (context context))
   (let* ((kind (uncursed:event-kind event))
          (control (uncursed:event-controlp event))
          (alt (uncursed:event-altp event))
@@ -507,7 +510,8 @@
                                 '(:button :checkbox :radio :tab :list-item :cell)))
                    (make-event :kind :activate)
                    (make-event :kind :text :value (string kind)))
-               (input-events input)))))))
+               (input-events input))))))
+  nil)
 
 (fn (input-sequence-length (or null integer)) ((text string))
   ;; Frame complete character sequences; uncursed owns their interpretation.
@@ -572,7 +576,7 @@
                     ((> (+ column size) start) (write-char #\Space stream)))
               (incf column size))))
 
-(fn (draw-focus list) ((context context) screen)
+(fn (draw-focus null) ((context context) screen)
   (let* ((node (focused-node context))
          (widget (and node (element-content node))))
     (when (and (widget-p widget)
@@ -621,7 +625,8 @@
           (when field-p
             (let ((column (+ origin cursor (- offset))))
               (when (and (<= x column) (< column right))
-                (setf (screen-cursor screen) (list y column))))))))))
+                (setf (screen-cursor screen) (list y column)))))))))
+  nil)
 
 (defclass terminal-screen (uncursed:tui)
   ((context :accessor screen-context) (cursor :initform nil :accessor screen-cursor)))

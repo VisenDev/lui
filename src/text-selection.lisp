@@ -6,8 +6,8 @@
   (pending-copy-p nil :type boolean)
   (dragging-p nil :type boolean))
 
-(fn (selectable-nodes (values list (or null hash-table))) ((context context) &optional keys-p)
-  (let ((nodes nil) (keys (when keys-p (make-hash-table :test 'eq))))
+(fn (selectable-nodes (values (vector element) (or null hash-table))) ((context context) &optional keys-p)
+  (let ((nodes (make-array 0 :element-type 'element :adjustable t :fill-pointer 0)) (keys (when keys-p (make-hash-table :test 'eq))))
     (labels ((visit (node anchor path)
                (when (element-id node)
                  (setf anchor (element-id node) path nil))
@@ -16,7 +16,7 @@
                             (member (widget-kind widget)
                                     '(:label :text-field))
                             (not (widget-disabled-p widget)))
-                   (push node nodes)
+                   (vector-push-extend node nodes)
                    (when keys
                      ;; Anonymous nodes retain position under the closest ID.
                      ;; Identical siblings at unchanged positions cannot differ.
@@ -26,7 +26,7 @@
                      :for index :from 0
                      :do (visit child anchor (when keys (cons index path))))))
       (when (context-root context) (visit (context-root context) nil nil)))
-    (values (nreverse nodes) keys)))
+    (values nodes keys)))
 
 (fn (selection-target (or null element)) ((context context) (x real) (y real))
   (let ((target nil))
@@ -64,7 +64,7 @@
            (top (box-y area))
            (lines (wrap-text font text
                              (box-width area))))
-      (dolist (line lines (length text))
+      (loop :for line :across lines :do
         (when (< y (+ top (line-height font)))
           (let ((at (- x (selection-left font node area line))) (left 0)
                 #-jscl (previous nil)
@@ -89,7 +89,8 @@
                 #-jscl (setf previous char)))
             (return-from selection-index (+ start (length line)))))
         (incf start (1+ (length line)))
-        (incf top (line-height font))))))
+        (incf top (line-height font))
+        :finally (return (length text))))))
 
 (fn (selection-range (values (or null integer) &optional (or null integer))) ((selection text-selection) (index integer)
                     (length integer))
@@ -103,13 +104,13 @@
         (values (min length (if (= index (car a)) (cdr a) 0))
                 (min length (if (= index (car b)) (cdr b) length)))))))
 
-(fn (copy-selection t) ((context context) (nodes list)
+(fn (copy-selection t) ((context context) (nodes (vector element))
                     (selection text-selection))
   (let ((text
           (if (text-selection-anchor selection)
               (with-output-to-string (out)
                 (let ((separator nil))
-                  (loop :for node :in nodes :for i :from 0
+                  (loop :for node :across nodes :for i :from 0
                         :for text := (selection-text node)
                         :do (multiple-value-bind (start end)
                                 (selection-range selection i (length text))
@@ -131,8 +132,8 @@
     (when (and text (plusp (length text)) (context-copy context))
       (funcall (context-copy context) text))))
 
-(fn (selection-input null) ((renderer renderer) (context context) (events list))
-  (unless (and events
+(fn (selection-input null) ((renderer renderer) (context context) (events sequence))
+  (unless (and (plusp (length events))
                (or (and (context-selection context)
                         (text-selection-dragging-p
                          (context-selection context)))
@@ -147,7 +148,8 @@
          (selection (or (context-selection context)
                         (setf (context-selection context)
                               (make-text-selection)))))
-    (dolist (event events)
+    (loop :for event-index :below (length events)
+          :for event := (elt events event-index) :do
       (when (lui.frame::pointer-cancel-p event)
         (setf (text-selection-dragging-p selection) nil))
       (let* ((kind (event-kind event))
@@ -159,7 +161,7 @@
         (when (and (null target) (text-selection-dragging-p selection)
                    (member kind '(:move :release)))
           (let ((distance nil) (horizontal nil))
-            (dolist (node nodes)
+            (loop :for node :across nodes :do
               (let* ((box (element-clip node))
                      (dx (max 0 (- (box-x box) x)
                               (- x (+ (box-x box) (box-width box)))))
@@ -178,7 +180,7 @@
            (setf (context-selection context)
                  (setf selection (make-text-selection)))
            (setf target (selection-target context x y))
-           (when (member target nodes)
+           (when (find target nodes)
              (let ((at (selection-index renderer target x y)))
                (setf (text-selection-dragging-p selection) t)
                (if (eq (widget-kind (element-content target)) :text-field)
@@ -242,12 +244,12 @@
                                (list (text-selection-focus selection)
                                      (text-selection-focus-key selection)
                                      (text-selection-focus-text selection))))
-          (let ((node (nth (caar endpoint) nodes)))
+          (let ((node (aref nodes (caar endpoint))))
             (unless (and node (equal (gethash node keys) (second endpoint))
                          (equal (selection-text node) (third endpoint)))
               (setf (context-selection context) nil)
               (return-from paint-selection nil))))
-        (loop :for node :in nodes :for i :from 0
+        (loop :for node :across nodes :for i :from 0
               :for text := (selection-text node)
               :do (multiple-value-bind (start end)
                       (selection-range selection i (length text))
@@ -257,7 +259,7 @@
                                                  (element-content node)))
                                (offset 0))
                           (funcall (renderer-clip renderer) (element-clip node))
-                          (loop :for line :in
+                          (loop :for line :across
                                      (wrap-text font text
                                                 (box-width area))
                                 :for y :from (box-y area)
@@ -277,7 +279,7 @@
                                                                right))
                                                       x)
                                             :height (line-height font))
-                                           0 "#258bff" 0.4)))
+                                           0 (widget-color (element-content node) :accent) 0.4)))
                                 (incf offset (1+ (length line)))))))))))))
 
 (fn (finish-selection t) ((renderer renderer) (context context))

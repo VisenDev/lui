@@ -26,17 +26,17 @@
   (stipple nil :type (or null function))
   (patterns (make-hash-table :test 'equal) :type hash-table))
 
-(fn (color-components list) ((color string) &optional ((alpha real) 1))
-  "Convert #RRGGBB and ALPHA to a list of normalized red, green, blue, and alpha values."
+(fn (color-components (vector single-float 4)) ((color string) &optional ((alpha real) 1))
+  "Return normalized red, green, blue, and alpha in a four-float vector."
   (assert (and (= (length color) 7) (char= (char color 0) #\#)))
-  (append (loop :for start :in '(1 3 5)
-                :collect (/ (parse-integer color :start start
-                                                 :end (+ start 2)
-                                                 :radix 16)
-                            255.0f0))
-          (list (max 0 (min 1 alpha)))))
+  (let ((rgba (make-array 4 :element-type 'single-float)))
+    (dotimes (i 3)
+      (setf (aref rgba i) (/ (parse-integer color :start (1+ (* i 2))
+                                                :end (+ 3 (* i 2)) :radix 16) 255.0f0)))
+    (setf (aref rgba 3) (coerce (max 0 (min 1 alpha)) 'single-float))
+    rgba))
 
-(fn (rounded-polygon list) ((box box) (radius real))
+(fn (rounded-polygon contour) ((box box) (radius real))
   "Return contour points for BOX with corners rounded by RADIUS."
   (let* ((x (box-x box))
          (y (box-y box))
@@ -45,9 +45,11 @@
          (r (max 0 (min radius (/ w 2) (/ h 2)))))
     (when (zerop r)
       (return-from rounded-polygon
-        (list (cons (+ x w) y) (cons (+ x w) (+ y h))
-              (cons x (+ y h)) (cons x y))))
-    (loop :for (cx cy base)
+        (make-array 4 :element-type 'point :initial-contents
+                    (list (cons (+ x w) y) (cons (+ x w) (+ y h))
+                          (cons x (+ y h)) (cons x y)))))
+    (make-array 36 :element-type 'point :initial-contents
+     (loop :for (cx cy base)
             :in (list (list (+ x w (- r)) (+ y r) -90)
                       (list (+ x w (- r)) (+ y h (- r)) 0)
                       (list (+ x r) (+ y h (- r)) 90)
@@ -58,16 +60,16 @@
                         (cons (+ cx (* r #-jscl (cos angle)
                                          #+jscl (#j:Math:cos angle)))
                               (+ cy (* r #-jscl (sin angle)
-                                         #+jscl (#j:Math:sin angle))))))))
+                                         #+jscl (#j:Math:sin angle)))))))))
 
-(fn (trapezoids null) ((contours list) (emit function))
+(fn (trapezoids null) ((contours contours) (emit function))
   "Convert contours into nonzero-winding trapezoids for native triangle APIs."
   (let ((edges nil)
         (ys nil))
-    (dolist (points contours)
-      (loop :for tail :on points
-            :for a := (car tail)
-            :for b := (or (cadr tail) (first points))
+    (loop :for points :across contours :do
+      (loop :for i :below (length points)
+            :for a := (aref points i)
+            :for b := (aref points (mod (1+ i) (length points)))
             :unless (= (cdr a) (cdr b))
               :do (push (cons a b) edges)
                   (push (cdr a) ys)))
@@ -96,10 +98,11 @@
                     (incf winding (if (< (cdar edge) (cddr edge)) 1 -1))
                     (when (and left (zerop winding))
                       (funcall emit
-                               (list (cons (at-y left top) top)
+                               (make-array 4 :element-type 'point :initial-contents
+                                (list (cons (at-y left top) top)
                                      (cons (at-y edge top) top)
                                      (cons (at-y edge bottom) bottom)
-                                     (cons (at-y left bottom) bottom))))))))))
+                                     (cons (at-y left bottom) bottom)))))))))))
 
 (fn (widget-font font) ((renderer renderer) (widget widget))
   "Select the widget’s font face and size for this renderer."
@@ -122,11 +125,12 @@
 (fn (measure-widget (values number number)) ((renderer renderer) (widget widget) width)
   (let* ((g (widget-geometry widget)) (font (widget-font renderer widget))
          (horizontal (+ (geometry-left g) (geometry-right g)))
-         (lines (when (geometry-text-p g) (wrap-text font (if (geometry-value-p g)
+         (lines (if (geometry-text-p g) (wrap-text font (if (geometry-value-p g)
                                    (widget-value widget) (widget-text widget))
-                           (when width (max 0 (- width horizontal)))))))
+                           (when width (max 0 (- width horizontal))))
+                    (make-array 0 :element-type 'string))))
     (values (max (geometry-min-width g)
-                 (+ horizontal (loop :for line :in lines :maximize (text-width font line) :into n
+                 (+ horizontal (loop :for line :across lines :maximize (text-width font line) :into n
                                      :finally (return (or n 0)))))
             (max (geometry-min-height g)
                  (+ (geometry-top g) (geometry-bottom g) (* (length lines) (line-height font)))))))
@@ -158,9 +162,9 @@
                                       previous char (font-loader font)))))
                     (funcall
                      (renderer-polygons renderer)
-                     (mapcar
+                     (map 'contours
                       (lambda (points)
-                        (mapcar (lambda (point)
+                        (map 'contour (lambda (point)
                                   (cons (+ cursor (* scale (car point)))
                                         (- y (* scale (cdr point)))))
                                 points))
@@ -183,7 +187,7 @@
   (if (renderer-surface renderer)
       (funcall (renderer-surface renderer) box radius color alpha)
       (funcall (renderer-polygons renderer)
-               (list (rounded-polygon box radius)) color alpha)))
+               (make-array 1 :element-type 'contour :initial-element (rounded-polygon box radius)) color alpha)))
 
 (fn (outline t) ((renderer renderer) (box box) (radius real) (color string)
      (alpha real) (thickness real))
@@ -192,10 +196,10 @@
       (funcall (renderer-surface renderer)
                box radius color alpha thickness)
       (funcall (renderer-polygons renderer)
-               (list (rounded-polygon box radius)
-                     (reverse
-                      (rounded-polygon (inset-box box thickness)
-                                       (max 0 (- radius thickness)))))
+               (make-array 2 :element-type 'contour :initial-contents
+                (list (rounded-polygon box radius)
+                      (reverse (rounded-polygon (inset-box box thickness)
+                                                (max 0 (- radius thickness))))))
                color alpha)))
 
 (fn (focused-p boolean) ((node element))

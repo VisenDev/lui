@@ -67,7 +67,7 @@
   (begin-gpu-frame gpu)
   (funcall (renderer-clip renderer) (make-box :width 720 :height 520))
   (funcall (renderer-polygons renderer)
-           '(((0 . 0) (720 . 0) (720 . 520) (0 . 520))) "#204060" 1)
+           '#(#((0 . 0) (720 . 0) (720 . 520) (0 . 520))) "#204060" 1)
   (paint-frame renderer context)
   (let ((glass (pixel-color 130 25)))
     ;; Glass still blends with the app's backdrop, while the window stays opaque.
@@ -91,7 +91,7 @@
              (dotimes (stripe 90)
                (let ((x (* stripe 8)))
                  (funcall (renderer-polygons renderer)
-                          (list (list (cons x 0) (cons (+ x 8) 0)
+                          (vector (vector (cons x 0) (cons (+ x 8) 0)
                                       (cons (+ x 8) 520) (cons x 520)))
                           (if (evenp stripe) "#000000" "#ffffff") 1)))
              (paint-frame renderer context)
@@ -122,9 +122,9 @@
                       (inner (rounded-polygon
                               (make-box :x (1+ x) :y (1+ y)
                                         :width 8 :height 8) 0)))
-                 (funcall (renderer-polygons renderer) (list outer) color 1)
+                 (funcall (renderer-polygons renderer) (vector outer) color 1)
                  (funcall (renderer-polygons renderer)
-                          (list outer (reverse inner)) "#20c040" 1)))))
+                          (vector outer (reverse inner)) "#20c040" 1)))))
       (cells "#c04020")
       ;; More than 512 positions must reuse two shapes, not flush the cache.
       (assert (= (+ builds 2) (lui.gl::gpu-geometry-builds gpu)))
@@ -153,7 +153,7 @@
                    (loop :for i :below 4
                          :collect (cffi:mem-aref clip :int i)))))
   (funcall (renderer-polygons renderer)
-           '(((0 . 0) (40 . 0) (40 . 40) (0 . 40))) "#ffffff" 1)
+           '#(#((0 . 0) (40 . 0) (40 . 40) (0 . 40))) "#ffffff" 1)
   (cffi:with-foreign-object (pixel :uint8 4)
     (flet ((red-at (x)
              (cffi:foreign-funcall "glReadPixels"

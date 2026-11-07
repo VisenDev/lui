@@ -6,7 +6,7 @@
 (defstruct web-app
   host stage overlay canvas graphics renderer context callback cleanup observer resize
   scrollport (viewport-offset 0) (scroll-delta 0) (velocity 0) (scroll-time 0)
-  overlay-order overlay-geometry overlay-cache
+  (overlay-order #() :type vector) overlay-geometry overlay-cache
   animation-frame deadline-timer events pending-p (alive-p t))
 
 (fn (page-scrollport t) (host)
@@ -80,10 +80,10 @@
          (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color)
                (jscl/ffi:oget g "globalAlpha") alpha)
          ((jscl/ffi:oget g "beginPath"))
-         (dolist (path paths)
-           (when path
-             ((jscl/ffi:oget g "moveTo") (caar path) (cdar path))
-             (dolist (p (cdr path))
+         (loop :for path :across paths :do
+           (when (plusp (length path))
+             ((jscl/ffi:oget g "moveTo") (car (aref path 0)) (cdr (aref path 0)))
+             (loop :for i :from 1 :below (length path) :for p := (aref path i) :do
                ((jscl/ffi:oget g "lineTo") (car p) (cdr p)))
              ((jscl/ffi:oget g "closePath"))))
          ((jscl/ffi:oget g "fill")))
@@ -180,10 +180,11 @@
 
 (defstruct overlay-region x y right bottom candidate visible)
 
-(fn (overlay-candidates list) ((app web-app) (root element))
+(fn (overlay-candidates (vector list)) ((app web-app) (root element))
   ;; Earlier regions in this walk paint in front of later ones. An unchanged
   ;; prefix therefore has exactly the same occlusion as on the previous frame.
-  (let ((previous (web-app-overlay-geometry app)) seen bands entries)
+  (let ((previous (web-app-overlay-geometry app)) seen bands
+        (entries (make-array 0 :element-type 'list :adjustable t :fill-pointer 0)))
     (labels ((index-region (region)
                (do ((band (floor (overlay-region-y region) 64) (1+ band))
                     (end (ceiling (overlay-region-bottom region) 64)))
@@ -231,15 +232,15 @@
                                   (or (not (eq kind :label))
                                       (lui:toolkit-native-labels-p (lui.widgets:widget-style widget)))
                                   (not (lui.widgets:widget-painter widget))))
-                       (push (list node (cons kind key) interactive) entries)))))))
+                       (vector-push-extend (list node (cons kind key) interactive) entries)))))))
       (visit root nil nil))
     (setf (web-app-overlay-geometry app) (nreverse seen))
-    entries))
+    (reverse entries)))
 
 (fn (css-pixels t) ((n real))
   ((jscl/ffi:oget (#j:String n) "concat") #j"px"))
 
-(fn (position-dom-widget list) ((record dom-widget) (box box) (clip box))
+(fn (position-dom-widget null) ((record dom-widget) (box box) (clip box))
   (let* ((x (box-x box)) (y (box-y box)) (w (box-width box)) (h (box-height box))
          (left (- (box-x clip) x)) (top (- (box-y clip) y))
          (right (- w left (box-width clip))) (bottom (- h top (box-height clip)))
@@ -257,7 +258,8 @@
                   (if (= 0 top right bottom left) #j"none"
                       ((jscl/ffi:oget #j"inset(" "concat")
                        top #j"px " right #j"px " bottom #j"px " left #j"px)"))))
-          (setf (dom-widget-geometry record) (list x y w h top right bottom left)))))))
+          (setf (dom-widget-geometry record) (list x y w h top right bottom left))))))
+  nil)
 
 (fn (make-semantic-button t) ((app web-app) (node element) (kind symbol))
   ;; The canvas keeps pointer capture and toolkit keyboard navigation. Native
@@ -274,23 +276,22 @@
        (jscl/ffi:jsstring (string-downcase (symbol-name kind)))))
     button))
 
-(fn (same-overlay-order-p boolean) ((records list) (entries list))
-  ;; Compare both lists in one pass; JSCL's sequence EVERY indexes into lists.
-  (do ((r records (cdr r)) (e entries (cdr e)))
-      ((or (null r) (null e)
-           (not (equal (dom-widget-key (car r)) (second (car e)))))
-       (and (null r) (null e)))))
+(fn (same-overlay-order-p boolean) ((records (vector dom-widget)) (entries (vector list)))
+  (and (= (length records) (length entries))
+       (loop for record across records for entry across entries
+             always (equal (dom-widget-key record) (second entry)))))
 
-(fn (reconcile-overlay list) ((app web-app) (entries list))
+(fn (reconcile-overlay (vector dom-widget)) ((app web-app) (entries (vector list)))
   ;; Look up keyed nodes and inspect DOM order only when membership or order changes.
   (let ((order (web-app-overlay-order app)))
     (when (same-overlay-order-p order entries)
       (return-from reconcile-overlay order))
-    (let ((old (make-hash-table :test 'equal)) (layer (web-app-overlay app)) next
+    (let ((old (make-hash-table :test 'equal)) (layer (web-app-overlay app))
+          (next (make-array 0 :element-type 'dom-widget :adjustable t :fill-pointer 0))
           (cache (web-app-overlay-cache app)) hidden)
-      (dolist (record order) (setf (gethash (dom-widget-key record) old) record))
+      (loop for record across order do (setf (gethash (dom-widget-key record) old) record))
       (dolist (record cache) (setf (gethash (dom-widget-key record) old) record))
-      (dolist (entry entries)
+      (loop for entry across entries do
         (destructuring-bind (node key interactive) entry
           (declare (ignore interactive))
           (let* ((kind (car key))
@@ -302,9 +303,9 @@
             (when (dom-widget-hidden-p record)
               (setf (dom-widget-hidden-p record) nil
                     (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"visible"))
-            (push record next))))
+            (vector-push-extend record next))))
       ;; Prefer newly hidden nodes over older cached entries when evicting.
-      (dolist (record order)
+      (loop for record across order do
         (when (gethash (dom-widget-key record) old)
           (setf (dom-widget-hidden-p record) t
                 (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"hidden")
@@ -316,9 +317,9 @@
       (when (nthcdr *overlay-cache-limit* hidden)
         (setf (cdr (nthcdr (1- *overlay-cache-limit*) hidden)) nil))
       (setf (web-app-overlay-cache app) hidden)
-      (setf order (nreverse next))
+      (setf order next)
       (let ((cursor (jscl/ffi:oget layer "firstChild")))
-        (dolist (record order)
+        (loop for record across order do
           (let ((element (dom-widget-element record)))
             (loop while (and (not (eq cursor #j:null))
                              (equal (jscl/ffi:oget cursor "style" "visibility") #j"hidden"))
@@ -331,7 +332,7 @@
   (let* ((entries (overlay-candidates app (context-root (web-app-context app))))
          (records (reconcile-overlay app entries))
          (external (make-hash-table :test 'eq)))
-    (loop for (node key interactive) in entries for record in records do
+    (loop for (node key interactive) across entries for record across records do
       (let* ((kind (car key)) (label (eq kind :label)) (widget (element-content node))
              (element (dom-widget-element record))
              (text (if label (lui.widgets:widget-text widget)
@@ -542,7 +543,7 @@
       ((jscl/ffi:oget (web-app-scrollport app) "removeEventListener") #j"scroll" (web-app-resize app)))
     (funcall (web-app-cleanup app))
     (lui.font:close-font (renderer-font (web-app-renderer app)))
-    (setf (web-app-overlay-order app) nil
+    (setf (web-app-overlay-order app) #()
           (web-app-overlay-cache app) nil
           (web-app-overlay-geometry app) nil)
     ((jscl/ffi:oget (web-app-stage app) "remove"))))

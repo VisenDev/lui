@@ -345,7 +345,7 @@
   (logior (if (logtest state #x100) 1 0)
           (if (logtest state #x400) 2 0)))
 
-(fn (read-events (values list boolean)) ((window x-window) (delete integer))
+(fn (read-events (values (vector event) boolean)) ((window x-window) (delete integer))
   (let ((display (x-window-display window))
         (events nil)
         (quit nil))
@@ -411,7 +411,7 @@
                         delete)
                  (setf quit t)))
               (otherwise nil))))
-    (values (nreverse events) quit)))
+    (values (coerce (nreverse events) '(vector event)) quit)))
 
 (fn (glx-visual cffi:foreign-pointer) (display screen)
   ;; Prefer multisampling; servers without it still get double-buffered RGB.
@@ -454,7 +454,7 @@
       (cffi:foreign-funcall "poll" :pointer p :ulong 1
                             :int (ceiling (* 1000
                                              (lui.frame::frame-wait
-                                              context events))) :int)))
+                                              context (plusp (length events))))) :int)))
   (lui.frame::limit-frame-rate context))
 
 (fn (draw-window context) ((window x-window) (gpu gpu) (context context)

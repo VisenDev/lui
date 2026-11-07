@@ -64,10 +64,10 @@
 
 (defun handle-cell-events (state index)
   (let* ((id (cell-id index)) (events (take-events id)))
-    (when (and events (state-editing state)
+    (when (and (plusp (length events)) (state-editing state)
                (not (eql index (state-editing state))))
       (finish-edit state))
-    (dolist (raw events)
+    (loop for raw across events do
       (let ((event (text-input-event
                     raw (eql index (state-editing state)))))
         (when event
@@ -114,7 +114,7 @@
     (let ((focused (id-index (context-focus *context*))))
       (when (and focused (not (state-editing state)))
         (setf (state-selected state) focused)))
-    (dolist (id (event-targets))
+    (loop for id across (event-targets) do
       (let ((index (id-index id)))
         (when (and index (not (eql index editing)))
           (handle-cell-events state index))))))

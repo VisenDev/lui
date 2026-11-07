@@ -168,8 +168,18 @@ created in its scope, including nested scopes and mixed toolkits in one frame:
 `lui:widget-color` reads a resolved role from a widget. Besides foreground,
 background and accent, roles cover disabled text, selection, on-accent text,
 borders, light/shadow, tracks, disabled surfaces, bevel edges, and cell colors.
-Explicit widget color options take precedence. Each widget captures its palette,
+The remaining role keys are `:disabled`, `:selection`, `:on-accent`, `:border`,
+`:outline`, `:light`, `:shadow`, `:track`, `:disabled-accent`, `:disabled-surface`,
+`:bevel-light`, `:bevel-dark`, `:disabled-bevel-light`, `:disabled-bevel-dark`,
+`:cell-background`, and `:cell-foreground`. Explicit widget color options take precedence. Each widget captures its palette,
 so later drawing does not depend on a dynamic theme binding.
+
+Collection APIs return vectors with declared element types: wrapped lines are
+`(vector string)`, event batches are `(vector lui.frame:event)`, and drawing
+callbacks receive `lui.layout:contours` (vectors of contours, each a vector of
+X/Y cons pairs). Colors are four-element single-float vectors. Use `aref`,
+sequence operations, or `loop ... across` to consume these results. Configuration
+plists, control alists, Lisp forms, and internal pending-event queues remain lists.
 
 There is one [demo gallery](examples/demo.lisp), with Controls, Editing, Layout,
 Scroll, Styles, and 7GUIs pages. Its Glass/Motif/Garnet selector changes the toolkit for

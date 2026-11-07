@@ -1,6 +1,6 @@
 (defpackage #:lui.layout
   (:use #:cl #:lui.fn)
-  (:export #:sizing #:fit #:grow #:fixed #:percent #:box #:box-x #:box-y
+  (:export #:point #:contour #:contours #:sizing #:fit #:grow #:fixed #:percent #:box #:box-x #:box-y
            #:box-width #:box-height #:make-box #:element #:make-element
            #:element-id #:element-children #:element-box #:element-content
            #:element-measure #:element-width #:element-height
@@ -18,6 +18,10 @@
            #:element-offset-y #:intersect-boxes #:visible-elements))
 
 (in-package #:lui.layout)
+
+(deftype point () "An X/Y coordinate pair." '(cons real real))
+(deftype contour () "A vector of ordered polygon points." '(vector point))
+(deftype contours () "A vector of polygon contours." '(vector contour))
 
 (defstruct (sizing (:constructor %sizing (kind value minimum maximum)))
   "Axis sizing policy with a kind, value, minimum, and optional maximum."
@@ -59,7 +63,7 @@
 Floating children use offsets; interactive nodes participate in input routing."
   id
   content
-  (children (make-array 0 :adjustable t :fill-pointer 0) :type vector)
+  (children (make-array 0 :element-type 'element :adjustable t :fill-pointer 0) :type (vector element))
   (box (make-box) :type box)
   (width (fit) :type sizing)
   (height (fit) :type sizing)
@@ -135,10 +139,8 @@ Floating children use offsets; interactive nodes participate in input routing."
 (fn (bounded real) ((rule sizing) (value real))
   (max (sizing-minimum rule) (min (or (sizing-maximum rule) value) value)))
 
-(fn (flow-children list) ((node element))
-  (let ((children nil))
-    (do-children (child node (nreverse children))
-      (unless (element-floating-p child) (push child children)))))
+(fn (flow-children (vector element)) ((node element))
+  (remove-if #'element-floating-p (element-children node)))
 
 (fn (gaps real) ((node element))
   (let ((count 0))
@@ -178,7 +180,7 @@ Floating children use offsets; interactive nodes participate in input routing."
 (fn (intrinsic real) ((node element) (axis symbol))
   (assert (and (>= (element-gap node) 0) (>= (element-padding node) 0)))
   (assert (or (zerop (length (element-children node)))
-              (not (and (element-measure node) (flow-children node)))))
+              (not (and (element-measure node) (plusp (length (flow-children node)))))))
   (do-children (child node)
     (intrinsic child axis))
   (let ((rule (axis-rule node axis))
@@ -216,27 +218,27 @@ Floating children use offsets; interactive nodes participate in input routing."
                                (element-scrollbar-p node))
                           (max 0 (element-scrollbar-width node)) 0)))))))))
 
-(fn (distribute null) ((children list) (axis symbol) (amount real) (growing boolean))
+(fn (distribute null) ((children (vector element)) (axis symbol) (amount real) (growing boolean))
   "Water-fill the smallest growing or largest shrinking elements, respecting bounds."
-  (loop :while (and children (> (abs amount) 0.0001))
+  (loop :while (and (plusp (length children)) (> (abs amount) 0.0001))
         :do (let* ((level (reduce (if growing #'min #'max) children
                                  :key (lambda (child)
                                         (axis-size child axis))))
                    (group (remove-if-not
                            (lambda (child) (= (axis-size child axis) level))
                            children))
-                   (others (set-difference children group))
+                   (others (remove-if (lambda (child) (= (axis-size child axis) level)) children))
                    (step (/ (abs amount) (length group))))
-              (dolist (child others)
+              (loop :for child :across others :do
                 (setf step (min step (abs (- (axis-size child axis) level)))))
-              (dolist (child group)
+              (loop :for child :across group :do
                 (let* ((rule (axis-rule child axis))
                        (limit (if growing
                                   (sizing-maximum rule)
                                   (sizing-minimum rule))))
                   (when limit
                     (setf step (min step (abs (- limit level)))))))
-              (dolist (child group)
+              (loop :for child :across group :do
                 (set-axis-size child axis
                                (+ level (if growing step (- step)))))
               (incf amount (* (if growing -1 1) step (length group)))
@@ -281,7 +283,7 @@ Floating children use offsets; interactive nodes participate in input routing."
                                  (* 2 (element-padding node))
                                  (if along (gaps node) 0)
                                  (if (eq axis :x) (scroll-gutter node) 0)))))
-       (dolist (child children)
+       (loop :for child :across children :do
          (let ((rule (axis-rule child axis)))
            (case (sizing-kind rule)
              (:percent
@@ -296,7 +298,7 @@ Floating children use offsets; interactive nodes participate in input routing."
              (otherwise nil))))
        (when (and along (not (element-scroll-p node)))
          (let* ((remaining (- available
-                              (loop :for child :in children
+                              (loop :for child :across children
                                     :sum (axis-size child axis))))
                 (growing (plusp remaining)))
            (distribute (remove-if-not

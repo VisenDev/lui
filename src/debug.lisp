@@ -317,7 +317,7 @@
                                   (if (state-width state)
                                       (units (state-width state))
                                       (* window 0.4))))))
-    (dolist (event (events-for (id :resize)))
+    (loop for event across (events-for (id :resize)) do
       (when (or (eq (event-kind event) :cancel)
                 (and (eq (event-kind event) :move)
                      (not (event-dragging-p event))))
@@ -369,7 +369,7 @@
                       (max minimum (if (state-details-height state)
                                        (units (state-details-height state))
                                        (* maximum 0.75))))))
-    (dolist (event (events-for (id :details-resize)))
+    (loop for event across (events-for (id :details-resize)) do
       (when (or (eq (event-kind event) :cancel)
                 (and (eq (event-kind event) :move)
                      (not (event-dragging-p event))))

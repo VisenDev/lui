@@ -234,7 +234,7 @@
 
 (defun select-reference (state)
   ;; Apply input before virtualization can omit a row from the new viewport.
-  (dolist (id (lui.frame:activated-ids))
+  (loop for id across (lui.frame:activated-ids) do
     (when (and (consp id) (eq (first id) :docs-entry)
                (integerp (second id)) (null (cddr id))
                (member (second id) (browser-matches state)))
@@ -302,7 +302,7 @@
 (defun canvas-preview (state)
   (let ((box (previous-box :docs-preview-canvas)))
     (when box
-      (dolist (event (events-for :docs-preview-canvas))
+      (loop for event across (events-for :docs-preview-canvas) do
         (when (and (eq (event-kind event) :press)
                    (eq (event-button event) :primary))
           (push (list (/ (- (event-x event) (box-x box)) *unit*)

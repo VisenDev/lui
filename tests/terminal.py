@@ -69,7 +69,7 @@ def script(error=False, debug=False):
          (event (uncursed-sys:read-event)))
     (lui.terminal::mouse-event input (uncursed:event-kind event) context)))
 (assert (= (lui.terminal:text-width "A界é") 4))
-(assert (equal (lui.terminal:text-lines "界 ab" 3) '("界" "ab")))
+(assert (equalp (lui.terminal:text-lines "界 ab" 3) #("界" "ab")))
 (let ((context (lui.terminal:make-terminal-context)))
   (lui.frame:with-frame (context 4 1) (lui.glass:label "A界é"))
   (assert (string= (lui.terminal:render-terminal context)
@@ -121,8 +121,8 @@ def script(error=False, debug=False):
       (gallery (lui.example:make-gallery :toolkit :glass)))
   (lui.frame:with-frame (context 90 35) (lui.example:draw gallery))
   (let ((lines (lui.terminal:text-lines (lui.terminal:render-terminal context) nil)))
-    (assert (string= (first lines) (format nil "╭~A╮" (make-string 88 :initial-element #\\─))))
-    (assert (string= (nth 34 lines) (format nil "╰~A╯" (make-string 88 :initial-element #\\─))))))
+    (assert (string= (aref lines 0) (format nil "╭~A╮" (make-string 88 :initial-element #\\─))))
+    (assert (string= (aref lines 34) (format nil "╰~A╯" (make-string 88 :initial-element #\\─))))))
 ;; Track endpoints agree with keyboard and raw mouse edits.
 (let ((context (lui.terminal:make-terminal-context)) (value 0.5))
   (flet ((draw ()
@@ -302,9 +302,9 @@ def script(error=False, debug=False):
         (lui.motif:label "X"))))
   (let ((lines (lui.terminal:text-lines
                 (lui.terminal:render-terminal context) nil)))
-    (assert (char= (char (first lines) 2) #\\+))
-    (assert (char= (char (second lines) 2) #\\|))
-    (assert (char= (char (fourth lines) 2) #\\+))))
+    (assert (char= (char (aref lines 0) 2) #\\+))
+    (assert (char= (char (aref lines 1) 2) #\\|))
+    (assert (char= (char (aref lines 3) 2) #\\+))))
 ;; A zero-padding child cannot overwrite its enclosing panel's borders.
 (let ((context (lui.terminal:make-terminal-context)))
   (lui.frame:with-frame (context 5 3)

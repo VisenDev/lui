@@ -41,7 +41,7 @@
     (setf (state-hover state) nil))
   (let ((box (previous-box :circle-canvas)) (model (state-model state)))
     (when box
-      (dolist (event (events-for :circle-canvas))
+      (loop for event across (events-for :circle-canvas) do
         (when (and (not (modal-p state))
                    (member (event-kind event) '(:move :press)))
           (let* ((x (/ (- (event-x event) (box-x box)) *unit*))

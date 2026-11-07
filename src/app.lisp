@@ -30,14 +30,14 @@
   "Install a runner function under NAME; normally called by a backend."
   (setf (gethash name *backends*) runner))
 
-(fn (available-backends list) ()
-  "List every backend registered in this Lisp image."
+(fn (available-backends (vector symbol)) ()
+  "Return a vector of backend names registered in this Lisp image."
   (let (results)
     (maphash (lambda (name runner)
                (declare (ignore runner))
                (push name results))
              *backends*)
-    results))
+    (make-array (length results) :element-type 'symbol :initial-contents results)))
 
 (fn (run t)
     ((draw function) &key (backend *backend*) ((title string) "LUI") width
@@ -53,7 +53,7 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
          (name (or backend
                    (and *default-backend-function*
                         (funcall *default-backend-function*))
-                   (first (available-backends))))
+                   (loop for backend across (available-backends) return backend)))
          (runner (gethash name *backends*)))
     (unless runner
       (error "Backend ~S is not loaded. Available: ~S" name
@@ -339,7 +339,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
 (defstruct (combobox-state (:include edit-state))
   open-p focused-p filter-p highlight)
 
-(fn (combobox-matches list) ((query string) (choices sequence) (limit (integer 1 *)))
+(fn (combobox-matches (vector (cons integer string))) ((query string) (choices sequence) (limit (integer 1 *)))
   ;; Keep the source index for IDs so filtering never retargets a pointer event.
   (let ((index 0) (count 0) matches)
     (block collect
@@ -349,7 +349,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
                    (when (= (incf count) limit) (return-from collect)))
                  (incf index))
            choices))
-    (nreverse matches)))
+    (make-array count :element-type '(cons integer string) :initial-contents (nreverse matches))))
 
 (fn (anchored-popup lui.layout:element) (id (anchor lui.layout:element) (options list))
   (let* ((*parent* (lui.layout:make-element))
@@ -362,10 +362,10 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
     (push pane (lui.frame::context-popups *context*))
     pane))
 
-(fn (combobox-popup null) (id (matches list) index (anchor lui.layout:element) reveal)
+(fn (combobox-popup null) (id (matches (vector (cons integer string))) index (anchor lui.layout:element) reveal)
   (let* ((pane (anchored-popup (list id :popup) anchor nil))
          (*parent* pane))
-    (loop for match in matches for i from 0
+    (loop for match across matches for i from 0
           for row-id = (list id :choice (car match))
           do (list-item row-id (cdr match)
                         (opt :width (lui.layout:grow) :selected-p (eql i index)))
@@ -376,7 +376,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
 
 (fn (combobox-completion (or null string)) (id (state combobox-state) (text string)
                          (choices sequence) (limit (integer 1 *))
-                         (events list) (anchor lui.layout:element))
+                         (events (vector event)) (anchor lui.layout:element))
   (let ((navigate (find-if (lambda (event)
                              (and (eq :key (event-kind event))
                                   (member (event-key event) '(:up :down)))) events)))
@@ -385,13 +385,13 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
                                         choices limit))
              (last (1- (length matches)))
              (old (and (combobox-state-open-p state) (combobox-state-highlight state)))
-             (index (and matches old (min old last))))
-        (dolist (event events)
+             (index (and (plusp (length matches)) old (min old last))))
+        (loop for event across events do
           (case (event-kind event)
             (:key (case (event-key event)
                     ((:up :down)
                      (setf (combobox-state-open-p state) t
-                           index (when matches
+                           index (when (plusp (length matches))
                                    (if (eq :down (event-key event))
                                        (min last (1+ (or index -1)))
                                        (max 0 (1- (or index (1+ last))))))))
@@ -399,9 +399,9 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
             (:activate
              (when (combobox-state-open-p state)
                (setf (combobox-state-open-p state) nil)
-               (return-from combobox-completion (and index (cdr (nth index matches))))))))
+               (return-from combobox-completion (and index (cdr (aref matches index))))))))
         (setf (combobox-state-highlight state) index)
-        (when (and matches (combobox-state-open-p state))
+        (when (and (plusp (length matches)) (combobox-state-open-p state))
           (let ((clicked (find-if (lambda (match) (activated-p (list id :choice (car match))))
                                   matches)))
             (when clicked
@@ -457,8 +457,13 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
           29 28)
       (if (member month '(4 6 9 11)) 30 31)))
 
-(fn (parse-picker-date (or null list)) (text)
-  "Parse YYYY-MM-DD or MM/DD/YYYY into (year month day), checking leap years."
+(deftype date-parts () '(vector integer 3))
+
+(fn (make-date-parts date-parts) ((year integer) (month integer) (day integer))
+  (make-array 3 :element-type 'integer :initial-contents (list year month day)))
+
+(fn (parse-picker-date (or null date-parts)) (text)
+  "Parse YYYY-MM-DD or MM/DD/YYYY into a year/month/day vector, checking leap years."
   (when (and (stringp text) (= 10 (length text)))
     (flet ((number-at (start end)
              (when (every #'digit-char-p (subseq text start end))
@@ -470,15 +475,13 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                  (values (number-at 6 10) (number-at 0 2) (number-at 3 5))))
         (when (and year month day (<= 1 year 9999) (<= 1 month 12)
                    (<= 1 day (month-days year month)))
-          (list year month day))))))
+          (make-date-parts year month day))))))
 
-(fn (picker-display string) ((date list))
-  (if date (destructuring-bind (year month day) date
-             (format nil "~2,'0D/~2,'0D/~4,'0D" month day year))
-      ""))
+(fn (picker-display string) ((date (or null date-parts)))
+  (if date (format nil "~2,'0D/~2,'0D/~4,'0D" (aref date 1) (aref date 2) (aref date 0)) ""))
 
-(fn (picker-value (or null string)) ((date list))
-  (when date (apply #'format nil "~4,'0D-~2,'0D-~2,'0D" date)))
+(fn (picker-value (or null string)) ((date (or null date-parts)))
+  (when date (format nil "~4,'0D-~2,'0D-~2,'0D" (aref date 0) (aref date 1) (aref date 2))))
 
 (fn (calendar-start (integer 0 6)) ((year integer) (month (integer 1 12)))
   ;; Gregorian weekday, Sunday = 0, independent of time zones and OS clocks.
@@ -492,11 +495,11 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   #("January" "February" "March" "April" "May" "June" "July" "August"
     "September" "October" "November" "December"))
 
-(fn (local-today list) ()
+(fn (local-today date-parts) ()
     (multiple-value-bind (s m h day month year)
         (decode-universal-time (get-universal-time))
         (declare (ignore s m h))
-    (list year month day)))
+    (make-date-parts year month day)))
 
 (fn (shift-month (values integer (integer 1 12)))
     ((year integer) (month (integer 1 12)) (delta integer))
@@ -510,7 +513,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (let ((focus (context-focus *context*)))
     (when (and (consp focus) (equal (first focus) id) (eq (second focus) :day))
       (let ((day (third focus)))
-        (dolist (event (events-for focus))
+        (loop for event across (events-for focus) do
           (let ((step (and (eq (event-kind event) :key)
                            (case (event-key event)
                              (:left -1) (:right 1) (:up -7) (:down 7)))))
@@ -524,8 +527,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                           (picker-state-year state) y (picker-state-month state) m
                           (context-focus *context*) (list id :day day))))))))))))
 
-(fn (picker-calendar (values (or null list) boolean))
-    (id (state picker-state) (selected (or null list)))
+(fn (picker-calendar (values (or null date-parts) boolean))
+    (id (state picker-state) (selected (or null date-parts)))
   "Return the selected date parts (or NIL for Clear) and an action flag."
   (calendar-arrow-focus id state)
   (let* ((year (picker-state-year state)) (month (picker-state-month state))
@@ -575,8 +578,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                            (princ-to-string day) :width width :center-text-p t
                                            :disabled-p (not (<= 1 y 9999))
                                            :foreground (if (zerop offset) foreground muted)
-                                           :selected-p (equal (list y m day) selected))
-                        (return-from picker-calendar (values (list y m day) t)))))))))))
+                                           :selected-p (equalp (make-date-parts y m day) selected))
+                        (return-from picker-calendar (values (make-date-parts y m day) t)))))))))))
     (row (:width (lui.layout:grow))
       (when (calendar-item (list id :clear) "Clear" :foreground ink)
         (return-from picker-calendar (values nil t)))
@@ -585,8 +588,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         (return-from picker-calendar (values (local-today) t))))
     (values nil nil)))
 
-(fn (calendar-popup (values (or null list) boolean))
-    (id (state picker-state) (parts (or null list)))
+(fn (calendar-popup (values (or null date-parts) boolean))
+    (id (state picker-state) (parts (or null date-parts)))
   (let* ((trigger (list id :calendar)) (popup (list id :popup))
          (focus (context-focus *context*))
          (terminal (context-text-mode-p *context*)))
@@ -600,10 +603,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
              (when (or icon-click (not (picker-state-open-p state)))
                (let ((initial (or parts (local-today))))
                  (setf (picker-state-open-p state) t (picker-state-months-p state) nil
-                       (picker-state-year state) (first initial)
-                       (picker-state-month state) (second initial))
+                       (picker-state-year state) (aref initial 0)
+                       (picker-state-month state) (aref initial 1))
                  (when icon-click
-                   (setf (context-focus *context*) (list id :day (third initial))))))
+                   (setf (context-focus *context*) (list id :day (aref initial 2))))))
              (when field-click (setf (context-focus *context*) input)))))
     (when (picker-state-open-p state)
       (let ((press (lui.frame::context-pointer-press *context*))
@@ -650,8 +653,8 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
               (when (or parsed (zerop (length draft)))
                 (setf date parsed result (picker-value parsed)))
               (when parsed
-                (setf (picker-state-year state) (first parsed)
-                      (picker-state-month state) (second parsed))))))
+                (setf (picker-state-year state) (aref parsed 0)
+                      (picker-state-month state) (aref parsed 1))))))
         (multiple-value-bind (chosen action) (calendar-popup id state date)
           (when action
             (setf date chosen result (picker-value chosen)
@@ -661,5 +664,5 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
       (setf (picker-state-draft state) (picker-display date)
             (picker-state-value state) result)
       (request-frame))
-    (when (and (picker-state-open-p state) (activated-ids)) (request-frame))
+    (when (and (picker-state-open-p state) (plusp (length (activated-ids)))) (request-frame))
     result))

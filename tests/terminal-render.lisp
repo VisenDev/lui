@@ -91,9 +91,9 @@
         (table-row () (table-cell (:column-span 2) (label "Header")))
         (table-row () (label "A") (button :edit "Edit"))))
     (assert (search "Header" (render-terminal context))))
-  (assert (equal (text-lines (format nil "a~%~%b~%") 3)
-                 '("a" "" "b" "")))
-  (assert (equal (text-lines "longword ok" 3) '("longword" "ok"))))
+  (assert (equalp (text-lines (format nil "a~%~%b~%") 3)
+                 #("a" "" "b" "")))
+  (assert (equalp (text-lines "longword ok" 3) #("longword" "ok"))))
 
 (fn test-incremental-output ()
   #+unix (terminfo:set-terminal "xterm-direct")

@@ -107,9 +107,9 @@ An optional terminal-label callback overrides the standard kind-based label."
                  (format nil (if (zerop (widget-radius widget))
                                  "[ ~A ]" "( ~A )") text))))))))
 
-(fn (tab-arrow-p (or null list)) ((event event))
+(fn (tab-arrow-p boolean) ((event event))
   (and (eq (event-kind event) :key)
-       (member (event-key event) '(:left :right :home :end))))
+       (not (null (member (event-key event) '(:left :right :home :end))))))
 
 (fn (navigate-tabs null) ()
   (when (and (not (context-tabs-handled-p *context*))
@@ -313,11 +313,12 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
             :do (incf index direction)))
     (if (minusp direction) (1+ index) index)))
 
-(fn (edit-text string) ((text string) (state edit-state) (events list))
+(fn (edit-text string) ((text string) (state edit-state) (events sequence))
   "Apply ordered editor EVENTS to TEXT using mutable caret/selection STATE.
 Return the new text; preserve the editor's kill/yank state between frames.
 Events include semantic Readline keys, text insertion, and replacement changes."
-  (dolist (event events)
+  (loop for event-index below (length events)
+        for event = (elt events event-index) do
     (setf (edit-state-cursor state)
           (max 0 (min (length text) (edit-state-cursor state)))
           (edit-state-anchor state)
@@ -428,18 +429,18 @@ Events include semantic Readline keys, text insertion, and replacement changes."
   "Declare a value control, apply its current input, and return the updated value.
 KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
   (let ((original value)
-        (events (unless (getf options :disabled-p) (events-for id))))
+        (events (if (getf options :disabled-p) #() (events-for id))))
     (ecase kind
       (:checkbox
        (when (and (not (getf options :disabled-p)) (activated-p id))
          (setf value (not value)))
-       (dolist (event events)
+       (loop for event across events do
          (when (eq (event-kind event) :change)
            (setf value (not (null (event-value event)))))))
       (:radio
        (when (and (not (getf options :disabled-p)) (activated-p id))
          (setf value (getf options :choice)))
-       (dolist (event events)
+       (loop for event across events do
          (when (eq (event-kind event) :change)
            (setf value (event-value event)))))
       (:slider
@@ -448,7 +449,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
              (step (getf options :step 0.01))
              (box (previous-box id)))
          (assert (and (< minimum maximum) (> step 0)))
-         (dolist (event events)
+         (loop for event across events do
            (case (event-kind event)
              (:change
               (when (realp (event-value event))
@@ -513,7 +514,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
 
 (fn (scrollbar-input t) (id owner)
   (let* ((events (events-for id))
-         (state (when events (gethash id (context-state *context*))))
+         (state (when (plusp (length events)) (gethash id (context-state *context*))))
          (old (when state (scrollbar-state-node state))))
     (when old
       (let* ((value (widget-value (element-content old)))
@@ -522,7 +523,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
              (limit (- (third value) page))
              (track (element-box old)) (thumb (scrollbar-thumb old))
              (travel (- (box-height track) (box-height thumb))))
-        (dolist (event events)
+        (loop for event across events do
           (case (event-kind event)
             (:press
              (when (eq (event-button event) :primary)

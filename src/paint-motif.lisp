@@ -10,17 +10,21 @@
          (bottom (+ y (box-height box)))
          (edge (min 2 (/ (box-width box) 2) (/ (box-height box) 2))))
     (funcall (renderer-polygons renderer)
-             (list (list (cons x y) (cons right y)
+             (make-array 1 :element-type 'contour :initial-element
+              (make-array 6 :element-type 'point :initial-contents
+               (list (cons x y) (cons right y)
                          (cons (- right edge) (+ y edge))
                          (cons (+ x edge) (+ y edge))
                          (cons (+ x edge) (- bottom edge))
-                         (cons x bottom)))
+                         (cons x bottom))))
              (if recessed dark light) 1)
     (funcall (renderer-polygons renderer)
-             (list (list (cons x bottom) (cons right bottom)
+             (make-array 1 :element-type 'contour :initial-element
+              (make-array 6 :element-type 'point :initial-contents
+               (list (cons x bottom) (cons right bottom)
                          (cons right y) (cons (- right edge) (+ y edge))
                          (cons (- right edge) (- bottom edge))
-                         (cons (+ x edge) (- bottom edge))))
+                         (cons (+ x edge) (- bottom edge)))))
              (if recessed light dark) 1)))
 
 (fn (paint-motif-scrollbar t) ((renderer renderer) (node element))

@@ -43,7 +43,7 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
   (y 0 :type real))
 
 (defstruct scroll-motion
-  (path nil :type list)
+  (path #() :type (vector t))
   (remaining 0 :type real)
   (time 0 :type real)
   (last-input 0 :type real)
@@ -183,7 +183,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
               (first ids)))))
 
 (fn (pending-input-context context)
-    ((context context) (events list)
+    ((context context) (events sequence)
      &optional ((width (or null real)) nil) ((height (or null real)) nil))
   "Predict focus after a newest-first pending EVENTS batch without mutating CONTEXT.
 Return CONTEXT unchanged when no prediction is needed or dimensions changed.
@@ -195,7 +195,8 @@ Native key translators use this to interpret a key after a batched click or Tab.
            (some (lambda (event)
                    (member (event-kind event) '(:press :tab))) events))
       (let ((predicted (copy-context context)))
-        (dolist (event (reverse events))
+        (loop for event-index downfrom (1- (length events)) to 0
+              for event = (elt events event-index) do
           (case (event-kind event)
             (:tab (focus-next
                    predicted (eq (event-key event) :backward)))
@@ -207,7 +208,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
         predicted)
       context))
 
-(fn (scroll-path list) ((context context) (x real) (y real))
+(fn (scroll-path (vector t)) ((context context) (x real) (y real))
   ;; Follow the painted hit path, deepest scroller first.
   (let ((scrollers nil))
     (labels ((visit (node parents)
@@ -218,12 +219,12 @@ Native key translators use this to interpret a key after a batched click or Tab.
                    (do-children (child node)
                      (visit child path))))))
       (when (context-root context) (visit (context-root context) nil)))
-    scrollers))
+    (make-array (length scrollers) :element-type t :initial-contents scrollers)))
 
-(fn (scroll-along real) ((context context) (path list) (amount real))
+(fn (scroll-along real) ((context context) (path (vector t)) (amount real))
   ;; Bubble the unused portion outward, including during the animated tail.
   (let ((requested amount))
-    (dolist (id path)
+    (loop for id across path do
       (let ((node (gethash id (context-ids context))))
         (when (and node (element-scroll-p node))
           (let* ((old (element-scroll-y node))
@@ -261,10 +262,11 @@ Native key translators use this to interpret a key after a batched click or Tab.
            (and (eq mode :auto) (context-text-mode-p context)))
        (setf (context-scroll-motion context) nil)
        (scroll-along context path amount))
-      ((and path (not (zerop amount)))
+      ((and (plusp (length path)) (not (zerop amount)))
        (let* ((old (context-scroll-motion context))
               (continuing
-                (and old (equal path (scroll-motion-path old))
+                (and old (= (length path) (length (scroll-motion-path old)))
+                     (every #'equal path (scroll-motion-path old))
                      (plusp (* amount (scroll-motion-remaining old)))
                      (<= (- now (scroll-motion-last-input old)) 0.15d0)))
               (level (if continuing
@@ -287,18 +289,18 @@ Native key translators use this to interpret a key after a batched click or Tab.
   (push id (context-activation-order context))
   (setf (gethash id (context-activated context)) t))
 
-(fn (activated-ids list) (&optional ((context context) *context*))
+(fn (activated-ids (vector t)) (&optional ((context context) *context*))
   "Return active widget IDs in input order, including repeated activations."
-  (reverse (remove-if-not
-            (lambda (id) (gethash id (context-activated context)))
-            (context-activation-order context))))
+  (let ((ids (remove-if-not (lambda (id) (gethash id (context-activated context)))
+                            (context-activation-order context))))
+    (make-array (length ids) :element-type t :initial-contents (nreverse ids))))
 
 (fn (pointer-cancel-p boolean) ((event event))
   (or (eq (event-kind event) :cancel)
       (and (eq (event-kind event) :move) (event-buttons event)
            (not (logbitp 0 (event-buttons event))))))
 
-(fn (begin-frame (eql t)) ((context context) (width real) (height real) (events list))
+(fn (begin-frame (eql t)) ((context context) (width real) (height real) (events sequence))
   "Begin rebuilding CONTEXT at WIDTH and HEIGHT after routing EVENTS.
 Input is resolved against the previous completed tree; this resets the frame
 clock, redraw deadline, declarations, and per-frame activation state."
@@ -328,7 +330,8 @@ clock, redraw deadline, declarations, and per-frame activation state."
                                 :activate :change :cancel))) events))
       (setf (context-scroll-motion context) nil))
     (unless resized (advance-scroll context (context-time context)))
-    (dolist (event events)
+    (loop for event-index below (length events)
+          for event = (elt events event-index) do
       (let ((target (or (and (member (event-kind event) '(:press :release))
                              (event-id event))
                         (unless resized
@@ -468,9 +471,10 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
   "Return ID's solved box from the previous completed frame, or NIL."
   (gethash id (context-regions *context*)))
 
-(fn (events-for list) (id)
-  "Return ID's input events in chronological order for the current frame."
-  (reverse (gethash id (context-events *context*))))
+(fn (events-for (vector event)) (id)
+  "Return a vector of ID's input events in chronological order for this frame."
+  (let ((events (gethash id (context-events *context*))))
+    (make-array (length events) :element-type 'event :initial-contents (reverse events))))
 
 (fn (hovered-p boolean) (id)
   "Whether the pointer currently hovers over the non-NIL control ID."
@@ -520,7 +524,7 @@ Clear focus/hover for removed controls and return the completed root element."
              (cons (element-scroll-x node) (element-scroll-y node))))))
   (let ((motion (context-scroll-motion context)))
     (when motion
-      (if (gethash (first (scroll-motion-path motion)) (context-ids context))
+      (if (gethash (aref (scroll-motion-path motion) 0) (context-ids context))
           (let ((*context* context)) (request-frame (/ 1 60)))
           (setf (context-scroll-motion context) nil))))
   (setf (context-building-p context) nil

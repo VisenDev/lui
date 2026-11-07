@@ -341,6 +341,8 @@ class WebTests(unittest.TestCase):
           (when *web-test-show-first-label*
             (lui.widgets:declare-widget :label :glass :first "First label"))
           (lui.widgets:declare-widget :label :glass :second "Selected sibling")''')
+        self.assertEqual(self.page.locator("#test-host span").all_text_contents(),
+                         ["First label", "Selected sibling"])
         sibling = self.page.get_by_text("Selected sibling", exact=True)
         sibling.evaluate("""node => {
             window.savedSibling = node;
