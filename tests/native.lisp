@@ -817,6 +817,23 @@
     (assert (every (lambda (position) (= 27 (second position))) positions))
     (assert (= 6 (lui.draw::selection-index renderer node 27
                                            (+ 41 (line-height font) 1)))))
+  ;; Fit-sized buttons and tabs need breathing room inside their frame band.
+  (dolist (kind '(:button :tab))
+    (let* ((text-x nil)
+           (renderer (make-renderer :font font
+                       :clip (lambda (box) (declare (ignore box)))
+                       :polygons (lambda (&rest args) (declare (ignore args)))
+                       :text (lambda (face text x y color)
+                               (declare (ignore face text y color)) (setf text-x x))))
+           (widget (make-widget :kind kind :style :garnet :text "Push"))
+           (label-width (text-width (widget-font renderer widget) "Push")))
+      (multiple-value-bind (width height) (measure-widget renderer widget nil)
+        (let* ((box (make-box :x 20 :y 30 :width width :height height))
+               (node (make-element :content widget :box box :clip box))
+               (*context* (make-context)))
+          (lui.draw::paint-widget renderer node)
+          (assert (near (- text-x (+ (box-x box) 4)) 6))
+          (assert (near (- (+ (box-x box) width -8) (+ text-x label-width)) 6))))))
   ;; Garnet fields retain their narrower horizontal inset in shared measurement.
   (let ((widget (make-widget :kind :text-field :style :garnet :value "alpha beta")))
     (multiple-value-bind (w h)

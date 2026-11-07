@@ -177,8 +177,10 @@
   (let ((g (standard-geometry widget)))
     (case (widget-kind widget)
       ((:button :tab)
-       (setf (geometry-left g) 4 (geometry-top g) 4
-             (geometry-right g) 8 (geometry-bottom g) 8
+       ;; Keep six pixels of label padding inside the four-pixel frame band.
+       ;; The right edge also reserves the shadow displacement.
+       (setf (geometry-left g) 10 (geometry-top g) 4
+             (geometry-right g) 14 (geometry-bottom g) 8
              (geometry-offset-x g) +garnet-shadow-offset+
              (geometry-offset-y g) +garnet-shadow-offset+))
       ((:checkbox :radio) (setf (geometry-left g) 12 (geometry-right g) 36))
