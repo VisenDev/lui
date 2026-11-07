@@ -18,7 +18,7 @@
   (rows (make-array 0 :adjustable t :fill-pointer 0) :type vector))
 (fn id (name &optional key) (list :lui.debug name key))
 
-(fn own-node-p ((node element))
+(fn (own-node-p boolean) ((node element))
   (let ((id (element-id node)))
     (and (consp id) (eq (first id) :lui.debug))))
 
@@ -51,26 +51,26 @@
   (unless (gethash (state-selected state) (state-nodes state))
     (setf (state-selected state) nil)))
 
-(fn box-label ((box box))
+(fn (box-label string) ((box box))
   (format nil "(~,2F, ~,2F) ~,2F x ~,2F"
           (box-x box) (box-y box) (box-width box) (box-height box)))
 
-(fn clipped-p ((node element))
+(fn (clipped-p boolean) ((node element))
   (let ((box (element-box node)) (clip (element-clip node)))
     (not (and (= (box-x box) (box-x clip)) (= (box-y box) (box-y clip))
               (= (box-width box) (box-width clip))
               (= (box-height box) (box-height clip))))))
 
-(fn offscreen-p ((node element))
+(fn (offscreen-p boolean) ((node element))
   (or (zerop (box-width (element-clip node)))
       (zerop (box-height (element-clip node)))))
 
-(fn preview ((text string))
+(fn (preview string) ((text string))
   (let ((text (subseq text 0 (min 40 (length text)))))
     (map 'string (lambda (char)
                    (if (< (char-code char) 32) #\Space char)) text)))
 
-(fn caption ((node element))
+(fn (caption string) ((node element))
   (let ((widget (element-content node))
         (*print-level* 2) (*print-length* 4))
     (format nil "~A ~A~A"
@@ -81,7 +81,7 @@
             (cond ((offscreen-p node) " [offscreen]")
                   ((clipped-p node) " [clipped]") (t "")))))
 
-(fn sizing-label ((rule sizing))
+(fn (sizing-label string) ((rule sizing))
   (format nil "~A ~A [~A, ~A]" (lui.layout::sizing-kind rule)
           (lui.layout::sizing-value rule) (lui.layout::sizing-minimum rule)
           (or (lui.layout::sizing-maximum rule) "none")))
@@ -491,7 +491,7 @@
           (debugger state width)
           (resize-handle width))))))
 
-(defun enabled-p (&optional (context *context*))
+(fn (enabled-p boolean) (&optional (context *context*))
   "Whether CONTEXT currently has an open debugger attached to its overlay."
   (let ((state (context-overlay-state context)))
     (and state (state-open-p state))))

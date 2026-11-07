@@ -154,7 +154,7 @@
 
 (defun symbol-rows (state)
   (let* ((width (reference-width))
-         (key (list width (current-toolkit) (toolkit-revision) *unit*
+         (key (list width (current-toolkit) *toolkit-revision* *unit*
                     (context-text-mode-p *context*))))
     (unless (equal key (browser-row-key state))
       (let* ((defaults (toolkit-defaults))

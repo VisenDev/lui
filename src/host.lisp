@@ -29,4 +29,4 @@
 
 ;; This module is loaded only by the aggregate system. Keep core/custom backend
 ;; registration independent of host libraries and inspect the restored session.
-(setf lui::*default-backend-function* #'preferred-backend)
+(setf lui:*default-backend-function* #'preferred-backend)

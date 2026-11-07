@@ -98,14 +98,14 @@
                                      (cons (at-y edge bottom) bottom)
                                      (cons (at-y left bottom) bottom))))))))))
 
-(fn widget-font ((renderer renderer) (widget widget))
+(fn (widget-font font) ((renderer renderer) (widget widget))
   (let ((font (font-face (renderer-font renderer)
                          (widget-font-family widget)
                          (widget-font-weight widget))))
     (setf (font-size font) (widget-font-size widget))
     font))
 
-(fn measure-widget ((renderer renderer) (widget widget) width)
+(fn (measure-widget (values number number)) ((renderer renderer) (widget widget) width)
   "Return intrinsic width and wrapped height using this renderer’s font metrics."
   (when (eq (widget-kind widget) :panel)
     (return-from measure-widget (values 0 0)))
@@ -162,7 +162,7 @@
                                                        (font-loader font)))))
                     (setf previous char))))))
 
-(fn inset-box ((box box) (inset real))
+(fn (inset-box box) ((box box) (inset real))
   (make-box :x (+ (box-x box) inset) :y (+ (box-y box) inset)
             :width (max 0 (- (box-width box) (* 2 inset)))
             :height (max 0 (- (box-height box) (* 2 inset)))))

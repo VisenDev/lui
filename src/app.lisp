@@ -9,25 +9,23 @@
            #:opt #:panel #:label
            #:button #:tab #:checkbox #:radio #:slider
            #:text-field #:cell #:list-item #:gauge #:canvas
-           #:date-picker #:searchable-combobox))
-
+           #:date-picker #:searchable-combobox
+           #:*default-backend-function*
+           #:*toolkit-revision*))
 (in-package #:lui)
 
 (defvar *backends* (make-hash-table :test 'eq))
-
-(defvar *default-backend-function* nil)
-
-(defvar *backend* nil
-  "Default backend override; NIL selects an available backend.")
-
+(defvar *default-backend-function* nil
+  "A thunk that returns default backend when called.")
+(defvar *backend* nil "Default backend override; NIL selects an available backend.")
 (defvar *unit* 1 "Layout spacing unit supplied by the active backend.")
 
 (fn (units real) ((count real))
   "Convert spacing units to backend coordinates: terminal cells or graphical units."
   (* count *unit*))
 
-(fn register-backend ((name symbol) (runner function))
-  "Install a RUN implementation under NAME; normally called by a backend."
+(fn register-backend ((name symbol) (runner (function () t)))
+  "Install a runner function under NAME; normally called by a backend."
   (setf (gethash name *backends*) runner))
 
 (fn (available-backends list) ()
@@ -69,9 +67,6 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 (defvar *toolkits* (make-hash-table :test 'eq))
 
 (defvar *toolkit-revision* 0)
-(defun toolkit-revision ()
-  "Return the generation used to invalidate cached toolkit styles."
-  *toolkit-revision*)
 
 (defun find-toolkit (name)
   (or (gethash name *toolkits*) (error "Unknown toolkit ~S." name)))
@@ -424,14 +419,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   #("January" "February" "March" "April" "May" "June" "July" "August"
     "September" "October" "November" "December"))
 
-(defun local-today ()
-  #+jscl
-  (let ((date (jscl/ffi:new #j:Date)))
-    (list ((jscl/ffi:oget date "getFullYear")) (1+ ((jscl/ffi:oget date "getMonth")))
-          ((jscl/ffi:oget date "getDate"))))
-  #-jscl
-  (multiple-value-bind (s m h day month year) (get-decoded-time)
-    (declare (ignore s m h))
+(fn (local-today list) ()
+    (multiple-value-bind (s m h day month year)
+        (decode-universal-time (get-universal-time))
+        (declare (ignore s m h))
     (list year month day)))
 
 (defun shift-month (year month delta)
