@@ -4,18 +4,10 @@ LUI is an immediate-mode Common Lisp UI library under development. The same
 [shared example](examples/demo.lisp) runs unchanged in a browser, native windows,
 and a terminal. Applications own their state; `lui:run` owns the backend lifecycle.
 
-The `codex/native-cl-backends` branch uses CLX for X11 windowing and
-[Plisp/uncursed](https://github.com/Plisp/uncursed) for interactive terminal
-control. CLX retains a three-function Xlib bridge for the native GLX renderer;
-X11 cursors use cursor-font glyphs. Wayland uses libwayland and direct EGL
-presentation, and Windows uses direct Win32/GDI+ bindings.
-
-CLX's bundled GLX implementation creates indirect protocol contexts; it does
-not activate a native libGL context, and its GL command encoders lack the
-shader/program/uniform operations used by Glass. The retained Xlib bridge
-opens/closes the native GLX display and frees visual information. Windowing,
-input, selections, and cursors use CLX. Removing the bridge would require a
-different rendering integration, not just replacing the GLX function names.
+Interactive terminal control uses
+[Plisp/uncursed](https://github.com/Plisp/uncursed). Native graphical backends
+use LUI's own platform bindings: Xlib/GLX, libwayland/EGL, Win32/GDI+, and
+Cocoa. X11 uses one display connection for windowing and direct OpenGL rendering.
 
 Load the library with `(asdf:load-system "lui")` to register the backends for
 your host. Use `lui/core` for the portable core with no external dependencies.
@@ -370,21 +362,18 @@ absolute repository path:
 (:directory "/absolute/path/to/lui/")
 ```
 
-Optional dependencies must also be discoverable through ASDF. For this branch,
-the makefile launchers also discover checkouts under `build/deps/`:
+Optional dependencies must also be discoverable through ASDF.
+The makefile launchers also discover checkouts under `build/deps/`:
 
 ```sh
 mkdir -p build/deps
-git clone https://github.com/sharplispers/clx.git build/deps/clx
 git clone https://github.com/Plisp/uncursed.git build/deps/uncursed
 ```
 
-The experiment uses these upstream revisions (check out these commits to
-reproduce it):
+The tested uncursed revision is:
 
 | Library | Revision |
 | --- | --- |
-| CLX | `7512924c1aeb85b3ee8e5d0694e077903c713fa0` |
 | uncursed | `89f9cb6f21bc7e981a04ce0d6361ae73dde49c4f` |
 
 With Quicklisp installed, load `scripts/setup.lisp` and use
@@ -420,7 +409,7 @@ painting use the same CSS family and weight.
 | `lui/terminal` | uncursed terminal setup, input decoding, and cursor control; terminfo on Unix |
 | `lui/native` | Shared native measurement and outline painting; CFFI, zpb-ttf |
 | `lui/pdf` | Single-page PDF output through cl-pdf and the native font renderer |
-| `lui/x11` | CLX, system OpenGL and the small Xlib GLX bridge; an X display with GLX |
+| `lui/x11` | Xlib and system OpenGL; an X display with GLX |
 | `lui/gl` | EGL/OpenGL renderer; EGL and compatibility OpenGL libraries |
 | `lui/wayland` | Wayland client/EGL, xkbcommon, EGL/OpenGL, a Wayland compositor |
 | `lui/win32` | Windows User32, GDI32, Kernel32, and GDI+ |

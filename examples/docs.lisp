@@ -16,7 +16,7 @@
      (setf name (lui:text-field :name name))
      (when (lui:button :hello \"Say hello\")
        (format t \"Hello ~A!~%\" name)))))"
-     "For portable layout, widgets, and plain terminal output, load lui/core. It has no external dependencies. To load a single backend, use its system, such as lui/x11 or lui/wayland. The browser build uses JSCL. Native graphics use zpb-ttf, CFFI, and platform libraries, with CLX for X11 windowing and input. Interactive terminal control uses uncursed; plain terminal output remains dependency-free."
+     "For portable layout, widgets, and plain terminal output, load lui/core. It has no external dependencies. To load a single backend, use its system, such as lui/x11 or lui/wayland. The browser build uses JSCL. Native graphics use zpb-ttf, CFFI, and platform libraries, with Xlib/GLX for X11 windowing and rendering. Interactive terminal control uses uncursed; plain terminal output remains dependency-free."
      "Use make demo for the gallery, make docs for this browser, and make test for the detected platform. Backend availability depends on which systems are loaded; an explicit :backend argument selects one.")
     (:debug "Debugger"
      "Show debugger opens this window's layout debugger. Close dismisses it. Each window owns its debugger state."

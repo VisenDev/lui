@@ -5,30 +5,172 @@
 
 (in-package #:lui.x11)
 
-;; GLX needs a native Display for the libGL context used by the shared renderer.
-;; CLX's GLX extension manages an indirect wire context, not libGL's current
-;; context, and its GL encoders omit the shader/program commands Glass needs.
-;; Keep this three-symbol Xlib bridge for GLX only; window resources, input,
-;; selections and cursors belong to the CLX connection.
-(cffi:define-foreign-library glx-xlib (:unix (:or "libX11.so.6" "libX11.so")))
-(cffi:use-foreign-library glx-xlib)
-(cffi:defcfun ("XOpenDisplay" open-glx-display) :pointer (name :pointer))
-(cffi:defcfun ("XCloseDisplay" close-glx-display) :int (display :pointer))
-(cffi:defcfun ("XFree" free-visual) :int (data :pointer))
+(cffi:define-foreign-library xlib (:unix (:or "libX11.so.6" "libX11.so")))
+
+(cffi:use-foreign-library xlib)
+
+(cffi:define-foreign-library xcursor
+  (:unix (:or "libXcursor.so.1" "libXcursor.so")))
+(ignore-errors (cffi:use-foreign-library xcursor))
+
+(defmacro binding (name result &rest args)
+  `(cffi:defcfun ,name ,result ,@args))
+
+(binding ("XOpenDisplay" open-display) :pointer (name :pointer))
+
+(binding ("XCloseDisplay" close-display) :int (display :pointer))
+
+(binding ("XDefaultScreen" default-screen) :int (display :pointer))
+
+(binding ("XRootWindow" root-window) :ulong (display :pointer) (screen :int))
+
 (cffi:defcstruct visual-info
   (visual :pointer) (visual-id :ulong) (screen :int) (depth :int)
   (class :int) (red :ulong) (green :ulong) (blue :ulong)
   (map-size :int) (bits :int))
-(cffi:defcfun ("glXChooseVisual" choose-visual) :pointer
+
+(cffi:defcstruct window-attributes
+  (background-pixmap :ulong) (background :ulong) (border-pixmap :ulong)
+  (border :ulong) (bit-gravity :int) (win-gravity :int) (backing-store :int)
+  (backing-planes :ulong) (backing-pixel :ulong) (save-under :int)
+  (event-mask :long) (propagate :long) (override :int) (colormap :ulong)
+  (cursor :ulong))
+
+(binding ("glXChooseVisual" choose-visual) :pointer
   (display :pointer) (screen :int) (attributes :pointer))
-(cffi:defcfun ("glXCreateContext" %create-glx) :pointer
+(binding ("glXCreateContext" %create-glx) :pointer
   (display :pointer) (visual :pointer) (share :pointer) (direct :int))
-(cffi:defcfun ("glXMakeCurrent" %make-current) :int
+(binding ("glXMakeCurrent" %make-current) :int
   (display :pointer) (window :ulong) (context :pointer))
-(cffi:defcfun ("glXSwapBuffers" swap-buffers) :void
+(binding ("glXSwapBuffers" swap-buffers) :void
   (display :pointer) (window :ulong))
-(cffi:defcfun ("glXDestroyContext" destroy-glx) :void
+(binding ("glXDestroyContext" destroy-glx) :void
   (display :pointer) (context :pointer))
+(binding ("XCreateColormap" create-colormap) :ulong
+  (display :pointer) (window :ulong) (visual :pointer) (alloc :int))
+(binding ("XFreeColormap" free-colormap) :int
+  (display :pointer) (colormap :ulong))
+(binding ("XCreateWindow" create-window) :ulong
+  (display :pointer) (parent :ulong) (x :int) (y :int)
+  (width :uint) (height :uint) (border :uint) (depth :int) (class :uint)
+  (visual :pointer) (mask :ulong) (attributes :pointer))
+
+(binding ("XDestroyWindow" destroy-window)
+  :int
+  (display :pointer)
+  (window :ulong))
+
+(binding ("XStoreName" store-name)
+  :int
+  (display :pointer)
+  (window :ulong)
+  (name :string))
+
+(binding ("XSelectInput" select-input)
+  :int
+  (display :pointer)
+  (window :ulong)
+  (mask :long))
+
+(binding ("XMapWindow" map-window) :int (display :pointer) (window :ulong))
+
+(binding ("XPending" pending) :int (display :pointer))
+
+(binding ("XNextEvent" next-event) :int (display :pointer) (event :pointer))
+
+(binding ("XFlush" flush-display) :int (display :pointer))
+
+(binding ("XSync" sync-display) :int (display :pointer) (discard :int))
+
+(binding ("XInternAtom" intern-atom)
+  :ulong
+  (display :pointer)
+  (name :string)
+  (only :int))
+
+(binding ("XSetWMProtocols" set-protocols)
+  :int
+  (display :pointer)
+  (window :ulong)
+  (atoms :pointer)
+  (count :int))
+
+(binding ("XLookupString" lookup-string)
+  :int
+  (event :pointer)
+  (buffer :pointer)
+  (size :int)
+  (keysym :pointer)
+  (compose :pointer))
+
+(binding ("XFree" free-memory) :int (data :pointer))
+
+(binding ("XCreateFontCursor" create-font-cursor) :ulong
+  (display :pointer) (shape :uint))
+(binding ("XDefineCursor" define-cursor) :int
+  (display :pointer) (window :ulong) (cursor :ulong))
+(binding ("XFreeCursor" free-cursor) :int (display :pointer) (cursor :ulong))
+
+(binding ("XSetSelectionOwner" set-selection-owner) :int
+  (display :pointer) (selection :ulong) (owner :ulong) (time :ulong))
+(binding ("XChangeProperty" change-property) :int
+  (display :pointer) (window :ulong) (property :ulong) (type :ulong)
+  (format :int) (mode :int) (data :pointer) (count :int))
+(binding ("XSendEvent" send-event) :int
+  (display :pointer) (window :ulong) (propagate :int) (mask :long)
+  (event :pointer))
+(binding ("XMaxRequestSize" max-request-size) :long (display :pointer))
+
+(cffi:defcstruct selection-request
+  (type :int) (serial :ulong) (send :int) (display :pointer)
+  (owner :ulong) (requestor :ulong) (selection :ulong) (target :ulong)
+  (property :ulong) (time :ulong))
+(cffi:defcstruct selection-notify
+  (type :int) (serial :ulong) (send :int) (display :pointer)
+  (requestor :ulong) (selection :ulong) (target :ulong) (property :ulong)
+  (time :ulong))
+
+(cffi:defcstruct key-event
+  (type :int)
+  (serial :ulong)
+  (send :int)
+  (display :pointer)
+  (window :ulong)
+  (root :ulong)
+  (subwindow :ulong)
+  (time :ulong)
+  (x :int)
+  (y :int)
+  (root-x :int)
+  (root-y :int)
+  (state :uint)
+  (code :uint)
+  (same-screen :int))
+
+(cffi:defcstruct configure-event
+  (type :int)
+  (serial :ulong)
+  (send :int)
+  (display :pointer)
+  (event :ulong)
+  (window :ulong)
+  (x :int)
+  (y :int)
+  (width :int)
+  (height :int)
+  (border :int)
+  (above :ulong)
+  (override :int))
+
+(cffi:defcstruct client-event
+  (type :int)
+  (serial :ulong)
+  (send :int)
+  (display :pointer)
+  (window :ulong)
+  (message-type :ulong)
+  (format :int)
+  (data :long :count 5))
 
 (fn call-glx ((function function) &rest arguments)
   ;; Mesa worker threads inherit the caller's FP exception mask when a context
@@ -49,102 +191,144 @@
   (call-glx #'%make-current display window context))
 
 (defstruct x-window
-  display glx-display context window colormap clipboard clipboard-text
+  display context
+  (window 0 :type integer) (colormap 0 :type integer)
+  (clipboard 0 :type integer) (clipboard-text nil :type (or null string))
   (width 720 :type integer) (height 520 :type integer)
   (cursors (make-hash-table :test 'eq) :type hash-table)
   cursor-kind (pointer-x -1 :type real) (pointer-y -1 :type real))
 
 (fn copy-clipboard ((window x-window) (text string))
-  (setf (x-window-clipboard-text window) (copy-seq text)
-        (xlib:selection-owner (x-window-display window) :clipboard)
-        (x-window-window window))
-  (xlib:display-force-output (x-window-display window)))
+  (setf (x-window-clipboard-text window) (copy-seq text))
+  (set-selection-owner (x-window-display window) (x-window-clipboard window)
+                       (x-window-window window) 0)
+  (flush-display (x-window-display window)))
 
-(fn selection-request ((window x-window) requestor selection target property time)
+(fn selection-request ((window x-window) event)
   (let* ((display (x-window-display window))
-         (target-name (symbol-name target))
-         (destination (or property target))
+         (targets (intern-atom display "TARGETS" 0))
+         (utf8 (intern-atom display "UTF8_STRING" 0))
+         (text-atom (intern-atom display "TEXT" 0))
          (text (x-window-clipboard-text window))
-         (result nil))
-    (when (and text (eq selection :clipboard))
-      (cond ((string= target-name "TARGETS")
-             (xlib:change-property requestor destination
-                                   (mapcar (lambda (name) (xlib:intern-atom display name))
-                                           '("TARGETS" "UTF8_STRING" "TEXT" "STRING"))
-                                   :atom 32)
+         (result 0))
+    (cffi:with-foreign-slots
+        ((requestor selection target property time) event
+         (:struct selection-request))
+      (let ((destination (if (zerop property) target property)))
+        (when (and text (= selection (x-window-clipboard window)))
+          (cond
+            ((= target targets)
+             (cffi:with-foreign-object (atoms :ulong 4)
+               (loop :for atom :in (list targets utf8 text-atom 31)
+                     :for index :from 0
+                     :do (setf (cffi:mem-aref atoms :ulong index) atom))
+               (change-property display requestor destination 4 32 0 atoms 4))
              (setf result destination))
-            ((member target-name '("UTF8_STRING" "TEXT" "STRING") :test #'string=)
-             (let* ((legacy (string= target-name "STRING"))
-                    (bytes (if legacy
-                               (map '(vector (unsigned-byte 8))
-                                    (lambda (char)
-                                      (if (< (char-code char) 256)
-                                          (char-code char) 63)) text)
-                               (babel:string-to-octets text :encoding :utf-8))))
-               (when (< (length bytes) (- (* 4 (xlib:display-max-request-length display)) 64))
-                 (xlib:change-property requestor destination bytes
-                                       (if legacy :string :utf8_string) 8)
-                 (setf result destination))))))
-    (xlib:send-event requestor :selection-notify nil
-                     :event-window requestor :window requestor
-                     :selection selection :target target :property result :time time)
-    (xlib:display-force-output display)))
-(fn key-input (display keycode state &optional context)
-  (let* ((code (xlib:keycode->keysym
-                display keycode (xlib:default-keysym-index display keycode state)))
-         (character (xlib:keycode->character display keycode state))
-         (control (logtest state 4))
-         (alt (logtest state 8))
-         (shift (logtest state 1))
-         (text-p (and context (lui.widgets:text-field-focused-p context)))
-         (key (cdr (assoc code
-                          '((#xff51 . :left) (#xff53 . :right)
-                            (#xff52 . :up) (#xff54 . :down)
-                            (#xff50 . :home) (#xff57 . :end)
-                            (#xff08 . :backspace) (#xffff . :delete)
-                            (#xff1b . :escape)))))
-         (name (case code
-                 (#xff51 "ArrowLeft") (#xff53 "ArrowRight")
-                 (#xff08 "Backspace")
-                 (otherwise (if (<= 32 code 126)
-                                (string (code-char code)) ""))))
-         (command (when text-p
-                    (lui.widgets:readline-key name :control control
-                                              :alt alt :shift shift))))
-    (cond ((and control (not alt) (member code '(#x63 #x43)))
-           (make-event :kind :key :key :copy))
-          (command (make-event :kind :key :key command))
-          ((member code '(#xff09 #xfe20))
-           (make-event :kind :tab
-                       :key (when (or shift (= code #xfe20)) :backward)))
-          ((and (= code 32) context
-                (lui.widgets:activation-focused-p context))
-           (make-event :kind :activate))
-          ((= code #xff0d) (make-event :kind :activate))
-          (key (make-event :kind :key
-                           :key (if (and text-p shift)
-                                    (case key
-                                      (:left :shift-left)
-                                      (:right :shift-right)
-                                      (otherwise key))
-                                    key)))
-          ((and character (not control) (not alt))
-           (make-event :kind :text :value (string character))))))
+            ((member target (list utf8 text-atom 31))
+             (let ((legacy (= target 31)))
+               (cffi:with-foreign-string
+                   ((bytes byte-size)
+                    (if legacy
+                        (map 'string (lambda (char)
+                                       (if (< (char-code char) 256) char #\?))
+                             text) text)
+                    :encoding (if legacy :iso-8859-1 :utf-8))
+                 ;; Refuse an oversized direct transfer without an X error.
+                 (when (< byte-size (- (* 4 (max-request-size display)) 64))
+                   (change-property display requestor destination
+                                    (if legacy 31 utf8) 8 0
+                                    bytes (1- byte-size))
+                   (setf result destination)))))))
+        (cffi:with-foreign-object (reply :long 24)
+          (dotimes (index 24) (setf (cffi:mem-aref reply :long index) 0))
+          (setf
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'type) 31
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'display) display
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'requestor) requestor
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'selection) selection
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'target) target
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'property) result
+           (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                    'time) time)
+          (send-event display requestor 0 0 reply)
+          (flush-display display))))))
+
+(fn key-input (event &optional context)
+  (cffi:with-foreign-objects ((buffer :char 64) (symbol :ulong))
+    (let* ((length (lookup-string event buffer 64 symbol (cffi:null-pointer)))
+           (code (cffi:mem-ref symbol :ulong))
+           (state (cffi:foreign-slot-value event '(:struct key-event) 'state))
+           (control (logtest state 4))
+           (alt (logtest state 8))
+           (shift (logtest state 1))
+           (text-p (and context (lui.widgets:text-field-focused-p context)))
+           (key (cdr (assoc code
+                            '((#xff51 . :left) (#xff53 . :right)
+                              (#xff52 . :up) (#xff54 . :down)
+                              (#xff50 . :home) (#xff57 . :end)
+                              (#xff08 . :backspace) (#xffff . :delete)
+                              (#xff1b . :escape)))))
+           (name (case code
+                   (#xff51 "ArrowLeft") (#xff53 "ArrowRight")
+                   (#xff08 "Backspace")
+                   (otherwise (if (<= 32 code 126)
+                                  (string (code-char code)) ""))))
+           (command (when text-p
+                      (lui.widgets:readline-key name :control control
+                                                :alt alt :shift shift))))
+      (cond ((and control (not alt) (member code '(#x63 #x43)))
+             (make-event :kind :key :key :copy))
+            (command (make-event :kind :key :key command))
+            ((member code '(#xff09 #xfe20))
+             (make-event :kind :tab
+                         :key (when (or shift (= code #xfe20)) :backward)))
+            ((and (= code 32) context
+                  (lui.widgets:activation-focused-p context))
+             (make-event :kind :activate))
+            ((= code #xff0d) (make-event :kind :activate))
+            (key (make-event :kind :key
+                             :key (if (and text-p shift)
+                                      (case key
+                                        (:left :shift-left)
+                                        (:right :shift-right)
+                                        (otherwise key))
+                                      key)))
+            ((and (plusp length) (not control) (not alt))
+             (make-event :kind :text :value
+                         (cffi:foreign-string-to-lisp
+                          buffer :count length :encoding :iso-8859-1)))))))
 
 (fn cursor-for ((window x-window) (kind symbol))
   (or (gethash kind (x-window-cursors window))
       (setf (gethash kind (x-window-cursors window))
-            (let* ((font (xlib:open-font (x-window-display window) "cursor"))
-                   (shape (case kind (:not-allowed 0) (:pointer 60)
-                                (:text 152) (:resize-horizontal 108)
-                                (:resize-vertical 116) (otherwise 68))))
-              (unwind-protect
-                   (xlib:create-glyph-cursor
-                    :source-font font :source-char shape
-                    :mask-font font :mask-char (1+ shape)
-                    :foreground (xlib:make-color :red 0 :green 0 :blue 0)
-                    :background (xlib:make-color :red 1 :green 1 :blue 1))
-                (xlib:close-font font))))))
+            (let ((cursor
+                    (if (ignore-errors
+                          (cffi:foreign-symbol-pointer
+                           "XcursorLibraryLoadCursor"))
+                        (cffi:foreign-funcall
+                         "XcursorLibraryLoadCursor"
+                         :pointer (x-window-display window)
+                         :string (case kind
+                                   (:not-allowed "not-allowed")
+                                   (:pointer "pointer") (:text "text")
+                                   (:resize-horizontal "ew-resize")
+                                   (:resize-vertical "ns-resize")
+                                   (otherwise "default"))
+                         :ulong)
+                        0)))
+              (if (plusp cursor) cursor
+                  (create-font-cursor
+                   (x-window-display window)
+                   (case kind (:not-allowed 0) (:pointer 60)
+                         (:text 152) (:resize-horizontal 108)
+                         (:resize-vertical 116)
+                         (otherwise 68))))))))
 
 (fn update-cursor ((window x-window))
   (let ((kind (if (x-window-context window)
@@ -153,8 +337,8 @@
                    (x-window-pointer-x window) (x-window-pointer-y window))
                   :default)))
     (unless (eq kind (x-window-cursor-kind window))
-      (setf (xlib:window-cursor (x-window-window window))
-            (cursor-for window kind))
+      (define-cursor (x-window-display window) (x-window-window window)
+                     (cursor-for window kind))
       (setf (x-window-cursor-kind window) kind))))
 
 (fn pointer-buttons ((state integer))
@@ -162,48 +346,71 @@
           (if (logtest state #x400) 2 0)))
 
 (fn read-events ((window x-window) (delete integer))
-  (let ((display (x-window-display window)) (events nil) (quit nil))
-    (loop while (xlib:event-listen display 0) do
-      (xlib:event-case (display :timeout 0 :discard-p t)
-        (:leave-notify ()
-          (setf (x-window-pointer-x window) -1 (x-window-pointer-y window) -1)
-          (push (make-event :kind :move :x -1 :y -1) events) t)
-        ((:focus-out :unmap-notify) ()
-          (push (make-event :kind :cancel :buttons 0) events) t)
-        (:key-press (code state)
-          (let* ((context (x-window-context window))
-                 (predicted (when context
-                              (pending-input-context context events
-                               (x-window-width window) (x-window-height window))))
-                 (input (key-input display code state predicted)))
-            (when input (push input events))) t)
-        ((:button-press :button-release :motion-notify :enter-notify)
-         (event-key x y code state)
-          (cond ((and (eq event-key :button-press) (member code '(4 5)))
-                 (push (make-event :kind :scroll :x x :y y
-                                   :value (if (= code 4) -32 32)) events))
-                ((or (member event-key '(:motion-notify :enter-notify))
-                     (member code '(1 3)))
-                 (setf (x-window-pointer-x window) x (x-window-pointer-y window) y)
-                 (push (make-event
-                        :kind (case event-key (:button-press :press)
-                                    (:button-release :release) (otherwise :move))
-                        :button (if (eql code 3) :secondary :primary)
-                        :buttons (unless (eq event-key :enter-notify)
-                                   (let ((buttons (pointer-buttons state))
-                                         (bit (if (eql code 3) 2 1)))
-                                     (case event-key
-                                       (:button-press (logior buttons bit))
-                                       (:button-release (logandc2 buttons bit))
-                                       (otherwise buttons)))) :x x :y y) events))) t)
-        (:configure-notify (width height)
-          (setf (x-window-width window) (max 1 width)
-                (x-window-height window) (max 1 height)) t)
-        (:selection-clear () (setf (x-window-clipboard-text window) nil) t)
-        (:selection-request (requestor selection target property time)
-          (selection-request window requestor selection target property time) t)
-        (:client-message (data) (when (= (aref data 0) delete) (setf quit t)) t)
-        (otherwise () t)))
+  (let ((display (x-window-display window))
+        (events nil)
+        (quit nil))
+    (cffi:with-foreign-object (event :long 24)
+      (loop :while (plusp (pending display))
+            :do (next-event display event)
+            (case (cffi:mem-ref event :int)
+              (8
+               (setf (x-window-pointer-x window) -1
+                     (x-window-pointer-y window) -1)
+               (push (make-event :kind :move :x -1 :y -1) events))
+              ((10 18) (push (make-event :kind :cancel :buttons 0) events))
+              (2
+               (let* ((context (x-window-context window))
+                      (predicted
+                        (when context
+                          (pending-input-context
+                           context events (x-window-width window)
+                           (x-window-height window))))
+                      (input (key-input event predicted)))
+                 (when input (push input events))))
+              ((4 5 6 7)
+               (cffi:with-foreign-slots
+                   ((type x y code state) event (:struct key-event))
+                 (cond
+                   ((and (= type 4) (member code '(4 5)))
+                    (push (make-event :kind :scroll :x x :y y
+                                      :value (if (= code 4) -32 32))
+                          events))
+                   ((or (member type '(6 7)) (member code '(1 3)))
+                    (setf (x-window-pointer-x window) x
+                          (x-window-pointer-y window) y)
+                    (push (make-event
+                           :kind (case type
+                                   (4 :press)
+                                   (5 :release)
+                                   (otherwise :move))
+                           :button (if (and (member type '(4 5))
+                                            (= code 3))
+                                       :secondary :primary)
+                           :buttons
+                           (unless (= type 7)
+                             (let ((buttons (pointer-buttons state))
+                                   (bit (if (= code 3) 2 1)))
+                               (case type
+                                 (4 (logior buttons bit))
+                                 (5 (logandc2 buttons bit))
+                                 (otherwise buttons))))
+                           :x x :y y)
+                          events)))))
+              (22
+               (cffi:with-foreign-slots
+                   ((width height) event (:struct configure-event))
+                 (setf (x-window-width window) (max 1 width)
+                       (x-window-height window) (max 1 height))))
+              (29 (setf (x-window-clipboard-text window) nil))
+              (30 (selection-request window event))
+              (33
+               (when (= (cffi:mem-ref
+                         (cffi:foreign-slot-pointer
+                          event '(:struct client-event) 'data)
+                         :long)
+                        delete)
+                 (setf quit t)))
+              (otherwise nil))))
     (values (nreverse events) quit)))
 
 (fn glx-visual (display screen)
@@ -220,20 +427,34 @@
       visual)))
 
 (fn open-window ((window x-window) info parent)
-  (let* ((visual (cffi:foreign-slot-value info '(:struct visual-info) 'visual-id))
+  (let* ((display (x-window-display window))
+         (visual (cffi:foreign-slot-value
+                  info '(:struct visual-info) 'visual))
          (depth (cffi:foreign-slot-value info '(:struct visual-info) 'depth)))
-    (setf (x-window-colormap window) (xlib:create-colormap visual parent)
-          (x-window-window window)
-          (xlib:create-window
-           :parent parent :x 0 :y 0 :width (x-window-width window)
-           :height (x-window-height window) :depth depth :visual visual
-           :class :input-output :colormap (x-window-colormap window) :border 0
-           :event-mask '(:key-press :button-press :button-release :enter-window
-                         :leave-window :pointer-motion :exposure
-                         :structure-notify :focus-change)))))
+    (setf (x-window-colormap window)
+          (create-colormap display parent visual 0))
+    (cffi:with-foreign-object (attrs '(:struct window-attributes))
+      (cffi:with-foreign-slots ((colormap border) attrs
+                                (:struct window-attributes))
+        (setf colormap (x-window-colormap window) border 0))
+      (setf (x-window-window window)
+            (create-window display parent 0 0
+                           (x-window-width window) (x-window-height window)
+                           0 depth 1 visual #x2008 attrs)))))
+
+(cffi:defcstruct poll-fd (fd :int) (events :short) (revents :short))
 
 (fn wait-x11 (display (context context) events)
-  (xlib:event-listen display (lui.frame::frame-wait context events))
+  (when (zerop (pending display))
+    (cffi:with-foreign-object (p '(:struct poll-fd))
+      (cffi:with-foreign-slots ((fd events) p (:struct poll-fd))
+        (setf fd (cffi:foreign-funcall "XConnectionNumber"
+                                       :pointer display :int)
+              events 1))
+      (cffi:foreign-funcall "poll" :pointer p :ulong 1
+                            :int (ceiling (* 1000
+                                             (lui.frame::frame-wait
+                                              context events))) :int)))
   (lui.frame::limit-frame-rate context))
 
 (fn draw-window ((window x-window) (gpu gpu) (context context)
@@ -248,56 +469,61 @@
       (update-cursor window)
       (begin-gpu-frame gpu)
       (paint-frame (gpu-renderer gpu) context)
-      (xlib:display-force-output (x-window-display window))
-      (swap-buffers (x-window-glx-display window)
-                    (xlib:window-id (x-window-window window)))
+      (swap-buffers (x-window-display window) (x-window-window window))
       (cffi:foreign-funcall "glFinish" :void)
       (unless interactive (return context))
       (wait-x11 (x-window-display window) context events))))
 
 (fn run-x11 ((draw function) &key title width height (interactive t))
-  "Run DRAW in a CLX window with the shared OpenGL renderer via GLX."
-  (let* ((display (xlib:open-default-display))
-         (native (open-glx-display (cffi:null-pointer)))
+  "Run DRAW in an Xlib window using the shared OpenGL renderer via GLX."
+  (let* ((display (open-display (cffi:null-pointer)))
          (w (or width 720)) (h (or height 520))
-         (window (make-x-window :display display :glx-display native :width w :height h))
+         (window (make-x-window :display display :width w :height h))
          (glx (cffi:null-pointer)) (font nil) (gpu nil) (*unit* 8))
+    (when (cffi:null-pointer-p display) (error "Cannot open X11 display."))
     (unwind-protect
-         (progn
-           (when (cffi:null-pointer-p native) (error "Cannot open GLX display."))
-           (let* ((screen (xlib:display-default-screen display))
-                  (info (glx-visual native (position screen (xlib:display-roots display))))
-                  (delete (xlib:intern-atom display :wm_delete_window)))
-             (unwind-protect
-                  (progn (open-window window info (xlib:screen-root screen))
-                         (xlib:display-finish-output display)
-                         (setf glx (create-glx native info (cffi:null-pointer) 1)))
-               (free-visual info))
-             (when (or (cffi:null-pointer-p glx)
-                       (zerop (make-current native (xlib:window-id (x-window-window window)) glx)))
-               (error "Cannot activate the X11 OpenGL context."))
-             (setf font (open-font) gpu (attach-gpu font w h)
-                   (x-window-clipboard window) (xlib:intern-atom display :clipboard))
-             (xlib:set-wm-properties (x-window-window window) :name (or title "LUI"))
-             (setf (xlib:wm-protocols (x-window-window window))
-                   (list :wm_delete_window))
-             (xlib:map-window (x-window-window window))
-             (xlib:display-finish-output display)
-             (let ((context (make-context
-                             :copy (lambda (text) (copy-clipboard window text))
-                             :measure (lambda (widget width)
-                                        (measure-widget (gpu-renderer gpu) widget width)))))
-               (setf (x-window-context window) context)
-               (draw-window window gpu context draw interactive delete))))
+         (let* ((screen (default-screen display))
+                (info (glx-visual display screen))
+                (delete (intern-atom display "WM_DELETE_WINDOW" 0)))
+           (unwind-protect
+                (progn
+                  (open-window window info (root-window display screen))
+                  (setf glx (create-glx display info (cffi:null-pointer) 1)))
+             (free-memory info))
+           (when (or (cffi:null-pointer-p glx)
+                     (zerop (make-current display (x-window-window window)
+                                          glx)))
+             (error "Cannot activate the X11 OpenGL context."))
+           (setf font (open-font) gpu (attach-gpu font w h)
+                 (x-window-clipboard window)
+                 (intern-atom display "CLIPBOARD" 0))
+           (store-name display (x-window-window window) title)
+           (select-input display (x-window-window window)
+                         (logior 1 4 8 16 32 64 #x8000 #x20000 #x200000))
+           (cffi:with-foreign-object (atom :ulong)
+             (setf (cffi:mem-ref atom :ulong) delete)
+             (set-protocols display (x-window-window window) atom 1))
+           (map-window display (x-window-window window))
+           (let ((context
+                   (make-context
+                    :copy (lambda (text) (copy-clipboard window text))
+                    :measure (lambda (widget width)
+                               (measure-widget (gpu-renderer gpu)
+                                               widget width)))))
+             (setf (x-window-context window) context)
+             (draw-window window gpu context draw interactive delete)))
       (when gpu (close-gpu gpu))
       (when font (close-font font))
       (unless (cffi:null-pointer-p glx)
-        (make-current native 0 (cffi:null-pointer)) (destroy-glx native glx))
-      (maphash (lambda (kind cursor) (declare (ignore kind)) (xlib:free-cursor cursor))
+        (make-current display 0 (cffi:null-pointer))
+        (destroy-glx display glx))
+      (maphash (lambda (kind cursor)
+                 (declare (ignore kind)) (free-cursor display cursor))
                (x-window-cursors window))
-      (when (x-window-window window) (xlib:destroy-window (x-window-window window)))
-      (when (x-window-colormap window) (xlib:free-colormap (x-window-colormap window)))
-      (xlib:close-display display)
-      (unless (cffi:null-pointer-p native) (close-glx-display native)))))
+      (when (plusp (x-window-window window))
+        (destroy-window display (x-window-window window)))
+      (when (plusp (x-window-colormap window))
+        (free-colormap display (x-window-colormap window)))
+      (close-display display))))
 
 (register-backend :x11 #'run-x11)

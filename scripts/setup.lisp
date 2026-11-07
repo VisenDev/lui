@@ -7,7 +7,7 @@
 (let ((setup (merge-pathnames "quicklisp/setup.lisp"
                               (user-homedir-pathname))))
   (when (probe-file setup) (load setup)))
-;; Optional development checkouts for the experimental backend libraries.
+;; Optional local dependency checkouts, including uncursed.
 (let ((dependencies (merge-pathnames "build/deps/" (uiop:getcwd))))
   (when (probe-file dependencies)
     (dolist (directory (uiop:subdirectories dependencies))

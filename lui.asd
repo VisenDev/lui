@@ -123,7 +123,7 @@
              (uiop:symbol-call :lui.tests.pdf :run-tests)))
 
 (defsystem "lui/x11"
-  :depends-on ("lui/gl" "clx")
+  :depends-on ("lui/gl")
   :components ((:module "src"
                 :components ((:file "x11")))))
 
