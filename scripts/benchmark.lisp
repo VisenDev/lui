@@ -142,7 +142,7 @@
          (gpu nil) (lui:*unit* 8))
     (unwind-protect
          (progn
-           (setf gpu (call :lui.gl :open-gpu font *width* *height*))
+           (setf gpu (call :lui.gl :open-gpu nil nil font *width* *height*))
            (let* ((renderer (call :lui.gl :gpu-renderer gpu))
                   (context
                     (lui.frame:make-context

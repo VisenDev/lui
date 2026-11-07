@@ -4,15 +4,19 @@ LUI is an immediate-mode Common Lisp UI library under development. The same
 [shared example](examples/demo.lisp) runs unchanged in a browser, native windows,
 and a terminal. Applications own their state; `lui:run` owns the backend lifecycle.
 
-The `codex/native-cl-backends` branch experiments with CLX, Wayflan, FTW, and
-[Plisp/uncursed](https://github.com/Plisp/uncursed) in place of locally maintained
-platform bindings. These libraries still use foreign code where necessary.
-CLX retains a three-function Xlib bridge for the existing GLX renderer. FTW
-does not cover GDI+, clipboard, or all input/waiting APIs, so those extensions
-remain in LUI. Wayflan presents OpenGL pbuffer pixels through `wl_shm`, adding
-a GPU readback and copy per frame instead of direct Wayland EGL presentation.
-X11 uses cursor-font glyphs; Wayland uses the cursor-shape protocol when
-available and a plain arrow otherwise.
+The `codex/native-cl-backends` branch uses CLX for X11 windowing and
+[Plisp/uncursed](https://github.com/Plisp/uncursed) for interactive terminal
+control. CLX retains a three-function Xlib bridge for the native GLX renderer;
+X11 cursors use cursor-font glyphs. Wayland uses libwayland and direct EGL
+presentation, and Windows uses direct Win32/GDI+ bindings. The experimental
+Wayflan and FTW migrations were reverted.
+
+CLX's bundled GLX implementation creates indirect protocol contexts; it does
+not activate a native libGL context, and its GL command encoders lack the
+shader/program/uniform operations used by Glass. The retained Xlib bridge
+opens/closes the native GLX display and frees visual information. Windowing,
+input, selections, and cursors use CLX. Removing the bridge would require a
+different rendering integration, not just replacing the GLX function names.
 
 Load the library with `(asdf:load-system "lui")` to register the backends for
 your host. Use `lui/core` for the portable core with no external dependencies.
@@ -368,8 +372,6 @@ the makefile launchers also discover checkouts under `build/deps/`:
 ```sh
 mkdir -p build/deps
 git clone https://github.com/sharplispers/clx.git build/deps/clx
-git clone https://git.sr.ht/~shunter/wayflan build/deps/wayflan
-git clone https://github.com/fjames86/ftw.git build/deps/ftw
 git clone https://github.com/Plisp/uncursed.git build/deps/uncursed
 ```
 
@@ -379,8 +381,6 @@ reproduce it):
 | Library | Revision |
 | --- | --- |
 | CLX | `7512924c1aeb85b3ee8e5d0694e077903c713fa0` |
-| Wayflan | `1f4fee9489253a88b62ce516ffbcf9d58763e920` |
-| FTW | `31e7fe3027d57ac2ea80bff6ac4b6a93ebe10676` |
 | uncursed | `89f9cb6f21bc7e981a04ce0d6361ae73dde49c4f` |
 
 With Quicklisp installed, load `scripts/setup.lisp` and use
@@ -418,8 +418,8 @@ painting use the same CSS family and weight.
 | `lui/pdf` | Single-page PDF output through cl-pdf and the native font renderer |
 | `lui/x11` | CLX, system OpenGL and the small Xlib GLX bridge; an X display with GLX |
 | `lui/gl` | EGL/OpenGL renderer; EGL and compatibility OpenGL libraries |
-| `lui/wayland` | Wayflan, xkbcommon, surfaceless EGL/OpenGL, a compositor supporting `wl_shm` |
-| `lui/win32` | FTW plus GDI+/clipboard/input extensions; Windows system libraries |
+| `lui/wayland` | Wayland client/EGL, xkbcommon, EGL/OpenGL, a Wayland compositor |
+| `lui/win32` | Windows User32, GDI32, Kernel32, and GDI+ |
 | `lui/cocoa` | macOS AppKit and Objective-C runtime; SBCL only |
 
 On Linux, the aggregate prefers a Wayland session with a socket, then X11
@@ -529,18 +529,6 @@ checkboxes, and radio buttons expose named HTML controls that screen readers
 can activate. Sliders and editable fields use the toolkit’s focus handling.
 
 ## Local performance evidence
-
-On this experimental branch, Glass Controls at 1024×640 took 5.332 ms per
-frame (p95 6.152 ms) through Wayflan on headless Weston, across 60 measured
-frames after 10 warmup frames. The matching offscreen GL case took 1.705 ms
-(p95 2.061 ms). The Wayland result includes loop pacing, protocol work, SHM
-readback/copying, and compositor buffer release; the difference does not isolate
-readback cost. This is a headless result, not a monitor refresh-rate measurement.
-A separate instrumented run measured `present-shm` itself at 0.350 ms mean
-and 1.231 ms p95, including readback, row reversal, and protocol submission.
-
-The Wayland measurements below predate this branch's Wayflan/SHM experiment;
-they do not measure its added readback and copying costs.
 
 In a 60-frame headless Chromium comparison, downsampling the Glass backdrop
 reduced canvas draw time from 25.34 to 9.26 ms for Controls and from 61.01
@@ -686,7 +674,7 @@ Additional checks:
 - After loading `lui/gl` and `lui/demo`, load `tests/gl.lisp` for the
   offscreen EGL/OpenGL smoke test. Ensure `build/` exists.
 - With a Wayland compositor, load `lui/wayland`, `lui/demo`, and
-  `tests/wayland.lisp` to exercise Wayflan pointer hooks, keyboard repeat,
+  `tests/wayland.lisp` to exercise native pointer callbacks, keyboard repeat,
   modifier changes, cancellation, and delivery through the shared frame loop.
 - After loading `lui/cocoa`, load `tests/cocoa.lisp` for portable SBCL ABI,
   UTF-8, event-routing, callback-safety, and floating-point-boundary checks.
@@ -707,16 +695,13 @@ Additional checks:
 | HTML | Chromium integration tests: interaction, composition/lifecycle, resizing and teardown |
 | X11/GLX | Real-window tests of OpenGL rendering, input/resize, glass frost and clipboard behavior |
 | EGL/OpenGL | Offscreen shared-demo rendering, glass shader, pixel readback, and GL error checks |
-| Wayland | SBCL with headless Weston: SHM pixel colors/orientation/reuse, pbuffer resizing, gallery frames, pointer hooks, keyboard repeat/modifiers/cancellation, clipboard transfer and cleanup; other implementations unverified on this branch |
+| Wayland | Restored libwayland backend; prior SBCL, CLISP, ECL compositor tests covered gallery frames, pointer callbacks and keyboard repeat/modifiers/cancellation |
 | Win32 | Windows SBCL under Wine: outline holes, alpha, clipping, input, resizing, and filtered blur |
 | Cocoa | ABI/callback/input/FP and isolated empty-stacktrace guard tests passed on Linux SBCL; AppKit runtime unverified |
 
 The portable core and native backends target Common Lisp implementations generally;
 Cocoa deliberately uses SBCL. The verified combinations above are narrower than
-that portability goal. Wayland pointer input hooks are injected in the headless
-tests; themed cursors, desktop decorations, and fractional-scale negotiation
-still need a compositor with those extensions for end-to-end coverage.
-Native IME and clipboard support remain incomplete,
+that portability goal. Native IME and clipboard support remain incomplete,
 Wayland text-input/IME protocols need work, and native text is not
 a complete shaping engine. Cocoa runtime behavior still needs macOS validation.
 Performance tuning and broader platform/implementation coverage remain open.

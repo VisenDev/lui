@@ -133,7 +133,7 @@
                 :components ((:file "gl")))))
 
 (defsystem "lui/wayland"
-  :depends-on ("lui/gl" "wayflan")
+  :depends-on ("lui/gl")
   :serial t
   :components ((:module "src"
                 :serial t
@@ -141,7 +141,7 @@
                              (:file "wayland")))))
 
 (defsystem "lui/win32"
-  :depends-on ("lui/native" "ftw")
+  :depends-on ("lui/native")
   :components ((:module "src"
                 :components ((:file "win32")))))
 

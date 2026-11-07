@@ -6,8 +6,12 @@
 
 ;; Win64 uses the platform calling convention for both C and WinAPI calls.
 ;; Explicit STDCALL also permits 32-bit Common Lisp implementations.
+(cffi:define-foreign-library user32 (:windows "user32.dll"))
+(cffi:define-foreign-library gdi32 (:windows "gdi32.dll"))
 (cffi:define-foreign-library kernel32 (:windows "kernel32.dll"))
 (cffi:define-foreign-library gdiplus (:windows "gdiplus.dll"))
+(cffi:use-foreign-library user32)
+(cffi:use-foreign-library gdi32)
 (cffi:use-foreign-library kernel32)
 (cffi:use-foreign-library gdiplus)
 
@@ -26,26 +30,6 @@
 (api ("GlobalLock" global-lock) :pointer (memory :pointer))
 (api ("GlobalUnlock" global-unlock) :int (memory :pointer))
 (api ("GlobalFree" global-free) :pointer (memory :pointer))
-
-;; FTW covers windowing and GDI. The bindings above/below extend it with
-;; clipboard, input tracking, frame waiting, and GDI+, which FTW does not expose.
-;; FTW's POINT slots are unsigned; preserve signed Win32 screen coordinates.
-(fn signed-coordinate ((value integer))
-  (if (logbitp 31 value) (- value #x100000000) value))
-
-(fn screen-to-client (window point)
-  (let ((coordinates (ftw:screen-to-client window
-                       (list (logand #xffffffff (cffi:mem-aref point :int 0))
-                             (logand #xffffffff (cffi:mem-aref point :int 1))))))
-    (setf (cffi:mem-aref point :int 0) (signed-coordinate (first coordinates))
-          (cffi:mem-aref point :int 1) (signed-coordinate (second coordinates))))
-  1)
-
-(fn cursor-position (point)
-  (let ((coordinates (ftw:get-cursor-position)))
-    (setf (cffi:mem-aref point :int 0) (signed-coordinate (first coordinates))
-          (cffi:mem-aref point :int 1) (signed-coordinate (second coordinates))))
-  1)
 
 (fn copy-text (window (text string))
   (let* ((bytes (* 2 (1+ (loop :for char :across text
@@ -69,19 +53,51 @@
                    (close-clipboard)))))
         (unless (cffi:null-pointer-p memory) (global-free memory))))))
 
+(api ("GetModuleHandleW" module-handle) :pointer (name :pointer))
+(api ("RegisterClassW" register-class) :ushort (class :pointer))
+(api ("UnregisterClassW" unregister-class) :int
+  (class :pointer) (instance :pointer))
+(api ("CreateWindowExW" create-window) :pointer
+  (ex-style :uint32) (class :pointer) (title :pointer) (style :uint32)
+  (x :int) (y :int) (width :int) (height :int) (parent :pointer)
+  (menu :pointer) (instance :pointer) (param :pointer))
+(api ("DefWindowProcW" default-procedure) :intptr
+  (window :pointer) (message :uint32) (wparam :uintptr) (lparam :intptr))
+(api ("DestroyWindow" destroy-window) :int (window :pointer))
+(api ("ShowWindow" show-window) :int (window :pointer) (command :int))
+(api ("GetClientRect" client-rect) :int (window :pointer) (rect :pointer))
 (api ("AdjustWindowRect" adjust-rect) :int
   (rect :pointer) (style :uint32) (menu :int))
 (api ("ValidateRect" validate-rect) :int
   (window :pointer) (rect :pointer))
-
+(api ("GetDC" get-dc) :pointer (window :pointer))
+(api ("ReleaseDC" release-dc) :int (window :pointer) (dc :pointer))
+(api ("PeekMessageW" peek-message) :int
+  (message :pointer) (window :pointer) (first :uint32)
+  (last :uint32) (remove :uint32))
+(api ("TranslateMessage" translate-message) :int (message :pointer))
+(api ("DispatchMessageW" dispatch-message) :intptr (message :pointer))
 (api ("SetCapture" set-capture) :pointer (window :pointer))
 (api ("ReleaseCapture" release-capture) :int)
-
+(api ("ScreenToClient" screen-to-client) :int
+  (window :pointer) (point :pointer))
 (api ("GetKeyState" key-state) :short (key :int))
 (api ("TrackMouseEvent" track-mouse-event) :int (tracking :pointer))
-
+(api ("LoadCursorW" load-cursor) :pointer
+  (instance :pointer) (name :pointer))
 (api ("SetCursor" set-cursor) :pointer (cursor :pointer))
+(api ("GetCursorPos" cursor-position) :int (point :pointer))
 
+(api ("CreateCompatibleDC" compatible-dc) :pointer (dc :pointer))
+(api ("CreateCompatibleBitmap" compatible-bitmap) :pointer
+  (dc :pointer) (width :int) (height :int))
+(api ("SelectObject" select-object) :pointer
+  (dc :pointer) (object :pointer))
+(api ("DeleteObject" delete-object) :int (object :pointer))
+(api ("DeleteDC" delete-dc) :int (dc :pointer))
+(api ("BitBlt" bit-blt) :int
+  (dest :pointer) (x :int) (y :int) (width :int) (height :int)
+  (source :pointer) (sx :int) (sy :int) (operation :uint32))
 (api ("GdiplusStartup" startup) :int
   (token :pointer) (input :pointer) (output :pointer))
 (api ("GdiplusShutdown" shutdown) :void (token :uintptr))
@@ -130,6 +146,13 @@
 (api ("GdipSetClipPath" clip-path) :int
   (graphics :pointer) (path :pointer) (mode :int))
 
+(cffi:defcstruct window-class
+  (style :uint32) (procedure :pointer) (class-extra :int)
+  (window-extra :int) (instance :pointer) (icon :pointer)
+  (cursor :pointer) (background :pointer) (menu :pointer) (name :pointer))
+(cffi:defcstruct message
+  (window :pointer) (message :uint32) (wparam :uintptr) (lparam :intptr)
+  (time :uint32) (x :int) (y :int) (private :uint32))
 (cffi:defcstruct mouse-tracking
   (size :uint32) (flags :uint32) (window :pointer) (hover-time :uint32))
 (cffi:defcstruct startup-input
@@ -156,8 +179,7 @@
   (unless (zerop status) (error "GDI+ status ~D." status)))
 
 (fn nonnull (pointer)
-  (when (or (null pointer) (cffi:null-pointer-p pointer))
-    (error "Win32 allocation failed."))
+  (when (cffi:null-pointer-p pointer) (error "Win32 allocation failed."))
   pointer)
 
 (fn signed-word ((value integer))
@@ -212,10 +234,10 @@
                                   (otherwise key))
                                 key))))))
 
-(fn cursor-name ((kind symbol))
-  (case kind (:not-allowed :no) (:pointer :hand) (:text :ibeam)
-        (:resize-horizontal :sizewe) (:resize-vertical :sizens)
-        (otherwise :arrow)))
+(fn cursor-id ((kind symbol))
+  (case kind (:not-allowed 32648) (:pointer 32649) (:text 32513)
+        (:resize-horizontal 32644) (:resize-vertical 32645)
+        (otherwise 32512)))
 
 (fn update-cursor ((window win-window))
   (when (win-window-context window)
@@ -227,9 +249,11 @@
           (when (and (<= 0 x) (< x (win-window-width window))
                      (<= 0 y) (< y (win-window-height window)))
             (set-cursor
-             (ftw:load-cursor
-               (cursor-name (lui.widgets:cursor-at
-                              (win-window-context window) x y))))))))))
+             (load-cursor
+              (cffi:null-pointer)
+              (cffi:make-pointer
+               (cursor-id (lui.widgets:cursor-at
+                           (win-window-context window) x y)))))))))))
 
 (fn window-message
   ((window win-window) (message integer) (wparam integer)
@@ -246,7 +270,7 @@
        (if (= (logand lparam #xffff) 1)
            (progn (update-cursor window) (return-from window-message 1))
            (return-from window-message
-             (ftw:default-window-proc handle message wparam lparam))))
+             (default-procedure handle message wparam lparam))))
       ((#x8 #x1f #x215)
        (let ((owned (win-window-capture-p window)))
          (when (or (/= message #x215) owned)
@@ -321,22 +345,22 @@
              (setf (win-window-suppress-system-char window) t)))
          (when (and (= message #x104) (null input))
            (return-from window-message
-             (ftw:default-window-proc handle message wparam lparam)))))
+             (default-procedure handle message wparam lparam)))))
       (#x105
        (setf (win-window-suppress-system-char window) nil)
        (return-from window-message
-         (ftw:default-window-proc handle message wparam lparam)))
+         (default-procedure handle message wparam lparam)))
       (#x106
        (unless (shiftf (win-window-suppress-system-char window) nil)
          (return-from window-message
-           (ftw:default-window-proc handle message wparam lparam))))
+           (default-procedure handle message wparam lparam))))
       (#x102
        (if (and (= wparam 32) (plusp (win-window-suppressed-spaces window)))
            (decf (win-window-suppressed-spaces window))
            (character-input window wparam)))
       (otherwise
         (return-from window-message
-          (ftw:default-window-proc handle message wparam lparam)))))
+          (default-procedure handle message wparam lparam)))))
   0)
 
 (cffi:defcallback (window-procedure :convention :stdcall) :intptr
@@ -348,17 +372,17 @@
           (setf (win-window-error window) condition
             (win-window-quit window) t)
           0))
-      (ftw:default-window-proc handle message wparam lparam))))
+      (default-procedure handle message wparam lparam))))
 
 (fn free-buffer ((window win-window))
   (unless (cffi:null-pointer-p (win-window-graphics window))
     (delete-graphics (win-window-graphics window)))
   (unless (cffi:null-pointer-p (win-window-old-bitmap window))
-    (ftw:select-object (win-window-dc window) (win-window-old-bitmap window)))
+    (select-object (win-window-dc window) (win-window-old-bitmap window)))
   (unless (cffi:null-pointer-p (win-window-bitmap window))
-    (ftw:delete-object (win-window-bitmap window)))
+    (delete-object (win-window-bitmap window)))
   (unless (cffi:null-pointer-p (win-window-dc window))
-    (ftw:delete-dc (win-window-dc window)))
+    (delete-dc (win-window-dc window)))
   (setf (win-window-graphics window) (cffi:null-pointer)
     (win-window-dc window) (cffi:null-pointer)
     (win-window-bitmap window) (cffi:null-pointer)
@@ -366,23 +390,21 @@
 
 (fn resize-buffer ((window win-window) (width integer) (height integer))
   (free-buffer window)
-  (let ((dc (nonnull (ftw:get-dc (win-window-handle window)))))
+  (let ((dc (nonnull (get-dc (win-window-handle window)))))
     (unwind-protect
       (progn
         (setf (win-window-width window) (max 1 width)
           (win-window-height window) (max 1 height)
-          (win-window-dc window) (nonnull (ftw:create-compatible-dc dc))
+          (win-window-dc window) (nonnull (compatible-dc dc))
           (win-window-bitmap window)
-          (nonnull (ftw:create-compatible-bitmap dc (max 1 width) (max 1 height)))
+          (nonnull (compatible-bitmap dc (max 1 width) (max 1 height)))
           (win-window-old-bitmap window)
-          (ftw:select-object (win-window-dc window) (win-window-bitmap window)))
+          (select-object (win-window-dc window) (win-window-bitmap window)))
         (cffi:with-foreign-object (out :pointer)
           (checked (create-graphics (win-window-dc window) out))
           (setf (win-window-graphics window) (cffi:mem-ref out :pointer)))
         (checked (smoothing-mode (win-window-graphics window) 4)))
-      ;; Upstream RELEASE-DC names its arguments HDC/HWND but forwards them
-      ;; in HWND/HDC order. Pass native order to release the correct DC.
-      (ftw:release-dc (win-window-handle window) dc))))
+      (release-dc (win-window-handle window) dc))))
 
 (fn argb ((color string) (alpha real))
   (logior (ash (round (* 255 (max 0 (min 1 alpha)))) 24)
@@ -443,8 +465,10 @@
           (setf target-dc (cffi:mem-ref out :pointer))
           (checked (graphics-dc source out))
           (setf source-dc (cffi:mem-ref out :pointer))
-          (ftw:bit-blt target-dc 0 0 source-dc x y
-            :width width :height height :raster-op :srccopy)
+          (unless (plusp
+                    (bit-blt target-dc 0 0 width height
+                      source-dc x y #x00cc0020))
+            (error "Native backdrop capture failed."))
           (setf complete t)
           image)
         (when source-dc (release-graphics-dc source source-dc))
@@ -514,11 +538,11 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
         (when snapshot (dispose-image snapshot))))))
 
 (fn pump-messages ((window win-window))
-  (let ((message (ftw:make-msg)))
-    (loop :while (ftw:peek-message message :hwnd (win-window-handle window)
-                                  :remove-msg :remove :error-p nil) :do
-      (ftw:translate-message message)
-      (ftw:dispatch-message message)))
+  (cffi:with-foreign-object (message '(:struct message))
+    (loop :while
+      (plusp (peek-message message (win-window-handle window) 0 0 1)) :do
+      (translate-message message)
+      (dispatch-message message)))
   (when (win-window-error window) (error (win-window-error window))))
 
 (fn wait-win32 ((window win-window) (context context) input)
@@ -535,12 +559,14 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
 (fn render-frame
   ((window win-window) (renderer renderer) (context context)
     (draw function))
-  (let* ((rect (ftw:get-client-rect (win-window-handle window)))
-         (width (max 1 (ftw:rect-right rect)))
-         (height (max 1 (ftw:rect-bottom rect))))
-    (unless (and (= width (win-window-width window))
-                 (= height (win-window-height window)))
-      (resize-buffer window width height)))
+  (cffi:with-foreign-object (rect :int 4)
+    (unless (plusp (client-rect (win-window-handle window) rect))
+      (error "GetClientRect failed."))
+    (let ((width (max 1 (cffi:mem-aref rect :int 2)))
+          (height (max 1 (cffi:mem-aref rect :int 3))))
+      (unless (and (= width (win-window-width window))
+                (= height (win-window-height window)))
+        (resize-buffer window width height))))
   (with-frame
     (context (win-window-width window) (win-window-height window)
       :events (nreverse (shiftf (win-window-events window) nil)))
@@ -550,14 +576,14 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
   (when (win-window-tracking-p window) (update-cursor window))
   (paint-frame renderer context)
   (checked (flush-graphics (win-window-graphics window) 1))
-  (let ((dc (nonnull (ftw:get-dc (win-window-handle window)))))
+  (let ((dc (nonnull (get-dc (win-window-handle window)))))
     (unwind-protect
-      (ftw:bit-blt dc 0 0 (win-window-dc window) 0 0
-        :width (win-window-width window) :height (win-window-height window)
-        :raster-op :srccopy)
-      ;; Upstream RELEASE-DC names its arguments HDC/HWND but forwards them
-      ;; in HWND/HDC order. Pass native order to release the correct DC.
-      (ftw:release-dc (win-window-handle window) dc)))
+      (unless (plusp
+                (bit-blt dc 0 0 (win-window-width window)
+                  (win-window-height window) (win-window-dc window)
+                  0 0 #x00cc0020))
+        (error "BitBlt failed."))
+      (release-dc (win-window-handle window) dc)))
   context)
 
 (fn run-win32
@@ -565,76 +591,90 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
   "Open a Win32 window and run the shared DRAW callback; INTERACTIVE NIL renders a single frame."
   (let ((window (make-win-window)) (font nil) (token nil)
         (registered nil) (*unit* 8)
-        (instance (ftw:get-module-handle))
+        (instance (module-handle (cffi:null-pointer)))
         (class-name (format nil "LUI-~D" (incf *class-counter*))))
-    (unwind-protect
-      (progn
-        (cffi:with-foreign-objects
-          ((input '(:struct startup-input)) (out :uintptr))
-          (loop :for i :below
-            (cffi:foreign-type-size '(:struct startup-input)) :do
-            (setf (cffi:mem-aref input :uint8 i) 0))
-          (setf (cffi:foreign-slot-value input
-                  '(:struct startup-input) 'version) 1)
-          (checked (startup out input (cffi:null-pointer)))
-          (setf token (cffi:mem-ref out :uintptr)))
-        (unless (plusp (ftw:register-class class-name
-                         (cffi:callback window-procedure)
-                         :cursor (ftw:load-cursor :arrow)
-                         :background (cffi:null-pointer)))
-          (error "RegisterClassExW failed."))
-        (setf registered t)
-        (cffi:with-foreign-object (rect :int 4)
-          (setf (cffi:mem-aref rect :int 0) 0
-            (cffi:mem-aref rect :int 1) 0
-            (cffi:mem-aref rect :int 2) (or width 720)
-            (cffi:mem-aref rect :int 3) (or height 520))
-          (unless (plusp (adjust-rect rect #x00cf0000 0))
-            (error "AdjustWindowRect failed."))
-          (setf (win-window-handle window)
-            (nonnull
-              (ftw:create-window class-name :window-name title
-                :styles #x00cf0000 :ex-styles 0 :x 80 :y 80
-                :width (- (cffi:mem-aref rect :int 2)
-                          (cffi:mem-aref rect :int 0))
-                :height (- (cffi:mem-aref rect :int 3)
-                           (cffi:mem-aref rect :int 1))
-                :instance instance))))
-        (setf (gethash (cffi:pointer-address (win-window-handle window))
-                *windows*) window
-          font (open-font))
-        (ftw:show-window (win-window-handle window) :show)
-        (let* ((renderer
-                 (make-renderer :font font :polygons
-                   (lambda (polygons color alpha)
-                     (draw-polygons window polygons color alpha))
-                   :clip (lambda (box) (clip-window window box))
-                   :glass (lambda (box radius blur)
-                            (blur-backdrop window box radius blur))))
-               (context
-                 (make-context :copy
-                   (lambda (text)
-                     (copy-text (win-window-handle window) text))
-                   :measure
-                   (lambda (widget width)
-                     (measure-widget renderer widget width)))))
-          (setf (win-window-context window) context)
-          (when *window-hook* (funcall *window-hook* window))
-          (loop
-            (pump-messages window)
-            (when (win-window-quit window) (return context))
-            (let ((input (win-window-events window)))
-              (setf (win-window-redraw-p window) nil)
-              (render-frame window renderer context draw)
-              (unless interactive (return context))
-              (wait-win32 window context input)))))
-      (when font (close-font font))
-      (free-buffer window)
-      (unless (cffi:null-pointer-p (win-window-handle window))
-        (ftw:destroy-window (win-window-handle window))
-        (remhash (cffi:pointer-address (win-window-handle window))
-          *windows*))
-      (when registered (ftw:unregister-class class-name))
-      (when token (shutdown token)))))
+    (cffi:with-foreign-string (name class-name :encoding :utf-16le)
+      (unwind-protect
+        (progn
+          (cffi:with-foreign-objects
+            ((input '(:struct startup-input)) (out :uintptr))
+            (loop :for i :below
+              (cffi:foreign-type-size '(:struct startup-input)) :do
+              (setf (cffi:mem-aref input :uint8 i) 0))
+            (setf (cffi:foreign-slot-value input
+                    '(:struct startup-input) 'version) 1)
+            (checked (startup out input (cffi:null-pointer)))
+            (setf token (cffi:mem-ref out :uintptr)))
+          (cffi:with-foreign-object (class '(:struct window-class))
+            (loop :for i :below
+              (cffi:foreign-type-size '(:struct window-class)) :do
+              (setf (cffi:mem-aref class :uint8 i) 0))
+            (cffi:with-foreign-slots
+              ((procedure cursor name instance) class (:struct window-class))
+              (setf procedure (cffi:callback window-procedure)
+                cursor (load-cursor (cffi:null-pointer)
+                         (cffi:make-pointer 32512))
+                name (cffi:foreign-string-alloc class-name
+                       :encoding :utf-16le)
+                instance (module-handle (cffi:null-pointer)))
+              (unwind-protect
+                (unless (plusp (register-class class))
+                  (error "RegisterClassW failed."))
+                (cffi:foreign-string-free name)))
+            (setf registered t))
+          (cffi:with-foreign-string (caption title :encoding :utf-16le)
+            (cffi:with-foreign-object (rect :int 4)
+              (setf (cffi:mem-aref rect :int 0) 0
+                (cffi:mem-aref rect :int 1) 0
+                (cffi:mem-aref rect :int 2) (or width 720)
+                (cffi:mem-aref rect :int 3) (or height 520))
+              (unless (plusp (adjust-rect rect #x00cf0000 0))
+                (error "AdjustWindowRect failed."))
+              (setf (win-window-handle window)
+                (nonnull
+                  (create-window 0 name caption #x00cf0000
+                    80 80
+                    (- (cffi:mem-aref rect :int 2)
+                      (cffi:mem-aref rect :int 0))
+                    (- (cffi:mem-aref rect :int 3)
+                      (cffi:mem-aref rect :int 1))
+                    (cffi:null-pointer) (cffi:null-pointer) instance
+                    (cffi:null-pointer))))))
+          (setf (gethash (cffi:pointer-address (win-window-handle window))
+                  *windows*) window
+            font (open-font))
+          (show-window (win-window-handle window) 5)
+          (let* ((renderer
+                   (make-renderer :font font :polygons
+                     (lambda (polygons color alpha)
+                       (draw-polygons window polygons color alpha))
+                     :clip (lambda (box) (clip-window window box))
+                     :glass (lambda (box radius blur)
+                              (blur-backdrop window box radius blur))))
+                 (context
+                   (make-context :copy
+                     (lambda (text)
+                       (copy-text (win-window-handle window) text))
+                     :measure
+                     (lambda (widget width)
+                       (measure-widget renderer widget width)))))
+            (setf (win-window-context window) context)
+            (when *window-hook* (funcall *window-hook* window))
+            (loop
+              (pump-messages window)
+              (when (win-window-quit window) (return context))
+              (let ((input (win-window-events window)))
+                (setf (win-window-redraw-p window) nil)
+                (render-frame window renderer context draw)
+                (unless interactive (return context))
+                (wait-win32 window context input)))))
+        (when font (close-font font))
+        (free-buffer window)
+        (unless (cffi:null-pointer-p (win-window-handle window))
+          (destroy-window (win-window-handle window))
+          (remhash (cffi:pointer-address (win-window-handle window))
+            *windows*))
+        (when registered (unregister-class name instance))
+        (when token (shutdown token))))))
 
 (register-backend :win32 #'run-win32)

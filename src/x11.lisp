@@ -5,8 +5,11 @@
 
 (in-package #:lui.x11)
 
-;; GLX is an OpenGL ABI and requires its own native Display pointer. All
-;; window resources, input, selections and cursors belong to the CLX connection.
+;; GLX needs a native Display for the libGL context used by the shared renderer.
+;; CLX's GLX extension manages an indirect wire context, not libGL's current
+;; context, and its GL encoders omit the shader/program commands Glass needs.
+;; Keep this three-symbol Xlib bridge for GLX only; window resources, input,
+;; selections and cursors belong to the CLX connection.
 (cffi:define-foreign-library glx-xlib (:unix (:or "libX11.so.6" "libX11.so")))
 (cffi:use-foreign-library glx-xlib)
 (cffi:defcfun ("XOpenDisplay" open-glx-display) :pointer (name :pointer))

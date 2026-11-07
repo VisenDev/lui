@@ -2,7 +2,7 @@
   (:use #:cl #:lui.fn #:lui.layout #:lui.draw #:lui.font)
   (:export #:gpu #:attach-gpu #:open-gpu #:close-gpu #:gpu-renderer #:gpu-width
            #:gpu-height #:gpu-logical-width #:gpu-logical-height
-           #:begin-gpu-frame #:present-gpu #:resize-gpu-pbuffer))
+           #:begin-gpu-frame #:present-gpu))
 (in-package #:lui.gl)
 
 (cffi:define-foreign-library egl
@@ -23,7 +23,7 @@
 
 (defstruct gpu
   "GL drawing resources and viewport dimensions for a current compatibility context."
-  display surface context renderer pbuffer-config
+  display surface context renderer
   (geometry (make-hash-table :test 'equal) :type hash-table)
   (geometry-builds 0 :type integer)
   (program 0 :type integer)
@@ -307,13 +307,16 @@ void main() {
          (prog1 (initialize-gpu gpu font) (setf done t))
       (unless done (close-gpu gpu)))))
 
-(fn open-gpu (font (width integer) (height integer))
-  "Create a surfaceless EGL pbuffer for offscreen rendering or SHM presentation."
+(fn open-gpu (native-display native-window font
+             (width integer) (height integer))
+  "Use a Wayland EGL window, or NIL/NIL for a surfaceless test buffer."
   (cffi:use-foreign-library egl)
   (let* ((display
-           (call-egl "eglGetPlatformDisplay" :uint #x31dd
-                    :pointer (cffi:null-pointer)
-                    :pointer (cffi:null-pointer) :pointer))
+           (if native-display
+               (call-egl "eglGetDisplay" :pointer native-display :pointer)
+               (call-egl "eglGetPlatformDisplay" :uint #x31dd
+                        :pointer (cffi:null-pointer)
+                        :pointer (cffi:null-pointer) :pointer)))
          (gpu (make-gpu :display display :width width :height height
                         :logical-width width :logical-height height))
          (complete nil))
@@ -331,7 +334,7 @@ void main() {
                                       (config :pointer) (count :int))
              (loop :for value :in
                    (list #x3024 8 #x3023 8 #x3022 8 #x3021 8
-                         #x3033 1 #x3040 8
+                         #x3033 (if native-window 4 1) #x3040 8
                          #x3032 1 #x3031 4 #x3038)
                    :for i :from 0
                    :do (setf (cffi:mem-aref attributes :int i) value))
@@ -349,7 +352,6 @@ void main() {
                          :int 1 :pointer count :uint)
                 "eglChooseConfig without multisampling"))
              (assert (plusp (cffi:mem-ref count :int)))
-             (setf (gpu-pbuffer-config gpu) (cffi:mem-ref config :pointer))
              (setf (gpu-context gpu)
                    (egl-check
                     (call-egl "eglCreateContext" :pointer display
@@ -364,10 +366,16 @@ void main() {
                    (cffi:mem-aref attributes :int 4) #x3038)
              (setf (gpu-surface gpu)
                    (egl-check
-                    (call-egl "eglCreatePbufferSurface"
-                             :pointer display
-                             :pointer (cffi:mem-ref config :pointer)
-                             :pointer attributes :pointer)
+                    (if native-window
+                        (call-egl "eglCreateWindowSurface"
+                                 :pointer display
+                                 :pointer (cffi:mem-ref config :pointer)
+                                 :pointer native-window
+                                 :pointer (cffi:null-pointer) :pointer)
+                        (call-egl "eglCreatePbufferSurface"
+                                 :pointer display
+                                 :pointer (cffi:mem-ref config :pointer)
+                                 :pointer attributes :pointer))
                     "eglCreateSurface")))
            (egl-check
             (call-egl "eglMakeCurrent" :pointer display
@@ -378,36 +386,6 @@ void main() {
            (setf complete t)
            gpu)
       (unless complete (close-gpu gpu)))))
-
-(fn resize-gpu-pbuffer ((gpu gpu) (width integer) (height integer))
-  "Resize an offscreen EGL target, preserving its context and rendering caches."
-  (assert (and (gpu-pbuffer-config gpu) (plusp width) (plusp height)))
-  (unless (and (= width (gpu-width gpu)) (= height (gpu-height gpu)))
-    (cffi:with-foreign-object (attributes :int 5)
-      (loop :for value :in (list #x3057 width #x3056 height #x3038)
-            :for index :from 0
-            :do (setf (cffi:mem-aref attributes :int index) value))
-      (let ((surface (egl-check
-                      (call-egl "eglCreatePbufferSurface"
-                               :pointer (gpu-display gpu)
-                               :pointer (gpu-pbuffer-config gpu)
-                               :pointer attributes :pointer)
-                      "eglCreatePbufferSurface"))
-            (complete nil))
-        (unwind-protect
-             (progn
-               (egl-check (call-egl "eglMakeCurrent" :pointer (gpu-display gpu)
-                                    :pointer surface :pointer surface
-                                    :pointer (gpu-context gpu) :uint)
-                          "eglMakeCurrent")
-               (call-egl "eglDestroySurface" :pointer (gpu-display gpu)
-                        :pointer (gpu-surface gpu) :uint)
-               (setf (gpu-surface gpu) surface (gpu-width gpu) width
-                     (gpu-height gpu) height complete t))
-          (unless complete
-            (call-egl "eglDestroySurface" :pointer (gpu-display gpu)
-                     :pointer surface :uint))))))
-  gpu)
 
 (fn begin-gpu-frame ((gpu gpu))
   "Clear the back buffer and set the viewport, projection, clipping, and blending."

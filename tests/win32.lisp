@@ -3,7 +3,14 @@
 
 (in-package #:lui.tests.win32)
 
+(cffi:defcfun ("GetPixel" get-pixel :convention :stdcall) :uint32
+  (dc :pointer) (x :int) (y :int))
 (cffi:defcfun ("GetCapture" capture-window :convention :stdcall) :pointer)
+(cffi:defcfun ("PostMessageW" post-message :convention :stdcall) :int
+  (window :pointer) (message :uint32) (wparam :uintptr) (lparam :intptr))
+(cffi:defcfun ("SetWindowPos" set-window-position :convention :stdcall) :int
+  (window :pointer) (after :pointer) (x :int) (y :int) (width :int)
+  (height :int) (flags :uint32))
 
 (defun rectangle (x y width height)
   (list (cons x y) (cons (+ x width) y)
@@ -12,7 +19,7 @@
 (defun pixel (window x y)
   (lui.win32::checked
     (lui.win32::flush-graphics (lui.win32::win-window-graphics window) 1))
-  (ftw:get-pixel (lui.win32::win-window-dc window) x y))
+  (get-pixel (lui.win32::win-window-dc window) x y))
 
 (lui.fn:fn test-readline-keys ()
   (dolist (entry '((65 . :home) (69 . :end) (66 . :left) (70 . :right)
@@ -72,6 +79,7 @@
              (lui.win32::global-unlock memory)))
       (lui.win32::close-clipboard))))
 
+
 (lui.fn:fn test-pointer-state (window)
   (let ((saved (lui.win32::win-window-events window)))
     (unwind-protect
@@ -121,11 +129,13 @@
     (lui.win32::window-message window #x102 32 0)
     (assert (equal " " (event-value
                        (first (lui.win32::win-window-events window))))))
-  (assert (eq :sizens (lui.win32::cursor-name :resize-vertical)))
+  (assert (= 32645 (lui.win32::cursor-id :resize-vertical)))
   (dolist (kind '(:default :pointer :text :not-allowed
                   :resize-horizontal :resize-vertical))
     (assert (not (cffi:null-pointer-p
-                  (ftw:load-cursor (lui.win32::cursor-name kind)))))))
+                  (lui.win32::load-cursor
+                   (cffi:null-pointer)
+                   (cffi:make-pointer (lui.win32::cursor-id kind))))))))
 
 (test-navigation-and-cursors)
 
@@ -142,10 +152,10 @@
           (lambda (native)
             (setf window native)
             (let ((handle (lui.win32::win-window-handle native)))
-              (assert (plusp (ftw:post-message handle #x201 0 #x140014)))
-              (assert (plusp (ftw:post-message handle #x202 0 #x140014)))
-              (assert (plusp (ftw:post-message handle #x100 9 0)))
-              (assert (plusp (ftw:post-message handle #x102 #x3bb 0))))
+              (assert (plusp (post-message handle #x201 0 #x140014)))
+              (assert (plusp (post-message handle #x202 0 #x140014)))
+              (assert (plusp (post-message handle #x100 9 0)))
+              (assert (plusp (post-message handle #x102 #x3bb 0))))
             (lui.win32::pump-messages native)
             (lui.win32::window-message native #x2a3 0 0)
             (let ((events (lui.win32::win-window-events native)))
@@ -202,10 +212,10 @@
   (let ((lui.win32::*window-hook*
           (lambda (native)
             (setf window native)
-            (assert
-                      (ftw:set-window-pos
+            (assert (plusp
+                      (set-window-position
                         (lui.win32::win-window-handle native)
-                        (cffi:null-pointer) 0 0 900 700 #x16)))))
+                        (cffi:null-pointer) 0 0 900 700 #x16))))))
     (setf frames 0)
     (run (lambda ()
            (incf frames)
@@ -213,7 +223,7 @@
            (when (= frames 2)
              (assert (> (lui.win32::win-window-width window) 720))
              (assert (plusp
-                       (ftw:post-message (lui.win32::win-window-handle window)
+                       (post-message (lui.win32::win-window-handle window)
                          #x10 0 0)))))
       :backend :win32 :width 720 :height 520))
   (assert (= frames 2))
