@@ -8,8 +8,7 @@ The `codex/native-cl-backends` branch uses CLX for X11 windowing and
 [Plisp/uncursed](https://github.com/Plisp/uncursed) for interactive terminal
 control. CLX retains a three-function Xlib bridge for the native GLX renderer;
 X11 cursors use cursor-font glyphs. Wayland uses libwayland and direct EGL
-presentation, and Windows uses direct Win32/GDI+ bindings. The experimental
-Wayflan and FTW migrations were reverted.
+presentation, and Windows uses direct Win32/GDI+ bindings.
 
 CLX's bundled GLX implementation creates indirect protocol contexts; it does
 not activate a native libGL context, and its GL command encoders lack the
@@ -666,6 +665,12 @@ Additional checks:
 - `(asdf:test-system "lui/native/tests")` runs native font and painter regressions.
 - `python3 tests/terminal.py` runs the shared demo in a POSIX PTY on SBCL, CLISP,
   and ECL; `--lisp sbcl` selects one implementation.
+- `make test-terminal-parity` compares uncursed with the terminal backend at
+  commit `561516f` using real SBCL PTYs. It normalizes terminal output into
+  cells, colors, underline, and cursor state across all three toolkits,
+  editing/focus, scrolling, Unicode, clipping, and resizing. The historical
+  backend uses the current shared renderer to isolate terminal-control changes;
+  the baseline commit must be available in the local Git history.
 - `python3 tests/x11.py` requires an X display, SBCL, and Pillow, as well as
   the X11 backend dependencies. Pixel checks capture the test windows with XGetImage.
 - `python3 tests/web.py` requires the browser build, Playwright, and Chromium.
@@ -691,7 +696,7 @@ Additional checks:
 | Area | Verified evidence |
 | --- | --- |
 | Portable core | SBCL, CLISP, ECL, and JSCL: core layout plus widget, editing, tab, hover, and focus checks |
-| uncursed terminal | SBCL: real PTY input, fragmented Unicode/escape sequences, mouse, resize, cleanup and redirected-input fallback; other implementations unverified on this branch |
+| uncursed terminal | SBCL: 90 rendering snapshots (262,638 styled cells) match the old terminal backend; real PTY input, fragmented Unicode/escape sequences, mouse, resize, cleanup and redirected-input fallback also pass. Other implementations unverified on this branch |
 | HTML | Chromium integration tests: interaction, composition/lifecycle, resizing and teardown |
 | X11/GLX | Real-window tests of OpenGL rendering, input/resize, glass frost and clipboard behavior |
 | EGL/OpenGL | Offscreen shared-demo rendering, glass shader, pixel readback, and GL error checks |

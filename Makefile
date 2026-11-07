@@ -33,7 +33,7 @@ DOC_SOURCES := $(wildcard src/*.lisp) examples/docs.lisp lui.asd
 DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
-.PHONY: docs docs-html docs-pages test-docs help check-platform build demo pdf pdf-demo test test-platform \
+.PHONY: docs docs-html docs-pages test-docs test-terminal-parity help check-platform build demo pdf pdf-demo test test-platform \
 	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform
 help:
 	@echo 'make docs                 Build and open the native documentation browser'
@@ -43,6 +43,7 @@ help:
 	@echo 'make build                Save the demo executable in build/bin/'
 	@echo 'make pdf                  Build and open build/pdf-demo.pdf'
 	@echo 'make test                 Test platform; progress/results in build/logs/'
+	@echo 'make test-terminal-parity Compare uncursed terminal cells/styles against the old backend (SBCL)'
 	@echo 'make test-macos           Run Cocoa checks and saved executable smoke'
 	@echo 'make benchmark            Measure throughput and frame times'
 	@echo 'make loc                  Report source line counts with cloc'
@@ -150,6 +151,9 @@ test-native:
 	@echo '[native] RUN'
 	LUI_TEST=native $(SBCL) $(SBCL_FLAGS) --load scripts/test.lisp
 	@echo '[native] PASS'
+
+test-terminal-parity:
+	$(PYTHON) -u tests/terminal-parity.py
 
 test-platform: check-platform
 ifeq ($(PLATFORM),web)

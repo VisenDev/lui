@@ -11,6 +11,12 @@
   (events nil :type list)
   (quit-p nil :type boolean))
 
+(fn show-cursor ()
+  ;; Uncursed has no visibility-only API; its shape API and terminfo
+  ;; cnorm/cvvis also change blinking.
+  ;; Visibility alone preserves the user's inherited shape and blink mode.
+  (format *terminal-io* "~C[?25h" #\Escape))
+
 (fn terminal-size ()
   (let ((size (uncursed:terminal-dimensions)))
     (values (max 1 (cdr size)) (max 1 (car size)))))
@@ -280,7 +286,7 @@
             (let ((column (+ origin cursor (- offset))))
               (when (and (<= x column) (< column right))
                 (uncursed-sys:set-cursor-position y column)
-                (uncursed:set-cursor-shape :bar)))))))))
+                (show-cursor)))))))))
 
 (fn display-frame ((context context))
   (uncursed:set-cursor-shape :invisible)
@@ -344,7 +350,7 @@
                  (progn
                    (uncursed-sys:set-style uncursed:*default-style*)
                    (uncursed:disable-mouse)
-                   (uncursed:set-cursor-shape :block)
+                   (show-cursor)
                    (uncursed-sys:disable-alternate-screen)
                    (finish-output *terminal-io*))
               (uncursed-sys:restore-terminal saved
