@@ -1,68 +1,35 @@
 (defpackage #:lui.terminal
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui)
+  (:import-from #:uncursed #:character-width)
   (:export #:make-terminal-context #:render-terminal #:text-lines
            #:run-terminal #:character-width #:text-width #:cell-edge))
 
 (in-package #:lui.terminal)
 
-(fn (character-width integer) ((character character))
-  "Portable cell-width approximation for combining marks, CJK and emoji."
-  (let ((code (char-code character)))
-    (cond ((or (<= #x0300 code #x036f) (<= #x1ab0 code #x1aff)
-               (<= #x1dc0 code #x1dff) (<= #x20d0 code #x20ff)
-               (<= #xfe00 code #xfe0f) (<= #xfe20 code #xfe2f)
-               (= code #x200d) (<= #xe0100 code #xe01ef))
-           0)
-          ((or (<= #x1100 code #x115f) (<= #x2329 code #x232a)
-               (<= #x2e80 code #xa4cf) (<= #xac00 code #xd7a3)
-               (<= #xf900 code #xfaff) (<= #xfe10 code #xfe19)
-               (<= #xfe30 code #xfe6f) (<= #xff01 code #xff60)
-               (<= #xffe0 code #xffe6) (<= #x1f300 code #x1faff)
-               (<= #x20000 code #x3fffd))
-           2)
-          (t 1))))
-
 (fn (text-width integer) ((text string))
-  "Return TEXT's terminal column width, accounting for wide and combining characters."
-  (loop :for character :across text :sum (character-width character)))
+  (uncursed:display-width text))
 
 (fn (text-lines list) ((text string) width)
-  "Wrap at spaces, preserving explicit newlines. Long words overflow and are clipped."
-  (let ((lines nil)
-        (start 0)
-        (length (length text)))
-    (loop
-      (let* ((newline (position #\Newline text :start start))
-             (end (or newline length))
-             (remaining-width
-               (loop :for index :from start :below end
-                     :sum (character-width (char text index))))
-             (limit (if width (max 1 (floor width))
-                        (max 1 remaining-width))))
-        (loop :while (> remaining-width limit)
-              :do (let* ((split (loop :with columns := 0
-                                     :for index :from start :below end
-                                     :do (incf columns
-                                               (character-width
-                                                (char text index)))
-                                     :when (> columns limit) :return index
-                                     :finally (return end)))
-                         (space (position #\Space text :start start
-                                                 :end (min end (1+ split))
-                                                 :from-end t)))
-                    (unless (and space (> space start))
-                      (setf space (position #\Space text :start split
-                                                            :end end)))
-                    (unless space (return))
-                    (push (subseq text start space) lines)
-                    (loop :for index :from start :below (1+ space)
-                          :do (decf remaining-width
-                                    (character-width (char text index))))
-                    (setf start (1+ space))))
-        (push (subseq text start end) lines)
-        (unless newline (return))
-        (setf start (1+ newline))))
-    (nreverse lines)))
+  (lui.text:wrap-lines text (and width (max 1 (floor width)))
+    (lambda (string start end)
+      (loop :for index :from start :below end
+            :sum (character-width (char string index))))))
+
+(defvar *rect*)
+
+(fn make-buffer ((width integer) (height integer))
+  ;; Uncursed exposes drawing and redisplay, but buffer construction is internal.
+  (let ((buffer (make-array (list height width))))
+    (uncursed::clear-buffer buffer)
+    buffer))
+
+(fn cell-style (foreground background &optional bold underline)
+  (flet ((color (value)
+           (if (stringp value)
+               (and (= (length value) 7) (char= (char value 0) #\#)
+                    (parse-integer value :start 1 :radix 16)) value)))
+    (uncursed:make-style :fg (color foreground) :bg (color background)
+                         :boldp bold :underlinep underline)))
 
 (fn slider-line ((widget widget) (width integer))
   (let* ((fraction (min 1 (max 0 (/ (- (widget-value widget)
@@ -92,7 +59,7 @@
             (length lines))))
 
 (fn (make-terminal-context context) ()
-  "Create a fresh frame context with dependency-free terminal text measurement."
+  "Create a fresh frame context with uncursed terminal text measurement."
   (make-context :text-mode-p t :measure #'measure-widget))
 
 (fn (cell-edge integer) ((position real))
@@ -106,26 +73,20 @@
        (>= y (cell-edge (box-y clip)))
        (<= (1+ y) (cell-edge (+ (box-y clip) (box-height clip))))))
 
-(fn paint-character ((cells array) (colors array) style
-                    (row integer) (column integer) (left integer)
-                    (character character) (width integer))
-  (if (zerop width)
-      (when (> column left)
-        (let ((previous (1- column)))
-          (when (and (> previous left)
-                     (string= "" (aref cells row previous)))
-            (decf previous))
-          (setf (aref cells row previous)
-                (concatenate 'string (aref cells row previous)
-                             (string character)))))
-      (progn
-        (setf (aref cells row column) (string character)
-              (aref colors row column) style)
-        (when (= width 2)
-          (setf (aref cells row (1+ column)) ""
-                (aref colors row (1+ column)) style)))))
+(fn paint-character ((cells array) style (row integer) (column integer)
+                    (left integer) (character character) (width integer))
+  (when (or (plusp width) (> column left))
+    (when (zerop width)
+      (decf column)
+      (when (and (> column left)
+                 (zerop (length (uncursed::cell-string (aref cells row column)))))
+        (decf column)))
+    (handler-bind ((uncursed:wide-char-overwrite-error
+                     (lambda (condition) (declare (ignore condition))
+                       (invoke-restart 'uncursed:overwrite-char))))
+      (uncursed:put character (1+ row) (1+ column) *rect* style cells))))
 
-(fn paint-panel ((cells array) (colors array) (borders array) style
+(fn paint-panel ((cells array) (borders array) style
                 (node element) (widget widget))
   (let* ((box (element-box node))
          (left (cell-edge (box-x box)))
@@ -141,8 +102,8 @@
                         (<= 0 y) (< y (array-dimension cells 0))
                         (cell-visible-p (element-clip node) x y 1)
                         (not (aref borders y x)))
-               (setf (aref cells y x) (string character)
-                     (aref colors y x) style
+               (setf (uncursed::cell-string (aref cells y x)) (string character)
+                     (uncursed::cell-style (aref cells y x)) style
                      (aref borders y x) t))))
       (when (and (<= left right) (<= top bottom))
         (loop :for x :from (1+ left) :below right
@@ -154,7 +115,7 @@
         (put left bottom (char border 2))
         (put right bottom (char border 3))))))
 
-(fn paint-canvas ((cells array) (colors array) (borders array)
+(fn paint-canvas ((cells array) (borders array)
                   (node element) (widget widget))
   (let ((box (element-box node)) (clip (element-clip node)))
     (dolist (command (widget-value widget))
@@ -163,9 +124,9 @@
         (let ((center-x (+ (box-x box) cx))
               (center-y (+ (box-y box) cy))
               (extent (+ radius (if stroke 0.6 0)))
-              (outline-style (list (or stroke (widget-foreground widget))
+              (outline-style (cell-style (or stroke (widget-foreground widget))
                                    (widget-background widget) nil))
-              (fill-style (list (or fill (widget-foreground widget))
+              (fill-style (cell-style (or fill (widget-foreground widget))
                                 (or fill (widget-background widget)) nil)))
           (loop :for row :from (max 0 (cell-edge (box-y clip))
                                     (ceiling (- center-y extent 0.5)))
@@ -191,9 +152,9 @@
                                                       0.6))))
                                   (when (or edge
                                             (and fill (< distance radius)))
-                                    (setf (aref cells row column)
+                                    (setf (uncursed::cell-string (aref cells row column))
                                           (if edge "o" ".")
-                                          (aref colors row column)
+                                          (uncursed::cell-style (aref cells row column))
                                           (if edge outline-style
                                               fill-style)))))))))))
 
@@ -212,7 +173,7 @@
                        (equal (element-id node) (context-active context))))
          (filled (or selected pressed))
          (cell-p (eq (widget-kind widget) :cell)))
-    (list (cond ((and (widget-disabled-p widget)
+    (cell-style (cond ((and (widget-disabled-p widget)
                       (not (eq (widget-kind widget) :cell))) "#777777")
                 ((and filled cell-p) (widget-foreground widget))
                 (filled "#ffffff")
@@ -223,27 +184,11 @@
           (eq (widget-font-weight widget) :bold)
           (and hover (not filled)))))
 
-(fn write-cell-style ((stream stream) style)
-  (destructuring-bind (foreground background bold &optional underline) style
-    (format stream "~C[0;~D;~Dm" #\Escape (if bold 1 22)
-            (if underline 4 24))
-    (loop :for color :in (list foreground background)
-          :for channel :in '(38 48)
-          :do (when (and (= (length color) 7) (char= (char color 0) #\#))
-                (format stream "~C[~D;2;~D;~D;~Dm" #\Escape channel
-                        (parse-integer color :start 1 :end 3 :radix 16)
-                        (parse-integer color :start 3 :end 5 :radix 16)
-                        (parse-integer color :start 5 :end 7 :radix 16))))))
-
-(fn (render-terminal string) ((context context) &key ansi)
-  "Return a cell frame; ANSI colors are optional for the raw terminal backend."
+(fn paint-terminal ((context context) (cells array))
   (let* ((root (or (context-root context) (error "No completed frame.")))
-         (width (cell-edge (box-width (element-box root))))
-         (height (cell-edge (box-height (element-box root))))
-         (dimensions (list height width))
-         (cells (make-array dimensions :initial-element " "))
-         (colors (make-array dimensions :initial-element nil))
-         (borders (make-array dimensions :initial-element nil)))
+         (height (array-dimension cells 0)) (width (array-dimension cells 1))
+         (*rect* (uncursed:make-rect :x 0 :y 0 :rows height :cols width))
+         (borders (make-array (list height width) :initial-element nil)))
     (visible-elements
      root
      (lambda (node)
@@ -270,9 +215,9 @@
                       (if (and (context-focus-visible-p context)
                                (equal (element-id node)
                                       (context-focus context)))
-                          (list (widget-background widget)
+                          (cell-style (widget-background widget)
                                 (widget-accent widget) t)
-                          (list (widget-accent widget)
+                          (cell-style (widget-accent widget)
                                 (widget-background widget) t))))
                   (thumb (when (eq (widget-kind widget) :scrollbar)
                            (scrollbar-thumb node)))
@@ -287,7 +232,7 @@
                                                 '(:label :list-item))
                                          (< left width)
                                          (< top height))
-                                (second (aref colors top left))))
+                                (uncursed:bg (uncursed::cell-style (aref cells top left)))))
                   (style (terminal-style widget node context background))
                   (padding (element-padding node))
                   (x (cell-edge (+ (box-x box) padding)))
@@ -312,40 +257,40 @@
                              :do (cond
                                    ((and thumb
                                          (or (not (aref borders row column))
-                                             (member (aref cells row column)
+                                             (member (uncursed::cell-string (aref cells row column))
                                                      '("│" "|")
                                                      :test #'string=)))
-                                    (setf (aref cells row column)
+                                    (setf (uncursed::cell-string (aref cells row column))
                                           (if (and (<= thumb-top row)
                                                    (< row thumb-end))
                                               "█"
                                               "│")
-                                          (aref colors row column) style))
+                                          (uncursed::cell-style (aref cells row column)) style))
                                    ((and splitter-p
                                          (if horizontal-p
                                              (= row (floor (+ y bottom) 2))
                                              (= column
                                                 (floor (+ x right) 2))))
-                                    (setf (aref cells row column)
+                                    (setf (uncursed::cell-string (aref cells row column))
                                           (if horizontal-p "─" "│")
-                                          (aref colors row column)
+                                          (uncursed::cell-style (aref cells row column))
                                           rail-style))
                                    (highlight-p
                                     (when (or (plusp (widget-opacity widget))
                                               (= row y) (= row (1- bottom))
                                               (= column x)
                                               (= column (1- right)))
-                                      (setf (aref colors row column)
-                                            (list "#000000"
+                                      (setf (uncursed::cell-style (aref cells row column))
+                                            (cell-style "#000000"
                                                   (widget-accent widget) t))))
                                    ((not (or label-p
                                              (aref borders row column)))
-                                    (setf (aref cells row column) " "
-                                          (aref colors row column) style)))))
+                                    (setf (uncursed::cell-string (aref cells row column)) " "
+                                          (uncursed::cell-style (aref cells row column)) style)))))
              (when (eq (widget-kind widget) :panel)
-               (paint-panel cells colors borders style node widget))
+               (paint-panel cells borders style node widget))
              (when (eq (widget-kind widget) :canvas)
-               (paint-canvas cells colors borders node widget))
+               (paint-canvas cells borders node widget))
              (loop :for line :in (text-lines text w)
                    :for row :from y :below (min height bottom)
                    :do (loop :with column := x
@@ -364,22 +309,29 @@
                                                   :below (+ column size)
                                                   :never (aref borders row
                                                                index)))
-                                   (paint-character cells colors style row
+                                   (paint-character cells style row
                                                     column x char size))
                                  (incf column size))))))))
+    cells))
+
+(fn (render-terminal string) ((context context) &key ansi)
+  "Render a plain or ANSI-colored snapshot through uncursed's cells and styles."
+  (let* ((cells (make-buffer (cell-edge (context-width context))
+                             (cell-edge (context-height context))))
+         (previous uncursed:*default-style*))
+    (paint-terminal context cells)
     (with-output-to-string (stream)
-      (let ((previous nil))
-        (dotimes (row height)
-          (dotimes (column width)
-            (let ((style (aref colors row column)))
-              (when (and ansi (not (equal style previous)))
-                (if style (write-cell-style stream style)
-                    (format stream "~C[0m" #\Escape))
-                (setf previous style))
-              (write-string (aref cells row column) stream)))
+      (let ((*terminal-io* stream))
+        (dotimes (row (array-dimension cells 0))
+          (dotimes (column (array-dimension cells 1))
+            (let ((cell (aref cells row column)))
+              (when ansi
+                (uncursed-sys:set-style-from-old previous (uncursed::cell-style cell))
+                (setf previous (uncursed::cell-style cell)))
+              (write-string (uncursed::cell-string cell) stream)))
           (when ansi
-            (format stream "~C[0m" #\Escape)
-            (setf previous nil))
+            (uncursed-sys:set-style-from-old previous uncursed:*default-style*)
+            (setf previous uncursed:*default-style*))
           (terpri stream))))))
 
 (fn terminal-line ((context context) buffer)
@@ -394,11 +346,8 @@
                        (when (zerop delay) (return nil))
                        (sleep (min delay 0.02)))))))
 
-(fn run-terminal ((draw function) &key title width height (interactive t))
-  "Run DRAW using portable text frames and optional line-oriented input.
-INTERACTIVE NIL writes one plain frame and returns its context. In interactive
-mode, :next moves focus, an empty line activates, and :quit exits. Loading the
-optional raw terminal backend replaces this registered runner."
+(fn run-line-terminal ((draw function) &key title width height (interactive t))
+  "Plain snapshots and line-oriented input for redirected or limited terminals."
   (declare (ignore title))
   (let ((context (make-terminal-context))
         (*unit* 1)
@@ -423,5 +372,334 @@ optional raw terminal backend replaces this registered runner."
                     ((string= line ":next") (list (make-event :kind :tab)))
                     ((string= line "") (list (make-event :kind :activate)))
                     (t (list (make-event :kind :text :value line)))))))))
+
+;; Terminal state, terminal capabilities and input decoding belong to uncursed.
+(defstruct input
+  (pending "" :type string)
+  (escape-time nil)
+  (events nil :type list)
+  (quit-p nil :type boolean))
+
+(fn show-cursor ()
+  ;; Uncursed has no visibility-only API; its shape API and terminfo
+  ;; cnorm/cvvis also change blinking.
+  ;; Visibility alone preserves the user's inherited shape and blink mode.
+  (format *terminal-io* "~C[?25h" #\Escape))
+
+(fn terminal-size ()
+  (let ((size (uncursed:terminal-dimensions)))
+    (values (max 1 (cdr size)) (max 1 (car size)))))
+
+(fn focused-node ((context context))
+  (gethash (context-focus context) (lui.frame::context-ids context)))
+
+(fn input-focus ((input input) (context context))
+  (focused-node (pending-input-context context (input-events input))))
+
+(fn editing-input-p ((input input) (context context))
+  (text-field-focused-p (pending-input-context context (input-events input))))
+
+(fn key-event ((input input) (key symbol))
+  (push (make-event :kind :key :key key) (input-events input)))
+
+(fn slider-change ((input input) (context context) (event event))
+  (let ((capture (context-active context)))
+    (dolist (pending (reverse (rest (input-events input))))
+      (case (event-kind pending)
+        (:press
+         (setf capture (or (event-id pending)
+                           (lui.frame::hit context (event-x pending)
+                                           (event-y pending)))))
+        ((:release :cancel) (setf capture nil))
+        (:move
+         (when (and (event-buttons pending)
+                    (not (logbitp 0 (event-buttons pending))))
+           (setf capture nil)))))
+    (let* ((press (eq (event-kind event) :press))
+           (id (if press (lui.frame::hit context (event-x event)
+                                               (event-y event)) capture))
+           (target (gethash id (lui.frame::context-ids context)))
+           (widget (when target (element-content target))))
+      ;; Preserve the topmost target even when a batch starts on a non-slider.
+      (when press (setf (event-id event) id))
+      (when (and (widget-p widget) (eq (widget-kind widget) :slider)
+                 (not (widget-disabled-p widget)))
+        (let* ((box (element-box target))
+               (padding (element-padding target))
+               (left (cell-edge (+ (box-x box) padding)))
+               (width (- (cell-edge (+ (box-x box) (box-width box)
+                                       (- padding))) left)))
+          (multiple-value-bind (line offset length)
+              (lui.terminal::slider-line widget width)
+            (declare (ignore line))
+            (push (make-event
+                   :kind :change :id id
+                   :value (+ (widget-minimum widget)
+                             (* (- (widget-maximum widget)
+                                   (widget-minimum widget))
+                                (min 1 (max 0
+                                  (/ (- (floor (event-x event)) left offset)
+                                     (max 1 (1- length))))))))
+                  (input-events input))))))))
+
+(fn mouse-event ((input input) (data uncursed:mouse-data) &optional context)
+  (let* ((button (uncursed:mouse-data-button data))
+         (state (uncursed:mouse-data-state data))
+         (wheel (member button '(:wheel-up :wheel-down)))
+         (release (eq state :release))
+         (move (or (eq state :drag) (eq button :hover))))
+    (push (make-event
+           :kind (cond (wheel :scroll) (release :release) (move :move)
+                       (t :press))
+           :x (- (uncursed:mouse-data-col data) 0.500001d0)
+           :y (- (uncursed:mouse-data-row data) 0.500001d0)
+           :button (if (eq button :right) :secondary :primary)
+           :buttons (unless wheel
+                      (if release 0
+                          (case button (:left 1) (:middle 4) (:right 2)
+                                (otherwise 0))))
+           :dragging-p (and move (eq button :left))
+           :scroll-mode :smooth :value (if (eq button :wheel-down) 3 -3))
+          (input-events input))
+    (when (and context (eq button :left) (not release))
+      (slider-change input context (first (input-events input))))))
+
+(fn decode-event ((input input) event (context context))
+  (let* ((kind (uncursed:event-kind event))
+         (control (uncursed:event-controlp event))
+         (alt (uncursed:event-altp event))
+         (shift (uncursed:event-shiftp event))
+         (key (case kind (:left-arrow :left) (:right-arrow :right)
+                         (:up-arrow :up) (:down-arrow :down)
+                         (otherwise (when (keywordp kind) kind))))
+         (name (if (characterp kind) (string kind)
+                   (and key (symbol-name key))))
+         (editing (editing-input-p input context))
+         (command (and name editing
+                       (readline-key name :control control :alt alt
+                                          :shift shift))))
+    (cond
+      ((uncursed:mouse-event-p event) (mouse-event input kind context))
+      ((and control (characterp kind) (find kind "cq" :test #'char-equal))
+       (setf (input-quit-p input) t))
+      ((and (characterp kind) (char= kind #\i) control)
+       (push (make-event :kind :tab :key (when shift :backward))
+             (input-events input)))
+      ((eql kind #\Tab)
+       (push (make-event :kind :tab :key (when shift :backward))
+             (input-events input)))
+      ((or (eql kind #\Newline) (eql kind #\Return))
+       (push (make-event :kind :activate) (input-events input)))
+      (command (key-event input command))
+      ((or (eql kind #\Rubout) (eq key :backspace))
+       (key-event input :backspace))
+      ((eql kind #\Escape) (key-event input :escape))
+      (key
+       (key-event input (if shift
+                            (case key (:left :shift-left) (:right :shift-right)
+                                      (:home :shift-home) (:end :shift-end)
+                                      (otherwise key)) key)))
+      ((and (characterp kind) (not control) (not alt))
+       (let* ((node (input-focus input context))
+              (widget (and node (element-content node))))
+         (push (if (and (eql kind #\Space) (widget-p widget)
+                        (member (widget-kind widget)
+                                '(:button :checkbox :radio :tab :list-item :cell)))
+                   (make-event :kind :activate)
+                   (make-event :kind :text :value (string kind)))
+               (input-events input)))))))
+
+(fn input-sequence-length ((text string))
+  ;; Frame complete character sequences; uncursed owns their interpretation.
+  (cond ((zerop (length text)) nil)
+        ((char/= (char text 0) #\Escape) 1)
+        ((= (length text) 1) nil)
+        ((find (char text 1) "[O")
+         (let ((end (position-if (lambda (character)
+                                  (<= 64 (char-code character) 126))
+                                text :start 2)))
+           (and end (1+ end))))
+        (t 2)))
+
+(fn read-input ((input input) (context context) (timeout real))
+  (let ((end (+ (get-internal-real-time)
+                (* timeout internal-time-units-per-second))))
+    (loop
+      (let ((chunk (with-output-to-string (stream)
+                     (loop :for character := (read-char-no-hang
+                                              *terminal-io* nil :eof)
+                           :while (characterp character)
+                           :do (write-char character stream)
+                           :finally (when (eq character :eof)
+                                      (setf (input-quit-p input) t))))))
+        (setf (input-pending input) (concatenate 'string
+                                                (input-pending input) chunk))
+        ;; Emergency quit stays available even after a truncated control sequence.
+        (when (or (find (code-char 3) chunk) (find (code-char 17) chunk))
+          (setf (input-quit-p input) t))
+        (loop :for size := (input-sequence-length (input-pending input))
+              :while size
+              :do (let* ((*standard-input*
+                           (make-string-input-stream
+                             (subseq (input-pending input) 0 size)))
+                         (event (uncursed-sys:read-event)))
+                    (decode-event input event context)
+                    (setf (input-pending input)
+                          (subseq (input-pending input) size)
+                          (input-escape-time input) nil)))
+        (when (string= (input-pending input) (string #\Escape))
+          (let ((now (get-internal-real-time)))
+            (if (and (input-escape-time input)
+                     (>= (- now (input-escape-time input))
+                         (* 0.1 internal-time-units-per-second)))
+                (progn (key-event input :escape)
+                       (setf (input-pending input) ""
+                             (input-escape-time input) nil))
+                (unless (input-escape-time input)
+                  (setf (input-escape-time input) now)))))
+        (when (or (input-events input) (input-quit-p input)
+                  (>= (get-internal-real-time) end))
+          (return))
+        (sleep 0.005)))))
+
+(fn (slice-cells string) ((text string) (start integer) (width integer))
+  (with-output-to-string (stream)
+    (loop :with column := 0
+          :for character :across text
+          :for size := (character-width character)
+          :while (<= (+ column size) (+ start width))
+          :do (cond ((>= column start) (write-char character stream))
+                    ((> (+ column size) start) (write-char #\Space stream)))
+              (incf column size))))
+
+(fn draw-focus ((context context) screen)
+  (let* ((node (focused-node context))
+         (widget (and node (element-content node))))
+    (when (and (widget-p widget)
+               (not (eq (widget-kind widget) :splitter))
+               (or (context-focus-visible-p context)
+                   (eq (widget-kind widget) :text-field)))
+      (let* ((box (element-box node))
+             (clip (element-clip node))
+             (padding (element-padding node))
+             (origin (cell-edge (+ (box-x box) padding)))
+             (x (max 0 origin (cell-edge (box-x clip))))
+             (y (cell-edge (+ (box-y box) padding)))
+             (right (min (context-width context)
+                         (cell-edge (+ (box-x clip) (box-width clip)))
+                         (cell-edge (+ (box-x box) (box-width box)
+                                       (- padding)))))
+             (width (max 0 (- right x)))
+             (state (gethash (element-id node) (context-state context)))
+             (field-p (eq (widget-kind widget) :text-field))
+             (cursor (if (and field-p state)
+                         (1+ (text-width
+                              (subseq (widget-value widget) 0
+                                      (min (length (widget-value widget))
+                                           (edit-state-cursor state)))))
+                         0))
+             (offset (max 0 (- cursor (max 1 (1- width)))))
+             (text (if (eq (widget-kind widget) :slider)
+                       (lui.terminal::slider-line
+                        widget (max 0 (- (cell-edge
+                                          (+ (box-x box) (box-width box)
+                                             (- padding)))
+                                         origin)))
+                       (widget-terminal-text widget))))
+        (when (and (plusp width) (<= 0 y) (< y (context-height context))
+                   (<= (cell-edge (box-y clip)) y)
+                   (< y (cell-edge (+ (box-y clip) (box-height clip)))))
+          ;; Focus is part of the canvas so incremental redraws can erase it.
+          (let ((text (slice-cells text (+ offset (- x origin)) width)))
+            ;; Focus uses the terminal's default colors, not the panel palette.
+            (loop :for column :from x :below (+ x (text-width text))
+                  :do (setf (uncursed::cell-style
+                             (aref uncursed::*put-buffer* y column))
+                            uncursed:*default-style*))
+            (uncursed:puts text (1+ y) (1+ x) (uncursed:screen-rect)
+                            (uncursed:make-style :reversep t)))
+          (when field-p
+            (let ((column (+ origin cursor (- offset))))
+              (when (and (<= x column) (< column right))
+                (setf (screen-cursor screen) (list y column))))))))))
+
+(defclass terminal-screen (uncursed:tui)
+  ((context :accessor screen-context) (cursor :initform nil :accessor screen-cursor)))
+
+(defmethod uncursed:redisplay ((screen terminal-screen))
+  (paint-terminal (screen-context screen) uncursed::*put-buffer*)
+  (setf (screen-cursor screen) nil)
+  (draw-focus (screen-context screen) screen))
+
+(fn display-frame ((context context) screen)
+  (let* ((width (cell-edge (context-width context)))
+         (height (cell-edge (context-height context))))
+    (unless (and (slot-boundp screen 'uncursed::%canvas)
+                 (= width (uncursed:cols screen)) (= height (uncursed:rows screen)))
+      (setf (uncursed::canvas screen) (make-buffer width height)
+            (uncursed::screen screen) (make-buffer width height))
+      (uncursed-sys:clear-screen))
+    (setf (screen-context screen) context)
+    (uncursed:set-cursor-shape :invisible)
+    (let ((*standard-output* *terminal-io*)) (uncursed:redisplay screen))
+    (when (screen-cursor screen)
+      (apply #'uncursed-sys:set-cursor-position (screen-cursor screen))
+      (show-cursor))
+    (finish-output *terminal-io*)))
+
+(fn wait-frame ((input input) (context context) width height)
+  (loop
+    (let ((remaining (lui.frame::frame-wait context)))
+      (read-input input context (max 0.001 (min 0.1 remaining)))
+      (when (or (zerop remaining) (input-events input) (input-quit-p input))
+        (return)))
+    (multiple-value-bind (columns rows) (terminal-size)
+      (when (or (/= (or width columns) (context-width context))
+                (/= (or height rows) (context-height context)))
+        (return)))))
+
+(fn run-terminal
+    ((draw function) &key title width height (interactive t))
+  (if (or (not interactive)
+          (not (interactive-stream-p *standard-input*))
+          (not (interactive-stream-p *standard-output*))
+          #+unix (let ((term (uiop:getenv "TERM")))
+                   (or (null term) (zerop (length term))
+                       (string-equal term "dumb"))))
+      (run-line-terminal draw :title title :width width :height height
+                         :interactive interactive)
+      (let ((context (make-terminal-context)) (*unit* 1) (input (make-input))
+            (saved nil) (screen (make-instance 'terminal-screen)))
+        (unwind-protect
+             (progn
+               #+unix (terminfo:set-terminal (uiop:getenv "TERM"))
+               (setf saved (uncursed-sys:setup-terminal
+                            #+unix uncursed-sys:+stdin+))
+               (uncursed-sys:enable-alternate-screen)
+               (uncursed:enable-mouse :hover t)
+               (uncursed-sys:clear-screen)
+               (loop
+                 (multiple-value-bind (columns rows) (terminal-size)
+                   (let ((events (nreverse (input-events input))))
+                     (with-frame (context (or width columns) (or height rows)
+                                          :events events)
+                       (funcall draw))
+                     (when events
+                       (let ((*context* context)) (request-frame)))))
+                 (setf (input-events input) nil)
+                 (display-frame context screen)
+                 (wait-frame input context width height)
+                 (when (input-quit-p input) (return context))
+                 (lui.frame::limit-frame-rate context)))
+          (when saved
+            (unwind-protect
+                 (progn
+                   (uncursed-sys:set-style uncursed:*default-style*)
+                   (uncursed:disable-mouse)
+                   (show-cursor)
+                   (uncursed-sys:disable-alternate-screen)
+                   (finish-output *terminal-io*))
+              (uncursed-sys:restore-terminal saved
+                                             #+unix uncursed-sys:+stdin+)))))))
 
 (register-backend :terminal #'run-terminal)

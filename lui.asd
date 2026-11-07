@@ -31,6 +31,7 @@
   :components ((:module "src"
                 :serial t
                 :components ((:file "fn")
+                             (:file "text-wrap")
                              (:file "layout")
                              (:file "frame")
                              (:file "widgets")
@@ -38,8 +39,7 @@
                              (:file "interaction")
                              (:file "glass")
                              (:file "motif")
-                             (:file "garnet")
-                             (:file "terminal"))))
+                             (:file "garnet"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
 
 (defsystem "lui"
@@ -73,7 +73,8 @@
   :serial t
   :components ((:module "tests"
                 :serial t
-                :components ((:file "debug")
+                :components ((:file "support")
+                             (:file "debug")
                              (:file "core")
                              (:file "widgets")
                              (:file "interaction")
@@ -99,8 +100,7 @@
   :serial t
   :components ((:module "src"
                 :serial t
-                :components ((:file "text-wrap")
-                             (:file "font")
+                :components ((:file "font")
                              (:file "draw")
                              (:file "text-selection")
                              (:file "paint-common")
@@ -152,7 +152,15 @@
 
 (defsystem "lui/terminal"
   :depends-on ("lui/core" "uncursed")
-  :components ((:module "src" :components ((:file "terminal-io")))))
+  :components ((:module "src" :components ((:file "terminal"))))
+  :in-order-to ((test-op (test-op "lui/terminal/tests"))))
+
+(defsystem "lui/terminal/tests"
+  :depends-on ("lui/terminal" "lui/demo")
+  :components ((:module "tests" :components ((:file "terminal-render"))))
+  :perform (test-op (operation component)
+             (declare (ignore operation component))
+             (uiop:symbol-call :lui.tests.terminal-render :run-tests)))
 
 (defsystem "lui/native/tests"
   :depends-on ("lui/native")

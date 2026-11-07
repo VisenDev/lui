@@ -5,10 +5,10 @@
 
 ;; Source-loading runner for implementations without a configured ASDF registry.
 
-(dolist (file '("src/fn.lisp" "src/layout.lisp" "src/frame.lisp"
+(dolist (file '("src/fn.lisp" "src/text-wrap.lisp" "src/layout.lisp" "src/frame.lisp"
                 "src/widgets.lisp" "src/app.lisp" "src/interaction.lisp"
                 "src/glass.lisp" "src/motif.lisp" "src/garnet.lisp"
-                "src/terminal.lisp" "tests/core.lisp"))
+                "tests/support.lisp" "tests/core.lisp"))
   (load file))
 
 (lui.tests:run-tests)

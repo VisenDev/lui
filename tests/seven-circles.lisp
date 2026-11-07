@@ -1,5 +1,5 @@
 (defpackage #:lui.tests.seven.circles
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.terminal
+  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.tests.support
         #:lui.seven.model)
   (:export #:run-tests))
 (in-package #:lui.tests.seven.circles)
@@ -9,7 +9,7 @@
            (lui.example.seven.circles:make-state))
          (model (lui.example.seven.circles:state-model
                  state))
-         (context (make-terminal-context)) (*unit* 2))
+         (context (make-test-context)) (*unit* 2))
     (labels ((frame (&rest events)
                (with-frame (context 240 100 :events events)
                  (lui.example.seven.circles:draw state)))

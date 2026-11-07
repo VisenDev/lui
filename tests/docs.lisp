@@ -1,5 +1,5 @@
 (defpackage #:lui.tests.docs
-  (:use #:cl #:lui.layout #:lui.frame #:lui.widgets #:lui.terminal)
+  (:use #:cl #:lui.layout #:lui.frame #:lui.widgets #:lui.tests.support)
   (:export #:run-tests))
 (in-package #:lui.tests.docs)
 
@@ -24,9 +24,9 @@
   (first (nodes context (lambda (node) (equal id (element-id node))))))
 
 (defun test-live-widgets ()
-  (let* ((lui:*unit* 1) (context (make-terminal-context))
+  (let* ((lui:*unit* 1) (context (make-test-context))
          (draw (lui.docs:make-docs)) (other (lui.docs:make-docs))
-         (second (make-terminal-context)))
+         (second (make-test-context)))
     (labels ((widget (id)
                (element-content (node-with-id context id)))
              (activate (id)
@@ -84,7 +84,7 @@
                          (node-with-id second :docs-preview-text))))))))
 
 (defun test-narrow-reference ()
-  (let* ((lui:*unit* 1) (context (make-terminal-context))
+  (let* ((lui:*unit* 1) (context (make-test-context))
          (draw (lui.docs:make-docs
                 :entries '((:package "lui" :name "BUTTON" :kind :function
                             :signature "(button id text &optional options)"
@@ -125,7 +125,7 @@
             :measure
             (lambda (widget width)
               (let* ((extra (if (eq (widget-kind widget) :label) 0 24))
-                     (lines (text-lines (widget-text widget)
+                     (lines (test-lines (widget-text widget)
                                         (when width
                                           (/ (max 1 (- width extra)) 8)))))
                 (values (+ extra (* 8 (reduce #'max lines :key #'length)))
@@ -141,7 +141,7 @@
           (funcall draw)))
       (let* ((row (node-with-id context '(:docs-entry 0)))
              (caption (widget-text (element-content row)))
-             (lines (text-lines caption nil)))
+             (lines (test-lines caption nil)))
         (assert (string= title (remove #\Newline caption)))
         (assert (> (length lines) 1))
         ;; Include both DOM padding and the narrower native text insets.
@@ -155,7 +155,7 @@
         (setf previous (box-width (element-box pane))))))))
 
 (defun test-scrolled-selection ()
-  (let* ((lui:*unit* 1) (context (make-terminal-context))
+  (let* ((lui:*unit* 1) (context (make-test-context))
          (draw (lui.docs:make-docs
                 :entries
                 (loop :for i :below 100
@@ -181,8 +181,8 @@
     (assert (has-label context "lui:ROW1"))))
 
 (defun test-debugger-guide ()
-  (let* ((lui:*unit* 1) (context (make-terminal-context))
-         (other (make-terminal-context))
+  (let* ((lui:*unit* 1) (context (make-test-context))
+         (other (make-test-context))
          (draw (lui.docs:make-docs)) (second (lui.docs:make-docs)))
     (frame context draw)
     (assert (string= "Show debugger"
@@ -226,8 +226,8 @@
                            (format nil "Documentation ~D" index)))))
          (draw (lui.docs:make-docs :entries entries))
          (other (lui.docs:make-docs :entries entries))
-         (context (make-terminal-context))
-         (second (make-terminal-context)))
+         (context (make-test-context))
+         (second (make-test-context)))
     (frame context draw)
     (frame second other)
     (assert (has-label context "Getting started"))
@@ -257,7 +257,7 @@
     (frame second other)
     (assert (has-label second "Getting started"))
     (assert (not (has-label second "No matching entries."))))
-  (let ((lui:*unit* 1) (context (make-terminal-context))
+  (let ((lui:*unit* 1) (context (make-test-context))
         (draw (lui.docs:make-docs :entries nil)))
     (frame context draw (make-event :kind :activate
                                     :id '(:docs-package nil)))

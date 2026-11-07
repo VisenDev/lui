@@ -1,12 +1,12 @@
 (defpackage #:lui.tests.gallery
-  (:use #:cl #:lui #:lui.layout #:lui.frame #:lui.widgets #:lui.terminal)
+  (:use #:cl #:lui #:lui.layout #:lui.frame #:lui.widgets #:lui.tests.support)
   (:export #:run-tests))
 (in-package #:lui.tests.gallery)
 
 (defun test-independent-demos ()
   (let ((first (lui.example:make-demo)) (second (lui.example:make-demo))
-        (first-context (make-terminal-context))
-        (second-context (make-terminal-context)) (*unit* 1))
+        (first-context (make-test-context))
+        (second-context (make-test-context)) (*unit* 1))
     (labels ((frame (context draw &rest events)
                (with-frame (context 100 60 :events events) (funcall draw)))
              (has-label (context text)
@@ -41,7 +41,7 @@
       (assert (has-label second-context "0")))))
 
 (defun test-header-controls ()
-  (let ((context (make-terminal-context))
+  (let ((context (make-test-context))
         (gallery (lui.example:make-gallery)) (*unit* 1))
     (labels ((frame (&rest events)
                (with-frame (context 100 60 :events events)
@@ -76,7 +76,7 @@
 (defun run-tests ()
   (test-independent-demos)
   (test-header-controls)
-  (let ((context (make-terminal-context))
+  (let ((context (make-test-context))
         (*unit* 1)
         (gallery (lui.example:make-gallery :name "Persistent value")))
     (flet ((frame (&optional events)
@@ -99,7 +99,7 @@
               (assert (null (gethash :opacity nodes)))
               (assert (= 1 (widget-opacity preview)))
               (assert (zerop (widget-frost preview)))
-              (assert (search "solid colors" (render-terminal context)))))
+              (assert (visible-text-p context "solid colors"))))
           (let ((tabs 0) (selected 0))
             (walk-elements
              (context-root context)
@@ -115,7 +115,7 @@
                      (when (widget-value widget) (incf selected)))))))
             (assert (= tabs (length lui.example::*pages*)))
             (assert (= selected 1)))
-          (assert (plusp (length (render-terminal context))))))
+          (assert (plusp (visible-widget-count context)))))
       ;; Percentage panels fit all wrapped text and shrink again on resize.
       (let ((gallery (lui.example:make-gallery :page :layout :split 0.3)))
         (dolist (style lui.example::*toolkits*)

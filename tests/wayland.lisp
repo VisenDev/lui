@@ -61,7 +61,7 @@
      :uint32 #x110 :uint32 pressed :void)))
 
 (defun test-pointer-cancellation ()
-  (let* ((lui:*unit* 1) (context (lui.terminal:make-terminal-context))
+  (let* ((lui:*unit* 1) (context (lui.tests.support:make-test-context))
          (state (lui.debug:make-state :selected '(:id :target)))
          (lui.wayland::*window* (lui.wayland::make-wl-window)))
     (lui.debug:set-enabled t :context context :state state)

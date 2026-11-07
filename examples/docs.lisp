@@ -16,7 +16,7 @@
      (setf name (lui:text-field :name name))
      (when (lui:button :hello \"Say hello\")
        (format t \"Hello ~A!~%\" name)))))"
-     "For portable layout, widgets, and plain terminal output, load lui/core. It has no external dependencies. To load a single backend, use its system, such as lui/x11 or lui/wayland. The browser build uses JSCL. Native graphics use zpb-ttf, CFFI, and platform libraries, with Xlib/GLX for X11 windowing and rendering. Interactive terminal control uses uncursed; plain terminal output remains dependency-free."
+     "For portable layout and widgets, load lui/core. It has no external dependencies. To load a single backend, use its system, such as lui/x11 or lui/wayland. The browser build uses JSCL. Native graphics use zpb-ttf, CFFI, and platform libraries, with Xlib/GLX for X11 windowing and rendering. All terminal output uses lui/terminal and uncursed."
      "Use make demo for the gallery, make docs for this browser, and make test for the detected platform. Backend availability depends on which systems are loaded; an explicit :backend argument selects one.")
     (:debug "Debugger"
      "Show debugger opens this window's layout debugger. Close dismisses it. Each window owns its debugger state."
@@ -82,7 +82,7 @@
     (:backends "Backends and running"
      "Native: load lui/wayland or lui/x11 on Linux, lui/win32 on Windows, or lui/cocoa on macOS. X11 uses GLX and Wayland uses EGL with the shared OpenGL renderer; Windows and macOS use native drawing/compositing APIs. Fonts are loaded from the system. The offscreen OpenGL system also supports rendering tests."
      "Browser: make web-demo compiles the same gallery callback with JSCL and serves it locally. The web backend uses a high-DPI canvas for widgets and selectable HTML text for visible labels. Use make docs for the native docs browser, make docs-html for a standalone build/docs.html, and make docs-pages to refresh docs/index.html for hosting."
-     "Terminal: make terminal-demo loads the optional raw backend, handling input, mouse, resize, ANSI colors, and restoration on exit. Plain noninteractive terminal rendering needs only portable Common Lisp. Terminal coordinates are cells; graphical coordinates are pixels."
+     "Terminal: make terminal-demo loads lui/terminal. Uncursed handles terminal cells, Unicode widths, colors, input decoding, and incremental output; LUI maps widgets and events onto it. Plain snapshots also require lui/terminal. Terminal coordinates are cells; graphical coordinates are pixels."
      "Build commands use GNU Make, Bash, and SBCL. Python is used by the existing integration tests and local web server. make test PLATFORM=core runs portable checks; native, gl, and platform-specific targets cover additional paths. See README for configuration, source registry setup, and the verified platform matrix.")))
 
 (defstruct browser

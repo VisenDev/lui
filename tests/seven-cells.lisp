@@ -1,5 +1,5 @@
 (defpackage #:lui.tests.seven.cells
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.terminal
+  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.tests.support
         #:lui.example.seven.cells #:lui.seven.model)
   (:export #:run-tests))
 (in-package #:lui.tests.seven.cells)
@@ -9,7 +9,7 @@
 (fn run-tests ()
   (dolist (style '(:glass :motif :garnet))
     (let ((state (make-state)) (lui:*unit* 1)
-          (context (make-terminal-context)))
+          (context (make-test-context)))
       (labels ((frame (&rest events)
                  (with-frame (context 100 60 :events events)
                    (lui:with-toolkit (style) (draw-content state))))
@@ -192,6 +192,6 @@
         (assert (context-next-frame context))
         (with-frame (context 120 70)
           (lui:with-toolkit (style) (draw-content state)))
-        (assert (plusp (length (render-terminal context)))))))
+        (assert (plusp (visible-widget-count context))))))
   (format t "Cells virtual grid, formulas, editing, navigation and clips passed.~%")
   t)

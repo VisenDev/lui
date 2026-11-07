@@ -19,6 +19,8 @@ import tempfile
 import termios
 import time
 
+from terminal_screen import Screen
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -65,7 +67,7 @@ def script(error=False, debug=False):
   (let* ((*standard-input* (make-string-input-stream
                             (concatenate 'string (string #\\Escape) "[<" sequence)))
          (event (uncursed-sys:read-event)))
-    (lui.terminal.io::mouse-event input (uncursed:event-kind event) context)))
+    (lui.terminal::mouse-event input (uncursed:event-kind event) context)))
 (assert (= (lui.terminal:text-width "A界é") 4))
 (assert (equal (lui.terminal:text-lines "界 ab" 3) '("界" "ab")))
 (let ((context (lui.terminal:make-terminal-context)))
@@ -136,12 +138,12 @@ def script(error=False, debug=False):
     (setf value 0.5)
     (lui.frame:with-frame (context 20 2) (draw))
     (dolist (entry '((16 1) (1 0) (9 0.5)))
-      (let ((input (lui.terminal.io::make-input)))
+      (let ((input (lui.terminal::make-input)))
         (test-mouse input
           (format nil "0;~D;1M" (first entry)) context)
         (lui.frame:with-frame
             (context 20 2 :events
-              (reverse (lui.terminal.io::input-events input)))
+              (reverse (lui.terminal::input-events input)))
           (draw))
         (assert (= value (second entry)))))
     (dolist (entry '((:home 0) (:end 1) (:left 0.75) (:right 1)))
@@ -187,13 +189,13 @@ def script(error=False, debug=False):
                             :offset-y (+ 4 start) :width (lui.layout:fixed 20)
                             :height (lui.layout:fixed 1) :step 0.01))))
              (mouse (button x y &optional release)
-               (let ((input (lui.terminal.io::make-input)))
+               (let ((input (lui.terminal::make-input)))
                  (test-mouse
                    input (format nil "~D;~D;~D~A" button x y
                                  (if release "m" "M")) context)
                  (lui.frame:with-frame
                      (context 24 7 :events
-                       (reverse (lui.terminal.io::input-events input)))
+                       (reverse (lui.terminal::input-events input)))
                    (draw)))))
       (lui.frame:with-frame (context 24 7) (draw))
       (let ((cell (1+ (floor (+ start 1/2)))))
@@ -226,12 +228,12 @@ def script(error=False, debug=False):
                               :height (lui.layout:fixed 1)))
                (incf clicks)))
            (batch (&rest sequences)
-             (let ((input (lui.terminal.io::make-input)))
+             (let ((input (lui.terminal::make-input)))
                (dolist (sequence sequences)
                  (test-mouse input sequence context))
                (lui.frame:with-frame
                    (context 20 2 :events
-                     (reverse (lui.terminal.io::input-events input)))
+                     (reverse (lui.terminal::input-events input)))
                  (draw)))))
     (lui.frame:with-frame (context 20 2) (draw))
     (batch "0;3;1M" "0;3;1m")
@@ -269,27 +271,26 @@ def script(error=False, debug=False):
     (assert (search "+---+" plain))
     (assert (find #\\o plain))
     (assert (find #\\. plain))
-    (assert (search "[38;2;255;0;0m" colored))
-    (assert (search "[48;2;0;255;0m" colored))))
-(let ((input (lui.terminal.io::make-input)))
+    (format t "~&@@ANSI-CANVAS-BEGIN~%~A@@ANSI-CANVAS-END~%" colored)))
+(let ((input (lui.terminal::make-input)))
   (test-mouse input "2;3;4M")
   (assert (eq (lui.frame:event-button
-               (first (lui.terminal.io::input-events input))) :secondary))
+               (first (lui.terminal::input-events input))) :secondary))
   (test-mouse input "32;3;4M")
   (assert (lui.frame:event-dragging-p
-           (first (lui.terminal.io::input-events input))))
+           (first (lui.terminal::input-events input))))
   (test-mouse input "35;3;4M")
   (assert (not (lui.frame:event-dragging-p
-                (first (lui.terminal.io::input-events input))))))
+                (first (lui.terminal::input-events input))))))
 ;; Physical SGR state distinguishes released motion from a retained capture.
 (dolist (entry '(("0;3;4M" 1) ("32;3;4M" 1) ("0;3;4m" 0)
                  ("35;3;4M" 0) ("2;3;4M" 2) ("34;3;4M" 2)
                  ("64;3;4M" nil)))
-  (let ((input (lui.terminal.io::make-input)))
+  (let ((input (lui.terminal::make-input)))
     (test-mouse input (first entry))
     (assert (eql (second entry)
                  (lui.frame:event-buttons
-                   (first (lui.terminal.io::input-events input)))))))
+                   (first (lui.terminal::input-events input)))))))
 ;; Fractional cell boundaries must agree for painting and clipping.
 (let ((context (lui.terminal:make-terminal-context)))
   (lui.frame:with-frame (context 10 4)
@@ -313,8 +314,7 @@ def script(error=False, debug=False):
         (colored (lui.terminal:render-terminal context :ansi t)))
     (assert (string= plain (format nil "+---+~%|   |~%+---+~%")))
     (assert (not (find #\\Escape plain)))
-    (assert (search "[38;2;0;0;0m" colored))
-    (assert (search "[48;2;255;255;255m" colored))))
+    (format t "~&@@ANSI-GARNET-BEGIN~%~A@@ANSI-GARNET-END~%" colored)))
 (let ((context (lui:run (lui.example:make-demo) :backend :terminal
                         :width 90 :height 35 :interactive nil)))
   (lui.layout:walk-elements
@@ -354,6 +354,7 @@ class Terminal:
     def __init__(self, cmd, term="xterm-direct"):
         self.master, self.slave = pty.openpty()
         self.before = termios.tcgetattr(self.slave)
+        self.screen = Screen(90, 35)
         self.resize(90, 35)
         self.output = b""
         environment = os.environ.copy()
@@ -376,6 +377,7 @@ class Terminal:
         )
 
     def resize(self, columns, rows):
+        self.screen.resize(columns, rows)
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ,
                     struct.pack("HHHH", rows, columns, 0, 0))
 
@@ -395,6 +397,11 @@ class Terminal:
             if not chunk:
                 break
             self.output += chunk
+            try:
+                self.screen.feed(chunk)
+            except AssertionError as error:
+                raise AssertionError(f"{error}\nRaw process output:\n" +
+                                     self.output.decode("utf-8", "replace")) from error
 
     def until(self, needle, timeout=30):
         end = time.monotonic() + timeout
@@ -404,6 +411,29 @@ class Terminal:
                 self.pump()
                 break
         assert needle in self.output, self.output.decode("utf-8", "replace")
+
+    def until_visible(self, text, timeout=30):
+        end = time.monotonic() + timeout
+        while text not in self.screen and time.monotonic() < end:
+            self.pump()
+            if self.process.poll() is not None:
+                break
+        assert text in self.screen, self.screen.text + "\nRaw process output:\n" + self.output.decode("utf-8", "replace")
+
+    def settle(self, idle=0.1, timeout=5):
+        """Wait for a completed output burst, including trailing focus overlays."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            checkpoint = len(self.output)
+            self.pump(idle)
+            if len(self.output) == checkpoint:
+                assert not self.screen._pending and not self.screen._decoder.getstate()[0], "Incomplete terminal output"
+                return
+        raise AssertionError("Terminal output did not settle")
+
+    def frame(self):
+        self.settle()
+        return self.screen.snapshot()
 
     def send(self, data):
         os.write(self.master, data)
@@ -427,69 +457,68 @@ class Terminal:
         os.close(self.slave)
 
 
-def last_frame(output):
-    return re.split(rb"\x1b\[\?25l\x1b\[(?:1;1)?H", output)[-1]
-
-
 def text_style(frame, text):
-    end = frame.rfind(text)
-    assert end >= 0, frame.decode("utf-8", "replace")
-    foreground = background = None
-    underline = False
-    for match in re.finditer(rb"\x1b\[([0-9;]*)m", frame[:end]):
-        codes = [int(code) for code in match[1].split(b";") if code]
-        index = 0
-        while index < len(codes):
-            code = codes[index]
-            if code == 0:
-                foreground = background = None
-                underline = False
-            elif code in (4, 24):
-                underline = code == 4
-            elif code in (38, 48) and codes[index + 1:index + 2] == [2]:
-                color = tuple(codes[index + 2:index + 5])
-                if code == 38:
-                    foreground = color
-                else:
-                    background = color
-                index += 4
-            index += 1
-    return foreground, background, underline
+    positions = frame.positions(text)
+    assert positions, frame.text
+    x, y = positions[-1]
+    return frame.cells[y][x][1:4]
 
 
 def text_position(frame, text, last=True):
-    """Locate a visible ASCII caption in the terminal's absolute-row output."""
-    offset = frame.rfind(text) if last else frame.find(text)
-    assert offset >= 0, frame.decode("utf-8", "replace")
-    moves = list(re.finditer(rb"\x1b\[(\d+);(\d+)H", frame[:offset]))
-    assert moves
-    move = moves[-1]
-    prefix = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", frame[move.end():offset])
-    return int(move[2]) + len(prefix.decode("utf-8")), int(move[1])
+    positions = frame.positions(text)
+    assert positions, frame.text
+    x, y = positions[-1 if last else 0]
+    return x + 1, y + 1
 
 
 def divider_position(frame):
-    """Find the long accent rail, excluding the surrounding panel borders."""
-    properties = frame.find(b"Properties")
-    rail_frame = frame[:properties] if properties >= 0 else frame
-    for match in reversed(list(re.finditer(b"(?:" + "─".encode() + b"){8,}",
-                                          rail_frame))):
-        prefix = frame[:match.end()]
-        foreground, background, _ = text_style(prefix, match[0])
-        if (37, 139, 255) in (foreground, background):
-            x, y = text_position(prefix, match[0])
-            return x + len(match[0].decode("utf-8")) // 2, y
-    raise AssertionError(frame.decode("utf-8", "replace"))
+    """Find the accent rail in reconstructed cells, excluding panel borders."""
+    properties = frame.positions("Properties")
+    bottom = properties[0][1] if properties else frame.rows
+    for y in reversed(range(bottom)):
+        row = frame.cells[y]
+        text = "".join(cell[0] for cell in row)
+        for match in reversed(list(re.finditer("─{8,}", text))):
+            style = row[match.start()][1:3]
+            if (37, 139, 255) in style:
+                return match.start() + len(match[0]) // 2 + 1, y + 1
+    raise AssertionError(frame.text)
+
+
+def properties_close(frame):
+    """Locate the properties pane's close control beside its heading."""
+    heading = frame.positions("Properties")
+    assert heading, frame.text
+    x, y = heading[-1]
+    candidates = [(cx, cy) for cx, cy in frame.positions("×") if cy == y and cx > x]
+    assert candidates, frame.text
+    cx, cy = candidates[0]
+    return cx + 1, cy + 1
+
+
+def check_colored_snapshots(output):
+    """Check combined or separate SGR attributes through the shared normalizer."""
+    snapshots = {}
+    for name, rows in (("CANVAS", 5), ("GARNET", 3)):
+        marker = name.encode()
+        match = re.search(b"@@ANSI-" + marker + b"-BEGIN\r?\n(.*?)@@ANSI-" + marker + b"-END", output, re.S)
+        assert match, name
+        snapshots[name] = Screen(5, rows + 1).feed(match[1])
+    canvas = [cell for row in snapshots["CANVAS"].cells for cell in row]
+    assert any(cell[0] == "o" and cell[1] == (255, 0, 0) for cell in canvas)
+    assert any(cell[0] == "." and cell[2] == (0, 255, 0) for cell in canvas)
+    garnet = snapshots["GARNET"]
+    assert garnet.cells[0][0][:3] == ("+", (0, 0, 0), (255, 255, 255))
 
 
 def exercise(lisp, path):
     terminal = Terminal(command(lisp, path))
     try:
         terminal.until(b"\x1b[?1049h", timeout=180)
-        terminal.until(b"Common Lisp")
-        terminal.until(b"\x1b[38;2;")
-        assert b"\x1b[38;2;" in terminal.output
-        assert b"\x1b[48;2;" in terminal.output
+        terminal.until_visible(b"Common Lisp")
+        check_colored_snapshots(terminal.output)
+        assert any(isinstance(cell[1], tuple) and isinstance(cell[2], tuple)
+                   for row in terminal.screen.cells for cell in row)
         assert not termios.tcgetattr(terminal.slave)[3] & termios.ICANON
         terminal.pump(0.2)
         checkpoint = len(terminal.output)
@@ -502,18 +531,18 @@ def exercise(lisp, path):
             tabs[name] = (int(x), int(y))
         x, y = tabs[b"LAYOUT"]
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         assert b"[ Layout ]" in frame and b"[ Controls ]" not in frame
         assert text_style(frame, b"[ Layout ]")[1] == (37, 139, 255)
         # Hover is underline/accent text, distinct from the selected tab fill.
         x, y = tabs[b"EDITING"]
         terminal.send(f"\x1b[<35;{x};{y}M".encode())
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         assert text_style(frame, b"  Editing  ") == (
             (37, 139, 255), (48, 48, 64), True)
         assert text_style(frame, b"[ Layout ]")[1] == (37, 139, 255)
         terminal.send(b"\x1b[<35;1;1M")
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         assert text_style(frame, b"  Editing  ") == (
             (255, 255, 255), (48, 48, 64), False)
         # Labels inherit the window color instead of painting shaded rectangles.
@@ -526,7 +555,7 @@ def exercise(lisp, path):
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
         # Shift-Tab reaches 7GUIs; Left selects the preceding Styles tab.
         terminal.send(b"\x1b[Z\x1b[D")
-        terminal.until(b"Customize the active toolkit")
+        terminal.until_visible(b"Customize the active toolkit")
         terminal.send(b"\x1b[H")
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
         terminal.send(b"\x1b")
@@ -544,17 +573,15 @@ def exercise(lisp, path):
         terminal.send(b"\x01\x06\x04e\x05\x08!\x15\x19")
         terminal.send(b"\x17\x19\x14\x14")
         terminal.send(b"\t\x1b[C\t \t\r")
-        terminal.until(b"(1)")
-        checkpoint = len(terminal.output)
+        terminal.until_visible(b"(1)")
         terminal.send(b"\x1b[Z\r")
-        assert b"[x] Enabled" in terminal.output[checkpoint:]
-        checkpoint = len(terminal.output)
+        assert b"[x] Enabled" in terminal.frame()
         terminal.send(b" ")
-        assert b"[ ] Enabled" in terminal.output[checkpoint:]
+        assert b"[ ] Enabled" in terminal.frame()
         terminal.send(b"\t ")
-        terminal.until(b"(2)")
+        terminal.until_visible(b"(2)")
         terminal.send(b"\r")
-        terminal.until(b"(3)")
+        terminal.until_visible(b"(3)")
         # Hit the shared demo's actual Reset geometry, including panel padding.
         match = re.search(rb"@@RESET=(\d+),(\d+)", terminal.output)
         assert match, terminal.output
@@ -580,74 +607,72 @@ def exercise_debugger(lisp, path):
     terminal = Terminal(command(lisp, path))
     try:
         terminal.until(b"\x1b[?1049h", timeout=180)
-        terminal.until(b"Layout debugger")
+        terminal.until_visible(b"Layout debugger")
         terminal.pump(0.2)
         # Unit-size rows expose the tab nodes without oversized disclosure pills.
-        assert last_frame(terminal.output).count(b"TAB (PAGE") >= 5
+        assert terminal.frame().count(b"TAB (PAGE") >= 5
         # Initial width30 in90columns: handle centered at x60 (zero based).
         terminal.send(b"\x1b[<0;61;4M")
         terminal.send(b"\x1b[<32;51;4M\x1b[<0;51;4m")
         terminal.send(b"\x1b[D")
         terminal.resize(100, 30)
         terminal.pump(0.4)
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         assert b"Layout debugger" in frame
-        assert b"\x1b[30;1H" in frame
-        assert b"\x1b[31;1H" not in frame
+        assert frame.rows == 30 and frame.columns == 100
+        assert all(len(row) == 100 for row in frame.cells)
         assert "│".encode() in frame
-        assert b"\x1b[7m(" not in frame, "Resize rail repainted as a button"
+        assert not any(cell[0] == "(" and cell[1:3] == ("default-bg", "default-fg")
+                       for row in frame.cells for cell in row), "Resize rail repainted as a button"
         assert text_style(frame, "│".encode())[:2] == (
             (48, 48, 64), (37, 139, 255))
         # Select a real tree row, then resize its properties through the rail.
         x, y = text_position(frame, b"PANEL WINDOW")
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         assert b"Geometry" in frame
         x, y = divider_position(frame)
         terminal.send(f"\x1b[<0;{x};{y}M".encode())
         terminal.send(f"\x1b[<32;{x};{y - 3}M\x1b[<0;{x};{y - 3}m".encode())
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         _, grown_y = divider_position(frame)
         assert grown_y < y
         terminal.send(b"\x1b[B")
-        assert divider_position(last_frame(terminal.output))[1] > grown_y
+        assert divider_position(terminal.frame())[1] > grown_y
         terminal.send(b"\x1b[A\x1b[H")
-        assert b"Close" in last_frame(terminal.output)
+        assert b"Close" in terminal.frame()
         for _ in range(16):
-            if b"Input" in last_frame(terminal.output):
+            if b"Input" in terminal.frame():
                 break
             terminal.send(b"\x1b[<65;85;16M")
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         assert b"Input" in frame, frame.decode("utf-8", "replace")
         terminal.send(b"\x1b[B" * 8)
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         x, y = text_position(frame, b"PANEL WINDOW", last=False)
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         assert b"Geometry" not in frame
         x, y = text_position(frame, b"PANEL WINDOW", last=False)
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        x, y = divider_position(last_frame(terminal.output))
+        x, y = divider_position(terminal.frame())
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
         terminal.send(b"\x1b[F")
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         assert b"Geometry" not in frame
         x, y = text_position(frame, b"PANEL WINDOW", last=False)
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        x, y = divider_position(last_frame(terminal.output))
+        x, y = divider_position(terminal.frame())
         terminal.send(f"\x1b[<0;{x};{y}M".encode())
         terminal.send(f"\x1b[<32;{x};31M\x1b[<0;{x};31m".encode())
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         assert b"Geometry" not in frame
         x, y = text_position(frame, b"PANEL WINDOW", last=False)
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        frame = last_frame(terminal.output)
-        cross = "×".encode()
-        header = frame.index(b"Properties")
-        close_end = frame.index(cross, header) + len(cross)
-        x, y = text_position(frame[:close_end], cross)
+        frame = terminal.frame()
+        x, y = properties_close(frame)
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         assert b"Geometry" not in frame
         assert b"Layout debugger" in frame
         assert b"PANEL WINDOW" in frame
@@ -656,26 +681,24 @@ def exercise_debugger(lisp, path):
         terminal.send(b"\x1b[<35;30;4M\x1b[<35;20;4M")
         terminal.send(b"\x1b[<0;59;4M\x1b[<32;64;4M\x1b[<0;64;4m")
         terminal.send(b"\x1b[<0;64;4M\x1b[<32;59;4M\x1b[<0;59;4m")
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         x, y = text_position(frame, b"PANEL WINDOW", last=False)
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        x, y = divider_position(last_frame(terminal.output))
+        x, y = divider_position(terminal.frame())
         terminal.send(f"\x1b[<0;{x};{y}M".encode())
         terminal.send(f"\x1b[<35;{x};{y + 4}M".encode())
-        assert divider_position(last_frame(terminal.output))[1] == y, (
-            y, divider_position(last_frame(terminal.output)), "cancel moved rail")
+        assert divider_position(terminal.frame())[1] == y, (
+            y, divider_position(terminal.frame()), "cancel moved rail")
         terminal.send(f"\x1b[<35;{x};{y + 6}M".encode())
-        assert divider_position(last_frame(terminal.output))[1] == y, (
-            y, divider_position(last_frame(terminal.output)), "cancel moved rail")
+        assert divider_position(terminal.frame())[1] == y, (
+            y, divider_position(terminal.frame()), "cancel moved rail")
         terminal.send(f"\x1b[<0;{x};{y}M".encode())
         terminal.send(f"\x1b[<32;{x};{y - 2}M\x1b[<0;{x};{y - 2}m".encode())
-        frame = last_frame(terminal.output)
+        frame = terminal.frame()
         assert divider_position(frame)[1] < y
-        cross = "×".encode()
-        close_end = frame.index(cross, frame.index(b"Properties")) + len(cross)
-        x, y = text_position(frame[:close_end], cross)
+        x, y = properties_close(frame)
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        assert b"Geometry" not in last_frame(terminal.output)
+        assert b"Geometry" not in terminal.frame()
         terminal.send(b"\x11")
         terminal.until(b"@@DEBUG")
         terminal.restored()

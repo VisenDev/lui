@@ -1,5 +1,5 @@
 (defpackage #:lui.tests.interaction
-  (:use #:cl #:lui.layout #:lui.frame #:lui.terminal)
+  (:use #:cl #:lui.layout #:lui.frame #:lui.tests.support)
   (:export #:run-tests))
 (in-package #:lui.tests.interaction)
 
@@ -16,7 +16,7 @@
   (multiple-value-bind (first end)
       (lui.interaction:visible-span 999 20 10 4 26)
     (assert (<= 0 first end 26)))
-  (let ((context (make-terminal-context)))
+  (let ((context (make-test-context)))
     (with-frame (context 20 5 :events
                          (list (make-event :kind :text :id :editor
                                            :value "!")))
@@ -29,7 +29,7 @@
     (let ((widget (element-content
                    (gethash :editor (lui.frame::context-ids context)))))
       (assert (equal "abc!" (lui.widgets:widget-value widget)))))
-  (let ((context (make-terminal-context)))
+  (let ((context (make-test-context)))
     (flet ((draw ()
              (column (:id :view :width (fixed 10) :height (fixed 8)
                       :scroll-p t)
@@ -126,7 +126,7 @@
         (emit (make-element :height (fixed 5000)))))
     (assert (null (context-next-frame context)))
     (assert (null (lui.frame::context-scroll-motion context))))
-  (let ((context (make-terminal-context)))
+  (let ((context (make-test-context)))
     (scroll-frame context)
     (scroll-frame context (wheel 3))
     (assert (= 3 (scroll-offset context)))
@@ -166,7 +166,7 @@
   modern-label modern-button)
 
 (defun test-toolkit-definitions ()
-  (let ((context (make-terminal-context))
+  (let ((context (make-test-context))
         (*macro-defaults* '(:background "#abcdef" :foreground "#010203")))
     (with-frame (context 40 20)
       (modern-panel (lui:opt :id :modern-panel :padding 1)
@@ -185,14 +185,13 @@
   (dolist (text '("02/29/2023" "04/31/2024" "00/01/2024" "01/01/0000"
                   "2024-02-29T12:00" "12:00" "02/29/2024 12:00"))
     (assert (null (lui::parse-picker-date text))))
-  (let ((context (lui.terminal:make-terminal-context)))
+  (let ((context (lui.tests.support:make-test-context)))
     (with-frame (context 56 22)
       (lui:date-picker :appointment "2026-11-06"))
     (assert (equal '(:appointment :input) (lui.frame::hit context 1 1)))
-    (let ((screen (lui.terminal:render-terminal context)))
-      (dolist (text '("11/06/2026" "▦"))
-        (assert (search text screen)))))
-  (let ((context (make-terminal-context)))
+    (dolist (text '("11/06/2026" "▦"))
+      (assert (has-text-p context text))))
+  (let ((context (make-test-context)))
     (dolist (style '(:glass :motif :garnet))
       (lui:with-toolkit (style)
         (with-frame (context 80 40)
@@ -205,7 +204,7 @@
           (assert (equal (lui.widgets:widget-foreground day) (getf palette :foreground)))
           (assert (equal (lui.widgets:widget-background day) (getf palette :background)))
           (assert (equal (lui.widgets:widget-accent day) (getf palette :accent)))))))
-  (let ((context (make-terminal-context)) (value "2026-11-06"))
+  (let ((context (make-test-context)) (value "2026-11-06"))
     (flet ((frame (&rest events)
              (with-frame (context 60 32 :events events)
                (setf value (lui:date-picker :date value)))))
@@ -224,7 +223,7 @@
   ;; Adjacent days at the lower bound use year zero before being disabled.
   (assert (equal '(0 12) (multiple-value-list (lui::shift-month 1 1 -1))))
   (assert (= 31 (lui::month-days 0 12)))
-  (let ((context (lui.terminal:make-terminal-context))
+  (let ((context (lui.tests.support:make-test-context))
         (value "2024-02-28"))
     (flet ((draw ()
              (column (:gap 1)
@@ -245,7 +244,7 @@
                     (lui.layout:element-box
                      (gethash :following (lui.frame::context-ids context))))))
         (assert picker)
-        (assert (search "February 2024" (render-terminal context)))
+        (assert (visible-text-p context "February 2024"))
         (let ((days 0))
           (walk-elements (context-root context)
             (lambda (node)
@@ -300,19 +299,6 @@
       (with-frame (context 80 40 :events (list (make-event :kind :activate))) (draw))
       (assert (equal value "2025-01-01")))))
 
-(defun test-panel-input-style ()
-  (let ((context (make-terminal-context)))
-    (with-frame (context 30 8)
-      (lui:panel (lui:opt :id :pane :interactive-p t
-                          :width (grow) :height (grow))
-        (lui:label "Pane")))
-    (let ((idle (render-terminal context :ansi t)))
-      (assert (eq :pane (lui.frame::hit context 15 4)))
-      (setf (context-hover context) :pane)
-      (assert (equal idle (render-terminal context :ansi t)))
-      (setf (context-active context) :pane)
-      (assert (equal idle (render-terminal context :ansi t))))))
-
 (defun test-frame-limits ()
   (let ((context (make-context :min-fps 1 :max-fps 8)))
     (setf (lui.frame::context-time context) 10)
@@ -325,7 +311,6 @@
     (assert (zerop (lui.frame::frame-wait context nil 11)))))
 
 (defun run-tests ()
-  (test-panel-input-style)
   (test-frame-limits)
   (test-date-picker)
   (test-toolkit-definitions)
@@ -333,7 +318,7 @@
   (test-wheel-momentum)
   (let ((outer (lui:current-toolkit)))
     (dolist (style '(:glass :motif :garnet))
-      (let ((context (make-terminal-context)) (evaluations 0)
+      (let ((context (make-test-context)) (evaluations 0)
             (checked nil) (number 3) (text "raw"))
         (labels ((node (id)
                    (gethash id (lui.frame::context-ids context)))
@@ -391,7 +376,7 @@
     ;; An explicit NIL option overrides a true toolkit default.
     (let ((lui.glass:*defaults*
             (append '(:disabled-p t) lui.glass:*defaults*))
-          (context (make-terminal-context)))
+          (context (make-test-context)))
       (with-frame (context 20 5)
         (lui:with-toolkit (:glass)
           (lui:button :inherited "Inherited")
@@ -405,7 +390,7 @@
     (assert (eq outer (lui:current-toolkit))))
   (let ((received nil)
         (options (lui:opt :width (fixed 12)))
-        (context (make-terminal-context)))
+        (context (make-test-context)))
     (lui:register-toolkit
      :test :parent :motif :defaults '(:accent "#123456")
      :controls

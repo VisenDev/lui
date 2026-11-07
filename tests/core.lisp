@@ -1,5 +1,5 @@
 (defpackage #:lui.tests
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.terminal)
+  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.tests.support)
   (:export #:run-tests))
 
 (in-package #:lui.tests)
@@ -47,7 +47,7 @@
         (let ((lui:*backend* :x11))
           (check (eq :x11 (lui:run #'identity)))
           (check (eq :terminal (lui:run #'identity :backend :terminal)))))
-      (let ((context (make-terminal-context)))
+      (let ((context (make-test-context)))
         (flet ((draw ()
                  (lui:table (:width (grow) :column-gap 1)
                    (lui:table-row ()
@@ -68,7 +68,7 @@
                 (check (= (box-width (cell-box 1 0)) (box-width (cell-box 3 0))))
                 (check (= width (+ (box-x (cell-box 1 1))
                                    (box-width (cell-box 1 1))))))
-              (check (search "Header" (render-terminal context)))))))
+              (check (visible-text-p context "Header"))))))
       ;; Growth redistributes space after a maximum is reached.
       (let* ((root (make-element :direction :row :padding 2 :gap 2))
              (a (append-child root (make-element :width (fixed 10))))
@@ -148,7 +148,7 @@
           (check (= (box-y (element-clip last)) 2))
           (check (= (box-height (element-clip last)) 6))))
       ;; Padding has no child hit/cursor region, even behind a scrolled row.
-      (let ((context (make-terminal-context))
+      (let ((context (make-test-context))
             (clicked nil))
         (labels ((draw ()
                    (column (:id :scroll :width (fixed 20) :height (fixed 10)
@@ -169,7 +169,7 @@
           (check (eq :default (lui.widgets:cursor-at context 3 8)))
           (check (eq :pointer (lui.widgets:cursor-at context 3 3)))))
       ;; Wrapped height reaches the parent before vertical positioning.
-      (let ((context (make-terminal-context)))
+      (let ((context (make-test-context)))
         (with-frame (context 5 10)
           (column (:width (grow))
             (lui.glass:label "ab cd ef")
@@ -178,13 +178,12 @@
                (second (aref (element-children column) 1)))
           (check (= (box-height (element-box column)) 3))
           (check (= (box-y (element-box second)) 2)))
-        (check (search (format nil "ab cd~%ef   ~%next ")
-                       (render-terminal context))))
-      (check (equal (text-lines (format nil "a~%~%b~%") 3)
+        (check (has-text-p context "ab cd ef")))
+      (check (equal (test-lines (format nil "a~%~%b~%") 3)
                     '("a" "" "b" "")))
-      (check (equal (text-lines "longword ok" 3) '("longword" "ok")))
+      (check (equal (test-lines "longword ok" 3) '("longword" "ok")))
       ;; Previous-frame hit testing; release requires capture of the same ID.
-      (let ((context (make-terminal-context))
+      (let ((context (make-test-context))
             (clicked nil))
         (with-frame (context 20 5) (lui.glass:button :button "OK"))
         (with-frame
@@ -227,20 +226,8 @@
         ;; Aborted frame must not leave stale geometry or prevent the next frame.
         (check (null (context-root context)))
         (with-frame (context 20 5) (lui.motif:button :new "New"))
-        (check (search "[ New ]" (render-terminal context))))
-      (let ((context (make-terminal-context)))
-        (flet ((draw (show)
-                 (lui:panel (lui:opt :id :pane :scroll-p t :scrollbar-p show
-                                     :width (fixed 10) :height (fixed 8))
-                   (dotimes (i 24) (lui:label (write-to-string i))))))
-          (with-frame (context 10 8) (draw t))
-          (let ((start (render-terminal context)))
-            (check (find #\█ start))
-            (with-frame (context 10 8) (scroll-to :pane 0 99) (draw t))
-            (check (> (position #\█ (render-terminal context))
-                      (position #\█ start))))
-          (with-frame (context 10 8) (draw nil))
-          (check (null (find #\█ (render-terminal context))))))
+        (check (visible-text-p context "[ New ]")))
+
       (check (handler-case (progn (percent 2) nil) (error () t)))
       (check (handler-case (progn (fixed -1) nil) (error () t)))
       (check (handler-case (progn (fit 10 5) nil) (error () t))))

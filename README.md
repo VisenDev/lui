@@ -4,7 +4,7 @@ LUI is an immediate-mode Common Lisp UI library under development. The same
 [shared example](examples/demo.lisp) runs unchanged in a browser, native windows,
 and a terminal. Applications own their state; `lui:run` owns the backend lifecycle.
 
-Interactive terminal control uses
+All terminal rendering and interactive control use
 [Plisp/uncursed](https://github.com/Plisp/uncursed). Native graphical backends
 use LUI's own platform bindings: Xlib/GLX, libwayland/EGL, Win32/GDI+, and
 Cocoa. X11 uses one display connection for windowing and direct OpenGL rendering.
@@ -148,8 +148,8 @@ the browser’s selectable text labels. A `:text-insets` callback can return the
 horizontal and vertical text offsets used for selection. The exported `lui.draw:shape`,
 `lui.draw:outline`, and `lui.draw:paint-text` primitives use the current backend.
 A widget's `:painter` callback takes precedence over the toolkit painter.
-`:terminal-label` takes a widget and returns its text. Terminal panel corners
-and button delimiters follow the widget’s radius.
+`:terminal-label` takes a widget and returns its text. Terminal panel borders
+follow `:terminal-border`; button delimiters follow the widget’s radius.
 
 There is one [demo gallery](examples/demo.lisp), with Controls, Editing, Layout,
 Scroll, Styles, and 7GUIs pages. Its Glass/Motif/Garnet selector changes the toolkit for
@@ -162,7 +162,8 @@ opaque; Glass translucency composites within the application. The gallery also
 displays FPS and average frame time on graphical backends; these include backend
 pacing. The terminal labels its event-driven rendering instead. Its sliders have tracks
 and thumbs, colors distinguish selection from pointer hover, and text/clip edges
-share cell rounding. Raw-terminal output uses ANSI colors; plain snapshots remain
+share cell rounding. Uncursed owns cell storage, Unicode widths, ANSI style encoding, and incremental
+screen updates; LUI supplies widget layout and input translation. Plain snapshots remain
 escape-free.
 
 The 7GUIs page includes Counter, Temperature Converter, Flight Booker, Timer,
@@ -246,7 +247,8 @@ time, plus timer/settings information.
 Windowed native results include event-loop, window-system, and presentation
 pacing; browser results actively redraw the application and measure completed
 frames plus application/layout/drawing work, rather than idle animation ticks. The
-`core`/`terminal` benchmark measures layout and terminal string rendering; `gl`
+`core` benchmarks layout with deterministic text metrics; `terminal` measures
+layout and terminal snapshot rendering through uncursed; `gl`
 measures an offscreen pipeline with `glFinish`. These paths should not be
 compared as equivalent screen FPS. Compare logged platform/settings and matching
 toolkit/page rows:
@@ -350,6 +352,7 @@ Start a Common Lisp implementation in the repository directory:
 (require :asdf)
 (asdf:load-asd (truename "lui.asd"))
 (asdf:load-system "lui/demo")
+(asdf:load-system "lui/terminal")
 (asdf:test-system "lui")
 (lui:run (lui.example:make-demo) :backend :terminal :interactive nil)
 ```
@@ -405,8 +408,8 @@ painting use the same CSS family and weight.
 | ASDF system | Purpose and system requirements |
 | --- | --- |
 | `lui` | Core and the backends supported on the host |
-| `lui/core` | Dependency-free layout, widgets, and portable terminal output |
-| `lui/terminal` | uncursed terminal setup, input decoding, and cursor control; terminfo on Unix |
+| `lui/core` | Dependency-free layout and widgets |
+| `lui/terminal` | All terminal output via uncursed cells/styles and incremental rendering, plus input/lifecycle; terminfo on Unix |
 | `lui/native` | Shared native measurement and outline painting; CFFI, zpb-ttf |
 | `lui/pdf` | Single-page PDF output through cl-pdf and the native font renderer |
 | `lui/x11` | Xlib and system OpenGL; an X display with GLX |
@@ -479,7 +482,7 @@ dragging, wheel scrolling, and terminal resizing are supported. Ctrl-Q or Ctrl-C
 exits; Ctrl-D deletes text. Terminal attributes, mouse modes, cursor visibility,
 and the alternate screen are restored on exit and Lisp errors. Other platforms
 and non-TTY input retain line input: `:next`, an empty line to activate, text to
-edit, and `:quit`. Noninteractive terminal output remains dependency-free. Cell
+edit, and `:quit`. Noninteractive terminal output also requires `lui/terminal` and uncursed. Cell
 widths approximate common CJK, emoji, and combining marks; full grapheme handling
 is not implemented.
 
@@ -659,14 +662,14 @@ Additional checks:
 - `(asdf:test-system "lui/native/tests")` runs native font and painter regressions.
 - `python3 tests/terminal.py` runs the shared demo in a POSIX PTY on SBCL, CLISP,
   and ECL; `--lisp sbcl` selects one implementation.
-- `make test-terminal-parity` compares uncursed with the terminal backend at
-  commit `561516f` using real SBCL PTYs. It normalizes terminal output into
-  cells, colors, underline, and cursor state across all three toolkits,
-  editing/focus, scrolling, Unicode, clipping, and resizing. The historical
-  backend uses the current shared renderer to isolate terminal-control changes;
-  this does not verify historical renderer appearance. Border appearance has
-  separate explicit regression checks in `tests/terminal.py`. The baseline
-  commit must be available in the local Git history.
+- `make test-terminal-parity` compares full renderer and I/O output against
+  commit `16f79dd` using real SBCL PTYs and an accumulating terminal-screen
+  model. It compares cells, colors, focus, scrolling, Unicode, clipping, and
+  resizing across all three toolkits. Layout, widgets, and examples remain
+  current on both sides; the historical commit must exist in local Git history.
+- `(asdf:test-system "lui/terminal")` runs terminal raster and incremental-output
+  regressions. Core and JSCL tests cover layout and widget behavior without
+  loading the terminal backend.
 - `python3 tests/x11.py` requires an X display, SBCL, and Pillow, as well as
   the X11 backend dependencies. Pixel checks capture the test windows with XGetImage.
 - `python3 tests/web.py` requires the browser build, Playwright, and Chromium.
@@ -692,7 +695,7 @@ Additional checks:
 | Area | Verified evidence |
 | --- | --- |
 | Portable core | SBCL, CLISP, ECL, and JSCL: core layout plus widget, editing, tab, hover, and focus checks |
-| uncursed terminal | SBCL: 90 transport-comparison snapshots (262,638 styled cells) match with the current renderer on both sides; this does not establish historical appearance parity. Input, fragmented Unicode/escape sequences, mouse, resize, cleanup and redirected-input fallback also pass. Other implementations unverified on this branch |
+| uncursed terminal | SBCL: Historical renderer/I/O comparisons reconstruct incremental output and compare styled cells; shared layout/widgets/examples remain current. Input, fragmented Unicode/escape sequences, mouse, resize, cleanup and redirected-input fallback also pass. Other implementations unverified on this branch |
 | HTML | Chromium integration tests: interaction, composition/lifecycle, resizing and teardown |
 | X11/GLX | Real-window tests of OpenGL rendering, input/resize, glass frost and clipboard behavior |
 | EGL/OpenGL | Offscreen shared-demo rendering, glass shader, pixel readback, and GL error checks |

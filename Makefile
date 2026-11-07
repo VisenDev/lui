@@ -43,7 +43,7 @@ help:
 	@echo 'make build                Save the demo executable in build/bin/'
 	@echo 'make pdf                  Build and open build/pdf-demo.pdf'
 	@echo 'make test                 Test platform; progress/results in build/logs/'
-	@echo 'make test-terminal-parity Compare terminal transports using the current renderer (SBCL)'
+	@echo 'make test-terminal-parity Compare terminal rendering against the pre-merge backend (SBCL)'
 	@echo 'make test-macos           Run Cocoa checks and saved executable smoke'
 	@echo 'make benchmark            Measure throughput and frame times'
 	@echo 'make loc                  Report source line counts with cloc'
@@ -91,7 +91,7 @@ test-docs: build/docs.html
 		--load scripts/docs-data.lisp --load tests/docs-data.lisp \
 		--eval '(lui.tests.docs-data:run-tests)' \
 		--eval '(asdf:load-system "lui/debug")' \
-		--load examples/docs.lisp --load tests/docs.lisp \
+		--load examples/docs.lisp --load tests/support.lisp --load tests/docs.lisp \
 		--eval '(lui.tests.docs:run-tests)'
 	$(PYTHON) -u tests/docs-web.py
 
@@ -170,6 +170,7 @@ ifneq ($(filter $(PLATFORM),x11 wayland win32 cocoa gl native),)
 	$(MAKE) --no-print-directory test-native
 endif
 ifeq ($(PLATFORM),terminal)
+	LUI_TEST=terminal $(SBCL) $(SBCL_FLAGS) --load scripts/test.lisp
 ifeq ($(OS),Windows_NT)
 	@echo '[terminal PTY] SKIP: POSIX-only; portable core tested'
 else

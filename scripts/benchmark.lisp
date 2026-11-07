@@ -129,13 +129,32 @@
         (when (>= index *warmup*)
           (sample-since case (- (ticks) started) bytes gc-time))))))
 
+(lui.fn:fn benchmark-core ()
+  (let ((context
+          (lui.frame:make-context
+           :text-mode-p t
+           :measure
+           (lambda (widget width)
+             (let ((lines (lui.text:wrap-lines
+                           (lui.widgets:widget-terminal-text widget) width
+                           (lambda (text start end)
+                             (declare (ignore text)) (- end start)))))
+               (values (max (if (eq (lui.widgets:widget-kind widget) :slider) 12 0)
+                            (loop for line in lines maximize (length line)))
+                       (length lines))))))
+        (lui:*unit* 1))
+    (benchmark-loop
+     (lambda ()
+       (lui.frame:with-frame (context *width* *height*)
+         (lui.example:draw *gallery*))))))
+
 (defun benchmark-terminal ()
-  (let ((context (lui.terminal:make-terminal-context)) (lui:*unit* 1))
+  (let ((context (call :lui.terminal :make-terminal-context)) (lui:*unit* 1))
     (benchmark-loop
      (lambda ()
        (lui.frame:with-frame (context *width* *height*)
          (lui.example:draw *gallery*))
-       (lui.terminal:render-terminal context)))))
+       (call :lui.terminal :render-terminal context)))))
 
 (defun benchmark-gl ()
   (let* ((font (call :lui.font :open-font))
@@ -201,7 +220,9 @@
               toolkit page)))
 
 (defun run-benchmarks ()
-  (let ((mode (cond ((member *platform* '("core" "terminal") :test #'string=)
+  (let ((mode (cond ((string= *platform* "core")
+                     "layout only with character-count text metrics")
+                    ((string= *platform* "terminal")
                      "layout+terminal-render microbenchmark")
                     ((string= *platform* "gl")
                      "offscreen pipeline + glFinish")
@@ -212,8 +233,8 @@
             +timer-hz+)
     (format t "ALLOCATION counters=~A scope=process gc_time=cpu sample_storage=excluded~%"
             #+sbcl "SBCL" #-sbcl "unsupported")
-    (cond ((member *platform* '("core" "terminal") :test #'string=)
-           (benchmark-terminal))
+    (cond ((string= *platform* "core") (benchmark-core))
+          ((string= *platform* "terminal") (benchmark-terminal))
           ((string= *platform* "gl") (benchmark-gl))
           (t (benchmark-window)))
     (assert (= *frames*

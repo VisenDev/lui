@@ -1,11 +1,11 @@
 (defpackage #:lui.tests.widgets
-  (:use #:cl #:lui.layout #:lui.frame #:lui.terminal)
+  (:use #:cl #:lui.layout #:lui.frame #:lui.tests.support)
   (:export #:run-tests))
 
 (in-package #:lui.tests.widgets)
 
 (defun test-readline ()
-  (let ((context (make-terminal-context))
+  (let ((context (make-test-context))
         (text "alpha beta gamma"))
     (labels ((draw () (setf text (lui.glass:text-field :edit text)))
              (key (&rest keys)
@@ -71,7 +71,7 @@
     (assert (zerop (lui.widgets:edit-state-cursor state)))))
 
 (defun test-searchable-combobox ()
-  (let ((context (make-terminal-context)) (value nil) changed disabled (top 0))
+  (let ((context (make-test-context)) (value nil) changed disabled (top 0))
     (labels ((frame (&rest events)
                (with-frame (context 40 12 :events events)
                  (column (:height (fixed top)))
@@ -124,7 +124,7 @@
       (assert (and (not changed) (equal value "Beta"))))))
 
 (defun test-tabs-and-hover ()
-  (let ((context (make-terminal-context))
+  (let ((context (make-test-context))
         (selected :one))
     (labels ((draw ()
                (row ()
@@ -176,7 +176,7 @@
       (assert (null (context-hover context))))))
 
 (defun test-keyboard-activation ()
-  (let ((context (make-terminal-context))
+  (let ((context (make-test-context))
         (buttons 0) (tabs 0) (checked nil) (text "x"))
     (labels ((draw ()
                (when (lui.glass:button :button "Button") (incf buttons))
@@ -212,7 +212,7 @@
       (assert (string= text "x ")))))
 
 (defun test-radio-group ()
-  (let ((context (make-terminal-context)) (value :first))
+  (let ((context (make-test-context)) (value :first))
     (labels ((draw ()
                (setf value (lui:radio :first-radio value :first "First")
                      value (lui:radio :second-radio value :second "Second"))))
@@ -232,7 +232,7 @@
       (assert (eq :first value)))))
 
 (defun test-nested-scroll ()
-  (let ((context (make-terminal-context)))
+  (let ((context (make-test-context)))
     (labels ((draw (bounded)
                (column (:id :outer :width (fixed 12) :height (fixed 3)
                         :scroll-p t)
@@ -269,7 +269,7 @@
       (assert (= 2 (offset :outer))))))
 
 (defun test-scrollbar ()
-  (let ((context (make-terminal-context)) (visible t) (wide nil))
+  (let ((context (make-test-context)) (visible t) (wide nil))
     (labels ((draw ()
                (lui:panel (lui:opt :id :viewport :width (fixed 20)
                                    :height (fixed 10) :padding 1 :scroll-p t
@@ -330,7 +330,7 @@
   (test-tabs-and-hover)
   (test-radio-group)
   (test-keyboard-activation)
-  (let ((context (make-terminal-context)))
+  (let ((context (make-test-context)))
     (with-frame (context 10 4)
       (lui.widgets:declare-widget :splitter :glass :divider ""
                                  :width (fixed 2) :height (fixed 4)))
@@ -338,7 +338,7 @@
                 (lui.widgets:cursor-at context 1 1)))
     (assert (eq :default (lui.widgets:cursor-at context 3 1))))
   (test-nested-scroll)
-  (let ((context (make-terminal-context))
+  (let ((context (make-test-context))
         (slider 0.0)
         (checked nil)
         (text "abc"))
@@ -369,7 +369,7 @@
         (draw))
       (assert checked)
       (assert (string= text "replacement"))))
-  (let ((context (make-terminal-context)))
+  (let ((context (make-test-context)))
     (flet ((draw ()
              (column (:id :scroll :width (fixed 10) :height (fixed 2)
                       :scroll-p t)
@@ -377,15 +377,15 @@
                (lui.glass:label "second")
                (lui.glass:label "third"))))
       (with-frame (context 10 3) (draw))
-      (assert (not (search "third" (render-terminal context))))
+      (assert (not (visible-text-p context "third")))
       (with-frame
           (context 10 3 :events
                    (list (make-event :kind :scroll :x 1 :y 1 :value 1)))
         (draw))
-      (assert (search "second" (render-terminal context)))
-      (assert (search "third" (render-terminal context)))
-      (assert (not (search "first" (render-terminal context))))))
-  (let ((context (make-terminal-context)))
+      (assert (visible-text-p context "second"))
+      (assert (visible-text-p context "third"))
+      (assert (not (visible-text-p context "first")))))
+  (let ((context (make-test-context)))
     (with-frame (context 20 5)
       (let ((now (frame-time)))
         (assert (null (context-next-frame context)))
@@ -413,7 +413,7 @@
       (assert (= 1800000000.25d0 (context-next-frame context)))
       (request-frame 0.5)
       (assert (= 1800000000.25d0 (context-next-frame context)))))
-  (let ((context (make-terminal-context)) (received nil))
+  (let ((context (make-test-context)) (received nil))
     (flet ((draw ()
              (setf received (events-for :canvas))
              (lui.glass:canvas :canvas nil
@@ -448,7 +448,7 @@
       (assert (= 2 (event-clicks (third received))))
       (assert (not (element-interactive-p
                     (gethash :gauge (lui.frame::context-ids context)))))))
-  (let ((context (make-terminal-context)))
+  (let ((context (make-test-context)))
     (flet ((draw ()
              (column (:id :grid :width (fixed 5) :height (fixed 5)
                       :scroll-p t)
@@ -466,7 +466,7 @@
         (multiple-value-bind (x y) (scroll-position :grid)
           (assert (= x 3)) (assert (= y 4)))
         (draw))))
-  (let ((context (make-terminal-context)))
+  (let ((context (make-test-context)))
     (lui:register-toolkit :terminal-square :defaults '(:radius 0))
     (with-frame (context 20 10)
       (lui:with-toolkit (:terminal-square)

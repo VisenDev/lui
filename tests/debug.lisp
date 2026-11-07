@@ -1,12 +1,12 @@
 (defpackage #:lui.tests.debug
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets
-        #:lui.terminal)
+        #:lui.tests.support)
   (:export #:run-tests))
 (in-package #:lui.tests.debug)
 
 (fn test-tree ()
   (let ((state (lui.debug:make-state))
-        (context (make-terminal-context)) (count 0) (show t) (page :a))
+        (context (make-test-context)) (count 0) (show t) (page :a))
     (lui.debug:set-enabled t :context context :state state)
     (labels ((app ()
                (column (:id :app :width (grow) :height (grow) :scroll-p t)
@@ -52,7 +52,9 @@
                        (widget-text
                         (element-content (node (lui.debug::id :resize))))))
       (assert (< 1 (row-count) (1+ (context-height context))))
-      (assert (search "- " (render-terminal context)))
+      (assert (string= "-" (widget-text
+                            (element-content
+                             (node (lui.debug::id :collapse '(:id :app)))))))
       (let* ((rows (lui.debug::state-rows state))
              (last (lui.debug::entry-node (aref rows (1- (length rows))))))
         (assert (search "[offscreen]" (lui.debug::caption last))))
@@ -67,7 +69,7 @@
       (let ((key '(:id :action)))
         (frame (make-event :kind :activate :id (lui.debug::id :row key)))
         (assert (equal key (lui.debug:state-selected state)))
-        (assert (search "Bounds:" (render-terminal context)))
+        (assert (visible-text-p context "Bounds:"))
         (setf (context-hover context) (lui.debug::id :row key))
         (frame)
         (let ((highlight (node (lui.debug::id :bounds))))
@@ -106,7 +108,9 @@
                          :id (lui.debug::id :collapse '(:id :app))))
       (frame)
       (assert (< (length (lui.debug::state-rows state)) 5))
-      (assert (search "+ " (render-terminal context)))
+      (assert (string= "+" (widget-text
+                            (element-content
+                             (node (lui.debug::id :collapse '(:id :app)))))))
       (frame (make-event :kind :activate
                          :id (lui.debug::id :collapse '(:id :app))))
       (frame)
@@ -123,39 +127,9 @@
       (frame)
       (assert (null (node (lui.debug::id :debugger)))))))
 
-(fn test-overlay ()
-  (let ((context (make-terminal-context)) (plain nil) (ansi nil))
-    (labels ((text ()
-               (lui.glass:cell :background ""
-                (lui:opt :floating-p t :disabled-p t
-                         :width (fixed 10) :height (fixed 3)
-                         :background "#303040"))
-               (lui.glass:label "ABCDEFGHIJ"
-                                (lui:opt :width (fixed 10) :height (fixed 3))))
-             (overlay (opacity)
-               (emit (make-element
-                      :id :overlay :floating-p t :width (fixed 10)
-                      :height (fixed 3)
-                      :content (make-widget :kind :highlight :opacity opacity
-                                            :accent "#ff8c00")))))
-      (with-frame (context 10 3) (text))
-      (setf plain (render-terminal context)
-            ansi (render-terminal context :ansi t))
-      (with-frame (context 10 3) (text) (overlay 0.18))
-      (assert (equal plain (render-terminal context)))
-      (assert (search "[48;2;255;140;0m"
-                       (render-terminal context :ansi t)))
-      (with-frame (context 10 3) (text) (overlay 0))
-      (assert (equal plain (render-terminal context)))
-      (let ((colored (render-terminal context :ansi t)))
-        (assert (search "[48;2;255;140;0m" colored))
-        ;; The middle row's interior retains its unhighlighted background.
-        (assert (search "[48;2;48;48;64m" colored)))
-      (assert (not (equal ansi (render-terminal context :ansi t)))))))
-
 (fn test-resizing ()
   (let ((state (lui.debug:make-state))
-        (context (make-terminal-context)) (window 80))
+        (context (make-test-context)) (window 80))
     (lui.debug:set-enabled t :context context :state state)
     (labels ((frame (&rest events)
                (with-frame (context window 36 :events events)
@@ -195,23 +169,9 @@
       (frame (make-event :kind :key :id (lui.debug::id :resize) :key :right))
       (assert (= 66 (width))))))
 
-(fn test-terminal-overlap ()
-  (let ((context (make-terminal-context)) (expected nil))
-    (flet ((front ()
-             (lui.glass:panel (lui:opt :floating-p t :width (fixed 20)
-                                       :height (fixed 8) :padding 1)
-               (lui.glass:label (format nil "Front~%Second~%Third")))))
-      (with-frame (context 20 8) (front))
-      (setf expected (render-terminal context))
-      (with-frame (context 20 8)
-        (lui.glass:panel (lui:opt :width (fixed 20) :height (fixed 3))
-          (lui.glass:label "Behind"))
-        (front))
-      (assert (equal expected (render-terminal context))))))
-
 (fn test-properties ()
   (let ((state (lui.debug:make-state))
-        (context (make-terminal-context)) (lui:*unit* 1))
+        (context (make-test-context)) (lui:*unit* 1))
     (lui.debug:set-enabled t :context context :state state :toolkit :garnet)
     (labels ((frame (&rest events)
                (with-frame (context 100 48 :events events)
@@ -297,7 +257,7 @@
 
 (fn test-selection-reveal ()
   (let ((state (lui.debug:make-state))
-        (context (make-terminal-context)) (lui:*unit* 1)
+        (context (make-test-context)) (lui:*unit* 1)
         (key '(:id (:item 20))))
     (lui.debug:set-enabled t :context context :state state)
     (labels ((app ()
@@ -334,7 +294,7 @@
 
 (fn test-details-drag ()
   (let ((state (lui.debug:make-state))
-        (context (make-terminal-context)) (lui:*unit* 1))
+        (context (make-test-context)) (lui:*unit* 1))
     (lui.debug:set-enabled t :context context :state state)
     (labels ((frame (&rest events)
                (with-frame (context 100 48 :events events)
@@ -373,13 +333,13 @@
       (assert (null (lui.debug:state-selected state))))))
 
 (fn test-header-clipping ()
-  (dolist (terminal '(nil t))
+  (dolist (compact '(nil t))
     (dolist (style '(:glass :motif :garnet))
-      (let* ((lui:*unit* (if terminal 1 8))
-             (width (if terminal 100 800))
-             (height (if terminal 48 520))
+      (let* ((lui:*unit* (if compact 1 8))
+             (width (if compact 100 800))
+             (height (if compact 48 520))
              (context
-               (if terminal (make-terminal-context)
+               (if compact (make-test-context)
                    (make-context
                     :measure
                     (lambda (widget available)
@@ -425,13 +385,13 @@
             (let ((pane (element-box (node :property-pane))))
               (assert (<= (+ (box-y pane) (box-height pane))
                           (- height (units 1)))))
-            (when terminal
-              (assert (search "Close" (render-terminal context)))))
+            (when compact
+              (assert (visible-text-p context "Close"))))
           (frame (make-event :kind :activate :id (lui.debug::id :close)))
           (assert (not (lui.debug:state-open-p state))))))))
 
 (fn test-divider-cancellation ()
-  (let ((context (make-terminal-context))
+  (let ((context (make-test-context))
         (state (lui.debug:make-state)) (lui:*unit* 1))
     (lui.debug:set-enabled t :context context :state state)
     (labels ((frame (&rest events)
@@ -504,9 +464,7 @@
   (test-details-drag)
   (test-selection-reveal)
   (test-properties)
-  (test-terminal-overlap)
   (test-resizing)
   (test-tree)
-  (test-overlay)
-  (format t "Debugger snapshots, virtual rows, details and overlays passed.~%")
+  (format t "Debugger snapshots, virtual rows, details and clipping passed.~%")
   t)

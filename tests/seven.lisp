@@ -1,5 +1,5 @@
 (defpackage #:lui.tests.seven
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.terminal
+  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.tests.support
         #:lui.example.seven #:lui.seven.model)
   (:export #:run-tests))
 (in-package #:lui.tests.seven)
@@ -34,7 +34,7 @@
     (circle-begin-adjust model (circle-id circle))
     (assert (lui.example.seven:modal-p first))
     (assert (not (lui.example.seven:modal-p second)))
-    (let ((context (make-terminal-context)))
+    (let ((context (make-test-context)))
       (with-frame (context 100 60) (draw-content second))
       (let ((tab (gethash '(:seven-task :counter)
                            (lui.frame::context-ids context))))
@@ -44,7 +44,7 @@
 (fn run-tests ()
   (test-owned-models)
   (let ((state (make-state)) (lui:*unit* 1)
-        (context (make-terminal-context)))
+        (context (make-test-context)))
     (labels ((frame (&optional events (time 0))
                (with-frame (context 100 60 :events events)
                  (setf (lui.frame::context-time context) time)
@@ -63,7 +63,7 @@
              (let ((widget (element-content node)))
                (when (lui.widgets:widget-p widget)
                  (assert (eq style (lui.widgets:widget-style widget)))))))
-          (assert (plusp (length (render-terminal context))))))
+          (assert (plusp (visible-widget-count context)))))
       (lui:with-toolkit (:motif)
         (with-frame (context 100 60) (draw-content state))
         (assert (null (gethash :seven-window
@@ -168,7 +168,7 @@
 (fn test-record-selection ()
   (dolist (style '(:glass :motif :garnet))
     (let ((state (make-state :task :crud :toolkit style))
-          (lui:*unit* 1) (context (make-terminal-context)))
+          (lui:*unit* 1) (context (make-test-context)))
       (labels ((frame (&rest events)
                  (with-frame (context 100 60 :events events) (draw state)))
                (row-id (person) (list :seven-person (person-id person)))
