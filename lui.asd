@@ -100,7 +100,12 @@
   :components ((:module "src"
                 :serial t
                 :components ((:file "font")
-                             (:file "draw")))))
+                             (:file "draw")
+                             (:file "text-selection")
+                             (:file "paint-common")
+                             (:file "paint-glass")
+                             (:file "paint-motif")
+                             (:file "paint-garnet")))))
 
 (defsystem "lui/pdf"
   :description "Render a layout to a single vector PDF page"

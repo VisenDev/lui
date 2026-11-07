@@ -422,7 +422,6 @@
           (lui:label "Child"))))
     (assert (equal (subseq received 0 2) '(:custom "Custom")))
     (assert (equal (third received) options))
-    (assert (eq :motif (lui:toolkit-surface :test-child)))
     (assert (equal "#123456" (getf (lui:toolkit-defaults :test) :accent)))
     (assert (equal "#b8b8b8"
                    (getf (lui:toolkit-defaults :test-child) :background)))

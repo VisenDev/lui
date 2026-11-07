@@ -495,7 +495,7 @@
   (with-toolkit ((browser-toolkit state))
     (lui:panel (lui:opt :width (grow) :height (grow)
                         :background
-                        (case (toolkit-surface (browser-toolkit state))
+                        (case (browser-toolkit state)
                           (:motif "#b8b8b8") (:garnet "#ffffff")
                           (otherwise "#202430"))
                         :opacity 1 :frost 0 :radius 0

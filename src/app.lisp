@@ -2,7 +2,9 @@
   (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
   (:export #:run #:register-backend #:available-backends #:units #:*backend*
            #:*unit* #:with-toolkit #:current-toolkit #:toolkit-defaults
-           #:register-toolkit #:toolkit-revision #:toolkit-surface
+           #:register-toolkit #:toolkit-revision
+           #:register-toolkit-rendering #:toolkit-paint #:toolkit-measure
+           #:toolkit-native-labels-p #:toolkit-text-insets
            #:control
            #:define-toolkit
            #:table #:table-row #:table-cell
@@ -24,7 +26,7 @@
   "Convert spacing units to backend coordinates: terminal cells or graphical units."
   (* count *unit*))
 
-(fn register-backend ((name symbol) (runner (function () t)))
+(fn register-backend ((name symbol) (runner function))
   "Install a runner function under NAME; normally called by a backend."
   (setf (gethash name *backends*) runner))
 
@@ -63,7 +65,7 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 (defvar *toolkit-definition* nil)
 
 (defstruct (toolkit (:conc-name %toolkit-))
-  parent defaults controls)
+  parent defaults controls (rendering nil))
 (defvar *toolkits* (make-hash-table :test 'eq))
 
 (defvar *toolkit-revision* 0)
@@ -71,21 +73,69 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 (defun find-toolkit (name)
   (or (gethash name *toolkits*) (error "Unknown toolkit ~S." name)))
 
+(defun rendering-option (name key)
+  (let* ((entry (find-toolkit name)) (options (%toolkit-rendering entry)))
+    (multiple-value-bind (found value) (get-properties options (list key))
+      (if found value
+          (when (and (%toolkit-parent entry)
+                     (or (not (eq key :native-labels))
+                         (not (nth-value 0 (get-properties options '(:paint :measure))))))
+            (rendering-option (%toolkit-parent entry) key))))))
+
+(defun toolkit-paint (name)
+  "Return NAME's graphical painter, inherited through its parent, or NIL."
+  (rendering-option name :paint))
+
+(defun toolkit-measure (name)
+  "Return NAME's graphical text measurer, inherited through its parent, or NIL."
+  (rendering-option name :measure))
+
+(defun toolkit-text-insets (name)
+  "Return NAME's selectable-text inset callback (widget -> x, y), or NIL."
+  (rendering-option name :text-insets))
+
+(defun toolkit-native-labels-p (name)
+  "Return whether NAME delegates graphical labels to native text rendering."
+  (not (null (rendering-option name :native-labels))))
+
+(defun register-toolkit-rendering (name &key (paint nil paint-p)
+                                           (measure nil measure-p)
+                                           (native-labels nil labels-p)
+                                           (text-insets nil insets-p))
+  "Set graphical callbacks for registered NAME. Omitted keys retain their
+settings or inherit from :PARENT; explicit NIL disables the inherited setting."
+  (let ((entry (find-toolkit name)))
+    (when insets-p (check-type text-insets (or null function)))
+    (when paint-p (check-type paint (or null function)))
+    (when measure-p (check-type measure (or null function)))
+    (when paint-p (setf (getf (%toolkit-rendering entry) :paint) paint))
+    (when measure-p (setf (getf (%toolkit-rendering entry) :measure) measure))
+    (when insets-p (setf (getf (%toolkit-rendering entry) :text-insets) text-insets))
+    (when labels-p (setf (getf (%toolkit-rendering entry) :native-labels) native-labels))
+    (incf *toolkit-revision*))
+  name)
+
 (defun register-toolkit (name &key parent defaults controls
-                                   (surface (if parent
-                                                (toolkit-surface parent)
-                                                :glass)))
+                                   (paint nil paint-p) (measure nil measure-p)
+                                   (native-labels nil labels-p) (text-insets nil insets-p))
   "Register a toolkit. DEFAULTS is a plist or a zero-argument function.
-CONTROLS maps control names to functions taking the public arguments and options."
+CONTROLS maps control names to functions taking the public arguments and options.
+PAINT, MEASURE and NATIVE-LABELS configure graphical rendering; omitted values
+inherit only from an explicit PARENT."
   (loop :for ancestor := parent
           :then (%toolkit-parent (find-toolkit ancestor))
         :while ancestor :when (eq ancestor name)
           :do (error "Circular toolkit inheritance at ~S." name))
+  (when paint-p (check-type paint (or null function)))
+  (when measure-p (check-type measure (or null function)))
+  (when insets-p (check-type text-insets (or null function)))
   (incf *toolkit-revision*)
-  (register-surface name surface)
   (setf (gethash name *toolkits*)
-        (make-toolkit :parent parent :defaults defaults
-                      :controls controls))
+        (make-toolkit :parent parent :defaults defaults :controls controls
+                      :rendering (append (when paint-p (list :paint paint))
+                                         (when measure-p (list :measure measure))
+                                         (when labels-p (list :native-labels native-labels))
+                                         (when insets-p (list :text-insets text-insets)))))
   name)
 
 (defun current-toolkit ()
@@ -252,7 +302,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
                 (id value) (id value) (id text) (id text) (id fraction)
                 (id commands))))
     `(progn
-       (register-toolkit ,name :surface ,name :defaults (lambda () ,defaults))
+       (register-toolkit ,name :defaults (lambda () ,defaults))
        ,@(loop :for local :in names :for fn :in functions :for a :in args
                :collect
                `(defun ,local (,@a &optional options)

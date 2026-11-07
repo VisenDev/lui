@@ -113,7 +113,7 @@
     (assert (plusp (length (getf button :documentation))))
     (dolist (pair '(("lui.web" "MOUNT") ("lui.font" "*FONT-PATH*")
                     ("lui.draw" "RENDERER-POLYGONS")
-                    ("lui" "TOOLKIT-SURFACE")))
+                    ("lui" "REGISTER-TOOLKIT-RENDERING")))
       (assert (entry entries (first pair) (second pair))))
     (dolist (package '("lui.fn" "lui.widgets" "lui.gl"
                        "lui.wayland-protocol" "lui.web.style"

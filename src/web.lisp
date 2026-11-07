@@ -222,6 +222,8 @@
                    (let ((kind (and (lui.widgets:widget-p widget) (lui.widgets:widget-kind widget))))
                      (when (region-visible-p clip
                              (and (case kind ((:cell :label :button :tab :list-item :checkbox :radio) t))
+                                  (or (not (eq kind :label))
+                                      (lui:toolkit-native-labels-p (lui.widgets:widget-style widget)))
                                   (not (lui.widgets:widget-painter widget))))
                        (push (list node (cons kind key) interactive) entries)))))))
       (visit root nil nil))

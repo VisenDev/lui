@@ -178,6 +178,43 @@ class WebTests(unittest.TestCase):
             (lui.frame:context-focus (lui.web::web-app-context {app}))))))''')
         return self.page.evaluate("window.testFocus")
 
+    def test_custom_toolkit_paints_labels_and_inherits_native_label_policy(self):
+        self.lisp('''
+          (defvar *custom-label-paints* 0)
+          (defvar *custom-label-measures* 0)
+          (lui:register-toolkit :test-canvas-labels :parent :glass
+            :paint (lambda (renderer node)
+              (when (eq :label (lui.widgets:widget-kind
+                                (lui.layout:element-content node)))
+                (incf *custom-label-paints*)
+                (lui.draw:shape renderer (lui.layout:element-box node)
+                                0 "#123456" 1)))
+            :measure (lambda (renderer widget width)
+              (declare (ignore renderer widget width))
+              (incf *custom-label-measures*)
+              (values 123 31)))
+          (lui:register-toolkit :test-canvas-label-child
+                               :parent :test-canvas-labels)
+        ''')
+        host = self.fixture('''
+          (lui:with-toolkit (:test-canvas-label-child)
+            (lui:label "Custom canvas label"))
+        ''')
+        node = self.widget(text="Custom canvas label", host=host)
+        self.assertEqual(node["width"], 123)
+        self.assertEqual(node["height"], 31)
+        self.assertGreater(self.number('*custom-label-paints*'), 0)
+        self.assertGreater(self.number('*custom-label-measures*'), 0)
+        expect(self.page.locator(host).get_by_text(
+            "Custom canvas label", exact=True)).to_have_count(0)
+        color = self.page.locator(host + " canvas").evaluate("""(canvas, n) => {
+          const ratio = canvas.width / canvas.getBoundingClientRect().width;
+          return Array.from(canvas.getContext('2d').getImageData(
+            Math.round((n.x + n.width / 2) * ratio),
+            Math.round((n.y + n.height / 2) * ratio), 1, 1).data);
+        }""", node)
+        self.assertEqual(color, [18, 52, 86, 255])
+
     def test_canvas_rendering_has_selectable_native_labels(self):
         expect(self.page.locator("main canvas")).to_have_count(1)
         expect(self.page.locator("main textarea")).to_have_count(1)

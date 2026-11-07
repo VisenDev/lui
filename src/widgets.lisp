@@ -4,7 +4,7 @@
            #:widget-foreground #:widget-background #:widget-radius
            #:widget-frost
            #:widget-terminal-text #:declare-panel #:declare-widget
-           #:toolkit-surface #:register-surface #:value-widget
+           #:value-widget
            #:scrollbar-thumb #:make-widget
            #:widget-value #:widget-minimum #:widget-maximum #:widget-step
            #:widget-font-size #:widget-font-family #:widget-font-weight
@@ -16,16 +16,6 @@
            #:text-field-focused-p #:activation-focused-p #:cursor-at))
 
 (in-package #:lui.widgets)
-
-(defvar *surfaces* (make-hash-table :test 'eq))
-
-(defun register-surface (name surface)
-  "Associate toolkit NAME with its backend paint family SURFACE."
-  (setf (gethash name *surfaces*) surface))
-
-(defun toolkit-surface (name)
-  "Return NAME's registered paint family, or NAME when it has no mapping."
-  (gethash name *surfaces* name))
 
 (defun muted-ink (foreground background)
   "Soften a foreground color against its surface for secondary text."
@@ -94,9 +84,7 @@ An optional terminal-label callback overrides the standard kind-based label."
                 (:text-field (format nil "[~A]" (if (zerop (length value)) text value)))
                 (:tab (format nil (if value "[ ~A ]" "  ~A  ") text))
                 (otherwise
-                 (format nil (if (member (toolkit-surface
-                                          (widget-style widget))
-                                         '(:motif :garnet))
+                 (format nil (if (zerop (widget-radius widget))
                                  "[ ~A ]" "( ~A )") text))))))))
 
 (fn tab-arrow-p ((event event))

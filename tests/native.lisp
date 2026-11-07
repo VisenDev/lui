@@ -244,6 +244,65 @@
     (paint-frame renderer context)
     (assert saw-context)))
 
+(defun test-custom-toolkit (font)
+  ;; A new widget kind has no built-in graphical surface to fall back on.
+  (let* ((painted nil) (measured nil) (colors nil) (texts nil)
+         (renderer
+           (make-renderer
+            :font font
+            :clip (lambda (box) (declare (ignore box)))
+            :polygons (lambda (contours color alpha)
+                        (declare (ignore contours alpha)) (push color colors))
+            :text (lambda (font text x y color)
+                    (declare (ignore font x y color)) (push text texts))))
+         (context (make-context
+                   :measure (lambda (widget width)
+                              (measure-widget renderer widget width)))))
+    (lui:register-toolkit
+     :test-graphical
+     :paint (lambda (target node)
+              (push (widget-kind (element-content node)) painted)
+              (lui.draw:shape target (element-box node) 3 "#123456" 1)
+              (lui.draw:outline target (element-box node) 3 "#654321" 1 1)
+              (lui.draw:paint-text target "Badge" 4 16 "#ffffff"))
+     :measure (lambda (target widget width)
+                (assert (eq renderer target))
+                (push (list (widget-kind widget) width) measured)
+                (values 73 29))
+     :controls
+     (list (cons :badge
+                 (lambda (id text &rest options)
+                   (apply #'declare-widget :badge (lui:current-toolkit)
+                          id text options)))))
+    (lui:register-toolkit :test-graphical-child :parent :test-graphical)
+    (with-frame (context 200 100)
+      (lui:with-toolkit (:test-graphical-child)
+        (lui:control :badge :badge "Badge")))
+    (let* ((node (gethash :badge (lui.frame::context-ids context)))
+           (widget (element-content node)))
+      (assert (eq :test-graphical-child (widget-style widget)))
+      (assert measured)
+      (assert (= 73 (box-width (element-box node))))
+      (assert (= 29 (box-height (element-box node))))
+      (assert (equal '(73 29)
+                     (multiple-value-list (measure-widget renderer widget 120))))
+      (assert (equal '(:badge 120) (first measured)))
+      (paint-frame renderer context)
+      (assert (member :badge painted))
+      (assert (member "#123456" colors :test #'equal))
+      (assert (member "#654321" colors :test #'equal))
+      (assert (member "Badge" texts :test #'equal))
+      (setf painted nil colors nil texts nil
+            (widget-painter widget)
+            (lambda (target element)
+              (assert (eq target renderer))
+              (assert (eq element node))
+              (lui.draw:shape target (element-box element) 0 "#abcdef" 1)))
+      (paint-frame renderer context)
+      (assert (null painted))
+      (assert (equal '("#abcdef") colors))
+      (assert (null texts)))))
+
 (defun test-button-feedback (font)
   (let* ((calls nil)
          (renderer
@@ -718,6 +777,7 @@
            (test-measurement font)
            (test-edit-painting font)
            (test-panel-painting font)
+           (test-custom-toolkit font)
            (test-button-feedback font)
            (test-button-text-centering font)
            (test-motif-states font)

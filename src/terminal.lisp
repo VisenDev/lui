@@ -126,7 +126,7 @@
          (top (cell-edge (box-y box)))
          (right (1- (cell-edge (+ (box-x box) (box-width box)))))
          (bottom (1- (cell-edge (+ (box-y box) (box-height box)))))
-         (square-p (not (eq (toolkit-surface (widget-style widget)) :glass)))
+         (square-p (zerop (widget-radius widget)))
          (corners (if square-p "++++" "╭╮╰╯"))
          (horizontal (if square-p #\- #\─))
          (vertical (if square-p #\| #\│)))
@@ -308,10 +308,7 @@
                                           (if (and (<= thumb-top row)
                                                    (< row thumb-end))
                                               "█"
-                                              (if (eq (toolkit-surface
-                                                       (widget-style widget))
-                                                      :garnet)
-                                                  "░" "│"))
+                                              "│")
                                           (aref colors row column) style))
                                    ((and splitter-p
                                          (if horizontal-p
