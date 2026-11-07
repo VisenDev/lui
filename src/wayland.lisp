@@ -42,7 +42,7 @@
   (events nil :type list) (listeners nil :type list))
 (defvar *window*)
 
-(fn attach-listener (proxy (callbacks list))
+(fn (attach-listener list) (proxy (callbacks list))
   (push (listen-proxy proxy callbacks) (wl-window-listeners *window*)))
 
 (defmacro callback (name arguments &body body)
@@ -51,11 +51,11 @@
      (declare (ignore data) (ignorable proxy))
      ,@body))
 
-(fn queue-input ((kind symbol) &rest options)
+(fn (queue-input list) ((kind symbol) &rest options)
   (push (apply #'make-event :kind kind options)
         (wl-window-events *window*)))
 
-(fn release-clipboard-source ((window wl-window))
+(fn (release-clipboard-source null) ((window wl-window))
   (when (wl-window-clipboard-source window)
     (request (wl-window-clipboard-source window) 1 nil nil nil t)
     (setf (wl-window-clipboard-source window) nil
@@ -64,7 +64,7 @@
     (cffi:foreign-free (wl-window-clipboard-listener window))
     (setf (wl-window-clipboard-listener window) nil)))
 
-(fn write-clipboard-fd ((text string) (fd integer))
+(fn (write-clipboard-fd null) ((text string) (fd integer))
   (unwind-protect
        (cffi:with-foreign-string ((bytes byte-size) text :encoding :utf-8)
          (let ((size (1- byte-size))
@@ -114,7 +114,7 @@
 (callback clipboard-selection ((offer :pointer))
   (declare (ignore offer)))
 
-(fn create-clipboard-device ((window wl-window))
+(fn (create-clipboard-device list) ((window wl-window))
   ;; Core protocol v1 is enough for clipboard ownership on older compositors.
   (when (and (wl-window-clipboard-manager window) (wl-window-seat window))
     (let ((device
@@ -130,7 +130,7 @@
                              (cffi:callback clipboard-drop)
                              (cffi:callback clipboard-selection))))))
 
-(fn copy-clipboard ((window wl-window) (text string))
+(fn (copy-clipboard (or null integer)) ((window wl-window) (text string))
   (when (and (wl-window-clipboard-device window)
              (wl-window-clipboard-serial window))
     (release-clipboard-source window)
@@ -150,11 +150,11 @@
                      (cons :uint32 (wl-window-clipboard-serial window))))
       (flush-display (wl-window-display window)))))
 
-(fn cursor-shape ((kind symbol))
+(fn (cursor-shape integer) ((kind symbol))
   (case kind (:not-allowed 15) (:pointer 4) (:text 9)
         (:resize-horizontal 26) (:resize-vertical 27) (otherwise 1)))
 
-(fn cursor-image-for ((window wl-window) (kind symbol))
+(fn (cursor-image-for (or null cffi:foreign-pointer)) ((window wl-window) (kind symbol))
   (when (and (wl-window-shm window)
              (not (wl-window-cursor-theme-attempted-p window)))
     (setf (wl-window-cursor-theme-attempted-p window) t)
@@ -185,7 +185,7 @@
                    (cffi:foreign-slot-value
                     cursor '(:struct themed-cursor) 'images) :pointer)))))
 
-(fn set-themed-cursor ((kind symbol))
+(fn (set-themed-cursor boolean) ((kind symbol))
   (let ((image (cursor-image-for *window* kind)))
     (when image
       (unless (wl-window-cursor-surface *window*)
@@ -215,7 +215,7 @@
         (request (wl-window-cursor-surface *window*) 6 nil nil))
       t)))
 
-(fn update-cursor ()
+(fn (update-cursor symbol) ()
   (when (and (wl-window-pointer *window*)
              (wl-window-cursor-serial *window*))
     (let ((kind (if (boundp '*context*)
@@ -233,7 +233,7 @@
                   (set-themed-cursor kind))
           (setf (wl-window-cursor-kind *window*) kind))))))
 
-(fn create-cursor-device ()
+(fn (create-cursor-device symbol) ()
   (when (and (wl-window-cursor-manager *window*)
              (wl-window-pointer *window*)
              (null (wl-window-cursor-device *window*)))
@@ -245,7 +245,7 @@
           (wl-window-cursor-kind *window*) nil)
     (update-cursor)))
 
-(fn cancel-pointer ((window wl-window))
+(fn (cancel-pointer list) ((window wl-window))
   (setf (wl-window-buttons window) 0)
   (push (make-event :kind :cancel :buttons 0) (wl-window-events window)))
 
@@ -297,11 +297,11 @@
     (queue-input :scroll :x (wl-window-x *window*)
                         :y (wl-window-y *window*) :value (/ value 256.0))))
 
-(fn stop-key-repeat ((window wl-window))
+(fn (stop-key-repeat null) ((window wl-window))
   (setf (wl-window-repeat-code window) nil
         (wl-window-repeat-at window) nil))
 
-(fn start-key-repeat ((code integer)
+(fn (start-key-repeat (or null real)) ((code integer)
                       &optional ((now real) (get-internal-real-time)))
   (when (and (plusp (wl-window-repeat-rate *window*))
              (wl-window-keymap *window*)
@@ -314,7 +314,7 @@
           (+ now (* (/ internal-time-units-per-second 1000)
                     (wl-window-repeat-delay *window*))))))
 
-(fn release-keymap ((window wl-window))
+(fn (release-keymap null) ((window wl-window))
   (stop-key-repeat window)
   (when (wl-window-key-state window)
     (cffi:foreign-funcall "xkb_state_unref"
@@ -364,12 +364,12 @@
   (stop-key-repeat *window*)
   (cancel-pointer *window*))
 
-(fn modifier-active-p (state (name string))
+(fn (modifier-active-p boolean) (state (name string))
   (plusp (cffi:foreign-funcall
           "xkb_state_mod_name_is_active" :pointer state
           :string name :uint 8 :int)))
 
-(fn editor-command (state (symbol integer) context)
+(fn (editor-command symbol) (state (symbol integer) context)
   (when (and context (lui.widgets:text-field-focused-p context))
     (cffi:with-foreign-object (name :char 64)
       (let ((length (cffi:foreign-funcall
@@ -382,7 +382,7 @@
            :alt (modifier-active-p state "Mod1")
            :shift (modifier-active-p state "Shift")))))))
 
-(fn emit-key-input ((code integer))
+(fn (emit-key-input list) ((code integer))
   (when (wl-window-key-state *window*)
     (let* ((context
              (when (and (boundp '*context*) *context*)
@@ -447,7 +447,7 @@
     (stop-key-repeat *window*)
     (when code (start-key-repeat code))))
 
-(fn repeat-input (&optional ((now real) (get-internal-real-time)))
+(fn (repeat-input (or null real)) (&optional ((now real) (get-internal-real-time)))
   (when (and (wl-window-repeat-code *window*)
              (wl-window-repeat-at *window*)
              (plusp (wl-window-repeat-rate *window*)))
@@ -474,7 +474,7 @@
 (callback seat-name ((name :string))
   (declare (ignore name)))
 
-(fn release-keyboard ((window wl-window))
+(fn (release-keyboard null) ((window wl-window))
   (release-keymap window)
   (when (wl-window-keyboard window)
     (cancel-pointer window)
@@ -599,7 +599,7 @@
 (callback fractional-preferred-scale ((scale :uint32))
   (when (plusp scale) (setf (wl-window-scale120 *window*) scale)))
 
-(fn create-scaling ((window wl-window))
+(fn (create-scaling list) ((window wl-window))
   (attach-listener
    (wl-window-surface window)
    (list (cffi:callback surface-enter) (cffi:callback surface-leave)
@@ -624,12 +624,12 @@
       (/ (wl-window-scale120 window) 120)
       (wl-window-buffer-scale window)))
 
-(fn framebuffer-size ((window wl-window))
+(fn (framebuffer-size (values integer integer)) ((window wl-window))
   (let ((scale (surface-scale window)))
     (values (max 1 (ceiling (* (wl-window-width window) scale)))
             (max 1 (ceiling (* (wl-window-height window) scale))))))
 
-(fn sync-window-size ((window wl-window))
+(fn (sync-window-size null) ((window wl-window))
   (let ((gpu (wl-window-gpu window))
         (width (wl-window-width window))
         (height (wl-window-height window))
@@ -661,7 +661,7 @@
   ;; This pending state belongs to the next xdg_surface.configure sequence.
   (setf (wl-window-pending-decoration-mode *window*) mode))
 
-(fn accept-surface-configure ((window wl-window))
+(fn (accept-surface-configure (eql t)) ((window wl-window))
   (when (wl-window-pending-decoration-mode window)
     (setf (wl-window-decoration-mode window)
           (wl-window-pending-decoration-mode window)
@@ -672,7 +672,7 @@
   (request proxy 4 nil (list (cons :uint32 serial)))
   (accept-surface-configure *window*))
 
-(fn create-decoration ((window wl-window))
+(fn (create-decoration (or null cffi:foreign-pointer)) ((window wl-window))
   (when (wl-window-decoration-manager window)
     (setf (wl-window-decoration window)
           (request (wl-window-decoration-manager window) 1
@@ -684,10 +684,10 @@
     ;; Version 1 requires this before the first surface commit or buffer.
     (request (wl-window-decoration window) 1 nil (list (cons :uint32 2)))))
 
-(fn destroy-extension (proxy)
+(fn (destroy-extension (or null cffi:foreign-pointer)) (proxy)
   (when proxy (request proxy 0 nil nil nil t)))
 
-(fn release-extensions ((window wl-window))
+(fn (release-extensions null) ((window wl-window))
   (release-clipboard-source window)
   (dolist (proxy (list (wl-window-clipboard-device window)
                       (wl-window-clipboard-manager window)))
@@ -731,7 +731,7 @@
 (callback toplevel-close ()
   (setf (wl-window-quit-p *window*) t))
 
-(fn wait-wayland (display (context context) events)
+(fn (wait-wayland null) (display (context context) events)
   (loop :for delay := (lui.frame::frame-wait context events)
         :for repeat := (wl-window-repeat-at *window*)
         :when repeat
@@ -746,7 +746,7 @@
                    (/= (wl-window-height *window*) (context-height context))))
   (lui.frame::limit-frame-rate context))
 
-(fn run-window ((draw function) &key title width height (interactive t))
+(fn (run-window (or null context)) ((draw function) &key title width height (interactive t))
   (let* ((display (connect-display (cffi:null-pointer)))
          (*window* (make-wl-window :display display
                                   :width (or width 720)
@@ -863,7 +863,7 @@
         (cffi:foreign-free listener))
       (disconnect-display display))))
 
-(fn run-wayland ((draw function) &key title width height (interactive t))
+(fn (run-wayland (or null context)) ((draw function) &key title width height (interactive t))
   "Run DRAW in a Wayland window using EGL and the shared OpenGL renderer.
 TITLE, WIDTH, and HEIGHT configure the window; INTERACTIVE NIL draws one frame.
 Own and release the display, protocol metadata, input devices, and GPU resources."

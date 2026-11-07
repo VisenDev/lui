@@ -4,7 +4,10 @@
            #:renderer-clip #:renderer-glass #:renderer-text
            #:renderer-surface #:renderer-stipple
            #:paint-frame #:measure-widget #:widget-font #:focused-p #:shape #:outline #:inset-box
-           #:rounded-polygon #:color-components #:trapezoids #:paint-text))
+           #:geometry #:make-geometry #:geometry-left #:geometry-top #:geometry-right
+           #:geometry-value-p #:geometry-text-p #:geometry-bottom #:geometry-min-width #:geometry-min-height
+           #:geometry-center-x #:geometry-center-y #:geometry-offset-x #:geometry-offset-y
+           #:widget-geometry #:text-box #:rounded-polygon #:color-components #:trapezoids #:paint-text))
 
 (in-package #:lui.draw)
 
@@ -57,7 +60,7 @@
                               (+ cy (* r #-jscl (sin angle)
                                          #+jscl (#j:Math:sin angle))))))))
 
-(fn trapezoids ((contours list) (emit function))
+(fn (trapezoids null) ((contours list) (emit function))
   "Convert contours into nonzero-winding trapezoids for native triangle APIs."
   (let ((edges nil)
         (ys nil))
@@ -106,13 +109,37 @@
     (setf (font-size font) (widget-font-size widget))
     font))
 
-(fn (measure-widget (values number number)) ((renderer renderer) (widget widget) width)
-  (funcall (or (lui:toolkit-measure (widget-style widget))
-               (error "Toolkit ~S has no graphical measurer." (widget-style widget)))
-           renderer widget width))
+(defstruct geometry
+  "Toolkit text insets, intrinsic minimum size, alignment, and pressed displacement."
+  (left 0) (top 0) (right 0) (bottom 0) (min-width 0) (min-height 0)
+  (text-p t) value-p center-x center-y (offset-x 0) (offset-y 0))
 
-(fn paint-text
-    ((renderer renderer) (text string) (x real) (y real) (color string))
+(fn (widget-geometry geometry) ((widget widget))
+  "Return the active toolkit's shared text geometry for WIDGET."
+  (funcall (or (lui:toolkit-geometry (widget-style widget))
+               (error "Toolkit ~S has no graphical geometry." (widget-style widget))) widget))
+
+(fn (measure-widget (values number number)) ((renderer renderer) (widget widget) width)
+  (let* ((g (widget-geometry widget)) (font (widget-font renderer widget))
+         (horizontal (+ (geometry-left g) (geometry-right g)))
+         (lines (when (geometry-text-p g) (wrap-text font (if (geometry-value-p g)
+                                   (widget-value widget) (widget-text widget))
+                           (when width (max 0 (- width horizontal)))))))
+    (values (max (geometry-min-width g)
+                 (+ horizontal (loop :for line :in lines :maximize (text-width font line) :into n
+                                     :finally (return (or n 0)))))
+            (max (geometry-min-height g)
+                 (+ (geometry-top g) (geometry-bottom g) (* (length lines) (line-height font)))))))
+
+(fn (text-box box) ((widget widget) (box box) &optional pressed)
+  "Return the toolkit's text area, including pressed displacement."
+  (let ((g (widget-geometry widget)))
+    (make-box :x (+ (box-x box) (geometry-left g) (if pressed (geometry-offset-x g) 0))
+              :y (+ (box-y box) (geometry-top g) (if pressed (geometry-offset-y g) 0))
+              :width (max 0 (- (box-width box) (geometry-left g) (geometry-right g)))
+              :height (max 0 (- (box-height box) (geometry-top g) (geometry-bottom g))))))
+
+(fn (paint-text t) ((renderer renderer) (text string) (x real) (y real) (color string))
   "Draw TEXT at horizontal position X and baseline Y in COLOR."
   (unless (zerop (length text))
     (if (renderer-text renderer)
@@ -151,16 +178,14 @@
             :width (max 0 (- (box-width box) (* 2 inset)))
             :height (max 0 (- (box-height box) (* 2 inset)))))
 
-(fn shape
-    ((renderer renderer) (box box) (radius real) (color string) (alpha real))
+(fn (shape t) ((renderer renderer) (box box) (radius real) (color string) (alpha real))
   "Fill BOX with COLOR at ALPHA opacity using rounded corners of RADIUS."
   (if (renderer-surface renderer)
       (funcall (renderer-surface renderer) box radius color alpha)
       (funcall (renderer-polygons renderer)
                (list (rounded-polygon box radius)) color alpha)))
 
-(fn outline
-    ((renderer renderer) (box box) (radius real) (color string)
+(fn (outline t) ((renderer renderer) (box box) (radius real) (color string)
      (alpha real) (thickness real))
   "Stroke the inside edge of BOX with the given THICKNESS and corner RADIUS."
   (if (renderer-surface renderer)
@@ -180,7 +205,7 @@
        (equal (element-id node) (context-focus *context*))
        (not (widget-disabled-p (element-content node)))))
 
-(fn paint-widget ((renderer renderer) (node element))
+(fn (paint-widget t) ((renderer renderer) (node element))
   (let* ((widget (element-content node))
          (paint (or (widget-painter widget) (lui:toolkit-paint (widget-style widget))
                     (error "Toolkit ~S has no graphical painter." (widget-style widget))))
@@ -191,7 +216,7 @@
                 (funcall paint renderer node))
       (setf (renderer-font renderer) font))))
 
-(fn paint-frame ((renderer renderer) (context context) &optional external-labels viewport)
+(fn (paint-frame t) ((renderer renderer) (context context) &optional external-labels viewport)
   "Paint the visible elements of a solved frame and its text selection."
   (unless (context-input-handler context)
     (setf (context-input-handler context)

@@ -172,7 +172,7 @@
   (format :int)
   (data :long :count 5))
 
-(fn call-glx ((function function) &rest arguments)
+(fn (call-glx t) ((function function) &rest arguments)
   ;; Mesa worker threads inherit the caller's FP exception mask when a context
   ;; starts. Keep native GLX initialization independent of Lisp's trap settings.
   #+sbcl
@@ -184,10 +184,10 @@
       (apply #'sb-int:set-floating-point-modes modes)))
   #-sbcl (apply function arguments))
 
-(fn create-glx (display visual share direct)
+(fn (create-glx cffi:foreign-pointer) (display visual share direct)
   (call-glx #'%create-glx display visual share direct))
 
-(fn make-current (display window context)
+(fn (make-current integer) (display window context)
   (call-glx #'%make-current display window context))
 
 (defstruct x-window
@@ -198,13 +198,13 @@
   (cursors (make-hash-table :test 'eq) :type hash-table)
   cursor-kind (pointer-x -1 :type real) (pointer-y -1 :type real))
 
-(fn copy-clipboard ((window x-window) (text string))
+(fn (copy-clipboard integer) ((window x-window) (text string))
   (setf (x-window-clipboard-text window) (copy-seq text))
   (set-selection-owner (x-window-display window) (x-window-clipboard window)
                        (x-window-window window) 0)
   (flush-display (x-window-display window)))
 
-(fn selection-request ((window x-window) event)
+(fn (selection-request integer) ((window x-window) event)
   (let* ((display (x-window-display window))
          (targets (intern-atom display "TARGETS" 0))
          (utf8 (intern-atom display "UTF8_STRING" 0))
@@ -259,7 +259,7 @@
           (send-event display requestor 0 0 reply)
           (flush-display display))))))
 
-(fn key-input (event &optional context)
+(fn (key-input (or null event)) (event &optional context)
   (cffi:with-foreign-objects ((buffer :char 64) (symbol :ulong))
     (let* ((length (lookup-string event buffer 64 symbol (cffi:null-pointer)))
            (code (cffi:mem-ref symbol :ulong))
@@ -304,7 +304,7 @@
                          (cffi:foreign-string-to-lisp
                           buffer :count length :encoding :iso-8859-1)))))))
 
-(fn cursor-for ((window x-window) (kind symbol))
+(fn (cursor-for integer) ((window x-window) (kind symbol))
   (or (gethash kind (x-window-cursors window))
       (setf (gethash kind (x-window-cursors window))
             (let ((cursor
@@ -330,7 +330,7 @@
                          (:resize-vertical 116)
                          (otherwise 68))))))))
 
-(fn update-cursor ((window x-window))
+(fn (update-cursor symbol) ((window x-window))
   (let ((kind (if (x-window-context window)
                   (lui.widgets:cursor-at
                    (x-window-context window)
@@ -341,11 +341,11 @@
                      (cursor-for window kind))
       (setf (x-window-cursor-kind window) kind))))
 
-(fn pointer-buttons ((state integer))
+(fn (pointer-buttons integer) ((state integer))
   (logior (if (logtest state #x100) 1 0)
           (if (logtest state #x400) 2 0)))
 
-(fn read-events ((window x-window) (delete integer))
+(fn (read-events (values list boolean)) ((window x-window) (delete integer))
   (let ((display (x-window-display window))
         (events nil)
         (quit nil))
@@ -413,7 +413,7 @@
               (otherwise nil))))
     (values (nreverse events) quit)))
 
-(fn glx-visual (display screen)
+(fn (glx-visual cffi:foreign-pointer) (display screen)
   ;; Prefer multisampling; servers without it still get double-buffered RGB.
   (cffi:with-foreign-object (attrs :int 13)
     (loop :for v :in '(4 5 8 8 9 8 10 8 100000 1 100001 4 0)
@@ -426,7 +426,7 @@
         (error "No double-buffered OpenGL visual on this X display."))
       visual)))
 
-(fn open-window ((window x-window) info parent)
+(fn (open-window integer) ((window x-window) info parent)
   (let* ((display (x-window-display window))
          (visual (cffi:foreign-slot-value
                   info '(:struct visual-info) 'visual))
@@ -444,7 +444,7 @@
 
 (cffi:defcstruct poll-fd (fd :int) (events :short) (revents :short))
 
-(fn wait-x11 (display (context context) events)
+(fn (wait-x11 null) (display (context context) events)
   (when (zerop (pending display))
     (cffi:with-foreign-object (p '(:struct poll-fd))
       (cffi:with-foreign-slots ((fd events) p (:struct poll-fd))
@@ -457,7 +457,7 @@
                                               context events))) :int)))
   (lui.frame::limit-frame-rate context))
 
-(fn draw-window ((window x-window) (gpu gpu) (context context)
+(fn (draw-window context) ((window x-window) (gpu gpu) (context context)
                  (draw function) interactive delete)
   (loop
     (multiple-value-bind (events quit) (read-events window delete)
@@ -474,7 +474,7 @@
       (unless interactive (return context))
       (wait-x11 (x-window-display window) context events))))
 
-(fn run-x11 ((draw function) &key title width height (interactive t))
+(fn (run-x11 context) ((draw function) &key title width height (interactive t))
   "Run DRAW in an Xlib window using the shared OpenGL renderer via GLX."
   (let* ((display (open-display (cffi:null-pointer)))
          (w (or width 720)) (h (or height 520))

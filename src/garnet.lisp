@@ -8,8 +8,8 @@
 (in-package #:lui.garnet)
 
 (defvar *defaults*
-  '(:terminal-border "++++-|" :background "#ffffff" :foreground "#000000" :opacity 1
-    :radius 0 :frost 0 :accent "#000000"
+  '(:palette (:background "#ffffff" :foreground "#000000" :accent "#000000") :terminal-border "++++-|" :opacity 1
+    :radius 0 :frost 0
     :font-family :monospace :font-weight :bold)
   "Garnet uses black outlines, offset shadows, and bold monospace labels.
 Bind this plist to change its colors or typography for a group of controls.")

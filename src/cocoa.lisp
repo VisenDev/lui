@@ -27,7 +27,7 @@
 
 (defvar *selectors* nil)
 
-(fn selector ((name string))
+(fn (selector sb-sys:system-area-pointer) ((name string))
   (or (and *selectors* (gethash name *selectors*))
       (let ((value
               (sb-alien:alien-funcall
@@ -37,7 +37,7 @@
         (when *selectors* (setf (gethash name *selectors*) value))
         value)))
 
-(fn objc-class ((name string))
+(fn (objc-class sb-sys:system-area-pointer) ((name string))
   (sb-alien:alien-funcall
    (sb-alien:extern-alien "objc_getClass"
      (function object sb-alien:c-string))
@@ -93,22 +93,22 @@
   (buttons 0 :type integer))
 (defvar *app* nil)
 
-(fn null-object-p (object)
+(fn (null-object-p boolean) (object)
   (zerop (sb-sys:sap-int object)))
 
-(fn same-object-p (left right)
+(fn (same-object-p boolean) (left right)
   (= (sb-sys:sap-int left) (sb-sys:sap-int right)))
 
-(fn require-object (object (description string))
+(fn (require-object sb-sys:system-area-pointer) (object (description string))
   (when (null-object-p object)
     (error "Cannot create Cocoa ~A." description))
   object)
 
-(fn ns-string ((text string))
+(fn (ns-string sb-sys:system-area-pointer) ((text string))
   (message object (objc-class "NSString") "stringWithUTF8String:"
            utf8-string text))
 
-(fn make-path ((contours list))
+(fn (make-path sb-sys:system-area-pointer) ((contours list))
   (let ((path (message object (objc-class "NSBezierPath") "bezierPath")))
     (dolist (contour contours)
       (loop :for (x . y) :in contour :for first := t :then nil
@@ -122,7 +122,7 @@
       (message sb-alien:void path "closePath"))
     path))
 
-(fn cocoa-color ((color string) (alpha real))
+(fn (cocoa-color null) ((color string) (alpha real))
   (destructuring-bind (red green blue opacity)
       (color-components color alpha)
     (let ((native-color
@@ -134,7 +134,7 @@
                     sb-alien:double (float opacity 1.0d0))))
       (message sb-alien:void native-color "setFill"))))
 
-(fn cached-shape ((contours list))
+(fn (cached-shape sb-sys:system-area-pointer) ((contours list))
   (let* ((cache (cocoa-app-shape-paths *app*))
          (cached (gethash contours cache)))
     (or cached
@@ -145,7 +145,7 @@
                   (message object path "retain")))
           path))))
 
-(fn clear-shape-paths ()
+(fn (clear-shape-paths hash-table) ()
   (let ((cache (cocoa-app-shape-paths *app*)))
     (maphash (lambda (key path)
                (declare (ignore key))
@@ -153,18 +153,18 @@
              cache)
     (clrhash cache)))
 
-(fn cocoa-polygons ((contours list) (color string) (alpha real))
+(fn (cocoa-polygons null) ((contours list) (color string) (alpha real))
   (cocoa-color color alpha)
   (message sb-alien:void (cached-shape contours) "fill"))
 
-(fn clear-text-paths ()
+(fn (clear-text-paths hash-table) ()
   (maphash (lambda (key path)
              (declare (ignore key))
              (message sb-alien:void path "release"))
            (cocoa-app-text-paths *app*))
   (clrhash (cocoa-app-text-paths *app*)))
 
-(fn cocoa-text ((font font) (text string) (x real) (y real) (color string))
+(fn (cocoa-text null) ((font font) (text string) (x real) (y real) (color string))
   (let* ((cache (cocoa-app-text-paths *app*))
          (key (list font (font-size font) text))
          (path (gethash key cache))
@@ -195,14 +195,14 @@
            (message sb-alien:void path "fill"))
       (message sb-alien:void graphics "restoreGraphicsState"))))
 
-(fn cocoa-clip ((box box))
+(fn (cocoa-clip null) ((box box))
   (let ((graphics (objc-class "NSGraphicsContext")))
     (message sb-alien:void graphics "restoreGraphicsState")
     (message sb-alien:void graphics "saveGraphicsState")
     (message sb-alien:void
              (cached-shape (list (rounded-polygon box 0))) "addClip")))
 
-(fn callback-true (view selector)
+(fn (callback-true (eql 1)) (view selector)
   (declare (ignore view selector))
   1)
 
@@ -211,7 +211,7 @@
   (with-cocoa-float-mode
     (callback-true view selector)))
 
-(fn draw-cocoa-view (view selector dirty)
+(fn (draw-cocoa-view t) (view selector dirty)
   (declare (ignore selector dirty))
   ;; AppKit may draw before a Lisp frame exists or after the app is disposed.
   ;; Both errors and nonlocal exits must stop inside the native callback.
@@ -245,7 +245,7 @@
   (with-cocoa-float-mode
     (draw-cocoa-view view selector dirty)))
 
-(fn install-method (class (name string) (function symbol) (signature string))
+(fn (install-method null) (class (name string) (function symbol) (signature string))
   (when (zerop
          (sb-alien:alien-funcall
           (sb-alien:extern-alien "class_addMethod"
@@ -255,7 +255,7 @@
           signature))
     (error "Cannot install Cocoa method ~A." name)))
 
-(fn view-class (&optional accelerated)
+(fn (view-class sb-sys:system-area-pointer) (&optional accelerated)
   (let* ((name (if accelerated "LuiOpenGLView" "LuiDrawingView"))
          (class (objc-class name)))
     (when (null-object-p class)
@@ -290,7 +290,7 @@
              class)))))
     class))
 
-(fn copy-text ((text string))
+(fn (copy-text integer) ((text string))
   (let ((pasteboard (message object (objc-class "NSPasteboard")
                              "generalPasteboard")))
     (message sb-alien:long pasteboard "clearContents")
@@ -298,7 +298,7 @@
              object (ns-string text)
              object (ns-string "public.utf8-plain-text"))))
 
-(fn cocoa-key-input ((code integer) (flags integer) (characters string)
+(fn (cocoa-key-input (or null event)) ((code integer) (flags integer) (characters string)
                      &optional text-p (key-name characters) activation-p)
   (let* ((command (logtest flags #x100000))
          (shift (logtest flags #x20000))
@@ -339,14 +339,14 @@
                 (every (lambda (char) (>= (char-code char) 32)) characters))
            (make-event :kind :text :value characters)))))
 
-(fn cursor-selector ((kind symbol))
+(fn (cursor-selector string) ((kind symbol))
   (case kind (:not-allowed "operationNotAllowedCursor")
         (:pointer "pointingHandCursor") (:text "IBeamCursor")
         (:resize-horizontal "resizeLeftRightCursor")
         (:resize-vertical "resizeUpDownCursor")
         (otherwise "arrowCursor")))
 
-(fn update-cursor ((x real) (y real))
+(fn (update-cursor null) ((x real) (y real))
   (when *app*
     (setf (cocoa-app-pointer-x *app*) x (cocoa-app-pointer-y *app*) y))
   (when (and *app* (cocoa-app-context *app*)
@@ -359,12 +359,12 @@
                        (cocoa-app-context *app*) x y)))))
       (message sb-alien:void cursor "set"))))
 
-(fn input-for-window-p ((type integer) window target)
+(fn (input-for-window-p boolean) ((type integer) window target)
   (and (member type '(1 2 3 4 5 6 7 8 9 10 22))
        (not (null-object-p target))
        (same-object-p window target)))
 
-(fn cocoa-pointer-buttons ((type integer) (previous integer))
+(fn (cocoa-pointer-buttons integer) ((type integer) (previous integer))
   ;; Dragged/down events retain their historical state even if the current
   ;; physical button was released before AppKit's queue was drained.
   (case type
@@ -372,14 +372,14 @@
     ((3 7) (logior previous 2)) (4 (logand previous (lognot 2)))
     (5 0) (otherwise previous)))
 
-(fn cocoa-focus-event ((focused boolean))
+(fn (cocoa-focus-event (or null event)) ((focused boolean))
   (let ((lost (and (cocoa-app-focused-p *app*) (not focused))))
     (setf (cocoa-app-focused-p *app*) focused)
     (when lost
       (setf (cocoa-app-buttons *app*) 0)
       (make-event :kind :cancel :buttons 0))))
 
-(fn cocoa-event (event view)
+(fn (cocoa-event (or null event)) (event view)
   (let ((type (message sb-alien:unsigned-long event "type"))
         (window (message object view "window")))
     ;; NSApplication's queue also contains menu, application, and other-window
@@ -429,7 +429,7 @@
                              type (cocoa-app-buttons *app*)))
                       :x x :y y)))))
 
-(fn poll-cocoa-events (application view)
+(fn (poll-cocoa-events list) (application view)
   (let ((events nil))
     (loop :for event :=
           (message object application
@@ -463,7 +463,7 @@
       (when cancel (push cancel events)))
     (nreverse events)))
 
-(fn install-pointer-tracking (view frame)
+(fn (install-pointer-tracking null) (view frame)
   (let ((tracking
          (require-object
           (message object
@@ -501,13 +501,13 @@
                 (stream-error () nil)))
             *stacktrace-placeholder*)))))
 
-(fn replace-stacktrace-method (method implementation)
+(fn (replace-stacktrace-method sb-sys:system-area-pointer) (method implementation)
   (sb-alien:alien-funcall
    (sb-alien:extern-alien "method_setImplementation"
      (function object object object))
    method implementation))
 
-(fn call-with-stacktrace-guard ((function function))
+(fn (call-with-stacktrace-guard t) ((function function))
   ;; Prevent the AppKit startup crash with menu-bar autohide and empty traces.
   ;; Ported from cc/tools/macos/cocoa-stacktrace.lisp. Keep real traces intact.
   (assert (null *stacktrace-method*))
@@ -545,7 +545,7 @@
              (message sb-alien:void placeholder "release")))
       (message sb-alien:void pool "drain"))))
 
-(fn pixel-format ()
+(fn (pixel-format sb-sys:system-area-pointer) ()
   ;; Accelerated, double-buffered RGBA with a legacy compatibility profile.
   (cffi:with-foreign-object (attrs :uint 7)
     (loop :for value :in '(73 5 8 24 11 8 0) :for i :from 0
@@ -554,7 +554,7 @@
              (message object (objc-class "NSOpenGLPixelFormat") "alloc")
              "initWithAttributes:" object attrs)))
 
-(fn paint-gl-view (view gl gpu context)
+(fn (paint-gl-view null) (view gl gpu context)
   (let* ((bounds (message rect view "bounds"))
          (points (sb-alien:slot bounds 'size))
          (backing (message rect view "convertRectToBacking:" rect bounds))
@@ -570,7 +570,7 @@
       (paint-frame (lui.gl:gpu-renderer gpu) context)
       (message sb-alien:void gl "flushBuffer"))))
 
-(fn wait-cocoa (application (context context) events)
+(fn (wait-cocoa null) (application (context context) events)
   (let ((delay (lui.frame::frame-wait context events)))
     (when (plusp delay)
       ;; Peek so the ordinary event loop still translates and dispatches input.
@@ -584,7 +584,7 @@
                objc-bool 0)))
   (lui.frame::limit-frame-rate context))
 
-(fn run-cocoa-window ((draw function) &key title width height (interactive t))
+(fn (run-cocoa-window context) ((draw function) &key title width height (interactive t))
   (with-cocoa-float-mode
     (let* ((pool (message object
                           (message object (objc-class "NSAutoreleasePool")
@@ -729,7 +729,7 @@
         (when font (close-font font))
         (message sb-alien:void pool "drain")))))
 
-(fn run-cocoa ((draw function) &rest options)
+(fn (run-cocoa context) ((draw function) &rest options)
   "Run DRAW in an AppKit window on the SBCL main thread. OPTIONS are the LUI:RUN window keywords."
   (unless (member :darwin *features*)
     (error "The Cocoa backend requires macOS and SBCL."))

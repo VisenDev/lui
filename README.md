@@ -113,7 +113,7 @@ can also replace standard controls such as `:button`. Overrides of a standard
 control receive its positional arguments plus the options list (possibly NIL).
 Compose another control or explicitly select a parent toolkit to delegate.
 A toolkit can also provide its own graphical painter and intrinsic sizing for
-new widget kinds. This toolkit draws a badge with a fixed intrinsic size.
+new widget kinds. This toolkit draws a badge with a minimum intrinsic size.
 
 ```lisp
 (lui:register-toolkit :ink
@@ -122,9 +122,10 @@ new widget kinds. This toolkit draws a badge with a fixed intrinsic size.
     (lambda (id text &rest options)
       (apply #'lui.widgets:declare-widget :badge (lui:current-toolkit)
              id text options))))
-  :measure (lambda (renderer widget width)
-             (declare (ignore renderer widget width))
-             (values 96 28))
+  :geometry (lambda (widget)
+              (declare (ignore widget))
+              (lui.draw:make-geometry :left 8 :right 8 :top 6 :bottom 6
+                                      :min-width 96 :min-height 28))
   :paint (lambda (renderer node)
            (let ((box (lui.layout:element-box node)))
              (lui.draw:shape renderer box 4 "#183b35" 1)
@@ -140,16 +141,35 @@ new widget kinds. This toolkit draws a badge with a fixed intrinsic size.
 ```
 
 `:paint` receives the shared graphical renderer and element on desktop and web.
-`:measure` receives the renderer, widget, and available width (possibly NIL),
-and returns intrinsic width and height as two values. These callbacks and the
+`:geometry` receives a widget and returns a `lui.draw:geometry`: text insets,
+minimum size, centering, and optional pressed displacement. Measurement, built-in
+painting, caret placement, and text selection share this geometry. Custom painters
+can use `lui.draw:text-box` to obtain the same text area. These callbacks and the
 `:native-labels` policy inherit from the parent toolkit. Overriding painting or
-measurement selects canvas labels by default. Set `:native-labels t` to opt into
-the browser’s selectable text labels. A `:text-insets` callback can return the
-horizontal and vertical text offsets used for selection. The exported `lui.draw:shape`,
+geometry selects canvas labels by default; set `:native-labels t` when the painter
+supports the browser's native selectable labels. The exported `lui.draw:shape`,
 `lui.draw:outline`, and `lui.draw:paint-text` primitives use the current backend.
 A widget's `:painter` callback takes precedence over the toolkit painter.
 `:terminal-label` takes a widget and returns its text. Terminal panel borders
 follow `:terminal-border`; button delimiters follow the widget’s radius.
+
+Color themes are independent of toolkit geometry and painting. Toolkit defaults
+contain a `:palette` plist; `lui:with-palette` overrides selected roles for controls
+created in its scope, including nested scopes and mixed toolkits in one frame:
+
+```lisp
+(lui:with-toolkit (:motif)
+  (lui:with-palette ('(:background "#202830" :foreground "#eeeeee"
+                       :accent "#66bbee" :bevel-light "#708090"
+                       :bevel-dark "#101820"))
+    (lui:button :save "Save")))
+```
+
+`lui:widget-color` reads a resolved role from a widget. Besides foreground,
+background and accent, roles cover disabled text, selection, on-accent text,
+borders, light/shadow, tracks, disabled surfaces, bevel edges, and cell colors.
+Explicit widget color options take precedence. Each widget captures its palette,
+so later drawing does not depend on a dynamic theme binding.
 
 There is one [demo gallery](examples/demo.lisp), with Controls, Editing, Layout,
 Scroll, Styles, and 7GUIs pages. Its Glass/Motif/Garnet selector changes the toolkit for

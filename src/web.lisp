@@ -9,7 +9,7 @@
   overlay-order overlay-geometry overlay-cache
   animation-frame deadline-timer events pending-p (alive-p t))
 
-(fn page-scrollport (host)
+(fn (page-scrollport t) (host)
   (do ((element host (jscl/ffi:oget element "parentElement")))
       ((eq element #j:null) #j:window)
     (let ((overflow (jscl/ffi:oget
@@ -17,12 +17,12 @@
       (when (or (equal overflow #j"auto") (equal overflow #j"scroll"))
         (return element)))))
 
-(fn page-viewport-height (port)
+(fn (page-viewport-height real) (port)
   (if (eq port #j:window)
       #j:window:innerHeight
       (jscl/ffi:oget port "clientHeight")))
 
-(fn page-offset (stage port)
+(fn (page-offset real) (stage port)
   (let ((top (jscl/ffi:oget
               ((jscl/ffi:oget stage "getBoundingClientRect")) "top")))
     (if (eq port #j:window)
@@ -32,28 +32,26 @@
               (jscl/ffi:oget port "clientTop"))
            top))))
 
-(fn page-scroll-by (port delta)
+(fn (page-scroll-by t) (port delta)
   (let ((options (jscl/ffi:new #j:Object)))
     (setf (jscl/ffi:oget options "top") delta
           (jscl/ffi:oget options "behavior") #j"instant")
     ((jscl/ffi:oget port "scrollBy") options)))
 
-(fn rounded-path (g (box box) radius &optional (inset 0))
+(fn (rounded-path t) (g (box box) radius &optional (inset 0))
   ((jscl/ffi:oget g "beginPath"))
   ((jscl/ffi:oget g "roundRect")
    (+ inset (box-x box)) (+ inset (box-y box))
    (max 0 (- (box-width box) (* 2 inset)))
    (max 0 (- (box-height box) (* 2 inset))) (max 0 (- radius inset))))
 
-(fn canvas-renderer (canvas g)
+(fn (canvas-renderer renderer) (canvas g)
   (let* ((tile (#j:document:createElement #j"canvas"))
          (ink ((jscl/ffi:oget tile "getContext") #j"2d"))
          (sample (#j:document:createElement #j"canvas"))
          (blur ((jscl/ffi:oget sample "getContext") #j"2d")))
     (setf (jscl/ffi:oget tile "width") 2 (jscl/ffi:oget tile "height") 2)
-    ((jscl/ffi:oget ink "fillRect") 0 0 1 1)
-    ((jscl/ffi:oget ink "fillRect") 1 1 1 1)
-    (let ((dots ((jscl/ffi:oget g "createPattern") tile #j"repeat")))
+    (let ((patterns (make-hash-table :test 'equal)))
       (make-renderer
        :font (lui.font:open-font)
        :surface
@@ -103,9 +101,17 @@
          (rounded-path g box 0)
          ((jscl/ffi:oget g "clip")))
        :stipple
-       (lambda (box border)
-         (setf (jscl/ffi:oget g "globalAlpha") 1
-               (jscl/ffi:oget g "fillStyle") dots)
+       (lambda (box border color)
+         (let ((pattern (gethash color patterns)))
+           (unless pattern
+             ((jscl/ffi:oget ink "clearRect") 0 0 2 2)
+             (setf (jscl/ffi:oget ink "fillStyle") (jscl/ffi:jsstring color))
+             ((jscl/ffi:oget ink "fillRect") 0 0 1 1)
+             ((jscl/ffi:oget ink "fillRect") 1 1 1 1)
+             (setf pattern ((jscl/ffi:oget g "createPattern") tile #j"repeat")
+                   (gethash color patterns) pattern))
+           (setf (jscl/ffi:oget g "globalAlpha") 1
+                 (jscl/ffi:oget g "fillStyle") pattern))
          (rounded-path g box 0)
          (when (and border (> (box-width box) (* 2 border))
                     (> (box-height box) (* 2 border)))
@@ -144,7 +150,7 @@
                ((jscl/ffi:oget g "drawImage") sample 0 0 sw sh x y w h)
                ((jscl/ffi:oget g "restore"))))))))))
 
-(fn queue-event ((app web-app) (event event))
+(fn (queue-event t) ((app web-app) (event event))
   (when (web-app-alive-p app)
     (if (and (eq (event-kind event) :move)
              (web-app-events app)
@@ -153,12 +159,12 @@
         (push event (web-app-events app)))
     (refresh app)))
 
-(fn cancel-deadline ((app web-app))
+(fn (cancel-deadline null) ((app web-app))
   (when (web-app-deadline-timer app)
     (#j:clearTimeout (web-app-deadline-timer app))
     (setf (web-app-deadline-timer app) nil)))
 
-(fn schedule-deadline ((app web-app))
+(fn (schedule-deadline t) ((app web-app))
   (unless (web-app-pending-p app)
     (cancel-deadline app)
     (let ((delay (lui.frame::frame-wait (web-app-context app))))
@@ -230,10 +236,10 @@
     (setf (web-app-overlay-geometry app) (nreverse seen))
     entries))
 
-(fn css-pixels ((n real))
+(fn (css-pixels t) ((n real))
   ((jscl/ffi:oget (#j:String n) "concat") #j"px"))
 
-(fn position-dom-widget ((record dom-widget) (box box) (clip box))
+(fn (position-dom-widget list) ((record dom-widget) (box box) (clip box))
   (let* ((x (box-x box)) (y (box-y box)) (w (box-width box)) (h (box-height box))
          (left (- (box-x clip) x)) (top (- (box-y clip) y))
          (right (- w left (box-width clip))) (bottom (- h top (box-height clip)))
@@ -253,7 +259,7 @@
                        top #j"px " right #j"px " bottom #j"px " left #j"px)"))))
           (setf (dom-widget-geometry record) (list x y w h top right bottom left)))))))
 
-(fn make-semantic-button ((app web-app) (node element) (kind symbol))
+(fn (make-semantic-button t) ((app web-app) (node element) (kind symbol))
   ;; The canvas keeps pointer capture and toolkit keyboard navigation. Native
   ;; button activation also lets assistive technology invoke the same action.
   (let ((button (#j:document:createElement #j"button")) (id (element-id node)))
@@ -268,7 +274,7 @@
        (jscl/ffi:jsstring (string-downcase (symbol-name kind)))))
     button))
 
-(fn same-overlay-order-p ((records list) (entries list))
+(fn (same-overlay-order-p boolean) ((records list) (entries list))
   ;; Compare both lists in one pass; JSCL's sequence EVERY indexes into lists.
   (do ((r records (cdr r)) (e entries (cdr e)))
       ((or (null r) (null e)
@@ -333,13 +339,16 @@
              (appearance (and label (list interactive (lui.widgets:widget-font-size widget)
                                           (lui.widgets:widget-font-family widget)
                                           (lui.widgets:widget-font-weight widget)
-                                          (lui.widgets:widget-foreground widget)))))
+                                          (lui.widgets:widget-foreground widget)
+                                          (geometry-center-x (widget-geometry widget))))))
         (unless (dom-widget-geometry record)
           (setf (jscl/ffi:oget element "style" "cssText")
                 (if label
                     #j"position:absolute;display:block;margin:0;padding:0;border:0;white-space:pre-wrap;overflow:hidden;user-select:text;-webkit-user-select:text;cursor:text"
                     #j"position:absolute;display:block;margin:0;padding:0;border:0;opacity:0;pointer-events:none;user-select:none")))
-        (position-dom-widget record (element-box node) (element-clip node))
+        (position-dom-widget record
+                             (if label (lui.draw::selection-area (web-app-renderer app) node)
+                                 (element-box node)) (element-clip node))
         (unless (equal appearance (dom-widget-style record))
           (let ((font (lui.draw::widget-font (web-app-renderer app) widget))
                 (style (jscl/ffi:oget element "style")))
@@ -347,6 +356,8 @@
                   (jscl/ffi:oget style "font") (jscl/ffi:jsstring (lui.font:font-css font))
                   (jscl/ffi:oget style "lineHeight") (css-pixels (lui.font:line-height font))
                   (jscl/ffi:oget style "color") (jscl/ffi:jsstring (lui.widgets:widget-foreground widget))
+                  (jscl/ffi:oget style "textAlign")
+                  (if (and label (geometry-center-x (widget-geometry widget))) #j"center" #j"left")
                   (dom-widget-style record) appearance)))
         (if label (setf (gethash node external) t)
             (let ((state (list (not (null (lui.widgets:widget-value widget)))
@@ -364,7 +375,7 @@
           (setf (dom-widget-text record) text))))
     external))
 
-(fn queue-page-scroll ((app web-app) (delta real) &optional ((velocity real) 0))
+(fn (queue-page-scroll t) ((app web-app) (delta real) &optional ((velocity real) 0))
   (incf (web-app-scroll-delta app) delta)
   (setf (web-app-velocity app) (max -4 (min 4 velocity))
         (web-app-scroll-time app) (#j:performance:now))
@@ -382,7 +393,7 @@
               (web-app-velocity app) (if (< (* (abs speed) decay) 0.02) 0 (* speed decay)))))
     delta))
 
-(fn draw-frame ((app web-app))
+(fn (draw-frame t) ((app web-app))
   (let* ((canvas (web-app-canvas app)) (g (web-app-graphics app))
          (context (web-app-context app)) (*unit* 8)
          (width (jscl/ffi:oget canvas "clientWidth"))
@@ -435,7 +446,7 @@
     (lui.web.input:update-accessibility canvas context)
     (schedule-deadline app)))
 
-(fn refresh ((app web-app))
+(fn (refresh t) ((app web-app))
   "Request one redraw of a mounted application, coalescing pending requests."
   (when (and (web-app-alive-p app) (not (web-app-pending-p app)))
     (cancel-deadline app)
@@ -463,7 +474,7 @@
        (jscl/ffi:oget (#j:window:matchMedia #j"(pointer: coarse)") "matches"))
       :page :viewport))
 
-(fn mount (host (callback function) &key (min-fps lui.frame::*min-fps*)
+(fn (mount web-app) (host (callback function) &key (min-fps lui.frame::*min-fps*)
            (max-fps lui.frame::*max-fps*)
            ((scroll-mode (member :page :viewport)) (default-scroll-mode)))
   "Mount a Canvas 2D app in HOST. SCROLL-MODE is :PAGE for content expansion or
@@ -518,7 +529,7 @@
     (refresh app)
     app))
 
-(fn unmount ((app web-app))
+(fn (unmount t) ((app web-app))
   "Cancel scheduled work and release the mounted canvas and input listeners."
   (when (web-app-alive-p app)
     (setf (web-app-alive-p app) nil)
@@ -536,10 +547,10 @@
           (web-app-overlay-geometry app) nil)
     ((jscl/ffi:oget (web-app-stage app) "remove"))))
 
-(fn css-size (value fallback)
+(fn (css-size t) (value fallback)
   (if value ((jscl/ffi:oget (#j:String value) "concat") #j"px") fallback))
 
-(fn run-web ((draw function) &key title width height (interactive t))
+(fn (run-web web-app) ((draw function) &key title width height (interactive t))
   (declare (ignore interactive))
   (setf (jscl/ffi:oget #j:document "title") (jscl/ffi:jsstring title))
   (let* ((scroll-mode (if height :viewport (default-scroll-mode)))

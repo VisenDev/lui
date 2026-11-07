@@ -1,7 +1,7 @@
 (defpackage #:lui.widgets
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame)
   (:export #:widget #:widget-p #:widget-kind #:widget-style #:widget-text
-           #:widget-foreground #:widget-background #:widget-radius
+           #:widget-color #:widget-palette #:widget-foreground #:widget-background #:widget-radius
            #:widget-frost #:widget-terminal-border
            #:widget-terminal-text #:declare-panel #:declare-widget
            #:value-widget
@@ -29,8 +29,18 @@
               do (format stream "~2,'0X" (round (+ (* 2 fg) bg) 3))))
       foreground))
 
+(defparameter *base-palette*
+  '(:foreground "#ffffff" :background "#303040" :accent "#258bff"
+    :disabled "#777777" :selection "#e7effa" :border "#939ba5" :outline "#000000"
+    :on-accent "#ffffff" :light "#ffffff" :shadow "#000000" :track "#777777"
+    :disabled-accent "#999999" :disabled-surface "#a0a0a0"
+    :bevel-light "#ffffff" :bevel-dark "#505050"
+    :disabled-bevel-light "#d0d0d0" :disabled-bevel-dark "#989898"
+    :cell-background "#ffffff" :cell-foreground "#202430"))
+
 (defstruct widget
   "Backend-neutral control content, values, appearance, and extension callbacks."
+  (palette (copy-list *base-palette*) :type list)
   (kind :label :type symbol)
   (style :glass :type symbol)
   icon
@@ -57,6 +67,14 @@
   (background "#303040" :type string)
   (radius 12 :type real)
   (frost 12 :type real))
+
+(fn (widget-color (or null string)) ((widget widget) (role symbol))
+  "Resolve ROLE using WIDGET's color overrides and captured semantic palette."
+  (case role
+    (:foreground (widget-foreground widget))
+    (:background (widget-background widget))
+    (:accent (widget-accent widget))
+    (otherwise (getf (widget-palette widget) role))))
 
 (fn (widget-terminal-text string) ((widget widget))
   "Return WIDGET's portable text representation, computing it lazily as needed.
@@ -89,11 +107,11 @@ An optional terminal-label callback overrides the standard kind-based label."
                  (format nil (if (zerop (widget-radius widget))
                                  "[ ~A ]" "( ~A )") text))))))))
 
-(fn tab-arrow-p ((event event))
+(fn (tab-arrow-p (or null list)) ((event event))
   (and (eq (event-kind event) :key)
        (member (event-key event) '(:left :right :home :end))))
 
-(fn navigate-tabs ()
+(fn (navigate-tabs null) ()
   (when (and (not (context-tabs-handled-p *context*))
              (context-previous-root *context*)
              (let ((pending nil))
@@ -135,7 +153,7 @@ An optional terminal-label callback overrides the standard kind-based label."
                      (remove-if (lambda (event) (member event arrows))
                                 events))))))))))
 
-(fn declare-widget
+(fn (declare-widget boolean)
     ((kind symbol) (style symbol) id (text string) &key ((width sizing) (fit))
      ((height sizing) (fit)) ((padding real) 0)
      ((floating-p boolean) nil) ((offset-x real) 0) ((offset-y real) 0)
@@ -145,7 +163,7 @@ An optional terminal-label callback overrides the standard kind-based label."
      ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
      ((opacity real) 0.85) ((accent string) "#258bff") (disabled-p nil)
      painter terminal-label ((terminal-border (or null (string 6))) nil)
-     accessible-name icon center-text-p)
+     accessible-name icon center-text-p (palette *base-palette*))
   "Declare a low-level widget in the current frame using STYLE and stable ID.
 Layout, typography, colors, optical effects, and backend extension callbacks
 are supplied as keywords. Return activation for enabled actionable kinds.
@@ -155,7 +173,7 @@ Most applications should use the public LUI controls with LUI:OPT instead."
                      (error "A backend text measurer is required.")))
         (widget
           (make-widget
-           :kind kind :style style :text text :foreground foreground
+           :kind kind :style style :palette (copy-list palette) :text text :foreground foreground
            :background background :radius radius :frost frost :value value
            :minimum minimum :maximum maximum :step step :font-size font-size
            :font-family font-family :font-weight font-weight
@@ -183,7 +201,7 @@ Most applications should use the public LUI controls with LUI:OPT instead."
   (kill "" :type string)
   (last-command nil :type symbol))
 
-(fn focused-widget ((context context))
+(fn (focused-widget (or null widget)) ((context context))
   (let ((found nil))
     (when (context-root context)
       (walk-elements
@@ -237,7 +255,7 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
                          (t :default))))))))
     cursor))
 
-(fn readline-key ((key string) &key control alt shift)
+(fn (readline-key symbol) ((key string) &key control alt shift)
   "Translate modified keys to shared editor commands; NIL leaves native handling."
   (let* ((name (string-downcase key))
          (arrow (cond ((member name '("left" "arrowleft") :test #'string=)
@@ -295,7 +313,7 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
             :do (incf index direction)))
     (if (minusp direction) (1+ index) index)))
 
-(fn edit-text ((text string) (state edit-state) (events list))
+(fn (edit-text string) ((text string) (state edit-state) (events list))
   "Apply ordered editor EVENTS to TEXT using mutable caret/selection STATE.
 Return the new text; preserve the editor's kill/yank state between frames.
 Events include semantic Readline keys, text insertion, and replacement changes."
@@ -405,7 +423,7 @@ Events include semantic Readline keys, text insertion, and replacement changes."
               (and (eq (event-kind event) :key) (event-key event))))))
   text)
 
-(fn value-widget
+(fn (value-widget (values t boolean))
     ((kind symbol) (style symbol) id value (text string) (options list))
   "Declare a value control, apply its current input, and return the updated value.
 KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
@@ -493,7 +511,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
                     (* (- (box-height track) height)
                        (/ offset (max 1 (- extent viewport))))))))
 
-(fn scrollbar-input (id owner)
+(fn (scrollbar-input t) (id owner)
   (let* ((events (events-for id))
          (state (when events (gethash id (context-state *context*))))
          (old (when state (scrollbar-state-node state))))
@@ -537,7 +555,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
           (setf offset (max 0 (min limit offset))))
         (when handled (scroll-to owner (scroll-position owner) offset))))))
 
-(fn decorate-scrollbar ((owner element) id)
+(fn (decorate-scrollbar (or null element)) ((owner element) id)
   (when (plusp (element-scroll-limit-y owner))
     (let* ((bounds (element-box owner)) (padding (element-padding owner))
            (width (scroll-gutter owner))
@@ -554,6 +572,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
                   :content
                   (make-widget
                    :kind :scrollbar :style (widget-style widget)
+                   :palette (widget-palette widget)
                    :text "Scroll" :opacity 1 :radius 0 :frost 0
                    :background (widget-background widget)
                    :foreground (widget-foreground widget)
@@ -573,7 +592,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
     (do ((tail options (cddr tail))) ((null tail))
       (let ((key (car tail)) (value (cadr tail)))
         (case key
-          ((:foreground :background :radius :frost :opacity :accent
+          ((:palette :foreground :background :radius :frost :opacity :accent
             :font-size :font-family :font-weight :painter :terminal-label :terminal-border
             :accessible-name)
            (push key appearance)

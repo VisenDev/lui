@@ -282,10 +282,9 @@
               (lui.draw:shape target (element-box node) 3 "#123456" 1)
               (lui.draw:outline target (element-box node) 3 "#654321" 1 1)
               (lui.draw:paint-text target "Badge" 4 16 "#ffffff"))
-     :measure (lambda (target widget width)
-                (assert (eq renderer target))
-                (push (list (widget-kind widget) width) measured)
-                (values 73 29))
+     :geometry (lambda (widget)
+                 (push (widget-kind widget) measured)
+                 (lui.draw:make-geometry :min-width 73 :min-height 29))
      :controls
      (list (cons :badge
                  (lambda (id text &rest options)
@@ -303,7 +302,7 @@
       (assert (= 29 (box-height (element-box node))))
       (assert (equal '(73 29)
                      (multiple-value-list (measure-widget renderer widget 120))))
-      (assert (equal '(:badge 120) (first measured)))
+      (assert (eq :badge (first measured)))
       (paint-frame renderer context)
       (assert (member :badge painted))
       (assert (member "#123456" colors :test #'equal))
@@ -779,6 +778,40 @@
                        (- (/ (line-height font) 2)))
                     (+ (box-y box) (/ (box-height box) 2)))))))
 
+(defun test-toolkit-geometry (font)
+  ;; Asymmetric custom geometry must determine both wrapping and hit positions.
+  (lui:register-toolkit
+   :test-geometry :parent :glass
+   :geometry (lambda (widget)
+               (declare (ignore widget))
+               (make-geometry :left 7 :right 19 :top 11 :bottom 5)))
+  (let* ((positions nil)
+         (renderer (make-renderer :font font
+                                 :clip (lambda (box) (declare (ignore box)))
+                                 :polygons (lambda (&rest args) (declare (ignore args)))
+                                 :text (lambda (font text x y color)
+                                         (declare (ignore font color))
+                                         (push (list text x y) positions))))
+         (widget (make-widget :kind :label :style :test-geometry :text "alpha beta"))
+         (width (+ 26 (text-width font "alpha")))
+         (box (make-box :x 20 :y 30 :width width :height 100))
+         (node (make-element :content widget :box box :clip box)))
+    (multiple-value-bind (w h) (measure-widget renderer widget width)
+      (assert (near w width))
+      (assert (near h (+ 16 (* 2 (line-height font))))))
+    (let ((*context* (make-context)))
+      (lui.draw::paint-widget renderer node))
+    (assert (= 2 (length positions)))
+    (assert (every (lambda (position) (= 27 (second position))) positions))
+    (assert (= 6 (lui.draw::selection-index renderer node 27
+                                           (+ 41 (line-height font) 1)))))
+  ;; Garnet fields retain their narrower horizontal inset in shared measurement.
+  (let ((widget (make-widget :kind :text-field :style :garnet :value "alpha beta")))
+    (multiple-value-bind (w h)
+        (measure-widget (make-renderer :font font) widget (+ 12 (text-width font "alpha")))
+      (declare (ignore w))
+      (assert (near h (+ 12 (* 2 (line-height font))))))))
+
 (defun run-tests ()
   (test-shared-wrapping)
   (paint-text (make-renderer
@@ -793,6 +826,7 @@
            (test-outlines font)
            (test-font-metrics font)
            (test-measurement font)
+           (test-toolkit-geometry font)
            (test-edit-painting font)
            (test-panel-painting font)
            (test-custom-toolkit font)

@@ -59,23 +59,23 @@ Return bytes written, or -1 when the connection is not writable or has failed."
 (defvar *interfaces*)
 (defvar *interface-storage*)
 
-(fn allocate-metadata (type &rest options)
+(fn (allocate-metadata cffi:foreign-pointer) (type &rest options)
   (let ((pointer (apply #'cffi:foreign-alloc type options)))
     (push pointer *interface-storage*)
     pointer))
 
-(fn metadata-string ((text string))
+(fn (metadata-string cffi:foreign-pointer) ((text string))
   (let ((pointer (cffi:foreign-string-alloc text)))
     (push pointer *interface-storage*)
     pointer))
 
-(fn interface ((name string))
+(fn (interface cffi:foreign-pointer) ((name string))
   "Return connection-scoped extension metadata or a core interface pointer by NAME."
   (or (gethash name *interfaces*)
       (cffi:foreign-symbol-pointer
        (concatenate 'string name "_interface"))))
 
-(fn make-messages ((descriptions list))
+(fn (make-messages cffi:foreign-pointer) ((descriptions list))
   (let ((messages
           (allocate-metadata '(:struct wl-message)
                              :count (max 1 (length descriptions)))))
@@ -101,7 +101,7 @@ Return bytes written, or -1 when the connection is not writable or has failed."
              type-array)))
     messages))
 
-(fn define-interfaces ((descriptions list))
+(fn (define-interfaces null) ((descriptions list))
   ;; Metadata belongs to the active connection, never to a saved Lisp image.
   (dolist (description descriptions)
     (setf (gethash (first description) *interfaces*)
@@ -125,7 +125,7 @@ Return bytes written, or -1 when the connection is not writable or has failed."
          (cffi:foreign-slot-value pointer '(:struct wl-interface) 'events)
          (make-messages events))))))
 
-(fn request (proxy (opcode integer) result-interface (args list)
+(fn (request cffi:foreign-pointer) (proxy (opcode integer) result-interface (args list)
              &optional version (destroy-p nil))
   "Marshal a Wayland request OPCODE to PROXY with typed argument conses ARGS.
 RESULT-INTERFACE names a created proxy type or is NIL. VERSION defaults to the
@@ -150,7 +150,7 @@ proxy version; DESTROY-P tells libwayland to destroy the sending proxy."
                     (if destroy-p 1 0) arguments))
       (dolist (string strings) (cffi:foreign-string-free string)))))
 
-(fn listen-proxy (proxy (callbacks list))
+(fn (listen-proxy cffi:foreign-pointer) (proxy (callbacks list))
   "Return listener storage; caller frees it after destroying the proxy."
   (let ((listeners (cffi:foreign-alloc :pointer :count (length callbacks))))
     (loop :for callback :in callbacks :for i :from 0
@@ -160,7 +160,7 @@ proxy version; DESTROY-P tells libwayland to destroy the sending proxy."
       (error "Cannot install Wayland listener."))
     listeners))
 
-(fn pump-display (display &optional (timeout 16))
+(fn (pump-display null) (display &optional (timeout 16))
   "Flush requests, wait briefly for readable input, and dispatch pending callbacks.
 Signal an error when the display disconnects or its read/dispatch operation fails."
   (loop :while
@@ -273,7 +273,7 @@ Signal an error when the display disconnects or its read/dispatch operation fail
     (("destroy" "" ()) ("set_shape" "uu" (nil nil)))
     ())))
 
-(fn call-with-interfaces ((function function))
+(fn (call-with-interfaces t) ((function function))
   "Call FUNCTION with fresh dynamically scoped Wayland extension metadata.
 Free all interface allocations on return or error; proxies must not outlive it."
   (let ((*interfaces* (make-hash-table :test 'equal))

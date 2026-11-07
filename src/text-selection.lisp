@@ -6,7 +6,7 @@
   (pending-copy-p nil :type boolean)
   (dragging-p nil :type boolean))
 
-(fn selectable-nodes ((context context) &optional keys-p)
+(fn (selectable-nodes (values list (or null hash-table))) ((context context) &optional keys-p)
   (let ((nodes nil) (keys (when keys-p (make-hash-table :test 'eq))))
     (labels ((visit (node anchor path)
                (when (element-id node)
@@ -28,7 +28,7 @@
       (when (context-root context) (visit (context-root context) nil nil)))
     (values (nreverse nodes) keys)))
 
-(fn selection-target ((context context) (x real) (y real))
+(fn (selection-target (or null element)) ((context context) (x real) (y real))
   (let ((target nil))
     (walk-elements
      (context-root context)
@@ -38,27 +38,35 @@
          (setf target node))))
     target))
 
-(fn selection-text ((node element))
+(fn (selection-text string) ((node element))
   (let ((widget (element-content node)))
     (if (eq (widget-kind widget) :text-field)
         (widget-value widget) (widget-text widget))))
 
-(fn selection-insets ((node element))
-  (let* ((widget (element-content node))
-         (insets (lui:toolkit-text-insets (widget-style widget))))
-    (if insets (funcall insets widget) (values 0 0))))
+(fn (selection-area box) ((renderer renderer) (node element))
+  (let* ((widget (element-content node)) (area (text-box widget (element-box node)))
+         (font (widget-font renderer widget)) (g (widget-geometry widget)))
+    (when (geometry-center-y g)
+      (incf (box-y area) (max 0 (/ (- (box-height area)
+                                    (* (length (wrap-text font (selection-text node)
+                                                          (box-width area)))
+                                       (line-height font))) 2))))
+    area))
 
-(fn selection-index ((renderer renderer) (node element) (x real) (y real))
-  (multiple-value-bind (inset top-inset) (selection-insets node)
+(fn (selection-left real) ((font font) (node element) (area box) (line string))
+  (+ (box-x area) (if (geometry-center-x (widget-geometry (element-content node)))
+                     (max 0 (/ (- (box-width area) (text-width font line)) 2)) 0)))
+
+(fn (selection-index integer) ((renderer renderer) (node element) (x real) (y real))
+  (let ((area (selection-area renderer node)))
     (let* ((font (widget-font renderer (element-content node)))
-           (box (element-box node))
            (text (selection-text node)) (start 0)
-           (top (+ (box-y box) top-inset))
+           (top (box-y area))
            (lines (wrap-text font text
-                             (max 0 (- (box-width box) (* 2 inset))))))
+                             (box-width area))))
       (dolist (line lines (length text))
         (when (< y (+ top (line-height font)))
-          (let ((at (- x (box-x box) inset)) (left 0)
+          (let ((at (- x (selection-left font node area line))) (left 0)
                 #-jscl (previous nil)
                 #-jscl (scale (/ (font-size font)
                           (zpb-ttf:units/em (font-loader font)))))
@@ -83,7 +91,7 @@
         (incf start (1+ (length line)))
         (incf top (line-height font))))))
 
-(fn selection-range ((selection text-selection) (index integer)
+(fn (selection-range (values (or null integer) &optional (or null integer))) ((selection text-selection) (index integer)
                     (length integer))
   (let ((a (text-selection-anchor selection))
         (b (text-selection-focus selection)))
@@ -95,7 +103,7 @@
         (values (min length (if (= index (car a)) (cdr a) 0))
                 (min length (if (= index (car b)) (cdr b) length)))))))
 
-(fn copy-selection ((context context) (nodes list)
+(fn (copy-selection t) ((context context) (nodes list)
                     (selection text-selection))
   (let ((text
           (if (text-selection-anchor selection)
@@ -123,7 +131,7 @@
     (when (and text (plusp (length text)) (context-copy context))
       (funcall (context-copy context) text))))
 
-(fn selection-input ((renderer renderer) (context context) (events list))
+(fn (selection-input null) ((renderer renderer) (context context) (events list))
   (unless (and events
                (or (and (context-selection context)
                         (text-selection-dragging-p
@@ -221,7 +229,7 @@
            (when (eq kind :release)
              (setf (text-selection-dragging-p selection) nil))))))))
 
-(fn paint-selection ((renderer renderer) (context context))
+(fn (paint-selection null) ((renderer renderer) (context context))
   (let ((selection (context-selection context)))
     (when (and selection (text-selection-anchor selection))
       (multiple-value-bind (nodes keys) (selectable-nodes context t)
@@ -244,18 +252,15 @@
               :do (multiple-value-bind (start end)
                       (selection-range selection i (length text))
                     (when (and start (< start end))
-                      (multiple-value-bind (inset top-inset) (selection-insets node)
+                      (let ((area (selection-area renderer node)))
                         (let* ((font (widget-font renderer
                                                  (element-content node)))
-                               (box (element-box node))
                                (offset 0))
                           (funcall (renderer-clip renderer) (element-clip node))
                           (loop :for line :in
                                      (wrap-text font text
-                                                (max 0 (- (box-width box)
-                                                          (* 2 inset))))
-                                :for y :from (+ (box-y box)
-                                                top-inset)
+                                                (box-width area))
+                                :for y :from (box-y area)
                                   :by (line-height font)
                                 :for left := (max start offset)
                                 :for right := (min end (+ offset (length line)))
@@ -265,7 +270,7 @@
                                             font (subseq text offset left))))
                                     (shape renderer
                                            (make-box
-                                            :x (+ (box-x box) inset x) :y y
+                                            :x (+ (selection-left font node area line) x) :y y
                                             :width (- (text-width
                                                        font
                                                        (subseq text offset
@@ -275,7 +280,7 @@
                                            0 "#258bff" 0.4)))
                                 (incf offset (1+ (length line)))))))))))))
 
-(fn finish-selection ((renderer renderer) (context context))
+(fn (finish-selection t) ((renderer renderer) (context context))
   (let* ((selection (context-selection context))
          (input (context-focus-input context))
          (focused (and input (equal (car input) (context-focus context))

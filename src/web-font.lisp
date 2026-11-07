@@ -31,7 +31,7 @@
     (make-font :loader ((jscl/ffi:oget canvas "getContext") #j"2d")
                :size size)))
 
-(fn close-font ((font font))
+(fn (close-font null) ((font font))
   (dotimes (index 4)
     (setf (aref (font-faces font) index) nil))
   (clrhash (font-metrics font))
@@ -61,7 +61,7 @@
                       "monospace" "sans-serif"))))
   (font-css-value font))
 
-(fn measure-text ((font font) (text string))
+(fn (measure-text t) ((font font) (text string))
   (let* ((css (font-css font))
          (cache (font-metrics font))
          (key (list (font-size font) text)))
@@ -91,7 +91,7 @@
         (max (* (font-size font) 1.2) (+ ascent descent))
         (* (font-size font) 1.2))))
 
-(fn glyph-polygons ((font font) (char character))
+(fn (glyph-polygons nil) ((font font) (char character))
   (declare (ignore font char))
   (error "Browser text is drawn by the renderer text callback."))
 

@@ -1,9 +1,9 @@
 (in-package #:lui.draw)
 
-(fn motif-bevel ((renderer renderer) (box box)
+(fn (motif-bevel t) ((renderer renderer) (widget widget) (box box)
                  &optional recessed disabled)
-  (let* ((light (if disabled "#d0d0d0" "#ffffff"))
-         (dark (if disabled "#989898" "#505050"))
+  (let* ((light (if disabled (widget-color widget :disabled-bevel-light) (widget-color widget :bevel-light)))
+         (dark (if disabled (widget-color widget :disabled-bevel-dark) (widget-color widget :bevel-dark)))
          (x (box-x box))
          (y (box-y box))
          (right (+ x (box-width box)))
@@ -23,19 +23,18 @@
                          (cons (+ x edge) (- bottom edge))))
              (if recessed light dark) 1)))
 
-(fn paint-motif-scrollbar ((renderer renderer) (node element))
+(fn (paint-motif-scrollbar t) ((renderer renderer) (node element))
   (let* ((widget (element-content node))
-         (foreground (if (widget-disabled-p widget) "#777777"
+         (foreground (if (widget-disabled-p widget) (widget-color widget :disabled)
                          (widget-foreground widget))))
     (shape renderer (element-box node) 0 foreground 0.15)
     (shape renderer (scrollbar-thumb node) 0 (widget-accent widget) 1)))
 
-(fn paint-motif-body ((renderer renderer) (node element))
+(fn (paint-motif-body t) ((renderer renderer) (node element))
   (paint-standard-body renderer node nil #'motif-bevel))
 
-(fn paint-motif-widget ((renderer renderer) (node element))
+(fn (paint-motif-widget t) ((renderer renderer) (node element))
   (paint-shared-widget renderer node 0 0 #'paint-motif-scrollbar #'paint-motif-body))
 
 (lui:register-toolkit-rendering :motif :paint #'paint-motif-widget
-                               :measure #'standard-measure :native-labels t
-                               :text-insets #'standard-text-insets)
+                               :geometry #'standard-geometry :native-labels t)

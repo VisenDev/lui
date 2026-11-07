@@ -1,10 +1,10 @@
 (defpackage #:lui
   (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
   (:export #:run #:register-backend #:available-backends #:units #:*backend*
-           #:*unit* #:with-toolkit #:current-toolkit #:toolkit-defaults
+           #:*unit* #:with-toolkit #:with-palette #:toolkit-palette #:widget-color #:current-toolkit #:toolkit-defaults
            #:register-toolkit #:toolkit-revision
-           #:register-toolkit-rendering #:toolkit-paint #:toolkit-measure
-           #:toolkit-native-labels-p #:toolkit-text-insets
+           #:register-toolkit-rendering #:toolkit-paint #:toolkit-geometry
+           #:toolkit-native-labels-p
            #:control
            #:define-toolkit
            #:table #:table-row #:table-cell
@@ -26,7 +26,7 @@
   "Convert spacing units to backend coordinates: terminal cells or graphical units."
   (* count *unit*))
 
-(fn register-backend ((name symbol) (runner function))
+(fn (register-backend function) ((name symbol) (runner function))
   "Install a runner function under NAME; normally called by a backend."
   (setf (gethash name *backends*) runner))
 
@@ -39,7 +39,7 @@
              *backends*)
     results))
 
-(fn run
+(fn (run t)
     ((draw function) &key (backend *backend*) ((title string) "LUI") width
      height (interactive t) ((min-fps real) 1) ((max-fps real) 240))
   "Run the same immediate-mode DRAW function on any registered backend.
@@ -63,6 +63,7 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 
 (defvar *toolkit* :glass)
 (defvar *toolkit-definition* nil)
+(defvar *palette* nil)
 
 (defstruct (toolkit (:conc-name %toolkit-))
   parent defaults controls (rendering nil))
@@ -73,69 +74,60 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 (fn (find-toolkit toolkit) ((name symbol))
   (or (gethash name *toolkits*) (error "Unknown toolkit ~S." name)))
 
-(fn rendering-option ((name symbol) (key symbol))
+(fn (rendering-option t) ((name symbol) (key symbol))
   (let* ((entry (find-toolkit name)) (options (%toolkit-rendering entry)))
     (multiple-value-bind (found value) (get-properties options (list key))
       (if found value
           (when (and (%toolkit-parent entry)
                      (or (not (eq key :native-labels))
-                         (not (nth-value 0 (get-properties options '(:paint :measure))))))
+                         (not (nth-value 0 (get-properties options '(:paint :geometry))))))
             (rendering-option (%toolkit-parent entry) key))))))
 
 (fn (toolkit-paint (or null function)) ((name symbol))
   "Return NAME's graphical painter, inherited through its parent, or NIL."
   (rendering-option name :paint))
 
-(fn (toolkit-measure (or null function)) ((name symbol))
-  "Return NAME's graphical text measurer, inherited through its parent, or NIL."
-  (rendering-option name :measure))
-
-(fn (toolkit-text-insets (or null function)) ((name symbol))
-  "Return NAME's selectable-text inset callback (widget -> x, y), or NIL."
-  (rendering-option name :text-insets))
+(fn (toolkit-geometry (or null function)) ((name symbol))
+  "Return NAME's graphical geometry callback (widget -> geometry), inherited from its parent."
+  (rendering-option name :geometry))
 
 (fn (toolkit-native-labels-p boolean) ((name symbol))
   "Return whether NAME delegates graphical labels to native text rendering."
   (not (null (rendering-option name :native-labels))))
 
 (fn (register-toolkit-rendering symbol) ((name symbol) &key (paint nil paint-p)
-                                           (measure nil measure-p)
-                                           (native-labels nil labels-p)
-                                           (text-insets nil insets-p))
+                                           (geometry nil geometry-p)
+                                           (native-labels nil labels-p))
   "Set graphical callbacks for registered NAME. Omitted keys retain their
 settings or inherit from :PARENT; explicit NIL disables the inherited setting."
   (let ((entry (find-toolkit name)))
-    (when insets-p (check-type text-insets (or null function)))
     (when paint-p (check-type paint (or null function)))
-    (when measure-p (check-type measure (or null function)))
+    (when geometry-p (check-type geometry (or null function)))
     (when paint-p (setf (getf (%toolkit-rendering entry) :paint) paint))
-    (when measure-p (setf (getf (%toolkit-rendering entry) :measure) measure))
-    (when insets-p (setf (getf (%toolkit-rendering entry) :text-insets) text-insets))
+    (when geometry-p (setf (getf (%toolkit-rendering entry) :geometry) geometry))
     (when labels-p (setf (getf (%toolkit-rendering entry) :native-labels) native-labels))
     (incf *toolkit-revision*))
   name)
 
 (fn (register-toolkit symbol) ((name symbol) &key parent defaults controls
-                                   (paint nil paint-p) (measure nil measure-p)
-                                   (native-labels nil labels-p) (text-insets nil insets-p))
+                                   (paint nil paint-p) (geometry nil geometry-p)
+                                   (native-labels nil labels-p))
   "Register a toolkit. DEFAULTS is a plist or a zero-argument function.
 CONTROLS maps control names to functions taking the public arguments and options.
-PAINT, MEASURE and NATIVE-LABELS configure graphical rendering; omitted values
+PAINT, GEOMETRY and NATIVE-LABELS configure graphical rendering; omitted values
 inherit only from an explicit PARENT."
   (loop :for ancestor := parent
           :then (%toolkit-parent (find-toolkit ancestor))
         :while ancestor :when (eq ancestor name)
           :do (error "Circular toolkit inheritance at ~S." name))
   (when paint-p (check-type paint (or null function)))
-  (when measure-p (check-type measure (or null function)))
-  (when insets-p (check-type text-insets (or null function)))
+  (when geometry-p (check-type geometry (or null function)))
   (incf *toolkit-revision*)
   (setf (gethash name *toolkits*)
         (make-toolkit :parent parent :defaults defaults :controls controls
                       :rendering (append (when paint-p (list :paint paint))
-                                         (when measure-p (list :measure measure))
-                                         (when labels-p (list :native-labels native-labels))
-                                         (when insets-p (list :text-insets text-insets)))))
+                                         (when geometry-p (list :geometry geometry))
+                                         (when labels-p (list :native-labels native-labels)))))
   name)
 
 (fn (current-toolkit symbol) ()
@@ -149,16 +141,42 @@ inherit only from an explicit PARENT."
     (if parent (append defaults (defaults-of (find-toolkit parent)))
         defaults)))
 
-(fn (toolkit-defaults list) (&optional (name *toolkit*))
-  "Return appearance defaults with child overrides before inherited values."
-  (defaults-of (find-toolkit name)))
+(fn (resolve-palette list) ((defaults list))
+  (append *palette*
+          (loop for (key value) on defaults by #'cddr
+                append (cond ((eq key :palette) value)
+                             ((member key '(:foreground :background :accent))
+                              (list key value))))
+          lui.widgets::*base-palette*))
 
-(fn override ((kind symbol) (entry toolkit))
+(fn (toolkit-palette list) (&optional (name *toolkit*))
+  "Return scoped semantic colors followed by NAME's inherited palette."
+  (resolve-palette (defaults-of (find-toolkit name))))
+
+(fn (toolkit-defaults list) (&optional (name *toolkit*))
+  "Return resolved appearance defaults and a captured semantic palette."
+  (let* ((defaults (defaults-of (find-toolkit name)))
+         (palette (copy-list (resolve-palette defaults))))
+    (append (list :palette palette)
+            (loop for key in '(:foreground :background :accent)
+                  when (getf palette key) append (list key (getf palette key)))
+            (loop for (key value) on defaults by #'cddr
+                  unless (eq key :palette) append (list key value)))))
+
+(fn (call-with-palette t) ((palette list) (draw function))
+  (let ((*palette* (append palette *palette*))) (funcall draw)))
+
+(defmacro with-palette ((palette) &body body)
+  "Draw BODY with semantic color overrides from PALETTE, a plist.
+Nested scopes inherit unspecified roles and restore their parent on exit."
+  `(call-with-palette ,palette (lambda () ,@body)))
+
+(fn (override (or null function)) ((kind symbol) (entry toolkit))
   (or (cdr (assoc kind (%toolkit-controls entry)))
       (let ((parent (%toolkit-parent entry)))
         (when parent (override kind (find-toolkit parent))))))
 
-(fn control ((kind symbol) &rest arguments)
+(fn (control t) ((kind symbol) &rest arguments)
   "Invoke a user-defined control from the current toolkit or its ancestors."
   (apply (or (override kind (or *toolkit-definition*
                                 (find-toolkit *toolkit*)))
@@ -175,7 +193,7 @@ inherit only from an explicit PARENT."
                id direction clip-p scroll-p scrollbar-p scrollbar-width
                floating-p offset-x offset-y
                interactive-p keyboard-focus-p pointer-focus-p
-               foreground background radius frost minimum maximum step
+               foreground background palette radius frost minimum maximum step
                font-size font-family font-weight opacity accent disabled-p
                painter terminal-label terminal-border accessible-name
                placeholder max-results selected-p text)
@@ -185,7 +203,7 @@ inherit only from an explicit PARENT."
                    clip-p scroll-p scrollbar-p scrollbar-width
                    floating-p offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
-                   radius frost minimum maximum step font-size font-family
+                   palette radius frost minimum maximum step font-size font-family
                    font-weight opacity accent disabled-p painter
                    terminal-label terminal-border accessible-name
                    placeholder max-results selected-p text))
@@ -200,12 +218,12 @@ inherit only from an explicit PARENT."
 
 (defmacro define-control (name args doc &body body)
   (let ((kind (intern (symbol-name name) :keyword)))
-    `(fn ,name (,@args &optional options)
+    `(fn (,name t) (,@args &optional options)
        ,doc
        (let* ((entry (or *toolkit-definition* (find-toolkit *toolkit*)))
               (custom (override ,kind entry)))
          (if custom (funcall custom ,@args options)
-             (let ((style *toolkit*) (defaults (defaults-of entry)))
+             (let ((style *toolkit*) (defaults (toolkit-defaults)))
                ,@body))))))
 
 (define-control label (text)
@@ -223,7 +241,7 @@ inherit only from an explicit PARENT."
         (push (car tail) result)
         (push (cadr tail) result)))))
 
-(fn selectable ((kind symbol) (style symbol) id (text string)
+(fn (selectable boolean) ((kind symbol) (style symbol) id (text string)
                 (options list) (defaults list))
   ;; Extract selection while removing its public option in one pass. Preserve
   ;; GETF's first-value rule, including an explicitly supplied NIL.
@@ -262,7 +280,8 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
 (define-control cell (id text)
   "Display a compact grid cell. Use :selected-p to mark the active cell."
   (selectable :cell style id text options
-              (list* :background "#ffffff" :foreground "#202430" defaults)))
+              (list* :background (getf (toolkit-palette) :cell-background "#ffffff")
+                     :foreground (getf (toolkit-palette) :cell-foreground "#202430") defaults)))
 
 (define-control checkbox (id value text)
   "Return the new boolean and a second value indicating a change."
@@ -306,7 +325,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
        (register-toolkit ,name :defaults (lambda () ,defaults))
        ,@(loop :for local :in names :for fn :in functions :for a :in args
                :collect
-               `(fn ,local (,@a &optional options)
+               `(fn (,local t) (,@a &optional options)
                   (with-toolkit (,name)
                     (,fn ,@a options))))
        (defmacro ,panel-name (options &body body)
@@ -343,7 +362,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
     (push pane (lui.frame::context-popups *context*))
     pane))
 
-(fn combobox-popup (id (matches list) index (anchor lui.layout:element) reveal)
+(fn (combobox-popup null) (id (matches list) index (anchor lui.layout:element) reveal)
   (let* ((pane (anchored-popup (list id :popup) anchor nil))
          (*parent* pane))
     (loop for match in matches for i from 0
@@ -355,7 +374,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
                (when (and reveal (eql index i))
                  (setf (lui.layout:element-popup-reveal pane) row))))))
 
-(fn combobox-completion (id (state combobox-state) (text string)
+(fn (combobox-completion (or null string)) (id (state combobox-state) (text string)
                          (choices sequence) (limit (integer 1 *))
                          (events list) (anchor lui.layout:element))
   (let ((navigate (find-if (lambda (event)
@@ -484,10 +503,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (multiple-value-bind (year-offset index) (floor (+ month -1 delta) 12)
     (values (+ year year-offset) (1+ index))))
 
-(fn calendar-item (id (text string) &rest options)
+(fn (calendar-item boolean) (id (text string) &rest options)
   (list-item id text (append options (opt :font-size 14))))
 
-(fn calendar-arrow-focus (id (state picker-state))
+(fn (calendar-arrow-focus null) (id (state picker-state))
   (let ((focus (context-focus *context*)))
     (when (and (consp focus) (equal (first focus) id) (eq (second focus) :day))
       (let ((day (third focus)))

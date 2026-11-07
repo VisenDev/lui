@@ -67,7 +67,7 @@ void main() {
   gl_FragColor = vec4(mix(vec3(luma),color,1.3),1.0);
 }")
 
-(fn compile-shader ((kind integer) (source string))
+(fn (compile-shader integer) ((kind integer) (source string))
   (let ((shader (call-gl "glCreateShader" :uint kind :uint)))
     (cffi:with-foreign-string (text source)
       (cffi:with-foreign-object (strings :pointer)
@@ -86,7 +86,7 @@ void main() {
           (error "GL shader: ~A" (cffi:foreign-string-to-lisp log)))))
     shader))
 
-(fn make-program ()
+(fn (make-program integer) ()
   (let ((vertex (compile-shader #x8b31 *vertex-source*))
         (fragment 0)
         (program (call-gl "glCreateProgram" :uint)))
@@ -107,21 +107,21 @@ void main() {
       (when (plusp fragment)
         (call-gl "glDeleteShader" :uint fragment :void)))))
 
-(fn clear-geometry ((gpu gpu))
+(fn (clear-geometry hash-table) ((gpu gpu))
   (maphash (lambda (key display-list)
              (declare (ignore key))
              (call-gl "glDeleteLists" :uint display-list :int 1 :void))
            (gpu-geometry gpu))
   (clrhash (gpu-geometry gpu)))
 
-(fn gl-color ((color string) (alpha real))
+(fn (gl-color null) ((color string) (alpha real))
   (destructuring-bind (red green blue opacity)
       (color-components color alpha)
     (call-gl "glColor4f" :float (float red 1.0)
              :float (float green 1.0) :float (float blue 1.0)
              :float (float opacity 1.0) :void)))
 
-(fn gl-geometry ((gpu gpu) (contours list))
+(fn (gl-geometry null) ((gpu gpu) (contours list))
   (let ((display-list (gethash contours (gpu-geometry gpu))))
     (unless display-list
       ;; Keep resize/animation variants bounded; glyphs use font-unit contours.
@@ -148,11 +148,11 @@ void main() {
       (setf (gethash contours (gpu-geometry gpu)) display-list))
     (call-gl "glCallList" :uint display-list :void)))
 
-(fn gl-polygons ((gpu gpu) (contours list) (color string) (alpha real))
+(fn (gl-polygons null) ((gpu gpu) (contours list) (color string) (alpha real))
   (gl-color color alpha)
   (gl-geometry gpu contours))
 
-(fn gl-shape ((gpu gpu) (contours list) (color string) (alpha real))
+(fn (gl-shape null) ((gpu gpu) (contours list) (color string) (alpha real))
   ;; Stipples reuse large contour batches in screen coordinates.
   ;; Submit them directly instead of copying thousands of points per frame.
   (when (nthcdr 8 contours)
@@ -175,7 +175,7 @@ void main() {
                (gl-polygons gpu local color alpha))
           (call-gl "glPopMatrix" :void))))))
 
-(fn gl-text ((gpu gpu) (font font) (text string)
+(fn (gl-text null) ((gpu gpu) (font font) (text string)
             (x real) (y real) (color string))
   (let* ((loader (font-loader font))
          (scale (float (/ (font-size font) (zpb-ttf:units/em loader)) 1.0))
@@ -199,14 +199,14 @@ void main() {
                            previous char)))
       (call-gl "glPopMatrix" :void))))
 
-(fn pixel-box ((gpu gpu) (box box))
+(fn (pixel-box box) ((gpu gpu) (box box))
   (let ((sx (/ (gpu-width gpu) (gpu-logical-width gpu)))
         (sy (/ (gpu-height gpu) (gpu-logical-height gpu))))
     (make-box :x (* sx (box-x box)) :y (* sy (box-y box))
               :width (* sx (box-width box))
               :height (* sy (box-height box)))))
 
-(fn gl-clip ((gpu gpu) (box box))
+(fn (gl-clip null) ((gpu gpu) (box box))
   (let* ((pixels (pixel-box gpu box))
          (left (floor (box-x pixels)))
          (top (floor (box-y pixels)))
@@ -217,11 +217,11 @@ void main() {
              :int (max 0 (- right left))
              :int (max 0 (- bottom top)) :void)))
 
-(fn uniform ((gpu gpu) (name string))
+(fn (uniform integer) ((gpu gpu) (name string))
   (call-gl "glGetUniformLocation" :uint (gpu-program gpu)
            :string name :int))
 
-(fn gl-glass ((gpu gpu) (box box) (radius real) (frost real))
+(fn (gl-glass null) ((gpu gpu) (box box) (radius real) (frost real))
   (call-gl "glBindTexture" :uint #x0de1 :uint (gpu-texture gpu) :void)
   (let* ((w (gpu-width gpu)) (h (gpu-height gpu))
          (area (pixel-box gpu box))
@@ -266,14 +266,14 @@ void main() {
          (gl-polygons gpu (list (rounded-polygon box radius)) "#ffffff" 1))
     (call-gl "glUseProgram" :uint 0 :void)))
 
-(fn egl-check (result (operation string))
+(fn (egl-check t) (result (operation string))
   (when (or (null result) (eql result 0)
             (and (cffi:pointerp result) (cffi:null-pointer-p result)))
     (error "~A failed (EGL ~X)." operation
            (call-egl "eglGetError" :int)))
   result)
 
-(fn initialize-gpu ((gpu gpu) (font font))
+(fn (initialize-gpu gpu) ((gpu gpu) (font font))
   (setf (gpu-program gpu) (make-program))
   (cffi:with-foreign-object (texture :uint)
     (call-gl "glGenTextures" :int 1 :pointer texture :void)
@@ -298,7 +298,7 @@ void main() {
                   (gl-glass gpu box radius frost))))
   gpu)
 
-(fn attach-gpu ((font font) (width integer) (height integer))
+(fn (attach-gpu gpu) ((font font) (width integer) (height integer))
   "Attach the shared renderer to a current OpenGL compatibility context."
   (let ((gpu (make-gpu :width width :height height
                        :logical-width width :logical-height height))
@@ -307,7 +307,7 @@ void main() {
          (prog1 (initialize-gpu gpu font) (setf done t))
       (unless done (close-gpu gpu)))))
 
-(fn open-gpu (native-display native-window font
+(fn (open-gpu gpu) (native-display native-window font
              (width integer) (height integer))
   "Use a Wayland EGL window, or NIL/NIL for a surfaceless test buffer."
   (cffi:use-foreign-library egl)
@@ -387,7 +387,7 @@ void main() {
            gpu)
       (unless complete (close-gpu gpu)))))
 
-(fn begin-gpu-frame ((gpu gpu))
+(fn (begin-gpu-frame null) ((gpu gpu))
   "Clear the back buffer and set the viewport, projection, clipping, and blending."
   (call-gl "glViewport" :int 0 :int 0 :int (gpu-width gpu)
            :int (gpu-height gpu) :void)
@@ -409,14 +409,14 @@ void main() {
   (call-gl "glMatrixMode" :uint #x1700 :void)
   (call-gl "glLoadIdentity" :void))
 
-(fn present-gpu ((gpu gpu))
+(fn (present-gpu integer) ((gpu gpu))
   "Swap the EGL surface created by OPEN-GPU. GLX presents its own drawable."
   (egl-check
    (call-egl "eglSwapBuffers" :pointer (gpu-display gpu)
             :pointer (gpu-surface gpu) :uint)
    "eglSwapBuffers"))
 
-(fn close-gpu ((gpu gpu))
+(fn (close-gpu (or null integer)) ((gpu gpu))
   "Release cached geometry, shader, and texture; also release an owned EGL context."
   (clear-geometry gpu)
   (when (plusp (gpu-program gpu))

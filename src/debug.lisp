@@ -16,13 +16,13 @@
   (collapsed (make-hash-table :test 'equal) :type hash-table)
   (nodes (make-hash-table :test 'equal) :type hash-table)
   (rows (make-array 0 :adjustable t :fill-pointer 0) :type vector))
-(fn id (name &optional key) (list :lui.debug name key))
+(fn (id list) (name &optional key) (list :lui.debug name key))
 
 (fn (own-node-p boolean) ((node element))
   (let ((id (element-id node)))
     (and (consp id) (eq (first id) :lui.debug))))
 
-(fn snapshot ((state state) (root element))
+(fn (snapshot null) ((state state) (root element))
   ;; IDs survive redraws. Anonymous nodes use positions below the closest ID;
   ;; identical anonymous siblings cannot be distinguished after a reorder.
   ;; Duplicate IDs remain core errors rather than recoverable debugger warnings.
@@ -119,7 +119,7 @@
                     :when enabled :collect name)))
     (if names (format nil "~{~A~^, ~}" names) empty)))
 
-(fn properties ((title string) (width real) &rest pairs)
+(fn (properties null) ((title string) (width real) &rest pairs)
   (let ((accent (getf (toolkit-defaults) :accent "#258bff")))
     (row (:width (grow) :gap (units 0.5))
       (lui:label "—" (lui:opt :width (fixed (units 2)) :font-size 14
@@ -141,7 +141,7 @@
               (column (:width (grow)) (emit-pair))
               (row (:width (grow) :gap (units 1)) (emit-pair))))))))
 
-(fn details ((node element) (width real))
+(fn (details null) ((node element) (width real))
   (let* ((widget (element-content node)) (node-id (element-id node))
          (container (plusp (length (element-children node))))
          (focused (and node-id (equal node-id (context-focus *context*)))))
@@ -229,7 +229,7 @@
                                               (context-active *context*)))))
             "Idle")))))
 
-(fn highlight ((box box) (name symbol) (opacity real) (accent string))
+(fn (highlight (or null element)) ((box box) (name symbol) (opacity real) (accent string))
   (when (and (plusp (box-width box)) (plusp (box-height box)))
     (emit (make-element
            :id (id name) :floating-p t :offset-x (box-x box)
@@ -239,7 +239,7 @@
                                  :background "#ffb347"
                                  :accent accent :opacity opacity)))))
 
-(fn close-details ((state state))
+(fn (close-details real) ((state state))
   (setf (state-selected state) nil (state-details-height state) nil
         (state-details-grab state) nil (state-reveal-selection-p state) nil)
   (request-frame))
@@ -258,7 +258,7 @@
           (scroll-to (id :tree) 0 offset)))))
   offset)
 
-(fn tree ((state state) (width real))
+(fn (tree null) ((state state) (width real))
   (lui:panel (lui:opt :id (id :tree) :width (grow) :height (grow)
                       :scroll-p t :padding (units 1) :opacity 1
                       :radius 0 :frost 0)
@@ -309,7 +309,7 @@
                                 (state-reveal-selection-p state) t))
                       (request-frame))))))))
 
-(fn debugger-width ((state state))
+(fn (debugger-width real) ((state state))
   (let* ((window (context-width *context*))
          (minimum (min window (units 25)))
          (maximum (max minimum (- window (units 12))))
@@ -348,7 +348,7 @@
       (setf (state-grab state) nil))
     width))
 
-(fn resize-handle ((width real))
+(fn (resize-handle element) ((width real))
   (let ((size (units 1)))
     (emit (make-element
            :id (id :resize) :interactive-p t :pointer-focus-p t
@@ -403,7 +403,7 @@
       (setf (state-details-grab state) nil))
     height))
 
-(fn details-divider ((height real))
+(fn (details-divider element) ((height real))
   (emit (make-element
          :id (id :details-resize) :interactive-p t :pointer-focus-p t
          :width (grow) :height (fixed (units 1))
@@ -413,7 +413,7 @@
                          :value (/ height (max 1 (context-height *context*)))
                          (toolkit-defaults)))))
 
-(fn debugger-header-height ((header element) (width real))
+(fn (debugger-header-height real) ((header element) (width real))
   (let* ((children (element-children header))
          (title (aref children 0)) (close (aref children 1))
          (title-padding (* 2 (element-padding title)))
@@ -428,7 +428,7 @@
                                    (element-gap header)
                                    title-padding)))))))))
 
-(fn debugger ((state state) (width real))
+(fn (debugger (or null element)) ((state state) (width real))
   (when (activated-p (id :close-details)) (close-details state))
   (lui:panel (lui:opt :id (id :debugger) :interactive-p t
                       :keyboard-focus-p nil :floating-p t
@@ -474,7 +474,7 @@
               (lui:label "Select a tree row for properties."
                          (lui:opt :width (grow) :font-size 14))))))))
 
-(fn draw-debugger ((state state) (toolkit symbol) previous)
+(fn (draw-debugger (or null element)) ((state state) (toolkit symbol) previous)
   (when (and (state-open-p state) (null previous)) (request-frame))
   (when (and (state-open-p state) previous)
     (snapshot state previous)

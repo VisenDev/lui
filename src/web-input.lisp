@@ -363,7 +363,7 @@
           (setf listeners nil (context-copy context) old-copy))))))
 
 
-(fn update-accessibility (canvas (context context))
+(fn (update-accessibility t) (canvas (context context))
   "Describe the focused canvas control through the shared browser input sink."
   (let* ((host (jscl/ffi:oget canvas "parentNode"))
          (sink ((jscl/ffi:oget host "querySelector") #j"textarea"))

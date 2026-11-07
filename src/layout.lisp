@@ -110,7 +110,7 @@ Floating children use offsets; interactive nodes participate in input routing."
        (dotimes (,index (length ,children) ,result)
          (let ((,child (aref ,children ,index))) ,@body)))))
 
-(fn walk-elements ((root element) (function function))
+(fn (walk-elements null) ((root element) (function function))
   "Call FUNCTION on ROOT and every descendant in declaration order."
   (funcall function root)
   (do-children (child root)
@@ -121,7 +121,7 @@ Floating children use offsets; interactive nodes participate in input routing."
       (box-width (element-box node))
       (box-height (element-box node))))
 
-(fn set-axis-size ((node element) (axis symbol) (value real))
+(fn (set-axis-size real) ((node element) (axis symbol) (value real))
   (if (eq axis :x)
       (setf (box-width (element-box node)) value)
       (setf (box-height (element-box node)) value)))
@@ -146,7 +146,7 @@ Floating children use offsets; interactive nodes participate in input routing."
       (unless (element-floating-p child) (incf count)))
     (* (element-gap node) (max 0 (1- count)))))
 
-(fn measure-table-columns ((table element))
+(fn (measure-table-columns real) ((table element))
   ;; Track widths start with single-column cells. Spanning cells then add
   ;; any missing width equally to the columns they cover.
   (let ((count 0) (gap (element-column-gap table)))
@@ -175,7 +175,7 @@ Floating children use offsets; interactive nodes participate in input routing."
       (setf (element-tracks table) tracks)
       (+ (reduce #'+ tracks :initial-value 0) (* gap (max 0 (1- count)))))))
 
-(fn intrinsic ((node element) (axis symbol))
+(fn (intrinsic real) ((node element) (axis symbol))
   (assert (and (>= (element-gap node) 0) (>= (element-padding node) 0)))
   (assert (or (zerop (length (element-children node)))
               (not (and (element-measure node) (flow-children node)))))
@@ -216,7 +216,7 @@ Floating children use offsets; interactive nodes participate in input routing."
                                (element-scrollbar-p node))
                           (max 0 (element-scrollbar-width node)) 0)))))))))
 
-(fn distribute ((children list) (axis symbol) (amount real) (growing boolean))
+(fn (distribute null) ((children list) (axis symbol) (amount real) (growing boolean))
   "Water-fill the smallest growing or largest shrinking elements, respecting bounds."
   (loop :while (and children (> (abs amount) 0.0001))
         :do (let* ((level (reduce (if growing #'min #'max) children
@@ -252,7 +252,7 @@ Floating children use offsets; interactive nodes participate in input routing."
                                  (sizing-minimum rule)))))
                      children)))))
 
-(fn resolve-axis ((node element) (axis symbol))
+(fn (resolve-axis null) ((node element) (axis symbol))
   (cond
     ((zerop (length (element-children node))) nil)
     ((and (element-table-p node) (eq axis :x))
@@ -327,7 +327,7 @@ Floating children use offsets; interactive nodes participate in input routing."
 (fn (alignment-offset real) ((alignment symbol) (space real))
   (* (max 0 space) (ecase alignment (:start 0) (:center 0.5) (:end 1))))
 
-(fn position-elements ((node element))
+(fn (position-elements null) ((node element))
   (unless (zerop (length (element-children node)))
     (let* ((bounds (element-box node))
            (row (eq (element-direction node) :row))
@@ -399,7 +399,7 @@ With PAGE-TOP, HEIGHT is the minimum page height and popups stay in the viewport
                                      (+ (box-y b) (box-height b)))
                                 y)))))
 
-(fn position-popup ((popup element) (viewport box))
+(fn (position-popup (or null real)) ((popup element) (viewport box))
   ;; The anchor has already been positioned and clipped by its scroll parents.
   (let* ((anchor-clip (element-clip (element-popup-anchor popup)))
          (anchor (if *popup-viewport* (intersect-boxes anchor-clip viewport) anchor-clip))
@@ -422,7 +422,7 @@ With PAGE-TOP, HEIGHT is the minimum page height and popups stay in the viewport
               (max 0 (min top (max (element-scroll-y popup)
                                     (- (+ top (box-height row)) page)))))))))
 
-(fn clip-elements ((node element) (clip box) (dx real) (dy real))
+(fn (clip-elements null) ((node element) (clip box) (dx real) (dy real))
   (let* ((box (element-box node))
          (padding (element-padding node)))
     (when (element-popup-anchor node) (position-popup node (or *popup-viewport* clip)))
@@ -473,7 +473,7 @@ With PAGE-TOP, HEIGHT is the minimum page height and popups stay in the viewport
                          (+ dx (element-scroll-x node))
                          (+ dy (element-scroll-y node))))))))
 
-(fn visible-elements ((root element) (function function))
+(fn (visible-elements null) ((root element) (function function))
   "Call FUNCTION in tree order for every node with a nonempty solved clip."
   (walk-elements root
                  (lambda (node)

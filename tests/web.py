@@ -217,10 +217,10 @@ class WebTests(unittest.TestCase):
                 (incf *custom-label-paints*)
                 (lui.draw:shape renderer (lui.layout:element-box node)
                                 0 "#123456" 1)))
-            :measure (lambda (renderer widget width)
-              (declare (ignore renderer widget width))
+            :geometry (lambda (widget)
+              (declare (ignore widget))
               (incf *custom-label-measures*)
-              (values 123 31)))
+              (lui.draw:make-geometry :text-p nil :min-width 123 :min-height 31)))
           (lui:register-toolkit :test-canvas-label-child
                                :parent :test-canvas-labels)
         ''')
@@ -242,6 +242,30 @@ class WebTests(unittest.TestCase):
             Math.round((n.y + n.height / 2) * ratio), 1, 1).data);
         }""", node)
         self.assertEqual(color, [18, 52, 86, 255])
+
+    def test_palette_and_geometry_reach_native_labels_and_patterns(self):
+        self.lisp('''(lui:register-toolkit :inset-labels :parent :glass
+          :geometry (lambda (widget) (declare (ignore widget))
+                      (lui.draw:make-geometry :left 20 :right 8 :top 10 :bottom 4))
+          :native-labels t)''')
+        host = self.fixture('''
+          (lui:with-palette ('(:foreground "#124578" :outline "#cc2288"))
+            (lui:with-toolkit (:inset-labels) (lui:label "Inset native text"))
+            (lui:with-toolkit (:garnet) (lui:button :pattern "Pattern")))
+        ''')
+        node = self.widget(text="Inset native text", host=host)
+        label = self.page.locator(host).get_by_text("Inset native text", exact=True)
+        style = label.evaluate("el => ({left: parseFloat(el.style.left), top: parseFloat(el.style.top), color: getComputedStyle(el).color})")
+        self.assertEqual(style, {"left": node["x"] + 20, "top": node["y"] + 10,
+                                 "color": "rgb(18, 69, 120)"})
+        colors = self.page.locator(host + " canvas").evaluate("""canvas => {
+          const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+          let count = 0;
+          for (let i = 0; i < data.length; i += 4)
+            if (data[i] === 204 && data[i+1] === 34 && data[i+2] === 136) count++;
+          return count;
+        }""")
+        self.assertGreater(colors, 20)
 
     def test_canvas_rendering_has_selectable_native_labels(self):
         expect(self.page.locator("main canvas")).to_have_count(1)

@@ -127,7 +127,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
     (format nil "~,1F FPS · ~,2F ms/frame" fps
             (if (plusp fps) (/ 1000 fps) 0.0))))
 
-(fn frame-wait ((context context) &optional urgent
+(fn (frame-wait real) ((context context) &optional urgent
                 (now (/ (get-internal-real-time)
                         internal-time-units-per-second)))
   (let* ((start (context-time context))
@@ -137,11 +137,11 @@ The backend supplies measurement, clipboard, and optional input callbacks."
     (max 0 (- (if urgent first (max first due)) now))))
 
 #-jscl
-(fn limit-frame-rate ((context context))
+(fn (limit-frame-rate null) ((context context))
   (let ((remaining (frame-wait context t)))
     (when (plusp remaining) (sleep remaining))))
 
-(fn request-frame (&optional ((delay real) 0))
+(fn (request-frame real) (&optional ((delay real) 0))
   "Request another frame after DELAY seconds; earliest request wins."
   (assert (>= delay 0))
   ;; Some implementations return epoch-sized clocks. Single-float addition
@@ -158,7 +158,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (and (<= (box-x bounds) x) (< x (+ (box-x bounds) (box-width bounds)))
        (<= (box-y bounds) y) (< y (+ (box-y bounds) (box-height bounds)))))
 
-(fn hit ((context context) (x real) (y real))
+(fn (hit t) ((context context) (x real) (y real))
   (let ((found nil))
     (when (and (context-root context) (<= 0 x) (< x (context-width context))
                (<= 0 y) (< y (context-height context)))
@@ -169,7 +169,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
                          (setf found (element-id node))))))
     found))
 
-(fn focus-next ((context context) &optional backward)
+(fn (focus-next t) ((context context) &optional backward)
   (let ((ids nil))
     (when (context-root context)
       (walk-elements (context-root context)
@@ -207,7 +207,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
         predicted)
       context))
 
-(fn scroll-path ((context context) (x real) (y real))
+(fn (scroll-path list) ((context context) (x real) (y real))
   ;; Follow the painted hit path, deepest scroller first.
   (let ((scrollers nil))
     (labels ((visit (node parents)
@@ -220,7 +220,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
       (when (context-root context) (visit (context-root context) nil)))
     scrollers))
 
-(fn scroll-along ((context context) (path list) (amount real))
+(fn (scroll-along real) ((context context) (path list) (amount real))
   ;; Bubble the unused portion outward, including during the animated tail.
   (let ((requested amount))
     (dolist (id path)
@@ -235,7 +235,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
                   (cons (element-scroll-x node) new))))))
     (- requested amount)))
 
-(fn advance-scroll ((context context) (now real))
+(fn (advance-scroll null) ((context context) (now real))
   (let ((motion (context-scroll-motion context)))
     (when motion
       (let* ((remaining (scroll-motion-remaining motion))
@@ -251,7 +251,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
                   (> (abs (- step used)) 1d-7))
           (setf (context-scroll-motion context) nil))))))
 
-(fn wheel-scroll ((context context) (event event))
+(fn (wheel-scroll (or null real scroll-motion)) ((context context) (event event))
   (let* ((path (scroll-path context (event-x event) (event-y event)))
          (amount (event-value event))
          (now (context-time context))
@@ -283,7 +283,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
                                        :last-input now :level level)))))
       (t (setf (context-scroll-motion context) nil)))))
 
-(fn record-activation ((context context) id)
+(fn (record-activation (eql t)) ((context context) id)
   (push id (context-activation-order context))
   (setf (gethash id (context-activated context)) t))
 
@@ -298,7 +298,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
       (and (eq (event-kind event) :move) (event-buttons event)
            (not (logbitp 0 (event-buttons event))))))
 
-(fn begin-frame ((context context) (width real) (height real) (events list))
+(fn (begin-frame (eql t)) ((context context) (width real) (height real) (events list))
   "Begin rebuilding CONTEXT at WIDTH and HEIGHT after routing EVENTS.
 Input is resolved against the previous completed tree; this resets the frame
 clock, redraw deadline, declarations, and per-frame activation state."
@@ -449,12 +449,12 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
               (element-scroll-y node) (cdr offset)))))
   (append-child *parent* node))
 
-(fn scroll-position (id)
+(fn (scroll-position (values real real)) (id)
   "Return the retained horizontal and vertical scroll offsets."
   (let ((offset (gethash id (context-scroll *context*))))
     (values (or (car offset) 0) (or (cdr offset) 0))))
 
-(fn scroll-to (id (x real) (y real))
+(fn (scroll-to (or null real)) (id (x real) (y real))
   "Set scroll offsets; layout clamps them to the content extent."
   (setf (context-scroll-motion *context*) nil)
   (let ((offset (cons (max 0 x) (max 0 y))))
@@ -464,7 +464,7 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
         (setf (element-scroll-x node) (car offset)
               (element-scroll-y node) (cdr offset))))))
 
-(fn previous-box (id)
+(fn (previous-box (values (or null box) boolean)) (id)
   "Return ID's solved box from the previous completed frame, or NIL."
   (gethash id (context-regions *context*)))
 

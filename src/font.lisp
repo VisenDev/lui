@@ -42,7 +42,7 @@
      "courbd.ttf" "Courier New Bold.ttf"))
   "Candidate filenames in preference order for each (family weight).")
 
-(fn resolve-face ((family symbol) (weight symbol))
+(fn (resolve-face (or pathname string)) ((family symbol) (weight symbol))
   (let ((key (list family weight)))
     (or (cdr (assoc key *font-paths* :test #'equal))
         (loop :with extra := (uiop:getenvp "LUI_FONT_DIR")
@@ -56,7 +56,7 @@
                                        (merge-pathnames name dir))))
         (error "No TrueType font for ~S. Set LUI.FONT:*FONT-PATHS*." key))))
 
-(fn default-font ()
+(fn (default-font (or pathname string)) ()
   (or *font-path* (uiop:getenvp "LUI_FONT")
       (resolve-face :sans-serif :normal)))
 
@@ -65,7 +65,7 @@
   (make-font :loader (zpb-ttf:open-font-loader (or path (default-font)))
              :size size))
 
-(fn close-font ((font font))
+(fn (close-font hash-table) ((font font))
   "Release the loader, cached faces, and glyph outlines owned by FONT."
   (dotimes (index 4)
     (let ((face (aref (font-faces font) index)))

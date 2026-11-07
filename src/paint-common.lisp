@@ -1,32 +1,28 @@
 (in-package #:lui.draw)
 
-(fn (standard-measure (values number number)) ((renderer renderer) (widget widget) width)
-  "Return intrinsic width and wrapped height using this renderer’s font metrics."
-  (when (eq (widget-kind widget) :panel)
-    (return-from standard-measure (values 0 0)))
-  (let* ((font (widget-font renderer widget))
-         (kind (widget-kind widget))
-         (extra (case kind (:label 0) (:cell 8) (:list-item 12)
-                       ((:checkbox :radio) 48)
-                       (otherwise 24))))
-    (let ((lines (wrap-text font
-                            (if (eq kind :text-field)
-                                (widget-value widget)
-                                (widget-text widget))
-                            (when width (max 0 (- width extra))))))
-      (let ((widest 0) (count 0))
-        (dolist (line lines)
-          (setf widest (max widest (text-width font line)))
-          (incf count))
-        (values (max (case kind ((:slider :text-field) 160) (otherwise 0))
-                     (+ extra widest))
-                (+ (if (eq kind :label) 0 12)
-                   (* count (line-height font))))))))
+(fn (standard-geometry geometry) ((widget widget))
+  (let* ((kind (widget-kind widget))
+         (left (case kind ((:label :panel :canvas :gauge :highlight :splitter :scrollbar) 0)
+                     (:cell 4) (:list-item 6) ((:checkbox :radio) 36) (otherwise 12)))
+         (right (case kind ((:checkbox :radio) 12) (otherwise left)))
+         (top (if (member kind '(:label :panel :canvas :gauge :highlight :splitter :scrollbar)) 0 6)))
+    (make-geometry :value-p (eq kind :text-field) :text-p (not (eq kind :panel)) :left left :right right :top top :bottom top
+                   :min-width (if (member kind '(:slider :text-field)) 160 0)
+                   :center-x (or (member kind '(:button :tab))
+                                 (and (eq kind :list-item) (lui.widgets::widget-center-text-p widget)))
+                   :center-y (member kind '(:button :tab)))))
 
-(fn (standard-text-insets (values real real)) ((widget widget) &optional ((field-inset real) 12))
-  (if (eq (widget-kind widget) :label) (values 0 0) (values field-inset 6)))
+(fn (paint-widget-text t) ((renderer renderer) (node element) (color string))
+  (let* ((widget (element-content node)) (g (widget-geometry widget))
+         (pressed (and (not (widget-disabled-p widget)) (hovered-p (element-id node))
+                       (equal (element-id node) (context-active *context*))))
+         (area (text-box widget (element-box node) pressed)))
+    (paint-paragraph renderer (widget-text widget) (box-x area) (box-y area)
+                     (box-width area) color
+                     (when (geometry-center-x g) (box-width area))
+                     (when (geometry-center-y g) (box-height area)))))
 
-(fn paint-paragraph ((renderer renderer) (text string) (x real) (y real)
+(fn (paint-paragraph null) ((renderer renderer) (text string) (x real) (y real)
                     (wrap-width real) (color string)
                     &optional ((center-width (or null real)) nil)
                               ((center-height (or null real)) nil))
@@ -45,7 +41,7 @@
                                   0))
                          baseline color))))
 
-(fn paint-calendar-icon ((renderer renderer) (box box) (color string))
+(fn (paint-calendar-icon t) ((renderer renderer) (box box) (color string))
   (let ((x (+ (box-x box) (/ (- (box-width box) 14) 2)))
         (y (+ (box-y box) (/ (- (box-height box) 14) 2))))
     (flet ((bar (dx dy w h)
@@ -54,10 +50,11 @@
       (outline renderer (make-box :x x :y (+ y 2) :width 14 :height 12) 1 color 1 1.5)
       (bar 1 5 12 1.5) (bar 3 0 2 4) (bar 9 0 2 4))))
 
-(fn paint-text-field
-    ((renderer renderer) (node element) (x real) (y real) (width real))
+(fn (paint-text-field null)     ((renderer renderer) (node element))
   (let* ((widget (element-content node))
          (font (renderer-font renderer))
+         (area (text-box widget (element-box node)))
+         (x (box-x area)) (y (box-y area)) (width (box-width area))
          (text (widget-value widget))
          (state (when (focused-p node)
                   (gethash (element-id node) (context-state *context*))))
@@ -88,7 +85,7 @@
                             :height (line-height font))
                            0 (widget-accent widget) 0.35f0))))
               (paint-text renderer line x (+ top (baseline font))
-                          (if (widget-disabled-p widget) "#777777"
+                          (if (widget-disabled-p widget) (widget-color widget :disabled)
                               (widget-foreground widget)))
               (when (and cursor (<= start cursor end))
                 (shape renderer
@@ -99,7 +96,7 @@
               ;; Wrapping and explicit newlines each consume one separator.
               (setf start (min (length text) (1+ end))))))
 
-(fn paint-canvas ((renderer renderer) (node element))
+(fn (paint-canvas null) ((renderer renderer) (node element))
   (let* ((widget (element-content node)) (box (element-box node)))
     (shape renderer box 0 (widget-background widget) 1)
     (dolist (command (widget-value widget))
@@ -111,28 +108,26 @@
           (when fill (shape renderer circle radius fill 1))
           (when stroke (outline renderer circle radius stroke 1 1)))))))
 
-(fn paint-cell ((renderer renderer) (node element))
+(fn (paint-cell t) ((renderer renderer) (node element))
   "Paint a spreadsheet cell with the renderer’s selected widget font."
   (let* ((widget (element-content node))
          (box (element-box node))
          (selected (widget-value widget))
          (text (widget-text widget)))
-    (shape renderer box 0 (if selected "#e7effa" (widget-background widget)) 1)
-    (outline renderer box 0 (if selected (widget-accent widget) "#939ba5")
+    (shape renderer box 0 (if selected (widget-color widget :selection) (widget-background widget)) 1)
+    (outline renderer box 0 (if selected (widget-accent widget) (widget-color widget :border))
              1 (if selected 2 1))
     (when (plusp (length text))
-      (paint-text renderer text (+ (box-x box) 4)
-                  (+ (box-y box) 6 (baseline (renderer-font renderer)))
-                  (widget-foreground widget)))))
+      (paint-widget-text renderer node (widget-foreground widget)))))
 
-(fn paint-focus-ring ((renderer renderer) (node element) (radius real))
+(fn (paint-focus-ring t) ((renderer renderer) (node element) (radius real))
   (when (and (focused-p node) (context-focus-visible-p *context*))
     (let* ((widget (element-content node))
            (box (element-box node)))
       (outline renderer (inset-box box 2) (max 0 (- radius 2))
                (widget-accent widget) 1 2))))
 
-(fn paint-shared-widget ((renderer renderer) (node element) (radius real) (shadow real)
+(fn (paint-shared-widget t) ((renderer renderer) (node element) (radius real) (shadow real)
      (scrollbar function) (body function))
   (let* ((widget (element-content node))
          (box (element-box node))
@@ -141,8 +136,7 @@
          (pressed (and (not disabled) (hovered-p (element-id node))
                        (equal (element-id node)
                               (context-active *context*))))
-         (foreground (if disabled "#777777" (widget-foreground widget)))
-         (font (renderer-font renderer)))
+         (foreground (if disabled (widget-color widget :disabled) (widget-foreground widget))))
     (cond
       ((eq kind :cell) (paint-cell renderer node))
       ((eq kind :scrollbar) (funcall scrollbar renderer node))
@@ -182,14 +176,8 @@
          (shape renderer box 0 foreground 0.12))
        (when (and (lui.widgets::widget-center-text-p widget) (focused-p node)
                   (context-focus-visible-p *context*))
-         (outline renderer box 1 (if (widget-value widget) "#ffffff" foreground) 1 1))
-       (loop :for line :in (wrap-text font (widget-text widget)
-                                  (max 0 (- (box-width box) 12)))
-             :for top :from (+ (box-y box) 6 (baseline font)) :by (line-height font)
-             :for left := (if (lui.widgets::widget-center-text-p widget)
-                              (/ (- (box-width box) (text-width font line)) 2) 6)
-             :do (paint-text renderer line (+ (box-x box) left) top
-                             (if (widget-value widget) "#ffffff" foreground))))
+         (outline renderer box 1 (if (widget-value widget) (widget-color widget :on-accent) foreground) 1 1))
+       (paint-widget-text renderer node (if (widget-value widget) (widget-color widget :on-accent) foreground)))
       ((eq kind :gauge)
        (shape renderer box radius (widget-background widget) 1)
        (let ((fill (make-box :x (box-x box) :y (box-y box)
@@ -201,7 +189,7 @@
       (t (funcall body renderer node)))
     (paint-focus-ring renderer node radius)))
 
-(fn paint-standard-body ((renderer renderer) (node element) translucent bevel)
+(fn (paint-standard-body t) ((renderer renderer) (node element) translucent bevel)
   (let* ((widget (element-content node))
          (box (element-box node))
          (kind (widget-kind widget))
@@ -209,7 +197,7 @@
          (pressed (and (not disabled) (hovered-p (element-id node))
                        (equal (element-id node)
                               (context-active *context*))))
-         (foreground (if disabled "#777777" (widget-foreground widget)))
+         (foreground (if disabled (widget-color widget :disabled) (widget-foreground widget)))
          (radius (if translucent (widget-radius widget) 0))
          (inset (if (eq kind :label) 0 12))
          (x (+ (box-x box) inset))
@@ -222,10 +210,10 @@
       (shape renderer box radius (widget-background widget)
              (if translucent (widget-opacity widget) 1))
       (if translucent
-          (outline renderer box radius "#ffffff"
+          (outline renderer box radius (widget-color widget :light)
                    (if disabled 0.15f0 0.4f0) 1)
           (unless (member kind '(:checkbox :radio))
-            (funcall bevel renderer box
+            (funcall bevel renderer widget box
                         (or (eq kind :text-field)
                             (and pressed (member kind '(:button :tab))))
                         disabled))))
@@ -234,9 +222,9 @@
       (cond
         ((and (hovered-p (element-id node))
               (equal (element-id node) (context-active *context*)))
-         (shape renderer box radius "#000000" 0.2f0))
+         (shape renderer box radius (widget-color widget :shadow) 0.2f0))
         ((hovered-p (element-id node))
-         (shape renderer box radius "#ffffff" 0.14f0)))
+         (shape renderer box radius (widget-color widget :light) 0.14f0)))
       (when (and (eq kind :tab) (widget-value widget))
         (shape renderer
                (make-box :x (+ (box-x box) 3)
@@ -254,24 +242,24 @@
                       :x (+ (box-x box) 8)
                       :y (+ (box-y box) (/ (box-height box) 2) -2)
                       :width (max 0 (- (box-width box) 16)) :height 4)))
-         (shape renderer track 2 "#777777" 1)
+         (shape renderer track 2 (widget-color widget :track) 1)
          (setf (box-width track) (* fraction (box-width track)))
          (shape renderer track 2
-                (if disabled "#999999" (widget-accent widget)) 1)
+                (if disabled (widget-color widget :disabled-accent) (widget-accent widget)) 1)
          (shape renderer
                 (make-box :x (+ (box-x track) (box-width track) -7)
                           :y (- (box-y track) 5) :width 14 :height 14)
-                (if translucent 7 0) (if disabled "#a0a0a0" "#ffffff") 1)))
+                (if translucent 7 0) (if disabled (widget-color widget :disabled-surface) (widget-color widget :light)) 1)))
       (:checkbox
        (let ((indicator (make-box :x x :y y :width 16 :height 16)))
          (shape renderer indicator (if translucent 4 0)
                 (if translucent
                     (if (widget-value widget)
-                        (widget-accent widget) "#777777")
+                        (widget-accent widget) (widget-color widget :track))
                     (widget-background widget))
                 1)
          (unless translucent
-           (funcall bevel renderer indicator
+           (funcall bevel renderer widget indicator
                         (or pressed (widget-value widget)) disabled))
          (when (widget-value widget)
            (funcall
@@ -280,31 +268,19 @@
                             (cons (+ x (car point)) (+ y (cdr point))))
                           '((3 . 7) (6 . 10) (12 . 3) (14 . 5)
                             (6 . 13) (2 . 9))))
-            (if translucent "#ffffff" foreground) 1)))
-       (paint-paragraph renderer (widget-text widget) (+ x 24) y
-                        (max 0 (- (box-width box) 48)) foreground))
+            (if translucent (widget-color widget :on-accent) foreground) 1)))
+       (paint-widget-text renderer node foreground))
       (:radio
        (let ((indicator (make-box :x x :y (+ y 1)
                                   :width 16 :height 16)))
          (shape renderer indicator 8
-                (if translucent "#ffffff" (widget-background widget)) 1)
+                (if translucent (widget-color widget :light) (widget-background widget)) 1)
          (outline renderer indicator 8
-                  (if disabled "#777777" foreground) 1 1)
+                  (if disabled (widget-color widget :disabled) foreground) 1 1)
          (when (widget-value widget)
            (shape renderer (inset-box indicator 5) 3
-                  (if disabled "#777777"
+                  (if disabled (widget-color widget :disabled)
                       (if translucent (widget-accent widget) foreground)) 1))
-         (paint-paragraph renderer (widget-text widget) (+ x 24) y
-                          (max 0 (- (box-width box) 48)) foreground)))
-      (:text-field
-       (paint-text-field renderer node x y
-                         (max 0 (- (box-width box) (* 2 inset)))))
-      (otherwise
-       (let ((center (member kind '(:button :tab))))
-         (paint-paragraph renderer (widget-text widget)
-                          (if center (box-x box) x) (if center (box-y box) y)
-                          (max 0 (- (box-width box) (* 2 inset)))
-                          foreground
-                          (when center (box-width box))
-                          (when center (box-height box))))))
-))
+         (paint-widget-text renderer node foreground)))
+      (:text-field (paint-text-field renderer node))
+      (otherwise (paint-widget-text renderer node foreground)))))

@@ -17,13 +17,13 @@
 
 (defvar *rect*)
 
-(fn make-buffer ((width integer) (height integer))
+(fn (make-buffer array) ((width integer) (height integer))
   ;; Uncursed exposes drawing and redisplay, but buffer construction is internal.
   (let ((buffer (make-array (list height width))))
     (uncursed::clear-buffer buffer)
     buffer))
 
-(fn cell-style (foreground background &optional bold underline)
+(fn (cell-style uncursed:style) (foreground background &optional bold underline)
   (flet ((color (value)
            (if (stringp value)
                (and (= (length value) 7) (char= (char value 0) #\#)
@@ -31,7 +31,7 @@
     (uncursed:make-style :fg (color foreground) :bg (color background)
                          :boldp bold :underlinep underline)))
 
-(fn slider-line ((widget widget) (width integer))
+(fn (slider-line (values string integer integer)) ((widget widget) (width integer))
   (let* ((fraction (min 1 (max 0 (/ (- (widget-value widget)
                                         (widget-minimum widget))
                                      (- (widget-maximum widget)
@@ -52,7 +52,7 @@
     (values (concatenate 'string prefix track suffix)
             (text-width prefix) length)))
 
-(fn measure-widget ((widget widget) width)
+(fn (measure-widget (values integer integer)) ((widget widget) width)
   (let ((lines (text-lines (widget-terminal-text widget) width)))
     (values (max (if (eq (widget-kind widget) :slider) 12 0)
                  (loop :for line :in lines :maximize (text-width line)))
@@ -73,7 +73,7 @@
        (>= y (cell-edge (box-y clip)))
        (<= (1+ y) (cell-edge (+ (box-y clip) (box-height clip))))))
 
-(fn paint-character ((cells array) style (row integer) (column integer)
+(fn (paint-character (or null integer)) ((cells array) style (row integer) (column integer)
                     (left integer) (character character) (width integer))
   (when (or (plusp width) (> column left))
     (when (zerop width)
@@ -86,7 +86,7 @@
                        (invoke-restart 'uncursed:overwrite-char))))
       (uncursed:put character (1+ row) (1+ column) *rect* style cells))))
 
-(fn paint-panel ((cells array) (borders array) style
+(fn (paint-panel boolean) ((cells array) (borders array) style
                 (node element) (widget widget))
   (let* ((box (element-box node))
          (left (cell-edge (box-x box)))
@@ -115,7 +115,7 @@
         (put left bottom (char border 2))
         (put right bottom (char border 3))))))
 
-(fn paint-canvas ((cells array) (borders array)
+(fn (paint-canvas null) ((cells array) (borders array)
                   (node element) (widget widget))
   (let ((box (element-box node)) (clip (element-clip node)))
     (dolist (command (widget-value widget))
@@ -158,7 +158,7 @@
                                           (if edge outline-style
                                               fill-style)))))))))))
 
-(fn terminal-style ((widget widget) (node element) (context context)
+(fn (terminal-style uncursed:style) ((widget widget) (node element) (context context)
                    &optional background)
   (let* ((enabled (and (element-interactive-p node)
                        (not (widget-disabled-p widget))))
@@ -184,7 +184,7 @@
           (eq (widget-font-weight widget) :bold)
           (and hover (not filled)))))
 
-(fn paint-terminal ((context context) (cells array))
+(fn (paint-terminal array) ((context context) (cells array))
   (let* ((root (or (context-root context) (error "No completed frame.")))
          (height (array-dimension cells 0)) (width (array-dimension cells 1))
          (*rect* (uncursed:make-rect :x 0 :y 0 :rows height :cols width))
@@ -334,7 +334,7 @@
             (setf previous uncursed:*default-style*))
           (terpri stream))))))
 
-(fn terminal-line ((context context) buffer)
+(fn (terminal-line (or null string (eql :quit))) ((context context) buffer)
   (loop :for char := (read-char-no-hang *standard-input* nil :eof)
         :do (cond ((or (eql char #\Newline) (eq char :eof))
                    (when (and (eq char :eof) (zerop (length buffer)))
@@ -346,7 +346,7 @@
                        (when (zerop delay) (return nil))
                        (sleep (min delay 0.02)))))))
 
-(fn run-line-terminal ((draw function) &key title width height (interactive t))
+(fn (run-line-terminal context) ((draw function) &key title width height (interactive t))
   "Plain snapshots and line-oriented input for redirected or limited terminals."
   (declare (ignore title))
   (let ((context (make-terminal-context))
@@ -380,29 +380,29 @@
   (events nil :type list)
   (quit-p nil :type boolean))
 
-(fn show-cursor ()
+(fn (show-cursor null) ()
   ;; Uncursed has no visibility-only API; its shape API and terminfo
   ;; cnorm/cvvis also change blinking.
   ;; Visibility alone preserves the user's inherited shape and blink mode.
   (format *terminal-io* "~C[?25h" #\Escape))
 
-(fn terminal-size ()
+(fn (terminal-size (values integer integer)) ()
   (let ((size (uncursed:terminal-dimensions)))
     (values (max 1 (cdr size)) (max 1 (car size)))))
 
-(fn focused-node ((context context))
+(fn (focused-node (values (or null element) boolean)) ((context context))
   (gethash (context-focus context) (lui.frame::context-ids context)))
 
-(fn input-focus ((input input) (context context))
+(fn (input-focus (values (or null element) boolean)) ((input input) (context context))
   (focused-node (pending-input-context context (input-events input))))
 
-(fn editing-input-p ((input input) (context context))
+(fn (editing-input-p boolean) ((input input) (context context))
   (text-field-focused-p (pending-input-context context (input-events input))))
 
-(fn key-event ((input input) (key symbol))
+(fn (key-event list) ((input input) (key symbol))
   (push (make-event :kind :key :key key) (input-events input)))
 
-(fn slider-change ((input input) (context context) (event event))
+(fn (slider-change list) ((input input) (context context) (event event))
   (let ((capture (context-active context)))
     (dolist (pending (reverse (rest (input-events input))))
       (case (event-kind pending)
@@ -442,7 +442,7 @@
                                      (max 1 (1- length))))))))
                   (input-events input))))))))
 
-(fn mouse-event ((input input) (data uncursed:mouse-data) &optional context)
+(fn (mouse-event list) ((input input) (data uncursed:mouse-data) &optional context)
   (let* ((button (uncursed:mouse-data-button data))
          (state (uncursed:mouse-data-state data))
          (wheel (member button '(:wheel-up :wheel-down)))
@@ -464,7 +464,7 @@
     (when (and context (eq button :left) (not release))
       (slider-change input context (first (input-events input))))))
 
-(fn decode-event ((input input) event (context context))
+(fn (decode-event (or list (eql t))) ((input input) event (context context))
   (let* ((kind (uncursed:event-kind event))
          (control (uncursed:event-controlp event))
          (alt (uncursed:event-altp event))
@@ -509,7 +509,7 @@
                    (make-event :kind :text :value (string kind)))
                (input-events input)))))))
 
-(fn input-sequence-length ((text string))
+(fn (input-sequence-length (or null integer)) ((text string))
   ;; Frame complete character sequences; uncursed owns their interpretation.
   (cond ((zerop (length text)) nil)
         ((char/= (char text 0) #\Escape) 1)
@@ -521,7 +521,7 @@
            (and end (1+ end))))
         (t 2)))
 
-(fn read-input ((input input) (context context) (timeout real))
+(fn (read-input null) ((input input) (context context) (timeout real))
   (let ((end (+ (get-internal-real-time)
                 (* timeout internal-time-units-per-second))))
     (loop
@@ -572,7 +572,7 @@
                     ((> (+ column size) start) (write-char #\Space stream)))
               (incf column size))))
 
-(fn draw-focus ((context context) screen)
+(fn (draw-focus list) ((context context) screen)
   (let* ((node (focused-node context))
          (widget (and node (element-content node))))
     (when (and (widget-p widget)
@@ -631,7 +631,7 @@
   (setf (screen-cursor screen) nil)
   (draw-focus (screen-context screen) screen))
 
-(fn display-frame ((context context) screen)
+(fn (display-frame null) ((context context) screen)
   (let* ((width (cell-edge (context-width context)))
          (height (cell-edge (context-height context))))
     (unless (and (slot-boundp screen 'uncursed::%canvas)
@@ -647,7 +647,7 @@
       (show-cursor))
     (finish-output *terminal-io*)))
 
-(fn wait-frame ((input input) (context context) width height)
+(fn (wait-frame null) ((input input) (context context) width height)
   (loop
     (let ((remaining (lui.frame::frame-wait context)))
       (read-input input context (max 0.001 (min 0.1 remaining)))
@@ -658,7 +658,7 @@
                 (/= (or height rows) (context-height context)))
         (return)))))
 
-(fn run-terminal
+(fn (run-terminal context)
     ((draw function) &key title width height (interactive t))
   (if (or (not interactive)
           (not (interactive-stream-p *standard-input*))

@@ -177,7 +177,37 @@
       (assert (eq :test-modern (lui.widgets:widget-style widget)))
       (assert (string= "#abcdef" (lui.widgets:widget-background widget)))
       (assert (= 11 (box-width (element-box node)))))
-    (assert (equal *macro-defaults* (lui:toolkit-defaults :test-modern)))))
+    (loop for (key value) on *macro-defaults* by #'cddr
+          do (assert (equal value (getf (lui:toolkit-defaults :test-modern) key))))))
+
+(defun test-palettes ()
+  (lui:register-toolkit :palette-parent :parent :glass
+                       :defaults '(:palette (:accent "#123456" :outline "#654321")))
+  (lui:register-toolkit :palette-child :parent :palette-parent
+                       :defaults '(:palette (:background "#abcdef")))
+  (assert (equal "#123456" (getf (lui:toolkit-palette :palette-child) :accent)))
+  (assert (equal "#abcdef" (getf (lui:toolkit-palette :palette-child) :background)))
+  (let ((context (make-test-context)))
+    (with-frame (context 80 30)
+      (lui:with-palette ('(:accent "#112233" :outline "#445566"))
+        (lui:with-toolkit (:glass) (lui:button :glass "Glass"))
+        (lui:with-toolkit (:motif)
+          (lui:with-palette ('(:background "#778899"))
+            (lui:button :motif "Motif" (lui:opt :accent "#aabbcc"))
+            (lui:panel (lui:opt :id :palette-panel) (lui:label "Panel"))))
+        (lui:with-toolkit (:garnet) (lui:button :garnet "Garnet")))
+      (lui:with-toolkit (:glass) (lui:button :unscoped "Default")))
+    ;; Check after the scopes have unwound: widgets retain resolved colors.
+    (flet ((color (id role)
+             (lui:widget-color (element-content (gethash id (lui.frame::context-ids context))) role)))
+      (assert (equal "#112233" (color :glass :accent)))
+      (assert (equal "#445566" (color :garnet :outline)))
+      (assert (equal "#aabbcc" (color :motif :accent)))
+      (assert (equal "#778899" (color :motif :background)))
+      (assert (equal "#778899" (color :palette-panel :background)))
+      (assert (equal "#303040" (color :glass :background)))
+      (assert (equal "#ffffff" (color :garnet :background)))
+      (assert (equal "#258bff" (color :unscoped :accent))))))
 
 (defun test-date-picker ()
   (assert (equal '(2024 2 29) (lui::parse-picker-date "02/29/2024")))
@@ -311,6 +341,7 @@
     (assert (zerop (lui.frame::frame-wait context nil 11)))))
 
 (defun run-tests ()
+  (test-palettes)
   (test-frame-limits)
   (test-date-picker)
   (test-toolkit-definitions)

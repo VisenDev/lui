@@ -57,7 +57,7 @@
            (pathname pathname))
       (lui.font:close-font font))))
 
-(fn run-pdf ((draw function) &key title width height interactive)
+(fn (run-pdf pathname) ((draw function) &key title width height interactive)
   (declare (ignore interactive))
   (render-pdf draw *output* :title title :width (or width 612)
                             :height (or height 792)))
