@@ -43,7 +43,7 @@ help:
 	@echo 'make build                Save the demo executable in build/bin/'
 	@echo 'make pdf                  Build and open build/pdf-demo.pdf'
 	@echo 'make test                 Test platform; progress/results in build/logs/'
-	@echo 'make test-terminal-parity Compare uncursed terminal cells/styles against the old backend (SBCL)'
+	@echo 'make test-terminal-parity Compare terminal transports using the current renderer (SBCL)'
 	@echo 'make test-macos           Run Cocoa checks and saved executable smoke'
 	@echo 'make benchmark            Measure throughput and frame times'
 	@echo 'make loc                  Report source line counts with cloc'

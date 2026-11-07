@@ -177,7 +177,7 @@ inherit only from an explicit PARENT."
                interactive-p keyboard-focus-p pointer-focus-p
                foreground background radius frost minimum maximum step
                font-size font-family font-weight opacity accent disabled-p
-               painter terminal-label accessible-name
+               painter terminal-label terminal-border accessible-name
                placeholder max-results selected-p text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align
@@ -187,7 +187,7 @@ inherit only from an explicit PARENT."
                    keyboard-focus-p pointer-focus-p foreground background
                    radius frost minimum maximum step font-size font-family
                    font-weight opacity accent disabled-p painter
-                   terminal-label accessible-name
+                   terminal-label terminal-border accessible-name
                    placeholder max-results selected-p text))
   `(list ,@forms))
 

@@ -8,7 +8,7 @@
 (in-package #:lui.garnet)
 
 (defvar *defaults*
-  '(:background "#ffffff" :foreground "#000000" :opacity 1
+  '(:terminal-border "++++-|" :background "#ffffff" :foreground "#000000" :opacity 1
     :radius 0 :frost 0 :accent "#000000"
     :font-family :monospace :font-weight :bold)
   "Garnet uses black outlines, offset shadows, and bold monospace labels.

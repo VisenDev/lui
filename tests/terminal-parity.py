@@ -1,7 +1,9 @@
-"""Compare baseline and uncursed terminal cells/styles through real PTYs.
+"""Compare baseline and uncursed terminal transports through real PTYs.
 
 Run python3 tests/terminal-parity.py [--baseline 561516f]. The baseline backend
 runs against the current shared renderer, isolating terminal transport changes.
+This does not compare historical renderer appearance; border expectations live
+in terminal.py and must be checked independently of this transport comparison.
 """
 import argparse
 from pathlib import Path
@@ -217,7 +219,8 @@ def main():
                 comparisons += 1
                 cells += expected.rows * expected.columns
             print(f"{term} {toolkit}/{page}: five cell/style/focus snapshots match", flush=True)
-        print(f"{comparisons} snapshots, {cells} styled cells match {args.baseline}")
+        print(f"Transport comparison with the current renderer: {comparisons} snapshots, "
+              f"{cells} styled cells match backend {args.baseline}")
 
 
 if __name__ == "__main__":

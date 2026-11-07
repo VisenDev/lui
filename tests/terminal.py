@@ -86,6 +86,41 @@ def script(error=False, debug=False):
       (lui.glass:label "X")))
   (assert (string= (lui.terminal:render-terminal context)
                    (format nil "╭──╮    ~%│X │    ~%╰──╯    ~%"))))
+;; Text border glyphs are independent of a toolkit's graphical radius.
+(lui.fn:fn test-panel-border ((toolkit symbol) (radius real) (border string)
+                             &rest options)
+  (let ((context (lui.terminal:make-terminal-context)))
+    (lui.frame:with-frame (context 5 3)
+      (lui:with-toolkit (toolkit)
+        (lui:panel (append options (lui:opt :id :border :radius radius
+                          :width (lui.layout:fixed 5)
+                          :height (lui.layout:fixed 3) :padding 0)))))
+    (assert (= radius (lui.widgets:widget-radius
+                       (lui.layout:element-content
+                        (gethash :border (lui.frame::context-ids context))))))
+    (assert (string= (lui.terminal:render-terminal context)
+                     (format nil "~C~A~C~%~C   ~C~%~C~A~C~%"
+                             (char border 0) (make-string 3 :initial-element (char border 4))
+                             (char border 1) (char border 5) (char border 5)
+                             (char border 2) (make-string 3 :initial-element (char border 4))
+                             (char border 3))))))
+(test-panel-border :glass 0 "╭╮╰╯─│")
+(test-panel-border :motif 12 "++++-|")
+(test-panel-border :garnet 12 "++++-|")
+(lui:register-toolkit :terminal-border-test :parent :glass
+                     :defaults '(:terminal-border "┌┐└┘═║"))
+(dolist (radius '(0 14))
+  (test-panel-border :terminal-border-test radius "┌┐└┘═║"))
+(test-panel-border :glass 0 "++++-|" :terminal-border "++++-|")
+;; Explicit NIL restores radius-based fallback instead of inheriting defaults.
+(test-panel-border :terminal-border-test 0 "++++-|" :terminal-border nil)
+(test-panel-border :terminal-border-test 14 "╭╮╰╯─│" :terminal-border nil)
+(let ((context (lui.terminal:make-terminal-context))
+      (gallery (lui.example:make-gallery :toolkit :glass)))
+  (lui.frame:with-frame (context 90 35) (lui.example:draw gallery))
+  (let ((lines (lui.terminal:text-lines (lui.terminal:render-terminal context) nil)))
+    (assert (string= (first lines) (format nil "╭~A╮" (make-string 88 :initial-element #\\─))))
+    (assert (string= (nth 34 lines) (format nil "╰~A╯" (make-string 88 :initial-element #\\─))))))
 ;; Track endpoints agree with keyboard and raw mouse edits.
 (let ((context (lui.terminal:make-terminal-context)) (value 0.5))
   (flet ((draw ()

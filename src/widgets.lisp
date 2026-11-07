@@ -2,7 +2,7 @@
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame)
   (:export #:widget #:widget-p #:widget-kind #:widget-style #:widget-text
            #:widget-foreground #:widget-background #:widget-radius
-           #:widget-frost
+           #:widget-frost #:widget-terminal-border
            #:widget-terminal-text #:declare-panel #:declare-widget
            #:value-widget
            #:scrollbar-thumb #:make-widget
@@ -48,6 +48,8 @@
   (accent "#258bff" :type string)
   (disabled-p nil :type boolean)
   (terminal-label nil :type (or null function))
+  ;; Top-left/right, bottom-left/right, horizontal and vertical glyphs.
+  (terminal-border nil :type (or null (string 6)))
   (painter nil :type (or null function))
   (text "" :type string)
   (terminal-cache nil :type (or null string))
@@ -142,7 +144,8 @@ An optional terminal-label callback overrides the standard kind-based label."
      ((maximum real) 1) ((step real) 0.01) ((font-size real) 16)
      ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
      ((opacity real) 0.85) ((accent string) "#258bff") (disabled-p nil)
-     painter terminal-label accessible-name icon center-text-p)
+     painter terminal-label ((terminal-border (or null (string 6))) nil)
+     accessible-name icon center-text-p)
   "Declare a low-level widget in the current frame using STYLE and stable ID.
 Layout, typography, colors, optical effects, and backend extension callbacks
 are supplied as keywords. Return activation for enabled actionable kinds.
@@ -159,6 +162,7 @@ Most applications should use the public LUI controls with LUI:OPT instead."
            :opacity opacity :accent accent
            :disabled-p (not (null disabled-p)) :painter painter
            :icon icon :center-text-p center-text-p :terminal-label terminal-label
+           :terminal-border terminal-border
            :accessible-name accessible-name)))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding
@@ -570,7 +574,8 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
       (let ((key (car tail)) (value (cadr tail)))
         (case key
           ((:foreground :background :radius :frost :opacity :accent
-            :font-size :font-family :font-weight :painter :terminal-label :accessible-name)
+            :font-size :font-family :font-weight :painter :terminal-label :terminal-border
+            :accessible-name)
            (push key appearance)
            (push value appearance))
           (t
