@@ -26,6 +26,25 @@
 (fn (standard-text-insets (values real real)) ((widget widget) &optional ((field-inset real) 12))
   (if (eq (widget-kind widget) :label) (values 0 0) (values field-inset 6)))
 
+(fn paint-paragraph ((renderer renderer) (text string) (x real) (y real)
+                    (wrap-width real) (color string)
+                    &optional ((center-width (or null real)) nil)
+                              ((center-height (or null real)) nil))
+  "Paint wrapped text, optionally centered within the supplied dimensions."
+  (let* ((font (renderer-font renderer))
+         (line-height (line-height font))
+         (lines (wrap-text font text wrap-width))
+         (top (+ y (if center-height
+                       (max 0 (/ (- center-height (* (length lines) line-height)) 2))
+                       0))))
+    (loop :for line :in lines
+          :for baseline :from (+ top (baseline font)) :by line-height
+          :do (paint-text renderer line
+                         (+ x (if center-width
+                                  (max 0 (/ (- center-width (text-width font line)) 2))
+                                  0))
+                         baseline color))))
+
 (fn paint-calendar-icon ((renderer renderer) (box box) (color string))
   (let ((x (+ (box-x box) (/ (- (box-width box) 14) 2)))
         (y (+ (box-y box) (/ (- (box-height box) 14) 2))))
@@ -192,7 +211,6 @@
                               (context-active *context*))))
          (foreground (if disabled "#777777" (widget-foreground widget)))
          (radius (if translucent (widget-radius widget) 0))
-         (font (renderer-font renderer))
          (inset (if (eq kind :label) 0 12))
          (x (+ (box-x box) inset))
          (y (+ (box-y box) (if (eq kind :label) 0 6))))
@@ -263,13 +281,8 @@
                           '((3 . 7) (6 . 10) (12 . 3) (14 . 5)
                             (6 . 13) (2 . 9))))
             (if translucent "#ffffff" foreground) 1)))
-       (loop :for line :in (wrap-text
-                           font (widget-text widget)
-                           (max 0 (- (box-width box) 48)))
-             :for baseline :from (+ y (baseline font))
-               :by (line-height font)
-             :do (paint-text renderer line (+ x 24) baseline
-                             foreground)))
+       (paint-paragraph renderer (widget-text widget) (+ x 24) y
+                        (max 0 (- (box-width box) 48)) foreground))
       (:radio
        (let ((indicator (make-box :x x :y (+ y 1)
                                   :width 16 :height 16)))
@@ -281,37 +294,17 @@
            (shape renderer (inset-box indicator 5) 3
                   (if disabled "#777777"
                       (if translucent (widget-accent widget) foreground)) 1))
-         (loop :for line :in (wrap-text
-                             font (widget-text widget)
-                             (max 0 (- (box-width box) 48)))
-               :for baseline :from (+ y (baseline font))
-                 :by (line-height font)
-               :do (paint-text renderer line (+ x 24) baseline
-                               foreground))))
+         (paint-paragraph renderer (widget-text widget) (+ x 24) y
+                          (max 0 (- (box-width box) 48)) foreground)))
       (:text-field
        (paint-text-field renderer node x y
                          (max 0 (- (box-width box) (* 2 inset)))))
       (otherwise
-       (let* ((lines (wrap-text
-                      font (widget-text widget)
-                      (max 0 (- (box-width box) (* 2 inset)))))
-              (center (member kind '(:button :tab)))
-              (top (if center
-                       (+ (box-y box)
-                          (max 0 (/ (- (box-height box)
-                                       (* (length lines)
-                                          (line-height font)))
-                                    2)))
-                       y)))
-         (loop :for line :in lines
-               :for baseline :from (+ top (baseline font))
-                 :by (line-height font)
-               :do (paint-text
-                    renderer line
-                    (if center
-                        (+ (box-x box)
-                           (max 0 (/ (- (box-width box)
-                                        (text-width font line)) 2)))
-                        x)
-                    baseline foreground)))))
+       (let ((center (member kind '(:button :tab))))
+         (paint-paragraph renderer (widget-text widget)
+                          (if center (box-x box) x) (if center (box-y box) y)
+                          (max 0 (- (box-width box) (* 2 inset)))
+                          foreground
+                          (when center (box-width box))
+                          (when center (box-height box))))))
 ))

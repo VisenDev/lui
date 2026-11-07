@@ -12,127 +12,50 @@
                     (mapcar (lambda (thing) (format nil "~a" thing))
                             things)))))
 
-  (defstruct param
-    (name nil :type symbol)
-    (type t)
-    (kind nil :type (member :required :optional :key :rest :aux))
-    initform supplied-p)
-
-  (defun parse-typed-lambda-list (params)
-    (let ((state :required)
-          (results nil))
-      (loop :for val :in params
-            :do (case val
-                  (&optional (setf state :optional))
-                  (&key (setf state :key))
-                  (&rest (setf state :rest))
-                  (&aux (setf state :aux))
-                  (otherwise
-                   (ecase state
-                     (:required
-                      (cond ((listp val)
-                             (assert (= 2 (length val)))
-                             (push (make-param :name (first val)
-                                               :kind :required
-                                               :type (second val))
-                                   results))
-                            (t
-                             (push (make-param :name val :kind :required)
-                                   results))))
-                     ((:optional :key :aux)
-                      (cond ((and (listp val) (listp (car val)))
-                             (assert (= 2 (length (car val))))
-                             (push (make-param :name (first (first val))
-                                               :kind state
-                                               :type (second (first val))
-                                               :initform (second val)
-                                               :supplied-p (third val))
-                                   results))
-                            ((listp val)
-                             (push (make-param :name (first val)
-                                               :kind state
-                                               :initform (second val)
-                                               :supplied-p (third val))
-                                   results))
-                            (t
-                             (push (make-param :name val :kind state)
-                                   results))))
-                     (:rest
-                      (push (make-param :name val :kind :rest) results))))))
-      (nreverse results)))
-
-  (defun generate-function-type (return-type parsed-typed-lambda-list)
-    (loop :with results := nil
-          :with active-kind := :required
-          :for param :in parsed-typed-lambda-list
-          :for name := (param-name param)
-          :for type := (param-type param)
-          :for kind := (param-kind param)
-          :do (progn
-                (when (not (eq kind active-kind))
-                  (case kind
-                    (:optional (push '&optional results))
-                    (:key (push '&key results))
-                    (:rest (push '&rest results))
-                    (:aux nil)
-                    (otherwise nil))
-                  (setf active-kind kind))
-                (ecase kind
-                  ((:required :optional :rest) (push type results))
-                  (:key
-                   (push (list (intern (symbol-name name) 'keyword) type)
-                         results))
-                  (:aux))
-                results)
-          :finally (return `(function ,(nreverse results) ,return-type))))
-
-  (defun generate-function-lambda-list (parsed-typed-lambda-list)
-    (loop :with results := nil
-          :with active-kind := :required
-          :for param :in parsed-typed-lambda-list
-          :for name := (param-name param)
-          :for kind := (param-kind param)
-          :for initform := (param-initform param)
-          :do (progn
-                (when (not (eq kind active-kind))
-                  (push (ecase kind
-                          (:optional '&optional)
-                          (:key '&key)
-                          (:rest '&rest)
-                          (:aux '&aux))
-                        results)
-                  (setf active-kind kind))
-                (push (ecase kind
-                        ((:required :rest) name)
-                        ((:optional :aux :key)
-                         (append (list name initform)
-                                 (when (param-supplied-p param)
-                                   (list (param-supplied-p param))))))
-                      results))
-          :finally (return (nreverse results)))))
+  (defun parse-typed-lambda-list (parameters)
+    (let ((mode :required) lambda-list argument-types declarations)
+      (dolist (parameter parameters)
+        (if (member parameter '(&optional &key &rest &aux))
+            (progn
+              (setf mode parameter)
+              (push parameter lambda-list)
+              (unless (eq mode '&aux) (push parameter argument-types)))
+            (let* ((optional (member mode '(&optional &key &aux)))
+                   (binding (if (and optional (consp parameter))
+                                parameter (list parameter)))
+                   (head (first binding))
+                   (typed (consp head))
+                   (name (if typed (first head) head))
+                   (type (if typed (second head) t)))
+              (when typed (assert (= 2 (length head))))
+              (push (if optional (cons name (rest binding)) name) lambda-list)
+              (push `(type ,type ,name) declarations)
+              (unless (eq mode '&aux)
+                (push (if (eq mode '&key)
+                          (list (intern (symbol-name name) :keyword) type)
+                          type)
+                      argument-types)))))
+      (values (nreverse lambda-list) (nreverse argument-types)
+              (nreverse declarations)))))
 
 (defmacro fn (name typed-lambda-list &body body)
-  "name -> either a function name or a list of the form (function-name return-type),
-   typed-lambda-list -> a typed parameter list like a defmethod parameter list
-   body -> a normal function body"
-  (let* ((function-name (if (listp name) (first name) name))
-         (return-type (if (listp name) (second name) t))
-         (params (parse-typed-lambda-list typed-lambda-list))
-         (docstring (when (stringp (first body)) (first body)))
-         (body (if docstring (rest body) body))
-         (declarations
-           (loop :while (and (consp (first body)) (eq (caar body) 'declare))
-                 :collect (pop body))))
-    `(progn
-       (declaim (ftype ,(generate-function-type return-type params)
-                       ,function-name))
-       (defun ,function-name ,(generate-function-lambda-list params)
-         ,@(when docstring (list docstring))
-         (declare ,@(mapcar (lambda (param)
-                             `(type ,(param-type param) ,(param-name param)))
-                           params))
-         ,@declarations
-         (the ,return-type (progn ,@body))))))
+  "Define a function with typed parameters and an optional (NAME RETURN-TYPE).
+Optional/key parameters use ((NAME TYPE) DEFAULT SUPPLIED-P)."
+  (multiple-value-bind (lambda-list argument-types types)
+      (parse-typed-lambda-list typed-lambda-list)
+    (let* ((function-name (if (listp name) (first name) name))
+           (return-type (if (listp name) (second name) t))
+           (docstring (when (stringp (first body)) (pop body)))
+           (declarations
+             (loop :while (and (consp (first body)) (eq (caar body) 'declare))
+                   :collect (pop body))))
+      `(progn
+         (declaim (ftype (function ,argument-types ,return-type) ,function-name))
+         (defun ,function-name ,lambda-list
+           ,@(when docstring (list docstring))
+           (declare ,@types)
+           ,@declarations
+           (the ,return-type (progn ,@body)))))))
 
 #+jscl
 (eval-when (:compile-toplevel :load-toplevel :execute)

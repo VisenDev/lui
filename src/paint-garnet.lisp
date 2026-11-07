@@ -80,25 +80,6 @@
     (garnet-outline renderer face)
     face))
 
-(fn garnet-text ((renderer renderer) (text string) (box box) (color string)
-                &optional center)
-  (let* ((font (renderer-font renderer))
-         (lines (wrap-text font text (box-width box)))
-         (top (+ (box-y box)
-                 (if center
-                     (max 0 (/ (- (box-height box)
-                                  (* (length lines) (line-height font))) 2))
-                     0))))
-    (loop :for line :in lines
-          :for y :from (+ top (baseline font)) :by (line-height font)
-          :do (paint-text renderer line
-                          (+ (box-x box)
-                             (if center
-                                 (max 0 (/ (- (box-width box)
-                                              (text-width font line)) 2))
-                                 0))
-                          y color))))
-
 (fn paint-garnet ((renderer renderer) (node element))
   (let* ((widget (element-content node))
          (box (element-box node))
@@ -109,7 +90,9 @@
                                    (context-active *context*))))
          (ink (if disabled "#777777" (widget-foreground widget))))
     (case kind
-      (:label (garnet-text renderer (widget-text widget) box ink))
+      (:label
+       (paint-paragraph renderer (widget-text widget)
+                        (box-x box) (box-y box) (box-width box) ink))
       (:panel
        (if (and (= 0 (box-x box) (box-y box))
                 (= (box-width box) (context-width *context*))
@@ -123,8 +106,10 @@
               (selected (and (eq kind :tab) (widget-value widget))))
          (when selected (garnet-fill renderer field "#000000"))
          (when hover (garnet-outline renderer field 2))
-         (garnet-text renderer (widget-text widget) field
-                      (if selected "#ffffff" ink) t)))
+         (paint-paragraph renderer (widget-text widget)
+                          (box-x field) (box-y field) (box-width field)
+                          (if selected "#ffffff" ink)
+                          (box-width field) (box-height field))))
       (:checkbox
        (let* ((square (make-box :x (- (+ (box-x box) (box-width box)) 24)
                                :y (+ (box-y box)
@@ -143,11 +128,9 @@
                                   (cons (+ x 2) (+ y 10))
                                   (cons x (+ y 10)))))
                (funcall (renderer-polygons renderer) (list stroke) ink 1))))
-         (garnet-text renderer (widget-text widget)
-                      (make-box :x (+ (box-x box) 12) :y (+ (box-y box) 6)
-                                :width (max 0 (- (box-width box) 48))
-                                :height (max 0 (- (box-height box) 12)))
-                      ink)))
+         (paint-paragraph renderer (widget-text widget)
+                          (+ (box-x box) 12) (+ (box-y box) 6)
+                          (max 0 (- (box-width box) 48)) ink)))
       (:radio
        (let* ((indicator (make-box :x (- (+ (box-x box) (box-width box)) 22)
                                   :y (+ (box-y box)
@@ -158,11 +141,9 @@
          (when (widget-value widget)
            (shape renderer (inset-box indicator 5) 4 ink 1))
          (when hover (garnet-outline renderer indicator 2))
-         (garnet-text renderer (widget-text widget)
-                      (make-box :x (+ (box-x box) 12) :y (+ (box-y box) 6)
-                                :width (max 0 (- (box-width box) 48))
-                                :height (max 0 (- (box-height box) 12)))
-                      ink)))
+         (paint-paragraph renderer (widget-text widget)
+                          (+ (box-x box) 12) (+ (box-y box) 6)
+                          (max 0 (- (box-width box) 48)) ink)))
       (:slider
        (let* ((track (make-box :x (+ (box-x box) 8)
                                :y (+ (box-y box) (/ (box-height box) 2) -6)

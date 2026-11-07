@@ -15,12 +15,24 @@
 (fn (supplied-key list) (&key ((paint (or null function)) nil paint-p))
   (list paint paint-p))
 
+(fn (typed-bindings list) ((value integer)
+                          &optional ((increment integer) 2 supplied-p)
+                          &rest extra)
+  (list (+ value increment) supplied-p extra))
+
+#-jscl
+(fn (typed-aux integer) ((value integer) &aux ((total integer) (1+ value)))
+  total)
+
 (defun run-tests ()
   (let ((checks 0))
     (flet ((check (value)
              (incf checks)
              (assert value () "Check ~D failed." checks)))
       (check (= (typed-example 2) 3))
+      #-jscl (check (= (typed-aux 2) 3))
+      (check (equal '(5 nil nil) (typed-bindings 3)))
+      (check (equal '(7 t (a b)) (typed-bindings 3 4 'a 'b)))
       (check (equal '(nil nil) (supplied-option)))
       (check (equal '(nil t) (supplied-option nil)))
       (check (equal '(nil nil) (supplied-key)))
