@@ -7,6 +7,10 @@
 
 (in-package #:lui.font)
 
+(lui::expose-api font open-font close-font font-size text-width line-height
+  baseline wrap-text glyph-polygons *font-path* *font-paths*
+  *font-directories* *font-names* font-face)
+
 (defvar *font-path* nil "Override the default TrueType font pathname.")
 
 (defvar *font-paths* nil

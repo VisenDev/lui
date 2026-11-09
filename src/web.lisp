@@ -3,6 +3,8 @@
   (:export #:mount #:unmount #:refresh))
 (in-package #:lui.web)
 
+(lui::expose-api mount unmount refresh)
+
 (defstruct web-app
   host stage overlay canvas graphics renderer context callback cleanup observer resize
   scrollport (scroll-listener nil :type (or null function)) (viewport-offset 0)

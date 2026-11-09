@@ -1,10 +1,12 @@
 (defpackage #:lui.pdf
   (:use #:cl #:lui.fn #:lui.frame #:lui.layout #:lui.draw)
-  (:export #:render-pdf #:*output*))
+  (:export #:render-pdf #:*pdf-output*))
 
 (in-package #:lui.pdf)
 
-(defvar *output* #p"lui.pdf" "Destination used by the :PDF backend of LUI:RUN.")
+(lui::expose-api render-pdf *pdf-output*)
+
+(defvar *pdf-output* #p"lui.pdf" "Destination used by the :PDF backend of LUI:RUN.")
 
 (fn (pdf-renderer renderer) ((font lui.font:font))
   (let (clip)
@@ -60,7 +62,7 @@
 
 (fn (run-pdf pathname) ((draw function) &key title width height interactive)
   (declare (ignore interactive))
-  (render-pdf draw *output* :title title :width (or width 612)
+  (render-pdf draw *pdf-output* :title title :width (or width 612)
                             :height (or height 792)))
 
 (lui:register-backend :pdf #'run-pdf)

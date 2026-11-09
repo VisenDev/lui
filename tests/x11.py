@@ -412,12 +412,12 @@ class X11Tests(unittest.TestCase):
     def test_divider_lost_release_and_focus_loss_stop_dragging(self):
         source = r'''
 (asdf:load-system "lui/debug")
-(let ((state (lui.debug:make-state :selected '(:id :target))) (first t))
+(let ((state (lui.debug:make-debugger-state :selected '(:id :target))) (first t))
   (lui.x11:run-x11
    (lambda ()
      (when first
        (setf first nil)
-       (lui.debug:set-enabled t :state state))
+       (lui.debug:set-debugger-enabled t :state state))
      (lui:button :target "Target")
      (let ((rail (lui.frame:previous-box '(:lui.debug :details-resize nil)))
            (pane (lui.frame:previous-box '(:lui.debug :property-pane nil))))
@@ -434,7 +434,7 @@ class X11Tests(unittest.TestCase):
                                         lui.frame:*context*)
                                        '(:lui.debug :details-resize nil))
                                 "true" "false")
-                   "selected" (if (lui.debug:state-selected state)
+                   "selected" (if (lui.debug:debugger-state-selected state)
                                   "true" "false"))))))
    :title WINDOW_TITLE :width 520 :height 420))
 '''

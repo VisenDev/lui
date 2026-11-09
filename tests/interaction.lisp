@@ -204,10 +204,11 @@
 
 (defun test-palettes ()
   (assert (equalp (lui:available-palettes) #(:default :light :dark :ocean :forest)))
-  (assert (null (lui:named-palette :default)))
-  (let ((colors (lui:named-palette :dark)))
-    (setf (getf colors :foreground) "#ff0000")
-    (assert (equal (getf (lui:named-palette :dark) :foreground) "#eeeeee")))
+  (assert (lui:palette-p lui:+palette-default+))
+  (assert (equal (lui:palette-foreground lui:+palette-dark+) "#eeeeee"))
+  (assert (handler-case (funcall (symbol-function 'lui::call-with-palette)
+                     (list :accent "#123456") (constantly nil))
+            (error () t)))
   ;; Resolve a provider once per control, while observing changes within a frame.
   (let ((reads 0) (color "#112233") (context (make-test-context)))
     (lui:register-toolkit :palette-provider :parent :glass
@@ -231,10 +232,10 @@
   (assert (equal "#abcdef" (getf (lui:toolkit-palette :palette-child) :background)))
   (let ((context (make-test-context)))
     (with-frame (context 80 30)
-      (lui:with-palette ('(:accent "#112233" :outline "#445566"))
+      (lui:with-palette ((lui:make-palette :accent "#112233" :outline "#445566"))
         (lui:with-toolkit (:glass) (lui:button :glass "Glass"))
         (lui:with-toolkit (:motif)
-          (lui:with-palette ('(:background "#778899"))
+          (lui:with-palette ((lui:make-palette :background "#778899"))
             (lui:button :motif "Motif" (lui:opt :accent "#aabbcc"))
             (lui:panel (lui:opt :id :palette-panel) (lui:label "Panel"))))
         (lui:with-toolkit (:garnet) (lui:button :garnet "Garnet")))
@@ -250,6 +251,21 @@
       (assert (equal "#303040" (color :glass :background)))
       (assert (equal "#ffffff" (color :garnet :background)))
       (assert (equal "#258bff" (color :unscoped :accent))))))
+
+(defun test-named-palette-scope ()
+  (let ((before (lui:toolkit-palette)))
+    (loop :for name :across (lui:available-palettes)
+          :for palette :in (list lui:+palette-default+ lui:+palette-light+
+                                 lui:+palette-dark+ lui:+palette-ocean+
+                                 lui:+palette-forest+)
+          :do (assert
+               (equal (lui:with-palette (name) (lui:toolkit-palette))
+                      (lui:with-palette (palette) (lui:toolkit-palette)))))
+    (lui:with-palette (:dark)
+      (lui:with-palette ((lui:make-palette :accent "#123456"))
+        (assert (equal "#123456" (getf (lui:toolkit-palette) :accent)))
+        (assert (equal "#eeeeee" (getf (lui:toolkit-palette) :foreground)))))
+    (assert (equal before (lui:toolkit-palette)))))
 
 (defun test-date-picker ()
   (assert (equalp #(2024 2 29) (lui::parse-picker-date "02/29/2024")))
@@ -383,6 +399,7 @@
     (assert (zerop (lui.frame::frame-wait context nil 11)))))
 
 (defun run-tests ()
+  (test-named-palette-scope)
   (test-palettes)
   (test-frame-limits)
   (test-date-picker)
@@ -447,8 +464,8 @@
           (assert (= 7 number))
           (assert (equal "edited" text)))))
     ;; An explicit NIL option overrides a true toolkit default.
-    (let ((lui.glass:*defaults*
-            (append '(:disabled-p t) lui.glass:*defaults*))
+    (let ((lui:*glass-defaults*
+            (append '(:disabled-p t) lui:*glass-defaults*))
           (context (make-test-context)))
       (with-frame (context 20 5)
         (lui:with-toolkit (:glass)

@@ -153,7 +153,7 @@
                 :components ((:file "cocoa")))))
 
 (defsystem "lui/terminal"
-  :depends-on ("lui/core" "uncursed")
+  :depends-on ("lui/core" (:version "uncursed" "0.7.0"))
   :components ((:module "src" :components ((:file "terminal"))))
   :in-order-to ((test-op (test-op "lui/terminal/tests"))))
 

@@ -19,7 +19,7 @@
 (fn (preferred-backend (or null symbol)) ()
   "Choose a registered host backend from the environment at run time."
   (let ((backends (lui:available-backends)))
-    (flet ((available (name) (when (member name backends) name)))
+    (flet ((available (name) (when (find name backends) name)))
       (or #+lui-linux-host (and (wayland-session-p) (available :wayland))
           #+(or lui-linux-host lui-bsd-host)
           (and (uiop:getenvp "DISPLAY") (available :x11))

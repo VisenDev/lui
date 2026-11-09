@@ -3,13 +3,26 @@
   (:export #:renderer #:make-renderer #:renderer-font #:renderer-polygons
            #:renderer-clip #:renderer-glass #:renderer-text
            #:renderer-surface #:renderer-stipple
-           #:paint-frame #:measure-widget #:widget-font #:focused-p #:shape #:outline #:inset-box
-           #:geometry #:make-geometry #:geometry-left #:geometry-top #:geometry-right
-           #:geometry-value-p #:geometry-text-p #:geometry-bottom #:geometry-min-width #:geometry-min-height
-           #:geometry-center-x #:geometry-center-y #:geometry-offset-x #:geometry-offset-y
-           #:widget-geometry #:text-box #:rounded-polygon #:color-components #:trapezoids #:paint-text))
+           #:paint-frame #:measure-widget #:widget-font #:focused-p #:shape
+           #:outline #:inset-box
+           #:geometry #:make-geometry #:geometry-left #:geometry-top
+           #:geometry-right
+           #:geometry-value-p #:geometry-text-p #:geometry-bottom
+           #:geometry-min-width #:geometry-min-height
+           #:geometry-center-x #:geometry-center-y #:geometry-offset-x
+           #:geometry-offset-y
+           #:widget-geometry #:text-box #:rounded-polygon #:color-components
+           #:trapezoids #:paint-text))
 
 (in-package #:lui.draw)
+
+(lui::expose-api renderer renderer-font renderer-polygons renderer-clip
+  renderer-glass renderer-text geometry make-geometry geometry-left
+  geometry-top geometry-right geometry-bottom geometry-min-width
+  geometry-min-height geometry-center-x geometry-center-y geometry-offset-x
+  geometry-offset-y geometry-text-p geometry-value-p widget-geometry text-box
+  rounded-polygon color-components paint-text shape outline inset-box
+  focused-p widget-font)
 
 (defmacro typed-vector (type &rest elements)
   "Construct a typed vector without an intermediate list of its elements."

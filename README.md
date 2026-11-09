@@ -48,8 +48,8 @@ frame. For example, this entire application runs with any loaded backend:
 ```
 
 `with-toolkit` evaluates its argument once and scopes ordinary widget calls.
-`panel` attaches its body as children; the layout macros `lui.frame:row` and
-`lui.frame:column` group children without painting a panel. Buttons return
+`panel` attaches its body as children; the layout macros `lui:row` and
+`lui:column` group children without painting a panel. Buttons return
 activation; fields, sliders, and checkboxes return the current value and a
 second value indicating a change. Store application values outside the draw
 function. The library keeps focus, capture, and caret state between frames.
@@ -75,11 +75,16 @@ value and its own choice, then returns the updated value and a change flag:
 (setf size (lui:radio :large size :large "Large"))
 ```
 
+The public API is available through `lui:`. Optional systems add their API to
+the same package when loaded: for example, `lui/debug` adds
+`lui:set-debugger-enabled`, and `lui/web` adds `lui:mount`. Implementation
+packages are for backend and library maintenance.
+
 Use the optional final `lui:opt` form for widget customization. Its keyword
 lambda list is visible to SLIME; layout keys such as `:gap` apply to panels,
 whereas `:step` configures a slider. To change toolkit defaults, bind
-`lui.glass:*defaults*`, `lui.motif:*defaults*`, `lui.garnet:*defaults*`,
-`lui.macos:*defaults*`, or `lui.qt:*defaults*` for a
+`lui:*glass-defaults*`, `lui:*motif-defaults*`, `lui:*garnet-defaults*`,
+`lui:*macos-defaults*`, or `lui:*qt-defaults*` for a
 group. Options include foreground/background, radius, frost, opacity, accent,
 font size, `:font-family` (`:sans-serif` or `:monospace`), and `:font-weight`
 (`:normal` or `:bold`). Graphical
@@ -92,12 +97,16 @@ palette and toolkit changes. Applications can use the same presets:
 
 ```lisp
 (lui:with-toolkit (:qt)
-  (lui:with-palette ((lui:named-palette :ocean))
+  (lui:with-palette (:ocean)
     (lui:button :save "Save")))
 ```
 
-`lui:available-palettes` returns a vector of preset names. Custom semantic color
-plists work with `lui:with-palette` too. `:macos` evokes modern macOS controls;
+`lui:available-palettes` returns a vector of preset names. `with-palette` also
+accepts `lui:+palette-dark+`, `lui:+palette-light+`, `lui:+palette-ocean+`,
+`lui:+palette-forest+`, and `lui:+palette-default+`. Custom palettes use
+`lui:make-palette`; raw plists are not accepted. NIL color slots inherit the
+enclosing scope or toolkit. Palette slots are read-only.
+`:macos` evokes modern macOS controls;
 `:qt` is Fusion-inspired. Both render through LUI's existing backends.
 
 Toolkits choose terminal panel borders independently of graphical corner radius.
@@ -136,20 +145,20 @@ new widget kinds. This toolkit draws a badge with a minimum intrinsic size.
   :controls
   (list (cons :badge
     (lambda (id text &rest options)
-      (apply #'lui.widgets:declare-widget :badge (lui:current-toolkit)
+      (apply #'lui:declare-widget :badge (lui:current-toolkit)
              id text options))))
   :geometry (lambda (widget)
               (declare (ignore widget))
-              (lui.draw:make-geometry :left 8 :right 8 :top 6 :bottom 6
+              (lui:make-geometry :left 8 :right 8 :top 6 :bottom 6
                                       :min-width 96 :min-height 28))
   :paint (lambda (renderer node)
-           (let ((box (lui.layout:element-box node)))
-             (lui.draw:shape renderer box 4 "#183b35" 1)
-             (lui.draw:outline renderer box 4 "#367c6e" 1 1)
-             (lui.draw:paint-text renderer
-               (lui.widgets:widget-text (lui.layout:element-content node))
-               (+ 8 (lui.layout:box-x box))
-               (+ 19 (lui.layout:box-y box)) "#ffffff")))
+           (let ((box (lui:element-box node)))
+             (lui:shape renderer box 4 "#183b35" 1)
+             (lui:outline renderer box 4 "#367c6e" 1 1)
+             (lui:paint-text renderer
+               (lui:widget-text (lui:element-content node))
+               (+ 8 (lui:box-x box))
+               (+ 19 (lui:box-y box)) "#ffffff")))
   :native-labels nil)
 
 (lui:with-toolkit (:ink)
@@ -157,14 +166,14 @@ new widget kinds. This toolkit draws a badge with a minimum intrinsic size.
 ```
 
 `:paint` receives the shared graphical renderer and element on desktop and web.
-`:geometry` receives a widget and returns a `lui.draw:geometry`: text insets,
+`:geometry` receives a widget and returns a `lui:geometry`: text insets,
 minimum size, centering, and optional pressed displacement. Measurement, built-in
 painting, caret placement, and text selection share this geometry. Custom painters
-can use `lui.draw:text-box` to obtain the same text area. These callbacks and the
+can use `lui:text-box` to obtain the same text area. These callbacks and the
 `:native-labels` policy inherit from the parent toolkit. Overriding painting or
 geometry selects canvas labels by default; set `:native-labels t` when the painter
-supports the browser's native selectable labels. The exported `lui.draw:shape`,
-`lui.draw:outline`, and `lui.draw:paint-text` primitives use the current backend.
+supports the browser's native selectable labels. The exported `lui:shape`,
+`lui:outline`, and `lui:paint-text` primitives use the current backend.
 A widget's `:painter` callback takes precedence over the toolkit painter.
 `:terminal-label` takes a widget and returns its text. Terminal panel borders
 follow `:terminal-border`; button delimiters follow the widget’s radius.
@@ -175,9 +184,9 @@ created in its scope, including nested scopes and mixed toolkits in one frame:
 
 ```lisp
 (lui:with-toolkit (:motif)
-  (lui:with-palette ('(:background "#202830" :foreground "#eeeeee"
+  (lui:with-palette ((lui:make-palette :background "#202830" :foreground "#eeeeee"
                        :accent "#66bbee" :bevel-light "#708090"
-                       :bevel-dark "#101820"))
+                       :bevel-dark "#101820")))
     (lui:button :save "Save")))
 ```
 
@@ -191,8 +200,8 @@ The remaining role keys are `:disabled`, `:selection`, `:on-accent`, `:border`,
 so later drawing does not depend on a dynamic theme binding.
 
 Collection APIs return vectors with declared element types: wrapped lines are
-`(vector string)`, event batches are `(vector lui.frame:event)`, and drawing
-callbacks receive `lui.layout:contours` (vectors of contours, each a vector of
+`(vector string)`, event batches are `(vector lui:event)`, and drawing
+callbacks receive `lui:contours` (vectors of contours, each a vector of
 X/Y cons pairs). Colors are four-element single-float vectors. Use `aref`,
 sequence operations, or `loop ... across` to consume these results. Configuration
 plists, control alists, Lisp forms, and internal pending-event queues remain lists.
@@ -436,8 +445,10 @@ The makefile launchers also discover checkouts under `build/deps/`:
 ```sh
 mkdir -p build/deps
 git clone https://github.com/Plisp/uncursed.git build/deps/uncursed
+git -C build/deps/uncursed checkout 89f9cb6f21bc7e981a04ce0d6361ae73dde49c4f
 ```
 
+LUI requires uncursed 0.7.0 or later; Quicklisp's 0.3.0 release is too old.
 The tested uncursed revision is:
 
 | Library | Revision |
@@ -449,7 +460,7 @@ With Quicklisp installed, load `scripts/setup.lisp` and use
 Applications loading through ASDF directly should register these checkouts in
 their source registry. uncursed uses CFFI grovel and requires a C compiler.
 No native rendering library is bundled. A TrueType font is required for native graphics: common system paths
-are tried automatically, or set `lui.font:*font-path*` after loading the backend.
+are tried automatically, or set `lui:*font-path*` after loading the backend.
 To use an installed or bundled font family, set these variables **before**
 opening the window. For a saved executable, set `LUI_FONT` to the base TTF
 path or `LUI_FONT_DIR` to an additional search directory at launch time.
@@ -459,14 +470,14 @@ filenames. Lookup tries each filename across those directories in order.
 For example, to search your own directory first:
 
 ```lisp
-(push #p"/opt/my-app/fonts/" lui.font:*font-directories*)
-(push '((:sans-serif :normal) "MySans.ttf") lui.font:*font-names*)
+(push #p"/opt/my-app/fonts/" lui:*font-directories*)
+(push '((:sans-serif :normal) "MySans.ttf") lui:*font-names*)
 ```
 
 An exact face override takes precedence over directory search, and
 `*font-path*` takes precedence for the base face.
 Additional faces are cached and closed with the base font. Override their paths
-with `lui.font:*font-paths*`, for example
+with `lui:*font-paths*`, for example
 `'(((:monospace :bold) . "/path/to/Mono-Bold.ttf"))`. Browser measurement and
 painting use the same CSS family and weight.
 
@@ -510,12 +521,12 @@ be selected or searched.
 
 ```lisp
 (asdf:load-system "lui/pdf")
-(lui.pdf:render-pdf (lambda () (lui:label "Quarterly report"
+(lui:render-pdf (lambda () (lui:label "Quarterly report"
                                           (lui:opt :foreground "#17212b")))
                     #p"report.pdf" :width 595 :height 842 :background "#ffffff")
 ```
 
-For existing `lui:run` callers, bind `lui.pdf:*output*` (default `lui.pdf`) and
+For existing `lui:run` callers, bind `lui:*pdf-output*` (default `lui.pdf`) and
 pass `:backend :pdf`. Run `(asdf:test-system "lui/pdf")` to test the backend.
 Run `make pdf` to open the worked example in your default PDF viewer.
 For generation only, run `make build/pdf-demo.pdf`. The source in `examples/pdf-demo.lisp` shows a composed
@@ -559,7 +570,7 @@ without launching a server.
 On touch-first devices, a standalone web app with no explicit height grows
 to fit its content. Swipe vertically to scroll the page. The canvas draws
 the next scroll position before moving the page, and labels support browser
-text selection. Direct calls to `lui.web:mount` use the same default.
+text selection. Direct calls to `lui:mount` use the same default.
 Pass `:scroll-mode :viewport` for a fixed-height embedded view, or
 `:scroll-mode :page` to expand into the page on any device.
 
@@ -680,12 +691,12 @@ can toggle it once; subsequent frames draw the debugger automatically:
 ```lisp
 (asdf:load-system "lui/debug")
 (when (lui:button :debug "Show debugger")
-  (lui.debug:set-enabled t))
+  (lui:set-debugger-enabled t))
 ```
 
 Drag the debugger's left edge to resize its sidebar; the width persists.
 Focus the separator and use Left/Right or Home/End to resize from the keyboard.
-`lui.debug:state-width` can also set its optional width in LUI spacing units.
+`lui:debugger-state-width` can also set its optional width in LUI spacing units.
 The terminal tree uses one dense line per row, and floating debugger panes
 cover the underlying borders.
 
@@ -807,7 +818,7 @@ provided. The initial reported speed was about 20 FPS.
 Cocoa uses a double-buffered OpenGL view and the shared GL renderer. It
 requests a zero swap interval. All interactive backends default to one idle
 frame per second and a maximum of 240 active frames per second. Pass
-`:min-fps 1 :max-fps 170` to `lui:run` or `lui.web:mount` to change them.
+`:min-fps 1 :max-fps 170` to `lui:run` or `lui:mount` to change them.
 Input wakes the next frame, and animation deadlines can request faster redraws. When an
 accelerated pixel format is unavailable, it reports a warning and draws with
 AppKit. Run `make benchmark PLATFORM=cocoa BENCH_FRAMES=720 WARMUP=144`
@@ -831,7 +842,7 @@ text-only cell, or use `lui:table-cell` to group labels, buttons, editors, or
 nested layouts in one column.
 
 ```lisp
-(lui:table (:width (lui.layout:grow) :column-gap (lui:units 1))
+(lui:table (:width (lui:grow) :column-gap (lui:units 1))
   (lui:table-row ()
     (lui:table-cell (:column-span 2) (lui:label "Account")))
   (lui:table-row ()

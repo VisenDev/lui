@@ -41,23 +41,23 @@
   (let ((next (lui:text-field
                id text
                (if invalid-p
-                   (lui:opt :width (lui.layout:grow) :disabled-p disabled-p
+                   (lui:opt :width (lui:grow) :disabled-p disabled-p
                             :background "#a83232")
-                   (lui:opt :width (lui.layout:grow) :disabled-p disabled-p)))))
-    (unless (equal text next) (lui.frame:request-frame))
+                   (lui:opt :width (lui:grow) :disabled-p disabled-p)))))
+    (unless (equal text next) (lui:request-frame))
     next))
 
 (defun counter-page (state)
-  (lui.frame:row (:gap (lui:units 1) :width (lui.layout:grow) :cross-align :center)
+  (lui:row (:gap (lui:units 1) :width (lui:grow) :cross-align :center)
     (lui:label (format nil "~D" (state-count state))
-               (lui:opt :width (lui.layout:grow)))
+               (lui:opt :width (lui:grow)))
     (when (lui:button :seven-count "Count")
       (incf (state-count state))
-      (lui.frame:request-frame))))
+      (lui:request-frame))))
 
 (defun temperature-page (state)
-  (lui.frame:row (:gap (lui:units 1) :width (lui.layout:grow))
-    (lui.frame:column (:width (lui.layout:grow) :gap (lui:units 1))
+  (lui:row (:gap (lui:units 1) :width (lui:grow))
+    (lui:column (:width (lui:grow) :gap (lui:units 1))
       (lui:label "Celsius")
       (let ((text (edit-field
                    :seven-celsius (state-celsius state)
@@ -68,7 +68,7 @@
           (let ((converted (lui.seven.model:temperature text :celsius)))
             (when converted
               (setf (state-fahrenheit state) (number-text converted)))))))
-    (lui.frame:column (:width (lui.layout:grow) :gap (lui:units 1))
+    (lui:column (:width (lui:grow) :gap (lui:units 1))
       (lui:label "Fahrenheit")
       (let ((text (edit-field
                    :seven-fahrenheit (state-fahrenheit state)
@@ -85,15 +85,15 @@
     (lui:label "Enter a valid number to convert the other field.")))
 
 (defun flight-page (state)
-  (lui.frame:row (:gap (lui:units 1) :width (lui.layout:grow))
+  (lui:row (:gap (lui:units 1) :width (lui:grow))
     (when (lui:tab :seven-one-way "One-way flight"
                    (lui:opt :selected-p (not (state-return-p state))))
       (setf (state-return-p state) nil)
-      (lui.frame:request-frame))
+      (lui:request-frame))
     (when (lui:tab :seven-return-flight "Return flight"
                    (lui:opt :selected-p (state-return-p state)))
       (setf (state-return-p state) t)
-      (lui.frame:request-frame)))
+      (lui:request-frame)))
   (lui:label "Departure (DD.MM.YYYY)")
   (setf (state-departure state)
         (edit-field :seven-departure (state-departure state)
@@ -136,18 +136,18 @@
             (lui:label "Duration (seconds)")
             (lui:slider :seven-duration (lui.seven.model:timer-duration timer)
                         (lui:opt :minimum 0 :maximum 30
-                                 :step 0.1 :width (lui.layout:grow))))))
-    (lui.seven.model:advance-timer timer (lui.frame:frame-time) :duration duration
-                   :reset (lui.frame:activated-p :seven-reset))
-    (lui.frame:row (:gap (lui:units 1) :width (lui.layout:grow) :cross-align :center)
+                                 :step 0.1 :width (lui:grow))))))
+    (lui.seven.model:advance-timer timer (lui:frame-time) :duration duration
+                   :reset (lui:activated-p :seven-reset))
+    (lui:row (:gap (lui:units 1) :width (lui:grow) :cross-align :center)
       (lui:label "Elapsed time:")
       (lui:gauge :seven-elapsed (lui.seven.model:timer-fraction timer)
-                 (lui:opt :width (lui.layout:grow))))
+                 (lui:opt :width (lui:grow))))
     (lui:label (format nil "~,1F s / ~,1F s"
                        (lui.seven.model:timer-elapsed timer) (lui.seven.model:timer-duration timer)))
     (lui:button :seven-reset "Reset")
     (when (< (lui.seven.model:timer-elapsed timer) (lui.seven.model:timer-duration timer))
-      (lui.frame:request-frame (/ 1 60)))))
+      (lui:request-frame (/ 1 60)))))
 
 (defun person-id-p (id)
   (and (consp id) (eq (first id) :seven-person)))
@@ -160,7 +160,7 @@
           (setf (state-name state) (lui.seven.model:person-name person)
                 (state-surname state) (lui.seven.model:person-surname person)))
         (setf (state-reveal state) id)
-        (lui.frame:request-frame)))
+        (lui:request-frame)))
     (when focus
       (setf (lui.frame:context-focus lui.frame:*context*) (list :seven-person id)))))
 
@@ -169,18 +169,18 @@
          (focus (lui.frame:context-focus lui.frame:*context*)))
     (dolist (person people)
       (let ((id (list :seven-person (lui.seven.model:person-id person))))
-        (when (or (lui.frame:activated-p id)
+        (when (or (lui:activated-p id)
                   (some (lambda (event)
-                          (and (eq (lui.frame:event-kind event) :press)
-                               (eq (lui.frame:event-button event) :primary)))
+                          (and (eq (lui:event-kind event) :press)
+                               (eq (lui:event-button event) :primary)))
                         (lui.frame:events-for id)))
           (select-person state (lui.seven.model:person-id person) t))))
     (when (and people (person-id-p focus))
       (loop for event across (lui.frame:events-for focus) do
-        (when (eq (lui.frame:event-kind event) :key)
+        (when (eq (lui:event-kind event) :key)
           (let* ((index (or (position (lui.seven.model:crud-selected model) people
                                       :key #'lui.seven.model:person-id) 0))
-                 (next (lui.interaction:list-index (lui.frame:event-key event) index (length people))))
+                 (next (lui:list-index (lui:event-key event) index (length people))))
             (when next
               (select-person state (lui.seven.model:person-id (nth next people)) t)
               (setf (lui.frame:context-focus-visible-p lui.frame:*context*) t))))))))
@@ -195,29 +195,29 @@
 
 (defun reveal-person (state)
   (when (state-reveal state)
-    (let ((row (lui.frame:previous-box (list :seven-person (state-reveal state))))
-          (view (lui.frame:previous-box :seven-people)))
+    (let ((row (lui:previous-box (list :seven-person (state-reveal state))))
+          (view (lui:previous-box :seven-people)))
       (if (and row view)
-          (multiple-value-bind (x y) (lui.frame:scroll-position :seven-people)
-            (lui.interaction:reveal-rect :seven-people x
-                         (+ y (- (lui.layout:box-y row) (lui.layout:box-y view)))
-                         0 (lui.layout:box-height row))
+          (multiple-value-bind (x y) (lui:scroll-position :seven-people)
+            (lui:reveal-rect :seven-people x
+                         (+ y (- (lui:box-y row) (lui:box-y view)))
+                         0 (lui:box-height row))
             (setf (state-reveal state) nil))
-          (lui.frame:request-frame)))))
+          (lui:request-frame)))))
 
 (defun crud-actions (state)
   (let ((model (state-crud state)))
-    (when (lui.frame:activated-p :seven-create)
+    (when (lui:activated-p :seven-create)
       (let ((person (lui.seven.model:crud-create model (state-name state)
                                  (state-surname state))))
         (when (member person (lui.seven.model:crud-filter model (state-filter state)))
           (select-person state (lui.seven.model:person-id person))))
-      (lui.frame:request-frame))
-    (when (and (lui.seven.model:crud-selected model) (lui.frame:activated-p :seven-update))
+      (lui:request-frame))
+    (when (and (lui.seven.model:crud-selected model) (lui:activated-p :seven-update))
       (lui.seven.model:crud-update model (lui.seven.model:crud-selected model)
                    (state-name state) (state-surname state))
-      (lui.frame:request-frame))
-    (when (and (lui.seven.model:crud-selected model) (lui.frame:activated-p :seven-delete))
+      (lui:request-frame))
+    (when (and (lui.seven.model:crud-selected model) (lui:activated-p :seven-delete))
       (let* ((people (visible-people state))
              (index (position (lui.seven.model:crud-selected model) people :key #'lui.seven.model:person-id))
              (focused (person-id-p (lui.frame:context-focus lui.frame:*context*))))
@@ -229,7 +229,7 @@
                                        people))
                            focused)
             (setf (state-name state) "" (state-surname state) "")))
-      (lui.frame:request-frame))))
+      (lui:request-frame))))
 
 (defun crud-page (state)
   (let ((model (state-crud state)))
@@ -238,25 +238,25 @@
           (edit-field :seven-filter (state-filter state)))
     (select-record state (visible-people state))
     ;; Apply field input and actions before declaring the resulting list.
-    (setf (state-name state) (lui.interaction:edit-value :seven-name (state-name state))
+    (setf (state-name state) (lui:edit-value :seven-name (state-name state))
           (state-surname state)
-          (lui.interaction:edit-value :seven-surname (state-surname state)))
+          (lui:edit-value :seven-surname (state-surname state)))
     (crud-actions state)
-    (lui:panel (lui:opt :id :seven-people :width (lui.layout:grow)
-                        :height (lui.layout:fixed (lui:units 8)) :scroll-p t :gap 0
+    (lui:panel (lui:opt :id :seven-people :width (lui:grow)
+                        :height (lui:fixed (lui:units 8)) :scroll-p t :gap 0
                         :radius 0 :frost 0 :opacity 1)
       (dolist (person (visible-people state))
         (lui:list-item
          (list :seven-person (lui.seven.model:person-id person))
          (format nil "~A, ~A" (lui.seven.model:person-surname person) (lui.seven.model:person-name person))
          (lui:opt :selected-p (eql (lui.seven.model:person-id person) (lui.seven.model:crud-selected model))
-                  :width (lui.layout:grow) :radius 0 :frost 0 :opacity 1))))
+                  :width (lui:grow) :radius 0 :frost 0 :opacity 1))))
     (lui:label "Name:")
     (setf (state-name state) (edit-field :seven-name (state-name state)))
     (lui:label "Surname:")
     (setf (state-surname state)
           (edit-field :seven-surname (state-surname state)))
-    (lui.frame:row (:gap (lui:units 1) :width (lui.layout:grow))
+    (lui:row (:gap (lui:units 1) :width (lui:grow))
       (lui:button :seven-create "Create")
       (lui:button :seven-update "Update"
                   (lui:opt :disabled-p (null (lui.seven.model:crud-selected model))))
@@ -272,16 +272,16 @@
 
 (defun draw-content (state)
   (dolist (tasks (list (subseq *tasks* 0 4) (subseq *tasks* 4)))
-    (lui.frame:row (:width (lui.layout:grow) :gap (lui:units 0.5))
+    (lui:row (:width (lui:grow) :gap (lui:units 0.5))
       (dolist (task tasks)
         (when (lui:tab (list :seven-task (first task)) (second task)
                        (lui:opt :selected-p
                                 (eq (state-task state) (first task))
                                 :disabled-p (modal-p state)))
           (setf (state-task state) (first task))
-          (lui.frame:request-frame)))))
+          (lui:request-frame)))))
   (lui:panel (lui:opt :id (list :seven-body (state-task state))
-                      :width (lui.layout:grow) :height (lui.layout:grow)
+                      :width (lui:grow) :height (lui:grow)
                       :scroll-p
                       (not (member (state-task state) '(:cells :circles)))
                       :gap (lui:units 1) :padding (lui:units 1))
@@ -293,14 +293,14 @@
 
 (defun draw (state)
   (lui:with-toolkit ((state-toolkit state))
-    (lui:panel (lui:opt :id :seven-window :width (lui.layout:grow) :height (lui.layout:grow)
+    (lui:panel (lui:opt :id :seven-window :width (lui:grow) :height (lui:grow)
                         :background (ecase (state-toolkit state)
                                       (:glass "#202430") (:motif "#b8b8b8")
                                       (:garnet "#ffffff"))
                         :opacity 1 :radius 0 :frost 0
                         :padding (lui:units 1) :gap (lui:units 1))
-      (lui.frame:row (:width (lui.layout:grow) :gap (lui:units 1) :cross-align :center)
-        (lui:label "7GUIs" (lui:opt :width (lui.layout:grow)))
+      (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
+        (lui:label "7GUIs" (lui:opt :width (lui:grow)))
         (when (lui:button :seven-toolkit
                           (ecase (state-toolkit state)
                             (:glass "Glass") (:motif "Motif")
@@ -309,7 +309,7 @@
           (setf (state-toolkit state)
                 (case (state-toolkit state)
                   (:glass :motif) (:motif :garnet) (otherwise :glass)))
-          (lui.frame:request-frame)))
+          (lui:request-frame)))
       (draw-content state))))
 
 (defun main ()

@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def script(error=False, debug=False):
+    # These assertions inspect Glass colors and Unicode borders explicitly.
     draw = """(let ((frames 0) (draw (lui.example:make-demo)))
   (handler-case
       (lui:run (lambda ()
@@ -33,7 +34,7 @@ def script(error=False, debug=False):
                  (when (> (incf frames) 1) (error "test draw failure")))
                :backend :terminal)
     (error () (format t "~&@@DRAW-ERROR~%"))))""" if error else """
-(let* ((gallery (lui.example:make-gallery))
+(let* ((gallery (lui.example:make-gallery :toolkit :glass))
        (context (lui:run (lambda () (lui.example:draw gallery))
                          :backend :terminal)))
   (format t "~&@@RESULT name=~S volume=~,2F enabled=~S count=~D size=~Dx~D~%"
@@ -44,17 +45,17 @@ def script(error=False, debug=False):
           (lui.frame:context-height context)))"""
     if debug:
         draw = """
-(let* ((gallery (lui.example:make-gallery))
-       (state (lui.debug:make-state :open-p t :width 30))
+(let* ((gallery (lui.example:make-gallery :toolkit :glass))
+       (state (lui.debug:make-debugger-state :open-p t :width 30))
        (first t)
        (context (lui:run (lambda ()
                            (when first
                              (setf first nil)
-                             (lui.debug:set-enabled t :state state))
+                             (lui.debug:set-debugger-enabled t :state state))
                            (lui.example:draw gallery))
                          :backend :terminal)))
   (format t "~&@@DEBUG width=~,1F size=~Dx~D~%"
-          (lui.debug:state-width state)
+          (lui.debug:debugger-state-width state)
           (lui.frame:context-width context) (lui.frame:context-height context)))
 
 """
@@ -68,7 +69,7 @@ def script(error=False, debug=False):
                             (concatenate 'string (string #\\Escape) "[<" sequence)))
          (event (uncursed-sys:read-event)))
     (lui.terminal::mouse-event input (uncursed:event-kind event) context)))
-(assert (= (lui.terminal:text-width "A界é") 4))
+(assert (= (lui:terminal-text-width "A界é") 4))
 (assert (equalp (lui.terminal:text-lines "界 ab" 3) #("界" "ab")))
 (let ((context (lui.terminal:make-terminal-context)))
   (lui.frame:with-frame (context 4 1) (lui.glass:label "A界é"))
@@ -158,7 +159,7 @@ def script(error=False, debug=False):
     (lui.frame:with-frame (context width 1)
       (lui.motif:slider :narrow 0.5 (lui:opt :width (lui.layout:fixed width))))
     (let ((line (lui.terminal:render-terminal context)))
-      (assert (= (1+ width) (lui.terminal:text-width line)))
+      (assert (= (1+ width) (lui:terminal-text-width line)))
       (assert (find #\\# line)))))
 (let ((context (lui.terminal:make-terminal-context)))
   (lui.frame:with-frame (context 12 1)

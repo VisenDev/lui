@@ -2,14 +2,19 @@
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui)
   (:import-from #:uncursed #:character-width)
   (:export #:make-terminal-context #:render-terminal #:text-lines
-           #:run-terminal #:character-width #:text-width #:cell-edge))
+           #:run-terminal #:character-width #:terminal-text-width #:cell-edge))
 
 (in-package #:lui.terminal)
 
-(fn (text-width integer) ((text string))
+(lui::expose-api make-terminal-context render-terminal terminal-text-width
+  text-lines cell-edge)
+
+(fn (terminal-text-width integer) ((text string))
+  "Return the terminal cell width of TEXT, including wide characters."
   (uncursed:display-width text))
 
 (fn (text-lines (vector string)) ((text string) width)
+  "Wrap TEXT to WIDTH terminal cells; NIL preserves its explicit line breaks."
   (lui.text:wrap-lines text (and width (max 1 (floor width)))
     (lambda (string start end)
       (loop :for index :from start :below end
@@ -39,23 +44,23 @@
          (readout (format nil " ~D%" (round (* 100 fraction))))
          (label (widget-text widget))
          (prefix (if (and (plusp (length label))
-                          (>= width (+ (text-width label)
+                          (>= width (+ (terminal-text-width label)
                                        (length readout) 4)))
                      (concatenate 'string label " ") ""))
-         (suffix (if (>= width (+ (text-width prefix) (length readout) 3))
+         (suffix (if (>= width (+ (terminal-text-width prefix) (length readout) 3))
                      readout ""))
-         (length (max 1 (- width (text-width prefix) (length suffix))))
+         (length (max 1 (- width (terminal-text-width prefix) (length suffix))))
          (position (round (* fraction (1- length))))
          (track (make-string length :initial-element #\-)))
     (dotimes (index position) (setf (char track index) #\=))
     (setf (char track position) #\#)
     (values (concatenate 'string prefix track suffix)
-            (text-width prefix) length)))
+            (terminal-text-width prefix) length)))
 
 (fn (measure-widget (values integer integer)) ((widget widget) width)
   (let ((lines (text-lines (widget-terminal-text widget) width)))
     (values (max (if (eq (widget-kind widget) :slider) 12 0)
-                 (loop :for line :across lines :maximize (text-width line)))
+                 (loop :for line :across lines :maximize (terminal-text-width line)))
             (length lines))))
 
 (fn (make-terminal-context context) ()
@@ -594,7 +599,7 @@
              (state (gethash (element-id node) (context-state context)))
              (field-p (eq (widget-kind widget) :text-field))
              (cursor (if (and field-p state)
-                         (1+ (text-width
+                         (1+ (terminal-text-width
                               (subseq (widget-value widget) 0
                                       (min (length (widget-value widget))
                                            (edit-state-cursor state)))))
@@ -613,7 +618,7 @@
           ;; Focus is part of the canvas so incremental redraws can erase it.
           (let ((text (slice-cells text (+ offset (- x origin)) width)))
             ;; Focus uses the terminal's default colors, not the panel palette.
-            (loop :for column :from x :below (+ x (text-width text))
+            (loop :for column :from x :below (+ x (terminal-text-width text))
                   :do (setf (uncursed::cell-style
                              (aref uncursed::*put-buffer* y column))
                             uncursed:*default-style*))

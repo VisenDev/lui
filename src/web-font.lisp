@@ -7,6 +7,10 @@
 
 (in-package #:lui.font)
 
+(lui::expose-api font open-font close-font font-size text-width line-height
+  baseline wrap-text glyph-polygons *font-path* *font-paths*
+  *font-directories* *font-names* font-face)
+
 (defvar *font-path* nil)
 (defvar *font-paths* nil)
 (defvar *font-directories* nil)
@@ -32,7 +36,8 @@
                :size size)))
 
 (fn (close-font null) ((font font))
-  (fill (font-faces font) nil)
+  (dotimes (index (length (font-faces font)))
+    (setf (aref (font-faces font) index) nil))
   (clrhash (font-metrics font))
   (clrhash (font-wrapped font))
   (setf (font-loader font) nil))

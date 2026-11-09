@@ -180,18 +180,18 @@ class WebTests(unittest.TestCase):
 
     def test_font_caches_preserve_alternating_sizes(self):
         self.lisp('''
-          (let ((font (lui.font:open-font)))
+          (let ((font (lui:open-font)))
             (unwind-protect
               (let ((small (lui.font::measure-text font "alpha beta"))
-                    (lines (lui.font:wrap-text font "alpha beta gamma" 100)))
-                (setf (lui.font:font-size font) 32)
-                (assert (> (lui.font:text-width font "alpha beta")
+                    (lines (lui:wrap-text font "alpha beta gamma" 100)))
+                (setf (lui:font-size font) 32)
+                (assert (> (lui:text-width font "alpha beta")
                            (jscl/ffi:oget small "width")))
-                (lui.font:wrap-text font "alpha beta gamma" 100)
-                (setf (lui.font:font-size font) 16)
+                (lui:wrap-text font "alpha beta gamma" 100)
+                (setf (lui:font-size font) 16)
                 (assert (eq small (lui.font::measure-text font "alpha beta")))
-                (assert (eq lines (lui.font:wrap-text font "alpha beta gamma" 100))))
-              (lui.font:close-font font)))
+                (assert (eq lines (lui:wrap-text font "alpha beta gamma" 100))))
+              (lui:close-font font)))
         ''')
 
     def test_explicit_page_scroll_on_desktop(self):
@@ -355,7 +355,7 @@ class WebTests(unittest.TestCase):
                       (lui.draw:make-geometry :left 20 :right 8 :top 10 :bottom 4))
           :native-labels t)''')
         host = self.fixture('''
-          (lui:with-palette ('(:foreground "#124578" :outline "#cc2288"))
+          (lui:with-palette ((lui:make-palette :foreground "#124578" :outline "#cc2288"))
             (lui:with-toolkit (:inset-labels) (lui:label "Inset native text"))
             (lui:with-toolkit (:garnet) (lui:button :pattern "Pattern")))
         ''')

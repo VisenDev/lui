@@ -1,9 +1,43 @@
 (defpackage #:lui
   (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
-  (:export #:run #:register-backend #:available-backends #:units #:*backend*
-           #:*unit* #:with-toolkit #:with-palette #:toolkit-palette #:widget-color #:current-toolkit #:toolkit-defaults
-           #:available-palettes #:named-palette
-           #:register-toolkit #:toolkit-revision
+  (:import-from #:lui.layout
+    #:point #:contour #:contours #:sizing #:fit #:grow #:fixed #:percent #:box
+    #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
+    #:element-content)
+  (:import-from #:lui.frame
+    #:row #:column #:with-frame #:frame-time #:request-frame #:previous-box
+    #:scroll-position #:scroll-to #:activated-p #:activated-ids #:hovered-p
+    #:event #:event-kind #:event-x #:event-y #:event-id #:event-value
+           #:event-key #:event-button #:event-buttons #:event-clicks
+           #:event-dragging-p)
+  (:import-from #:lui.widgets
+    #:declare-widget #:widget-text)
+  (:export
+    #:point #:contour #:contours #:sizing #:fit #:grow #:fixed #:percent #:box
+    #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
+    #:element-content #:row #:column #:with-frame #:frame-time #:request-frame
+    #:previous-box #:scroll-position #:scroll-to #:activated-p #:activated-ids
+    #:hovered-p #:event #:event-kind #:event-x #:event-y #:event-id
+           #:event-value #:event-key #:event-button #:event-buttons
+           #:event-clicks #:event-dragging-p #:declare-widget #:widget-text
+           #:run #:register-backend #:available-backends #:units #:*backend*
+           #:*unit* #:with-toolkit #:with-palette #:toolkit-palette
+           #:widget-color #:current-toolkit #:toolkit-defaults
+           #:available-palettes #:palette #:palette-p #:make-palette
+           #:palette-thumb
+           #:palette-control-background #:palette-background
+           #:palette-foreground
+           #:palette-accent #:palette-window-background #:palette-selection
+           #:palette-border #:palette-disabled #:palette-disabled-accent
+           #:palette-disabled-surface #:palette-disabled-bevel-light
+           #:palette-disabled-bevel-dark
+           #:palette-outline #:palette-light #:palette-shadow
+           #:palette-bevel-light #:palette-bevel-dark #:palette-track
+           #:palette-cell-background #:palette-cell-foreground
+           #:palette-on-accent
+           #:+palette-default+ #:+palette-light+ #:+palette-dark+
+           #:+palette-ocean+ #:+palette-forest+
+           #:register-toolkit
            #:register-toolkit-rendering #:toolkit-paint #:toolkit-geometry
            #:toolkit-native-labels-p
            #:control
@@ -16,6 +50,13 @@
            #:*default-backend-function*
            #:*toolkit-revision*))
 (in-package #:lui)
+
+;; Optional modules expose their public symbols when loaded, preserving symbol
+;; identity for functions, types, variables, macros, and SETF accessors.
+(defmacro expose-api (&rest symbols)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (shadowing-import ',symbols :lui)
+     (export ',symbols :lui)))
 
 (defvar *backends* (make-hash-table :test 'eq))
 (defvar *default-backend-function* nil
@@ -33,7 +74,7 @@
 
 (fn (available-backends (vector symbol)) ()
   "Return a vector of backend names registered in this Lisp image."
-  (let ((results (make-array 1 :element-type 'symbol :adjustable t :fill-pointer 0)))
+  (let ((results (make-array 1 :element-type 'symbol :initial-element nil :adjustable t :fill-pointer 0)))
     (maphash (lambda (name runner)
                (declare (ignore runner))
                (vector-push-extend name results))
@@ -171,40 +212,123 @@ inherit only from an explicit PARENT."
                    (without-option :palette defaults))
             palette)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defstruct palette
+    "Semantic color overrides. NIL roles inherit the enclosing scope."
+    (control-background nil :type (or null string) :read-only t)
+    (background nil :type (or null string) :read-only t)
+    (foreground nil :type (or null string) :read-only t)
+    (accent nil :type (or null string) :read-only t)
+    (window-background nil :type (or null string) :read-only t)
+    (selection nil :type (or null string) :read-only t)
+    (border nil :type (or null string) :read-only t)
+    (disabled nil :type (or null string) :read-only t)
+    (disabled-accent nil :type (or null string) :read-only t)
+    (disabled-surface nil :type (or null string) :read-only t)
+    (disabled-bevel-light nil :type (or null string) :read-only t)
+    (disabled-bevel-dark nil :type (or null string) :read-only t)
+    (outline nil :type (or null string) :read-only t)
+    (light nil :type (or null string) :read-only t)
+    (shadow nil :type (or null string) :read-only t)
+    (bevel-light nil :type (or null string) :read-only t)
+    (bevel-dark nil :type (or null string) :read-only t)
+    (track nil :type (or null string) :read-only t)
+    (cell-background nil :type (or null string) :read-only t)
+    (cell-foreground nil :type (or null string) :read-only t)
+    (on-accent nil :type (or null string) :read-only t)
+    (thumb nil :type (or null string) :read-only t)))
+
+;; Preserve non-scalar constant identity when a source file or FASL is reloaded.
+(defconstant +palette-default+
+  (if (boundp '+palette-default+) (symbol-value '+palette-default+)
+      (make-palette))
+  "Built-in immutable palette for WITH-PALETTE.")
+(defconstant +palette-light+
+  (if (boundp '+palette-light+) (symbol-value '+palette-light+)
+      (make-palette :control-background "#ffffff" :background "#eeeeee"
+                   :foreground "#202124" :accent "#2563eb"
+                   :window-background "#e4e7eb" :selection "#dbeafe" :border
+                   "#808891"))
+  "Built-in immutable palette for WITH-PALETTE.")
+(defconstant +palette-dark+
+  (if (boundp '+palette-dark+) (symbol-value '+palette-dark+)
+      (make-palette :control-background "#424954" :background "#292d35"
+                   :foreground "#eeeeee" :accent "#79b8ff"
+                   :disabled "#89919d" :disabled-accent "#626c7a"
+                   :disabled-surface
+                  "#343a44"
+                   :disabled-bevel-light "#424954" :disabled-bevel-dark
+                   "#242830"
+                   :window-background "#1d2026" :selection "#34465e" :border
+                   "#78818f"
+                   :outline "#aab4c3" :light "#424954" :shadow "#111318"
+                   :bevel-light "#505866" :bevel-dark "#171a20" :track
+                   "#626c7a"
+                   :cell-background "#23272e" :cell-foreground "#eeeeee"
+                   :on-accent
+                  "#101820"))
+  "Built-in immutable palette for WITH-PALETTE.")
+(defconstant +palette-ocean+
+  (if (boundp '+palette-ocean+) (symbol-value '+palette-ocean+)
+      (make-palette :control-background "#f1fbfd" :background "#dceef3"
+                   :foreground "#123544" :accent "#087e9a"
+                   :window-background "#bfdce5" :selection "#b7e5ef" :border
+                   "#4c8696"
+                   :cell-background "#f1fbfd" :cell-foreground "#123544"))
+  "Built-in immutable palette for WITH-PALETTE.")
+(defconstant +palette-forest+
+  (if (boundp '+palette-forest+) (symbol-value '+palette-forest+)
+      (make-palette :control-background "#f5faf1" :background "#e4ecdf"
+                   :foreground "#243b28" :accent "#387348"
+                   :window-background "#cbdac4" :selection "#c5dfbd" :border
+                   "#6b8762"
+                   :cell-background "#f5faf1" :cell-foreground "#243b28"))
+  "Built-in immutable palette for WITH-PALETTE.")
+
+
 (defparameter *named-palettes*
-  '((:default)
-    (:light :control-background "#ffffff" :background "#eeeeee" :foreground "#202124" :accent "#2563eb"
-     :window-background "#e4e7eb" :selection "#dbeafe" :border "#808891")
-    (:dark :control-background "#424954" :background "#292d35" :foreground "#eeeeee" :accent "#79b8ff"
-     :disabled "#89919d" :disabled-accent "#626c7a" :disabled-surface "#343a44"
-     :disabled-bevel-light "#424954" :disabled-bevel-dark "#242830"
-     :window-background "#1d2026" :selection "#34465e" :border "#78818f"
-     :outline "#aab4c3" :light "#424954" :shadow "#111318"
-     :bevel-light "#505866" :bevel-dark "#171a20" :track "#626c7a"
-     :cell-background "#23272e" :cell-foreground "#eeeeee" :on-accent "#101820")
-    (:ocean :control-background "#f1fbfd" :background "#dceef3" :foreground "#123544" :accent "#087e9a"
-     :window-background "#bfdce5" :selection "#b7e5ef" :border "#4c8696"
-     :cell-background "#f1fbfd" :cell-foreground "#123544")
-    (:forest :control-background "#f5faf1" :background "#e4ecdf" :foreground "#243b28" :accent "#387348"
-     :window-background "#cbdac4" :selection "#c5dfbd" :border "#6b8762"
-     :cell-background "#f5faf1" :cell-foreground "#243b28")))
+  (list (cons :default +palette-default+)
+        (cons :light +palette-light+)
+        (cons :dark +palette-dark+)
+        (cons :ocean +palette-ocean+)
+        (cons :forest +palette-forest+)))
 
 (fn (available-palettes (vector symbol)) ()
-  "Return built-in palette names; :DEFAULT preserves the toolkit's own colors."
+  "Return the names accepted by WITH-PALETTE."
   (map '(vector symbol) #'car *named-palettes*))
 
-(fn (named-palette list) ((name symbol))
-  "Return a fresh semantic color plist for NAME, suitable for WITH-PALETTE."
-  (let ((entry (assoc name *named-palettes*)))
-    (unless entry (error "Unknown palette ~S." name))
-    (copy-list (cdr entry))))
+(fn (palette-options list) ((palette palette))
+  (loop :for role :in '(:control-background :background :foreground :accent
+                   :window-background :selection :border :disabled
+                   :disabled-accent :disabled-surface :disabled-bevel-light
+                   :disabled-bevel-dark :outline :light :shadow :bevel-light
+                   :bevel-dark :track :cell-background :cell-foreground
+                   :on-accent :thumb)
+        :for reader :in (list #'palette-control-background
+                   #'palette-background #'palette-foreground #'palette-accent
+                   #'palette-window-background #'palette-selection
+                   #'palette-border #'palette-disabled
+                   #'palette-disabled-accent #'palette-disabled-surface
+                   #'palette-disabled-bevel-light
+                   #'palette-disabled-bevel-dark #'palette-outline
+                   #'palette-light #'palette-shadow #'palette-bevel-light
+                   #'palette-bevel-dark #'palette-track
+                   #'palette-cell-background #'palette-cell-foreground
+                   #'palette-on-accent #'palette-thumb)
+        :for color := (funcall reader palette)
+        :when color :append (list role color)))
 
-(fn (call-with-palette t) ((palette list) (draw function))
-  (let ((*palette* (append palette *palette*))) (funcall draw)))
+(fn (call-with-palette t) ((palette (or palette symbol)) (draw function))
+  (let* ((value (etypecase palette
+                  (symbol (or (cdr (assoc palette *named-palettes*))
+                              (error "Unknown palette ~S." palette)))
+                  (palette palette)))
+         (*palette* (append (palette-options value) *palette*)))
+    (funcall draw)))
 
 (defmacro with-palette ((palette) &body body)
-  "Draw BODY with semantic color overrides from PALETTE, a plist.
-Nested scopes inherit unspecified roles and restore their parent on exit."
+  "Draw BODY with a PALETTE instance or a built-in name such as :DARK.
+NIL roles inherit enclosing colors; the parent scope is restored on exit."
   `(call-with-palette ,palette (lambda () ,@body)))
 
 (fn (override (or null function)) ((kind symbol) (entry toolkit))

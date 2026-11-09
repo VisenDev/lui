@@ -72,10 +72,10 @@
         (assert (eq palette (lui.example::gallery-palette gallery)))
         (assert (toolkit-label (format nil "Palette: ~A" (string-capitalize (symbol-name palette))))))
       (frame (make-event :kind :activate :id :debugger-toggle))
-      (assert (lui.debug:enabled-p context))
+      (assert (lui.debug:debugger-enabled-p context))
       ;; The named action shows the debugger; repeated activation keeps it open.
       (frame (make-event :kind :activate :id :debugger-toggle))
-      (assert (lui.debug:enabled-p context)))))
+      (assert (lui.debug:debugger-enabled-p context)))))
 
 (defun run-tests ()
   (test-independent-demos)

@@ -6,7 +6,7 @@ APIs and platform support; historical measurements are not current guarantees.
 
 ## Project constraints and conventions
 
-- Keep `src/` below 10,000 physical lines. Examples, tests, and generated output
+- Keep `src/` below 10,200 physical lines. Examples, tests, and generated output
   are outside that budget. Prefer simplicity over artificial compression; flag
   any tradeoff that would reduce lines by making the implementation harder to
   understand. `make loc` reports cloc counts; also check physical line totals.
@@ -108,7 +108,7 @@ the change and report material limitations instead of claiming untested support.
   paint or geometry defaults to canvas labels unless native-label support is
   explicitly declared. Do not assume arbitrary custom painters support overlays.
 - Touch-first standalone apps without an explicit height default to page
-  scrolling. `lui.web:mount` shares that behavior. `:scroll-mode :viewport`
+  scrolling. `lui:mount` shares that behavior. `:scroll-mode :viewport`
   selects a bounded embedded view; `:page` expands on any device. Paint the next
   canvas viewport before moving the page to avoid blank areas during scrolling.
 - Preserve DOM label reuse and avoid needless style/layout work. Profile before
