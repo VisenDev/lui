@@ -191,7 +191,7 @@ inherit only from an explicit PARENT."
 
 (fn (available-palettes (vector symbol)) ()
   "Return built-in palette names; :DEFAULT preserves the toolkit's own colors."
-  (make-array 5 :element-type 'symbol :initial-contents '(:default :light :dark :ocean :forest)))
+  (map '(vector symbol) #'car *named-palettes*))
 
 (fn (named-palette list) ((name symbol))
   "Return a fresh semantic color plist for NAME, suitable for WITH-PALETTE."
@@ -547,23 +547,34 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
 (fn (calendar-item boolean) (id (text string) &rest options)
   (list-item id text (append options (opt :font-size 14))))
 
+(fn (calendar-day (values integer integer integer))
+    ((year integer) (month (integer 1 12)) (day integer))
+  "Resolve a day in MONTH or either adjacent month, including year bounds."
+  (let* ((count (month-days year month))
+         (offset (cond ((< day 1) -1) ((> day count) 1) (t 0))))
+    (multiple-value-bind (y m) (shift-month year month offset)
+      (values y m (case offset
+                    (-1 (+ day (month-days y m)))
+                    (1 (- day count)) (t day))))))
+
 (fn (calendar-arrow-focus null) (id (state picker-state))
   (let ((focus (context-focus *context*)))
-    (when (and (consp focus) (equal (first focus) id) (eq (second focus) :day))
+    (when (and (consp focus) (equal (first focus) id)
+               (eq (second focus) :day))
       (let ((day (third focus)))
-        (loop for event across (events-for focus) do
+        (loop :for event :across (events-for focus) :do
           (let ((step (and (eq (event-kind event) :key)
                            (case (event-key event)
                              (:left -1) (:right 1) (:up -7) (:down 7)))))
             (when step
-              (let* ((year (picker-state-year state)) (month (picker-state-month state))
-                     (count (month-days year month)) (next (+ day step))
-                     (offset (cond ((< next 1) -1) ((> next count) 1) (t 0))))
-                (multiple-value-bind (y m) (shift-month year month offset)
-                  (when (<= 1 y 9999)
-                    (setf day (case offset (-1 (+ next (month-days y m))) (1 (- next count)) (t next))
-                          (picker-state-year state) y (picker-state-month state) m
-                          (context-focus *context*) (list id :day day))))))))))))
+              (multiple-value-bind (y m next)
+                  (calendar-day (picker-state-year state)
+                                (picker-state-month state) (+ day step))
+                (when (<= 1 y 9999)
+                  (setf day next
+                        (picker-state-year state) y
+                        (picker-state-month state) m
+                        (context-focus *context*) (list id :day day)))))))))))
 
 (fn (picker-calendar (values (or null date-parts) boolean))
     (id (state picker-state) (selected (or null date-parts)))
@@ -599,7 +610,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                 (when (calendar-item (list id :month m) (subseq (aref *month-names* (1- m)) 0 3)
                                      :width (lui.layout:percent (/ 1 3)) :selected-p (= m month))
                   (setf (picker-state-month state) m (picker-state-months-p state) nil))))))
-        (let* ((start (calendar-start year month)) (count (month-days year month)))
+        (let ((start (calendar-start year month)))
           (row (:width (lui.layout:grow))
             (loop for name across "SMTWTFS" do
               (row (:width width :align :center)
@@ -607,17 +618,20 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
           (dotimes (week 6)
             (row (:width (lui.layout:grow))
               (dotimes (column 7)
-                (let* ((n (- (+ 1 (* week 7) column) start))
-                       (offset (cond ((< n 1) -1) ((> n count) 1) (t 0))))
-                  (multiple-value-bind (y m) (shift-month year month offset)
-                    (let ((day (case offset (-1 (+ n (month-days y m))) (1 (- n count)) (t n))))
-                      (when (calendar-item (if (zerop offset) (list id :day day)
-                                               (list id :adjacent y m day))
-                                           (princ-to-string day) :width width :center-text-p t
-                                           :disabled-p (not (<= 1 y 9999))
-                                           :foreground (if (zerop offset) foreground muted)
-                                           :selected-p (equalp (make-date-parts y m day) selected))
-                        (return-from picker-calendar (values (make-date-parts y m day) t)))))))))))
+                (multiple-value-bind (y m day)
+                    (calendar-day year month
+                                  (- (+ 1 (* week 7) column) start))
+                  (let ((current (= m month)))
+                    (when (calendar-item
+                           (if current (list id :day day)
+                               (list id :adjacent y m day))
+                           (princ-to-string day) :width width :center-text-p t
+                           :disabled-p (not (<= 1 y 9999))
+                           :foreground (if current foreground muted)
+                           :selected-p
+                           (equalp (make-date-parts y m day) selected))
+                      (return-from picker-calendar
+                        (values (make-date-parts y m day) t))))))))))
     (row (:width (lui.layout:grow))
       (when (calendar-item (list id :clear) "Clear" :foreground ink)
         (return-from picker-calendar (values nil t)))

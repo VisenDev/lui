@@ -143,10 +143,9 @@ Floating children use offsets; interactive nodes participate in input routing."
   (remove-if #'element-floating-p (element-children node)))
 
 (fn (gaps real) ((node element))
-  (let ((count 0))
-    (do-children (child node)
-      (unless (element-floating-p child) (incf count)))
-    (* (element-gap node) (max 0 (1- count)))))
+  (* (element-gap node)
+     (max 0 (1- (count-if-not #'element-floating-p
+                             (element-children node))))))
 
 (fn (measure-table-columns real) ((table element))
   ;; Track widths start with single-column cells. Spanning cells then add
@@ -179,8 +178,8 @@ Floating children use offsets; interactive nodes participate in input routing."
 
 (fn (intrinsic real) ((node element) (axis symbol))
   (assert (and (>= (element-gap node) 0) (>= (element-padding node) 0)))
-  (assert (or (zerop (length (element-children node)))
-              (not (and (element-measure node) (plusp (length (flow-children node)))))))
+  (assert (or (not (element-measure node))
+              (every #'element-floating-p (element-children node))))
   (do-children (child node)
     (intrinsic child axis))
   (let ((rule (axis-rule node axis))

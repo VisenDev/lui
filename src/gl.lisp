@@ -176,8 +176,7 @@ void main() {
 
 (fn (gl-text null) ((gpu gpu) (font font) (text string)
             (x real) (y real) (color string))
-  (let* ((loader (font-loader font))
-         (scale (float (/ (font-size font) (zpb-ttf:units/em loader)) 1.0))
+  (let* ((scale (float (scale-font font) 1.0))
          (advance 0) (previous nil))
     (gl-color color 1)
     (call-gl "glPushMatrix" :void)
@@ -188,13 +187,11 @@ void main() {
            (call-gl "glScalef" :float scale :float (- scale) :float 1.0 :void)
            (loop :for char :across text
                  :do (when previous
-                       (incf advance (zpb-ttf:kerning-offset
-                                      previous char loader))
+                       (incf advance (glyph-kerning font previous char))
                        (call-gl "glTranslatef" :float (float advance 1.0)
                                 :float 0.0 :float 0.0 :void))
                      (gl-geometry gpu (glyph-polygons font char))
-                     (setf advance (zpb-ttf:advance-width
-                                    (zpb-ttf:find-glyph char loader))
+                     (setf advance (glyph-advance font char)
                            previous char)))
       (call-gl "glPopMatrix" :void))))
 
