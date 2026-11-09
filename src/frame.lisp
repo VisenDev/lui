@@ -530,13 +530,11 @@ Clear focus/hover for removed controls and return the completed root element."
       (setf (context-hover context) nil))
     (unless (interactive-p (context-active context))
       (setf (context-active context) nil)))
-  (let ((removed nil))
-    (maphash
-     (lambda (id value)
-       (declare (ignore value))
-       (unless (gethash id (context-ids context)) (push id removed)))
-     (context-state context))
-    (dolist (id removed) (remhash id (context-state context))))
+  (maphash (lambda (id value)
+             (declare (ignore value))
+             (unless (gethash id (context-ids context))
+               (remhash id (context-state context))))
+           (context-state context))
   (clrhash (context-scroll context))
   (walk-elements
    (context-root context)

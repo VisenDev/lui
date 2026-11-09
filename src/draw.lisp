@@ -168,13 +168,14 @@
         #+jscl (error "The browser renderer requires a text drawing callback.")
         #-jscl
         (let* ((font (renderer-font renderer))
-               (scale (scale-font font))
+               (scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
                (cursor x)
                (previous nil))
           (loop :for char :across text
                 :do (when previous
                       (incf cursor
-                            (* scale (glyph-kerning font previous char))))
+                            (* scale (zpb-ttf:kerning-offset
+                                      previous char (font-loader font)))))
                     (funcall
                      (renderer-polygons renderer)
                      (map 'contours
@@ -186,7 +187,9 @@
                       (glyph-polygons font char))
                      color 1)
                     (incf cursor
-                          (* scale (glyph-advance font char)))
+                          (* scale (zpb-ttf:advance-width
+                                    (zpb-ttf:find-glyph char
+                                                       (font-loader font)))))
                     (setf previous char))))))
 
 (fn (inset-box box) ((box box) (inset real))

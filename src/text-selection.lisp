@@ -68,15 +68,21 @@
         (when (< y (+ top (line-height font)))
           (let ((at (- x (selection-left font node area line))) (left 0)
                 #-jscl (previous nil)
-                #-jscl (scale (scale-font font)))
+                #-jscl (scale (/ (font-size font)
+                          (zpb-ttf:units/em (font-loader font)))))
             (dotimes (i (length line))
               (let* (#-jscl (char (char line i))
                      (right #+jscl (text-width font (subseq line 0 (1+ i)))
                             #-jscl
                             (+ left
                                (* scale
-                                  (+ (glyph-advance font char)
-                                     (glyph-kerning font previous char))))))
+                                  (+ (zpb-ttf:advance-width
+                                      (zpb-ttf:find-glyph
+                                       char (font-loader font)))
+                                     (if previous
+                                         (zpb-ttf:kerning-offset
+                                          previous char (font-loader font))
+                                         0))))))
                 (when (< at (/ (+ left right) 2))
                   (return-from selection-index (+ start i)))
                 (setf left right)

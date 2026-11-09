@@ -7,16 +7,11 @@
 
 (fn (key-pressed-p boolean) (key &optional ((context context) *context*))
   "Whether this frame contains a press of the semantic KEY."
-  (let ((pressed nil))
-    (maphash (lambda (id events)
-               (declare (ignore id))
-               (when (some (lambda (event)
-                             (and (eq (event-kind event) :key)
-                                  (eq (event-key event) key)))
-                           events)
-                 (setf pressed t)))
-             (context-events context))
-    pressed))
+  (loop :for events :being :the :hash-values :of (context-events context)
+        :thereis (some (lambda (event)
+                         (and (eq (event-kind event) :key)
+                              (eq (event-key event) key)))
+                       events)))
 
 (fn (take-events (vector event)) (id)
   "Return and consume a vector of a control's ordered frame events."

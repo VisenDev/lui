@@ -33,12 +33,12 @@
 
 (fn (available-backends (vector symbol)) ()
   "Return a vector of backend names registered in this Lisp image."
-  (let (results)
+  (let ((results (make-array 1 :element-type 'symbol :adjustable t :fill-pointer 0)))
     (maphash (lambda (name runner)
                (declare (ignore runner))
-               (push name results))
+               (vector-push-extend name results))
              *backends*)
-    (make-array (length results) :element-type 'symbol :initial-contents results)))
+    results))
 
 (fn (run t)
     ((draw function) &key (backend *backend*) ((title string) "LUI") width

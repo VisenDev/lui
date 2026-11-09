@@ -121,12 +121,9 @@ An optional terminal-label callback overrides the standard kind-based label."
 (fn (navigate-tabs null) ()
   (when (and (not (context-tabs-handled-p *context*))
              (context-previous-root *context*)
-             (let ((pending nil))
-               (maphash (lambda (id events)
-                          (declare (ignore id))
-                          (when (some #'tab-arrow-p events) (setf pending t)))
-                        (context-events *context*))
-               pending))
+             (loop :for events :being :the :hash-values
+                     :of (context-events *context*)
+                   :thereis (some #'tab-arrow-p events)))
     (setf (context-tabs-handled-p *context*) t)
     (walk-elements
      (context-previous-root *context*)
@@ -209,14 +206,10 @@ Most applications should use the public LUI controls with LUI:OPT instead."
   (last-command nil :type symbol))
 
 (fn (focused-widget (or null widget)) ((context context))
-  (let ((found nil))
-    (when (context-root context)
-      (walk-elements
-       (context-root context)
-       (lambda (node)
-         (when (equal (element-id node) (context-focus context))
-           (setf found (element-content node))))))
-    found))
+  (when (context-root context)
+    (let ((node (gethash (context-focus context)
+                         (lui.frame::context-ids context))))
+      (when node (element-content node)))))
 
 (fn (text-field-focused-p boolean) ((context context))
   "Whether CONTEXT focuses an enabled text field in its current completed tree."

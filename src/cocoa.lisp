@@ -144,24 +144,14 @@
                   (message object path "retain")))
           path))))
 
-(fn (clear-shape-paths hash-table) ()
-  (let ((cache (cocoa-app-shape-paths *app*)))
-    (maphash (lambda (key path)
-               (declare (ignore key))
-               (message sb-alien:void path "release"))
-             cache)
-    (clrhash cache)))
+(fn (clear-paths hash-table) ((cache hash-table))
+  (loop :for path :being :the :hash-values :of cache
+        :do (message sb-alien:void path "release"))
+  (clrhash cache))
 
 (fn (cocoa-polygons null) ((contours contours) (color string) (alpha real))
   (cocoa-color color alpha)
   (message sb-alien:void (cached-shape contours) "fill"))
-
-(fn (clear-text-paths hash-table) ()
-  (maphash (lambda (key path)
-             (declare (ignore key))
-             (message sb-alien:void path "release"))
-           (cocoa-app-text-paths *app*))
-  (clrhash (cocoa-app-text-paths *app*)))
 
 (fn (cocoa-text null) ((font font) (text string) (x real) (y real) (color string))
   (let* ((cache (cocoa-app-text-paths *app*))
@@ -169,7 +159,7 @@
          (path (gethash key cache))
          (graphics (objc-class "NSGraphicsContext")))
     (unless path
-      (when (>= (hash-table-count cache) 256) (clear-text-paths))
+      (when (>= (hash-table-count cache) 256) (clear-paths cache))
       (let ((contours (make-array 0 :element-type 'contour :adjustable t :fill-pointer 0)))
         ;; Reuse the font parser, kerning and geometry of the common renderer.
         (paint-text
@@ -723,8 +713,8 @@
           (message sb-alien:void (cocoa-app-window *app*) "release"))
         (when (cocoa-app-view *app*)
           (message sb-alien:void (cocoa-app-view *app*) "release"))
-        (clear-text-paths)
-        (clear-shape-paths)
+        (clear-paths (cocoa-app-text-paths *app*))
+        (clear-paths (cocoa-app-shape-paths *app*))
         (when font (close-font font))
         (message sb-alien:void pool "drain")))))
 

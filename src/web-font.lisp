@@ -32,8 +32,7 @@
                :size size)))
 
 (fn (close-font null) ((font font))
-  (dotimes (index 4)
-    (setf (aref (font-faces font) index) nil))
+  (fill (font-faces font) nil)
   (clrhash (font-metrics font))
   (clrhash (font-wrapped font))
   (setf (font-loader font) nil))

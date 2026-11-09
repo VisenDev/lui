@@ -1,7 +1,6 @@
 (defpackage #:lui.font
   (:use #:cl #:lui.fn #:lui.layout)
   (:export #:font #:open-font #:close-font #:font-size #:font-loader
-           #:scale-font #:glyph-advance #:glyph-kerning
            #:text-width #:line-height #:baseline #:wrap-text #:glyph-polygons
            #:*font-path* #:*font-paths* #:*font-directories*
            #:*font-names* #:font-face))
@@ -103,21 +102,18 @@
         (- (zpb-ttf:descender (font-loader font)))
         (zpb-ttf:line-gap (font-loader font)))))
 
-(declaim (inline glyph-advance glyph-kerning))
-(fn (glyph-advance real) ((font font) (char character))
-  (zpb-ttf:advance-width (zpb-ttf:find-glyph char (font-loader font))))
-
-(fn (glyph-kerning real) ((font font) (previous (or null character)) (char character))
-  (if previous (zpb-ttf:kerning-offset previous char (font-loader font)) 0))
-
 (fn (text-width real) ((font font) (text string))
   "Measure a string using glyph advances and pair kerning at the current size."
   (let ((previous nil)
         (width 0))
     (loop :for char :across text
           :do (incf width
-                    (+ (glyph-advance font char)
-                       (glyph-kerning font previous char)))
+                    (+ (zpb-ttf:advance-width
+                        (zpb-ttf:find-glyph char (font-loader font)))
+                       (if previous
+                           (zpb-ttf:kerning-offset
+                            previous char (font-loader font))
+                           0)))
               (setf previous char))
     (* (scale-font font) width)))
 
