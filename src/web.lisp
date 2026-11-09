@@ -5,7 +5,8 @@
 
 (defstruct web-app
   host stage overlay canvas graphics renderer context callback cleanup observer resize
-  scrollport (viewport-offset 0) (scroll-delta 0) (velocity 0) (scroll-time 0)
+  scrollport (scroll-listener nil :type (or null function)) (viewport-offset 0)
+  (scroll-delta 0) (velocity 0) (scroll-time 0)
   (overlay-order #() :type vector) overlay-geometry overlay-cache
   animation-frame deadline-timer events pending-p (alive-p t))
 
@@ -528,7 +529,17 @@
     (when (and port (not (eq port #j:window)) (not (eq port host)))
       ((jscl/ffi:oget (web-app-observer app) "observe") port))
     (#j:window:addEventListener #j"resize" resize)
-    (when port ((jscl/ffi:oget port "addEventListener") #j"scroll" resize))
+    (when port
+      (setf (web-app-scroll-listener app)
+            (lambda (&rest ignored)
+              (declare (ignore ignored))
+              ;; A committed, prepainted scroll needs no second frame. Native
+              ;; scrolling and clamping to a different offset still repaint.
+              (unless (< (abs (- (page-offset stage port)
+                                 (web-app-viewport-offset app))) 0.01)
+                (refresh app))))
+      ((jscl/ffi:oget port "addEventListener") #j"scroll"
+       (web-app-scroll-listener app)))
     (refresh app)
     app))
 
@@ -542,7 +553,8 @@
     ((jscl/ffi:oget (web-app-observer app) "disconnect"))
     (#j:window:removeEventListener #j"resize" (web-app-resize app))
     (when (web-app-scrollport app)
-      ((jscl/ffi:oget (web-app-scrollport app) "removeEventListener") #j"scroll" (web-app-resize app)))
+      ((jscl/ffi:oget (web-app-scrollport app) "removeEventListener")
+       #j"scroll" (web-app-scroll-listener app)))
     (funcall (web-app-cleanup app))
     (lui.font:close-font (renderer-font (web-app-renderer app)))
     (setf (web-app-overlay-order app) #()

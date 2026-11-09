@@ -206,6 +206,112 @@ class WebTests(unittest.TestCase):
                    (lui.web::web-app-context *web-test-app*)))
         ''')
 
+    def test_measurement_cache_inputs(self):
+        self.lisp('''
+          (let* ((font (lui.font:open-font))
+                 (renderer (lui.draw:make-renderer :font font))
+                 (context (lui.frame:make-context))
+                 (text (copy-seq "alpha beta gamma"))
+                 (widget (lui.widgets:make-widget :kind :label :text text))
+                 (original (symbol-function 'lui.font:wrap-text))
+                 (calls 0) (last-height 0))
+            (unwind-protect
+              (progn
+                (setf (symbol-function 'lui.font:wrap-text)
+                      (lambda (font text width)
+                        (incf calls) (funcall original font text width)))
+                (flet ((frame (width)
+                         (lui.frame:with-frame (context 300 100)
+                           (setf last-height
+                             (nth-value 1
+                               (lui.draw:measure-widget renderer widget width))))))
+                  (frame nil) (frame nil)
+                  (assert (= calls 1))
+                  (let ((height last-height))
+                    (frame 60)
+                    (assert (> last-height height)))
+                  (frame 60)
+                  (assert (= calls 2))
+                  (setf (char text 0) #\\W)
+                  (frame 60)
+                  (assert (= calls 3))
+                  (setf (lui.widgets:widget-font-size widget) 24)
+                  (frame 60)
+                  (assert (= calls 4))
+                  (setf (lui.widgets:widget-font-weight widget) :bold)
+                  (frame 60)
+                  (assert (= calls 5))
+                  (setf (lui.widgets:widget-kind widget) :text-field
+                        (lui.widgets:widget-value widget) "changed")
+                  (frame 60) (frame 60)
+                  (assert (= calls 6))))
+              (setf (symbol-function 'lui.font:wrap-text) original)
+              (lui.font:close-font font))))
+        ''')
+
+    def test_prepainted_page_scroll_does_not_redraw_twice(self):
+        for embedded in (False, True):
+            with self.subTest(embedded=embedded):
+                page = self.browser.new_page(
+                    viewport={"width": 412, "height": 700},
+                    is_mobile=True, has_touch=True, device_scale_factor=2)
+                page.on("pageerror", lambda error: self.errors.append(str(error)))
+                try:
+                    page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+                    page.wait_for_function("document.querySelector('main canvas')?.luiApp")
+                    ui = WebTests()
+                    ui.page = page
+                    style = ("position:fixed;top:0;left:0;width:300px;height:320px;overflow:auto"
+                             if embedded else "width:100%")
+                    ui.lisp(f'''
+                      (lui.web:unmount (jscl/ffi:oget
+                        (#j:document:querySelector #j"main canvas") "luiApp"))
+                      ((jscl/ffi:oget (#j:document:querySelector #j"main") "remove"))
+                      (defvar *scroll-host* (#j:document:createElement #j"main"))
+                      (setf (jscl/ffi:oget *scroll-host* "style" "cssText") #j"{style}")
+                      (#j:document:body:appendChild *scroll-host*)
+                      (defvar *scroll-draws* 0)
+                      (defvar *scroll-app*
+                        (lui.web:mount *scroll-host*
+                          (lambda ()
+                            (incf *scroll-draws*)
+                            (lui:label "Tall page"
+                              (lui:opt :height (lui.layout:fixed 2400))))
+                          :scroll-mode :page :min-fps 0.001))
+                    ''')
+                    ui.frames()
+                    page.mouse.move(20, 200)
+                    page.wait_for_timeout(150)
+                    ui.lisp('(setf *scroll-draws* 0)')
+                    page.mouse.wheel(0, 120)
+                    page.wait_for_function("document.querySelector('main canvas').luiViewportOffset > 0")
+                    page.wait_for_timeout(150)
+                    self.assertEqual(ui.number('*scroll-draws*'), 1)
+                    # A real native/programmatic scroll must still trigger paint.
+                    page.evaluate("""embedded => {
+                        const port = embedded ? document.querySelector('main') : window;
+                        port.scrollBy(0, 100);
+                    }""", embedded)
+                    page.wait_for_timeout(150)
+                    self.assertEqual(ui.number('*scroll-draws*'), 2)
+                    canvas_offset = page.locator('main canvas').evaluate('c => c.luiViewportOffset')
+                    actual = page.evaluate("embedded => embedded ? document.querySelector('main').scrollTop : scrollY", embedded)
+                    self.assertAlmostEqual(canvas_offset, actual, delta=1)
+                    # Duplicate browser notifications at the painted offset do nothing.
+                    page.evaluate("""embedded => {
+                        (embedded ? document.querySelector('main') : window)
+                            .dispatchEvent(new Event('scroll'));
+                    }""", embedded)
+                    page.wait_for_timeout(100)
+                    self.assertEqual(ui.number('*scroll-draws*'), 2)
+                    page.set_viewport_size({"width": 430, "height": 720})
+                    page.wait_for_timeout(150)
+                    self.assertGreater(ui.number('*scroll-draws*'), 2)
+                    ui.lisp('(lui.web:unmount *scroll-app*)')
+                    self.assertEqual(page.locator('main canvas').count(), 0)
+                finally:
+                    page.close()
+
     def test_custom_toolkit_paints_labels_and_inherits_native_label_policy(self):
         self.lisp('''
           (defvar *custom-label-paints* 0)

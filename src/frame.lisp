@@ -52,6 +52,8 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
 (defvar *min-fps* 1)
 (defvar *max-fps* 240)
 
+(defstruct memo-entry (key nil :type list) (value nil :type t))
+
 (defstruct context
   "Per-window frame state: completed tree, focus, events, editing, and scrolling.
 The backend supplies measurement, clipboard, and optional input callbacks."
@@ -90,6 +92,8 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (activated (make-hash-table :test 'equal) :type hash-table)
   (ids (make-hash-table :test 'equal) :type hash-table)
   (building-p nil :type boolean)
+  (memo #() :type (vector memo-entry))
+  (pending-memo #() :type (vector memo-entry))
   ;; Supplied by the output backend: (widget available-width) -> width, height.
   (measure nil :type (or null function)))
 
@@ -100,6 +104,22 @@ The backend supplies measurement, clipboard, and optional input callbacks."
 (defvar *parent*)
 (setf (documentation '*parent* 'variable)
       "Dynamically bound layout parent receiving declarations in the current scope.")
+
+(fn (memoized t) ((key list) (compute function))
+  ;; Compare call slots, not hashes. Reordering only causes cache misses.
+  ;; Keys snapshot top-level strings; compound IDs follow the stable-ID contract.
+  (if (and (boundp '*context*) (context-building-p *context*))
+      (let* ((pending (context-pending-memo *context*))
+             (previous (context-memo *context*)) (index (length pending))
+             (old (when (< index (length previous)) (aref previous index)))
+             (entry (if (and old (equal key (memo-entry-key old))) old
+                        (make-memo-entry
+                         :key (mapcar (lambda (v)
+                                        (if (stringp v) (copy-seq v) v)) key)
+                         :value (funcall compute)))))
+        (vector-push-extend entry pending)
+        (memo-entry-value entry))
+      (funcall compute)))
 
 (fn (frame-time real) ()
   "Monotonic seconds sampled once for the current frame."
@@ -426,6 +446,8 @@ clock, redraw deadline, declarations, and per-frame activation state."
                (element-box node))))))
   (clrhash (context-ids context))
   (setf (context-after-layout context) nil
+        (context-pending-memo context)
+        (make-array 0 :element-type 'memo-entry :adjustable t :fill-pointer 0)
         (context-tabs-handled-p context) nil
         (context-previous-root context) (context-root context)
         (context-width context) width
@@ -528,6 +550,7 @@ Clear focus/hover for removed controls and return the completed root element."
           (let ((*context* context)) (request-frame (/ 1 60)))
           (setf (context-scroll-motion context) nil))))
   (setf (context-building-p context) nil
+        (context-memo context) (context-pending-memo context)
         (context-previous-root context) nil)
   (context-root context))
 
@@ -545,6 +568,8 @@ Clear focus/hover for removed controls and return the completed root element."
               (context-root *context*))
          (unless complete
            (setf (context-root *context*) nil
+                 (context-memo *context*) #()
+                 (context-pending-memo *context*) #()
                  (context-building-p *context*) nil
                  (context-previous-root *context*) nil
                  (context-hover *context*) nil

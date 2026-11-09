@@ -129,18 +129,27 @@
                (error "Toolkit ~S has no graphical geometry." (widget-style widget))) widget))
 
 (fn (measure-widget (values number number)) ((renderer renderer) (widget widget) width)
+  "Measure current geometry, reusing matching prior-frame text measurements."
   (let* ((g (widget-geometry widget)) (font (widget-font renderer widget))
          (horizontal (+ (geometry-left g) (geometry-right g)))
-         (lines (if (geometry-text-p g) (wrap-text font (if (geometry-value-p g)
-                                   (widget-value widget) (widget-text widget))
-                           (when width (max 0 (- width horizontal))))
-                    (make-array 0 :element-type 'string))))
-    (values (max (geometry-min-width g)
-                 (+ horizontal (let ((widest 0))
-                                 (dotimes (i (length lines) widest)
-                                   (setf widest (max widest (text-width font (aref lines i))))))))
-            (max (geometry-min-height g)
-                 (+ (geometry-top g) (geometry-bottom g) (* (length lines) (line-height font)))))))
+         (vertical (+ (geometry-top g) (geometry-bottom g)))
+         (text (when (geometry-text-p g)
+                 (if (geometry-value-p g) (widget-value widget)
+                     (widget-text widget))))
+         (size (lui.frame::memoized
+                (list :measure font (font-loader font) (font-size font)
+                      text width horizontal vertical
+                      (geometry-min-width g) (geometry-min-height g))
+                (lambda ()
+                  (let ((lines (if text (wrap-text font text
+                                        (when width (max 0 (- width horizontal))))
+                                   #())) (widest 0))
+                    (dotimes (i (length lines))
+                      (setf widest (max widest (text-width font (aref lines i)))))
+                    (cons (max (geometry-min-width g) (+ horizontal widest))
+                          (max (geometry-min-height g)
+                               (+ vertical (* (length lines) (line-height font))))))))))
+    (values (car size) (cdr size))))
 
 (fn (text-box box) ((widget widget) (box box) &optional pressed)
   "Return the toolkit's text area, including pressed displacement."

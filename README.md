@@ -322,6 +322,25 @@ Set `BENCH_DETAIL=1 BENCH_OUTPUT=build/cells-profile.json` for per-phase
 timings. Frame completion includes layout, and layout includes widget
 measurement, so those nested timings overlap.
 
+Graphical widget measurements and debugger captions reuse matching results
+from the previous completed frame. Toolkit geometry callbacks still run on
+every measurement; custom context measurement callbacks are not cached.
+Changed text, fonts, available widths, or resolved geometry invalidate reuse.
+
+To profile mobile docs scrolling with the debugger closed and open, at normal
+speed and 6× CPU slowdown, use:
+
+```sh
+make docs-pages
+python3 tests/profile-docs.py --output build/profiles/docs
+```
+
+The profiler saves frame samples and Chrome CPU profiles. Use `--bundle` with
+a saved standalone HTML build for comparisons. Keep the viewport, wheel count,
+warmup, and slowdown matched; compare work per wheel as well as work per frame
+when redraw counts change. CPU throttling does not reproduce a phone's GPU or
+memory, and these timings exclude GPU rasterization and presentation.
+
 SBCL runs also print separate `ALLOC` rows per case and for `all/all`:
 `bytes_total`, `bytes_mean`, and `bytes_p95` measure Lisp bytes allocated per
 measured frame; `gc_cpu_ms` reports GC CPU time inside those frame intervals.

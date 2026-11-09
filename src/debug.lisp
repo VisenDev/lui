@@ -71,15 +71,18 @@
                    (if (< (char-code char) 32) #\Space char)) text)))
 
 (fn (caption string) ((node element))
-  (let ((widget (element-content node))
-        (*print-level* 2) (*print-length* 4))
-    (format nil "~A ~A~A"
-            (if (widget-p widget) (widget-kind widget)
-                (element-direction node))
-            (or (element-id node)
-                (when (widget-p widget) (preview (widget-text widget))) "")
-            (cond ((offscreen-p node) " [offscreen]")
-                  ((clipped-p node) " [clipped]") (t "")))))
+  (let* ((widget (element-content node))
+         (kind (if (widget-p widget) (widget-kind widget)
+                   (element-direction node)))
+         (name (or (element-id node)
+                   (when (widget-p widget) (preview (widget-text widget))) ""))
+         (status (cond ((offscreen-p node) " [offscreen]")
+                       ((clipped-p node) " [clipped]") (t "")))
+         (*print-level* 2) (*print-length* 4))
+    (lui.frame::memoized
+     (list :caption kind name status *package* #-jscl *print-case* *print-base*
+           *print-radix* #-jscl *print-pretty* *print-circle* *readtable*)
+     (lambda () (format nil "~A ~A~A" kind name status)))))
 
 (fn (sizing-label string) ((rule sizing))
   (format nil "~A ~A [~A, ~A]" (lui.layout::sizing-kind rule)
@@ -266,7 +269,7 @@
            (step (units (if (context-text-mode-p *context*) 1 3)))
            (viewport (previous-box (id :tree)))
            (height (if viewport (box-height viewport)
-                       (/ (context-height *context*) 2)))
+                       (/ (lui.frame::context-viewport-height *context*) 2)))
            (offset (reveal-selection
                     state rows step height
                     (nth-value 1 (scroll-position (id :tree)))))
@@ -353,8 +356,9 @@
     (emit (make-element
            :id (id :resize) :interactive-p t :pointer-focus-p t
            :floating-p t
+           :offset-y (lui.frame::context-page-top *context*)
            :offset-x (max 0 (- (context-width *context*) width (/ size 2)))
-           :width (fixed size) :height (fixed (context-height *context*))
+           :width (fixed size) :height (fixed (lui.frame::context-viewport-height *context*))
            :content (apply #'make-widget :kind :splitter
                            :style (lui:current-toolkit)
                            :value (/ width
@@ -410,7 +414,7 @@
          :content (apply #'make-widget :kind :splitter
                          :style (current-toolkit) :orientation :horizontal
                          :text "Properties height"
-                         :value (/ height (max 1 (context-height *context*)))
+                         :value (/ height (max 1 (lui.frame::context-viewport-height *context*)))
                          (toolkit-defaults)))))
 
 (fn (debugger-header-height real) ((header element) (width real))
@@ -432,9 +436,10 @@
   (when (activated-p (id :close-details)) (close-details state))
   (lui:panel (lui:opt :id (id :debugger) :interactive-p t
                       :keyboard-focus-p nil :floating-p t
+                      :offset-y (lui.frame::context-page-top *context*)
                       :offset-x (- (context-width *context*) width)
                       :width (fixed width)
-                      :height (fixed (context-height *context*))
+                      :height (fixed (lui.frame::context-viewport-height *context*))
                       :padding (units 1) :gap (units 0.5) :opacity 1
                       :radius 0 :frost 0)
     (let ((header nil))
@@ -447,7 +452,7 @@
       (let* ((header-height
                (debugger-header-height header (- width (units 2))))
              ;; Root/tree padding, three gaps and the divider also need room.
-             (maximum (max 0 (- (context-height *context*) header-height
+             (maximum (max 0 (- (lui.frame::context-viewport-height *context*) header-height
                                 (units 6.5))))
              (height (details-height state maximum)))
         (setf (element-height header) (fit header-height))

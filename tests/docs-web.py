@@ -10,6 +10,53 @@ from playwright.sync_api import sync_playwright
 
 
 class DocsWebTests(unittest.TestCase):
+    def test_mobile_debugger_uses_viewport(self):
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                executable_path=shutil.which("chromium-browser") or shutil.which("chromium"),
+                args=["--no-sandbox"])
+            page = browser.new_page(viewport={"width": 412, "height": 700},
+                                    is_mobile=True, has_touch=True, device_scale_factor=2)
+            errors = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            try:
+                page.goto((web.ROOT / "build/docs.html").as_uri())
+                page.get_by_role("button", name="Browse symbols", exact=True).evaluate("el => el.click()")
+                page.get_by_role("button", name="Show debugger", exact=True).evaluate("el => el.click()")
+                ui = web.WebTests()
+                ui.page = page
+                ui.frames()
+                page.evaluate("window.scrollTo(0, 500)")
+                page.wait_for_function("document.querySelector('main canvas').luiViewportOffset >= 500")
+                ui.frames()
+                ui.lisp('''
+                  (let* ((context (lui.web::web-app-context
+                           (jscl/ffi:oget (#j:document:querySelector #j"main canvas") "luiApp")))
+                         (ids (lui.frame::context-ids context)) (rows 0))
+                    (dolist (name '(:debugger :resize))
+                      (let ((box (lui.layout:element-box
+                                  (gethash (lui.debug::id name) ids))))
+                        (assert (= 700 (lui.layout:box-height box)))
+                        (assert (= 500 (lui.layout:box-y box)))))
+                    (maphash (lambda (id node)
+                               (declare (ignore node))
+                               (when (and (consp id) (eq (car id) :lui.debug)
+                                          (eq (second id) :row))
+                                 (incf rows))) ids)
+                    (assert (< 1 rows 32)))
+                ''')
+                # A close action remains accessible after scrolling the page.
+                close = page.get_by_role("button", name="Close", exact=True)
+                bounds = close.bounding_box()
+                self.assertGreaterEqual(bounds["y"], 0)
+                self.assertLess(bounds["y"] + bounds["height"], 700)
+                close.evaluate("el => el.click()")
+                ui.frames()
+                self.assertEqual(page.get_by_role("button", name="Close", exact=True).count(), 0)
+                self.assertEqual(errors, [])
+            finally:
+                browser.close()
+
     def test_mobile_symbol_list_uses_page_scroll(self):
         with sync_playwright() as pw:
             browser = pw.chromium.launch(
