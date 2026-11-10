@@ -43,9 +43,9 @@
   (setf (font-loader font) nil))
 
 (fn (font-face font) ((font font) (family symbol) (weight symbol))
-  (let* ((owner (or (font-owner font) font))
-         (index (+ (ecase family (:sans-serif 0) (:monospace 2))
-                   (ecase weight (:normal 0) (:bold 1)))))
+  (let ((owner (or (font-owner font) font))
+        (index (+ (ecase family (:sans-serif 0) (:monospace 2))
+                  (ecase weight (:normal 0) (:bold 1)))))
     (if (zerop index) owner
         (or (aref (font-faces owner) index)
             (setf (aref (font-faces owner) index)
@@ -66,9 +66,9 @@
   (font-css-value font))
 
 (fn (measure-text t) ((font font) (text string))
-  (let* ((css (font-css font))
-         (cache (font-metrics font))
-         (key (list (font-size font) text)))
+  (let ((css (font-css font))
+        (cache (font-metrics font))
+        (key (list (font-size font) text)))
     (or (gethash key cache)
         (let ((context (font-loader font)))
           (when (>= (hash-table-count cache) 2048) (clrhash cache))
@@ -84,7 +84,7 @@
   (let ((ascent (jscl/ffi:oget (measure-text font "Mg")
                                 "fontBoundingBoxAscent")))
     (if (and (numberp ascent) (plusp ascent))
-        ascent (* (font-size font) 0.8))))
+        ascent (* (font-size font) 0.8f0))))
 
 (fn (line-height real) ((font font))
   (let* ((metrics (measure-text font "Mg"))
@@ -92,8 +92,8 @@
          (descent (jscl/ffi:oget metrics "fontBoundingBoxDescent")))
     (if (and (numberp ascent) (numberp descent)
              (plusp (+ ascent descent)))
-        (max (* (font-size font) 1.2) (+ ascent descent))
-        (* (font-size font) 1.2))))
+        (max (* (font-size font) 1.2f0) (+ ascent descent))
+        (* (font-size font) 1.2f0))))
 
 (fn (glyph-polygons nil) ((font font) (char character))
   (declare (ignore font char))
@@ -107,9 +107,10 @@
 
 
 (fn (wrap-text (vector string)) ((font font) (text string) (width (or null real)))
-  (let* ((cache (font-wrapped font))
-         (key (list (font-size font) text width)))
-    (or (gethash key cache)
-        (progn
-          (when (>= (hash-table-count cache) 512) (clrhash cache))
-          (setf (gethash key cache) (uncached-wrap-text font text width))))))
+  (let ((cache (font-wrapped font))
+        (key (list (font-size font) text width)))
+    (cond ((gethash key cache))
+          (t
+           (when (>= (hash-table-count cache) 512) (clrhash cache))
+           (setf (gethash key cache)
+                 (uncached-wrap-text font text width))))))

@@ -27,10 +27,13 @@
 (defmacro typed-vector (type &rest elements)
   "Construct a typed vector without an intermediate list of its elements."
   (let ((result (gensym "VECTOR")))
-    `(let ((,result (make-array ,(length elements) :element-type ',type)))
-       ,@(loop for element in elements for i from 0
-               collect `(setf (aref ,result ,i) ,element))
-       ,result)))
+    (if (null elements)
+        `(make-array 0 :element-type ',type)
+        `(let ((,result (make-array ,(length elements) :element-type ',type
+                                   :initial-element ,(first elements))))
+           ,@(loop :for element :in (rest elements) :for i :from 1
+                   :collect `(setf (aref ,result ,i) ,element))
+           ,result))))
 
 (defstruct renderer
   "Native drawing callbacks and font shared by the graphical backends."

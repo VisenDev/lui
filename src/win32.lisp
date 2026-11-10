@@ -269,10 +269,10 @@
              (validate-rect handle (cffi:null-pointer)))
       (#x14 (return-from window-message 1))
       (#x20
-       (if (= (logand lparam #xffff) 1)
-           (progn (update-cursor window) (return-from window-message 1))
-           (return-from window-message
-             (default-procedure handle message wparam lparam))))
+       (cond ((= (logand lparam #xffff) 1)
+              (update-cursor window) (return-from window-message 1))
+             (t (return-from window-message
+                  (default-procedure handle message wparam lparam)))))
       ((#x8 #x1f #x215)
        (let ((owned (win-window-capture-p window)))
          (when (or (/= message #x215) owned)
@@ -311,7 +311,7 @@
         (queue-input window
           (make-event :kind
             (case message ((#x201 #x204) :press)
-                          ((#x202 #x205) :release) (t :move))
+                  ((#x202 #x205) :release) (otherwise :move))
             :button (if (member message '(#x204 #x205))
                         :secondary :primary)
             :buttons (logand wparam 3) :x x :y y)))

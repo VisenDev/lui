@@ -155,24 +155,25 @@ Floating children use offsets; interactive nodes participate in input routing."
     (do-children (row table)
       (assert (eq (element-direction row) :row))
       (setf (element-gap row) gap)
-      (setf count (max count (loop for cell across (element-children row)
-                                   sum (element-column-span cell)))))
+      (setf count (max count (loop :for cell :across (element-children row)
+                                   :sum (element-column-span cell)))))
     (let ((tracks (make-array count :initial-element 0))
           (spans (make-array (1+ count) :initial-element nil)))
       (do-children (row table)
-        (loop with start = 0 for cell across (element-children row)
-              for span = (element-column-span cell)
-              for width = (axis-size cell :x)
-              do (if (= span 1)
+        (loop :with start := 0 :for cell :across (element-children row)
+              :for span := (element-column-span cell)
+              :for width := (axis-size cell :x)
+              :do (if (= span 1)
                      (setf (aref tracks start) (max (aref tracks start) width))
                      (push (cons start width) (aref spans span)))
                  (incf start span)))
-      (loop for span from 2 to count do
+      (loop :for span :from 2 :to count :do
         (dolist (entry (aref spans span))
           (let* ((start (car entry)) (end (+ start span))
                  (used (+ (* gap (1- span)) (reduce #'+ tracks :start start :end end)))
                  (extra (/ (max 0 (- (cdr entry) used)) span)))
-            (loop for i from start below end do (incf (aref tracks i) extra)))))
+            (loop :for i :from start :below end
+                  :do (incf (aref tracks i) extra)))))
       (setf (element-tracks table) tracks)
       (+ (reduce #'+ tracks :initial-value 0) (* gap (max 0 (1- count)))))))
 
@@ -219,7 +220,7 @@ Floating children use offsets; interactive nodes participate in input routing."
 
 (fn (distribute null) ((children (vector element)) (axis symbol) (amount real) (growing boolean))
   "Water-fill the smallest growing or largest shrinking elements, respecting bounds."
-  (loop :while (and (plusp (length children)) (> (abs amount) 0.0001))
+  (loop :while (and (plusp (length children)) (> (abs amount) 0.0001f0))
         :do (let* ((level (reduce (if growing #'min #'max) children
                                  :key (lambda (child)
                                         (axis-size child axis))))
@@ -267,10 +268,10 @@ Floating children use offsets; interactive nodes participate in input routing."
             (extra (/ (max 0 (- space natural)) (max 1 count))))
        (do-children (row node)
          (set-axis-size row :x width)
-         (loop with start = 0 for cell across (element-children row)
-               for span = (element-column-span cell)
-               for end = (+ start span)
-               do (set-axis-size cell :x
+         (loop :with start := 0 :for cell :across (element-children row)
+               :for span := (element-column-span cell)
+               :for end := (+ start span)
+               :do (set-axis-size cell :x
                                  (+ (* gap (1- span)) (* extra span)
                                     (* scale (reduce #'+ tracks :start start :end end))))
                (resolve-axis cell :x)
@@ -326,7 +327,7 @@ Floating children use offsets; interactive nodes participate in input routing."
            (resolve-axis child axis)))))))
 
 (fn (alignment-offset real) ((alignment symbol) (space real))
-  (* (max 0 space) (ecase alignment (:start 0) (:center 0.5) (:end 1))))
+  (* (max 0 space) (ecase alignment (:start 0) (:center 0.5f0) (:end 1))))
 
 (fn (position-elements null) ((node element))
   (unless (zerop (length (element-children node)))
@@ -424,8 +425,8 @@ With PAGE-TOP, HEIGHT is the minimum page height and popups stay in the viewport
                                     (- (+ top (box-height row)) page)))))))))
 
 (fn (clip-elements null) ((node element) (clip box) (dx real) (dy real))
-  (let* ((box (element-box node))
-         (padding (element-padding node)))
+  (let ((box (element-box node))
+        (padding (element-padding node)))
     (when (element-popup-anchor node) (position-popup node (or *popup-viewport* clip)))
     (decf (box-x box) dx)
     (decf (box-y box) dy)

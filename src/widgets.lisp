@@ -24,10 +24,12 @@
              (list foreground background))
       (with-output-to-string (stream)
         (write-char #\# stream)
-        (loop for i in '(1 3 5)
-              for fg = (parse-integer foreground :start i :end (+ i 2) :radix 16)
-              for bg = (parse-integer background :start i :end (+ i 2) :radix 16)
-              do (format stream "~2,'0X" (round (+ (* 2 fg) bg) 3))))
+        (loop :for i :in '(1 3 5)
+              :for fg := (parse-integer foreground
+                                       :start i :end (+ i 2) :radix 16)
+              :for bg := (parse-integer background
+                                       :start i :end (+ i 2) :radix 16)
+              :do (format stream "~2,'0X" (round (+ (* 2 fg) bg) 3))))
       foreground))
 
 (defparameter *base-palette*
@@ -52,11 +54,11 @@
   (password-p nil :type boolean)
   (minimum 0 :type real)
   (maximum 1 :type real)
-  (step 0.01 :type real)
+  (step 0.01f0 :type real)
   (font-size 16 :type real)
   (font-family :sans-serif :type (member :sans-serif :monospace))
   (font-weight :normal :type (member :normal :bold))
-  (opacity 0.85 :type real)
+  (opacity 0.85f0 :type real)
   (accent "#258bff" :type string)
   (disabled-p nil :type boolean)
   (terminal-label nil :type (or null function))
@@ -172,9 +174,9 @@ An optional terminal-label callback overrides the standard kind-based label."
      ((floating-p boolean) nil) ((offset-x real) 0) ((offset-y real) 0)
      ((foreground string) "#ffffff") ((background string) "#303040")
      ((radius real) 12) ((frost real) 12) value ((minimum real) 0)
-     ((maximum real) 1) ((step real) 0.01) ((font-size real) 16)
+     ((maximum real) 1) ((step real) 0.01f0) ((font-size real) 16)
      ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
-     ((opacity real) 0.85) ((accent string) "#258bff") (disabled-p nil)
+     ((opacity real) 0.85f0) ((accent string) "#258bff") (disabled-p nil)
      painter terminal-label ((terminal-border (or null (string 6))) nil)
      accessible-name icon center-text-p (password-p nil)
      (palette *base-palette*))
@@ -328,8 +330,8 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
   "Apply ordered editor EVENTS to TEXT using mutable caret/selection STATE.
 Return the new text; preserve the editor's kill/yank state between frames.
 Events include semantic Readline keys, text insertion, and replacement changes."
-  (loop for event-index below (length events)
-        for event = (elt events event-index) do
+  (loop :for event-index :below (length events)
+        :for event := (elt events event-index) :do
     (setf (edit-state-cursor state)
           (max 0 (min (length text) (edit-state-cursor state)))
           (edit-state-anchor state)
@@ -445,22 +447,22 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
       (:checkbox
        (when (and (not (getf options :disabled-p)) (activated-p id))
          (setf value (not value)))
-       (loop for event across events do
+       (loop :for event :across events :do
          (when (eq (event-kind event) :change)
            (setf value (not (null (event-value event)))))))
       (:radio
        (when (and (not (getf options :disabled-p)) (activated-p id))
          (setf value (getf options :choice)))
-       (loop for event across events do
+       (loop :for event :across events :do
          (when (eq (event-kind event) :change)
            (setf value (event-value event)))))
       (:slider
        (let ((minimum (getf options :minimum 0))
              (maximum (getf options :maximum 1))
-             (step (getf options :step 0.01))
+             (step (getf options :step 0.01f0))
              (box (previous-box id)))
          (assert (and (< minimum maximum) (> step 0)))
-         (loop for event across events do
+         (loop :for event :across events :do
            (case (event-kind event)
              (:change
               (when (realp (event-value event))
@@ -499,8 +501,8 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
            :value (if (eq kind :radio)
                       (equal value (getf options :choice)) value)
            (if (eq kind :radio)
-               (loop for (key option) on options by #'cddr
-                     unless (eq key :choice) append (list key option))
+               (loop :for (key option) :on options :by #'cddr
+                     :unless (eq key :choice) :append (list key option))
                options))
     (values value (not (equal original value)))))
 
@@ -534,7 +536,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
              (limit (- (third value) page))
              (track (element-box old)) (thumb (scrollbar-thumb old))
              (travel (- (box-height track) (box-height thumb))))
-        (loop for event across events do
+        (loop :for event :across events :do
           (case (event-kind event)
             (:press
              (when (eq (event-button event) :primary)
@@ -563,7 +565,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
                (:page-up (decf offset page))
                (:page-down (incf offset page))
                (:home (setf offset 0))
-               (:end (setf offset limit)))))
+               (:end (setf offset limit)) (otherwise nil))) (otherwise nil))
           (setf offset (max 0 (min limit offset))))
         (when handled (scroll-to owner (scroll-position owner) offset))))))
 
@@ -609,7 +611,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
             :accessible-name)
            (push key appearance)
            (push value appearance))
-          (t
+          (otherwise
            (push key layout)
            (push value layout)))))
     (setf appearance (nreverse appearance) layout (nreverse layout))

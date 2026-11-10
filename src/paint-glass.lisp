@@ -9,9 +9,10 @@
                          (widget-foreground widget)))
          (inset (min 2 (/ (min (box-width thumb) (box-height thumb)) 4)))
          (face (inset-box thumb inset)) (radius (/ (box-width face) 2)))
-    (shape renderer box (/ (box-width box) 2) foreground 0.08)
-    (shape renderer face radius foreground (if hover 0.5 0.32))
-    (outline renderer face radius foreground 0.4 (min 1 (/ (box-width face) 2)))))
+    (shape renderer box (/ (box-width box) 2) foreground 0.08f0)
+    (shape renderer face radius foreground (if hover 0.5f0 0.32f0))
+    (outline renderer face radius foreground 0.4f0
+             (min 1 (/ (box-width face) 2)))))
 
 (fn (paint-glass-body t) ((renderer renderer) (node element))
   (paint-standard-body renderer node t nil))

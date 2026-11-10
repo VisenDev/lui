@@ -126,7 +126,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (context-time *context*))
 
 (defstruct frame-rate
-  (fps 0.0 :type real)
+  (fps 0.0f0 :type real)
   (count 0 :type integer)
   (start nil :type (or null real)))
 
@@ -139,13 +139,13 @@ The backend supplies measurement, clipboard, and optional input callbacks."
         (setf (frame-rate-start rate) now)
         (let ((elapsed (- now (frame-rate-start rate))))
           (incf (frame-rate-count rate))
-          (when (>= elapsed 0.5)
+          (when (>= elapsed 0.5f0)
             (setf (frame-rate-fps rate) (/ (frame-rate-count rate) elapsed)
                   (frame-rate-count rate) 0
                   (frame-rate-start rate) now)))))
   (let ((fps (frame-rate-fps rate)))
     (format nil "~,1F FPS · ~,2F ms/frame" fps
-            (if (plusp fps) (/ 1000 fps) 0.0))))
+            (if (plusp fps) (/ 1000 fps) 0.0f0))))
 
 (fn (frame-wait real) ((context context) &optional urgent
                 (now (/ (get-internal-real-time)
@@ -215,8 +215,8 @@ Native key translators use this to interpret a key after a batched click or Tab.
            (some (lambda (event)
                    (member (event-kind event) '(:press :tab))) events))
       (let ((predicted (copy-context context)))
-        (loop for event-index downfrom (1- (length events)) to 0
-              for event = (elt events event-index) do
+        (loop :for event-index :downfrom (1- (length events)) :to 0
+              :for event := (elt events event-index) :do
           (case (event-kind event)
             (:tab (focus-next
                    predicted (eq (event-key event) :backward)))
@@ -224,7 +224,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
              (let* ((id (hit predicted (event-x event) (event-y event)))
                     (node (gethash id (context-ids predicted))))
                (when (and node (element-pointer-focus-p node))
-                 (setf (context-focus predicted) id))))))
+                 (setf (context-focus predicted) id)))) (otherwise nil)))
         predicted)
       context))
 
@@ -244,7 +244,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
 (fn (scroll-along real) ((context context) (path (vector t)) (amount real))
   ;; Bubble the unused portion outward, including during the animated tail.
   (let ((requested amount))
-    (loop for id across path do
+    (loop :for id :across path :do
       (let ((node (gethash id (context-ids context))))
         (when (and node (element-scroll-p node))
           (let* ((old (element-scroll-y node))
@@ -273,10 +273,10 @@ Native key translators use this to interpret a key after a batched click or Tab.
           (setf (context-scroll-motion context) nil))))))
 
 (fn (wheel-scroll (or null real scroll-motion)) ((context context) (event event))
-  (let* ((path (scroll-path context (event-x event) (event-y event)))
-         (amount (event-value event))
-         (now (context-time context))
-         (mode (event-scroll-mode event)))
+  (let ((path (scroll-path context (event-x event) (event-y event)))
+        (amount (event-value event))
+        (now (context-time context))
+        (mode (event-scroll-mode event)))
     (cond
       ((or (eq mode :immediate)
            (and (eq mode :auto) (context-text-mode-p context)))
@@ -285,10 +285,10 @@ Native key translators use this to interpret a key after a batched click or Tab.
       ((and (plusp (length path)) (not (zerop amount)))
        (let* ((old (context-scroll-motion context))
               (continuing
-                (and old (= (length path) (length (scroll-motion-path old)))
-                     (every #'equal path (scroll-motion-path old))
-                     (plusp (* amount (scroll-motion-remaining old)))
-                     (<= (- now (scroll-motion-last-input old)) 0.15d0)))
+               (and old (= (length path) (length (scroll-motion-path old)))
+                    (every #'equal path (scroll-motion-path old))
+                    (plusp (* amount (scroll-motion-remaining old)))
+                    (<= (- now (scroll-motion-last-input old)) 0.15d0)))
               (level (if continuing
                          (min 4 (1+ (scroll-motion-level old))) 1))
               ;; Repeated wheel notches travel faster, with a bounded gain.
@@ -350,8 +350,8 @@ clock, redraw deadline, declarations, and per-frame activation state."
                                 :activate :change :cancel))) events))
       (setf (context-scroll-motion context) nil))
     (unless resized (advance-scroll context (context-time context)))
-    (loop for event-index below (length events)
-          for event = (elt events event-index) do
+    (loop :for event-index :below (length events)
+          :for event := (elt events event-index) :do
       (let ((target (or (and (member (event-kind event) '(:press :release))
                              (event-id event))
                         (unless resized
@@ -392,7 +392,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
            (let ((previous (context-last-click context)))
              (when (and previous (equal target (second previous))
                         (eq (event-button event) (third previous))
-                        (<= (- (context-time context) (first previous)) 0.4)
+                        (<= (- (context-time context) (first previous)) 0.4f0)
                         (< (abs (- (event-x event) (fourth previous))) 4)
                         (< (abs (- (event-y event) (fifth previous))) 4))
                (setf (event-clicks event) 2))

@@ -82,9 +82,9 @@
 
 (fn (font-face font) ((font font) (family symbol) (weight symbol))
   "Resolve a sans-serif or monospace face at normal or bold weight; reuse it until the owner is closed."
-  (let* ((owner (or (font-owner font) font))
-         (index (+ (ecase family (:sans-serif 0) (:monospace 2))
-                   (ecase weight (:normal 0) (:bold 1)))))
+  (let ((owner (or (font-owner font) font))
+        (index (+ (ecase family (:sans-serif 0) (:monospace 2))
+                  (ecase weight (:normal 0) (:bold 1)))))
     (if (zerop index) owner
         (or (aref (font-faces owner) index)
             (let* ((path (resolve-face family weight))

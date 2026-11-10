@@ -61,9 +61,8 @@
          (if (and (eq result 'rect) (member :x86-64 *features*))
              "objc_msgSend_stret"
              "objc_msgSend"))
-        (types (loop :for (type value) :on arguments :by #'cddr
-                     :collect type))
-        (values (loop :for (type value) :on arguments :by #'cddr
+        (types (loop :for type :in arguments :by #'cddr :collect type))
+        (values (loop :for value :in (cdr arguments) :by #'cddr
                       :collect value)))
     ;; SBCL supplies the hidden result pointer for a 32-byte return value.
     ;; Only x86-64's Objective-C dispatch needs the separate stret entry point.
@@ -478,17 +477,17 @@
              (sb-alien:sap-alien *stacktrace-method*
                                 (function object object object))
              receiver command)))
-      (if (and (not (null-object-p trace))
-               (plusp (message sb-alien:unsigned-long trace "count")))
-          trace
-          (progn
-            (unless *stacktrace-reported-p*
-              (setf *stacktrace-reported-p* t)
-              (handler-case
-                  (format *error-output*
-                          "~&Cocoa: supplied an empty-stack diagnostic placeholder.~%")
-                (stream-error () nil)))
-            *stacktrace-placeholder*)))))
+      (cond ((and (not (null-object-p trace))
+                  (plusp (message sb-alien:unsigned-long trace "count")))
+             trace)
+            (t
+             (unless *stacktrace-reported-p*
+               (setf *stacktrace-reported-p* t)
+               (handler-case
+                   (format *error-output*
+                           "~&Cocoa: supplied an empty-stack diagnostic placeholder.~%")
+                 (stream-error () nil)))
+             *stacktrace-placeholder*)))))
 
 (fn (replace-stacktrace-method sb-sys:system-area-pointer) (method implementation)
   (sb-alien:alien-funcall
@@ -500,24 +499,24 @@
   ;; Prevent the AppKit startup crash with menu-bar autohide and empty traces.
   ;; Ported from cc/tools/macos/cocoa-stacktrace.lisp. Keep real traces intact.
   (assert (null *stacktrace-method*))
-  (let* ((method
-           (sb-alien:alien-funcall
-            (sb-alien:extern-alien "class_getClassMethod"
-              (function object object object))
-            (objc-class "NSThread") (selector "callStackSymbols")))
-         (pool (message object
-                        (message object (objc-class "NSAutoreleasePool")
-                                 "alloc") "init")))
+  (let ((method
+         (sb-alien:alien-funcall
+          (sb-alien:extern-alien "class_getClassMethod"
+                                 (function object object object))
+          (objc-class "NSThread") (selector "callStackSymbols")))
+        (pool (message object
+                       (message object (objc-class "NSAutoreleasePool")
+                                "alloc") "init")))
     (unwind-protect
-         (let* ((placeholder
-                  (message object (objc-class "NSArray") "arrayWithObject:"
-                           object
-                           (ns-string "Native trace unavailable across Lisp")))
-                (original
-                  (sb-alien:alien-funcall
-                   (sb-alien:extern-alien "method_getImplementation"
-                     (function object object))
-                   (require-object method "stacktrace method"))))
+         (let ((placeholder
+                (message object (objc-class "NSArray") "arrayWithObject:"
+                         object
+                         (ns-string "Native trace unavailable across Lisp")))
+               (original
+                (sb-alien:alien-funcall
+                 (sb-alien:extern-alien "method_getImplementation"
+                                        (function object object))
+                 (require-object method "stacktrace method"))))
            (setf *stacktrace-placeholder*
                  (message object placeholder "retain")
                  *stacktrace-method* original
@@ -575,17 +574,17 @@
 
 (fn (run-cocoa-window context) ((draw function) &key title width height (interactive t))
   (with-cocoa-float-mode
-    (let* ((pool (message object
-                          (message object (objc-class "NSAutoreleasePool")
-                                   "alloc")
-                          "init"))
-           (application nil)
-           (format nil) (gl nil) (gpu nil)
-           (font nil)
-           (renderer nil)
-           (context nil)
-           (*app* (make-cocoa-app))
-           (*unit* 8))
+    (let ((pool (message object
+                         (message object (objc-class "NSAutoreleasePool")
+                                  "alloc")
+                         "init"))
+          (application nil)
+          (format nil) (gl nil) (gpu nil)
+          (font nil)
+          (renderer nil)
+          (context nil)
+          (*app* (make-cocoa-app))
+          (*unit* 8))
       (unwind-protect
            (progn
              (setf application (message object (objc-class "NSApplication")
@@ -596,9 +595,10 @@
                                            :text #'cocoa-text
                                            :clip #'cocoa-clip)
                    context (make-context :copy #'copy-text
-                            :measure
-                            (lambda (widget width)
-                              (measure-widget renderer widget width)))
+                                         :measure
+                                         (lambda (widget width)
+                                           (measure-widget renderer widget
+                                                           width)))
                    (cocoa-app-renderer *app*) renderer
                    (cocoa-app-context *app*) context)
              (message objc-bool application "setActivationPolicy:"
@@ -625,9 +625,11 @@
                  (setf (cocoa-app-view *app*)
                        (require-object
                         (if fast
-                            (message object view "initWithFrame:pixelFormat:"
+                            (message object view
+                                     "initWithFrame:pixelFormat:"
                                      rect frame object format)
-                            (message object view "initWithFrame:" rect frame))
+                            (message object view "initWithFrame:" rect
+                                     frame))
                         "drawing view"))
                  (when fast
                    (message sb-alien:void (cocoa-app-view *app*)
@@ -665,15 +667,16 @@
                                 (message objc-bool (cocoa-app-window *app*)
                                          "isVisible")))
                    :do
-                   (let* ((view (cocoa-app-view *app*))
-                          (frame-pool
-                           (message object
-                                    (message object
-                                             (objc-class "NSAutoreleasePool")
-                                             "alloc")
-                                    "init")))
+                   (let ((view (cocoa-app-view *app*))
+                         (frame-pool
+                          (message object
+                                   (message object
+                                            (objc-class "NSAutoreleasePool")
+                                            "alloc")
+                                   "init")))
                      (unwind-protect
-                          (let ((events (poll-cocoa-events application view)))
+                          (let ((events (poll-cocoa-events application
+                                                           view)))
                             (when (zerop (message objc-bool
                                                   (cocoa-app-window *app*)
                                                   "isVisible"))
@@ -689,13 +692,13 @@
                                            (cocoa-app-pointer-y *app*))
                             (message sb-alien:void application
                                      "updateWindows")
-                            (if gpu
-                                (paint-gl-view view gl gpu context)
-                                (progn
-                                  (message sb-alien:void view
-                                           "setNeedsDisplay:" objc-bool 1)
-                                  (message sb-alien:void view
-                                           "displayIfNeeded")))
+                            (cond (gpu
+                                   (paint-gl-view view gl gpu context))
+                                  (t
+                                   (message sb-alien:void view
+                                            "setNeedsDisplay:" objc-bool 1)
+                                   (message sb-alien:void view
+                                            "displayIfNeeded")))
                             (when (cocoa-app-error *app*)
                               (error (cocoa-app-error *app*)))
                             (when interactive

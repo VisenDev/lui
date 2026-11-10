@@ -161,13 +161,15 @@
   (when (and (wl-window-shm window)
              (not (wl-window-cursor-theme-attempted-p window)))
     (setf (wl-window-cursor-theme-attempted-p window) t)
-    (ignore-errors
-      (cffi:use-foreign-library wayland-cursor)
-      (let ((theme (cffi:foreign-funcall
-                    "wl_cursor_theme_load" :pointer (cffi:null-pointer)
-                    :int 24 :pointer (wl-window-shm window) :pointer)))
-        (unless (cffi:null-pointer-p theme)
-          (setf (wl-window-cursor-theme window) theme)))))
+    (handler-case
+        (progn
+          (cffi:use-foreign-library wayland-cursor)
+          (let ((theme (cffi:foreign-funcall
+                        "wl_cursor_theme_load" :pointer (cffi:null-pointer)
+                        :int 24 :pointer (wl-window-shm window) :pointer)))
+            (unless (cffi:null-pointer-p theme)
+              (setf (wl-window-cursor-theme window) theme))))
+      (cffi:load-foreign-library-error () nil)))
   (when (wl-window-cursor-theme window)
     (loop :for name :in (case kind
                          (:not-allowed '("not-allowed" "crossed_circle"))
@@ -226,14 +228,13 @@
                      *context* (wl-window-x *window*) (wl-window-y *window*))
                     :default)))
       (unless (eq kind (wl-window-cursor-kind *window*))
-        (when (if (wl-window-cursor-device *window*)
-                  (progn
-                    (request
-                     (wl-window-cursor-device *window*) 1 nil
-                     (list (cons :uint32 (wl-window-cursor-serial *window*))
-                           (cons :uint32 (cursor-shape kind))))
-                    t)
-                  (set-themed-cursor kind))
+        (when (cond ((wl-window-cursor-device *window*)
+                     (request
+                      (wl-window-cursor-device *window*) 1 nil
+                      (list (cons :uint32 (wl-window-cursor-serial *window*))
+                            (cons :uint32 (cursor-shape kind))))
+                     t)
+                    (t (set-themed-cursor kind)))
           (setf (wl-window-cursor-kind *window*) kind))))))
 
 (fn (create-cursor-device symbol) ()
@@ -259,8 +260,8 @@
   (setf (wl-window-buttons *window*) 0
         (wl-window-cursor-serial *window*) serial
         (wl-window-cursor-kind *window*) nil
-        (wl-window-x *window*) (/ x 256.0)
-        (wl-window-y *window*) (/ y 256.0))
+        (wl-window-x *window*) (/ x 256.0f0)
+        (wl-window-y *window*) (/ y 256.0f0))
   (queue-input :move :buttons 0
                     :x (wl-window-x *window*) :y (wl-window-y *window*))
   (update-cursor))
@@ -275,8 +276,8 @@
 
 (callback pointer-motion ((time :uint32) (x :int32) (y :int32))
   (declare (ignore time))
-  (setf (wl-window-x *window*) (/ x 256.0)
-        (wl-window-y *window*) (/ y 256.0))
+  (setf (wl-window-x *window*) (/ x 256.0f0)
+        (wl-window-y *window*) (/ y 256.0f0))
   (queue-input :move :buttons (wl-window-buttons *window*)
                     :x (wl-window-x *window*) :y (wl-window-y *window*))
   (update-cursor))
@@ -299,7 +300,7 @@
   (declare (ignore time))
   (when (zerop axis)
     (queue-input :scroll :x (wl-window-x *window*)
-                        :y (wl-window-y *window*) :value (/ value 256.0))))
+                 :y (wl-window-y *window*) :value (/ value 256.0f0))))
 
 (fn (stop-key-repeat null) ((window wl-window))
   (setf (wl-window-repeat-code window) nil
@@ -443,7 +444,7 @@
        (stop-key-repeat *window*)))
     (1
      (emit-key-input code)
-     (start-key-repeat code))))
+     (start-key-repeat code)) (otherwise nil)))
 
 (callback keyboard-repeat-info ((rate :int32) (delay :int32))
   (setf (wl-window-repeat-rate *window*) (max 0 rate)

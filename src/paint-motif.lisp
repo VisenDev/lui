@@ -29,7 +29,7 @@
   (let* ((widget (element-content node))
          (foreground (if (widget-disabled-p widget) (widget-color widget :disabled)
                          (widget-foreground widget))))
-    (shape renderer (element-box node) 0 foreground 0.15)
+    (shape renderer (element-box node) 0 foreground 0.15f0)
     (shape renderer (scrollbar-thumb node) 0 (widget-accent widget) 1)))
 
 (fn (paint-motif-body t) ((renderer renderer) (node element))

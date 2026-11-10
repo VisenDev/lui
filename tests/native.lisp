@@ -998,7 +998,17 @@
         (lui.draw::paint-text-field renderer node))
       (assert (equal '("*******") painted)))))
 
+(defun test-typed-vector ()
+  (let ((calls 0))
+    (flet ((point () (cons (incf calls) 0)))
+      (let ((points (lui.draw::typed-vector point (point) (point) (point))))
+        (assert (= calls 3))
+        (assert (typep points 'contour))
+        (assert (equalp points #((1 . 0) (2 . 0) (3 . 0)))))))
+  (assert (zerop (length (lui.draw::typed-vector point)))))
+
 (defun run-tests ()
+  (test-typed-vector)
   (test-shared-wrapping)
   (paint-text (make-renderer
                :text (lambda (&rest arguments)

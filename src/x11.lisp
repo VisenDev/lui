@@ -11,7 +11,8 @@
 
 (cffi:define-foreign-library xcursor
   (:unix (:or "libXcursor.so.1" "libXcursor.so")))
-(ignore-errors (cffi:use-foreign-library xcursor))
+(handler-case (cffi:use-foreign-library xcursor)
+  (cffi:load-foreign-library-error () nil))
 
 (defmacro binding (name result &rest args)
   `(cffi:defcfun ,name ,result ,@args))
@@ -308,9 +309,8 @@
   (or (gethash kind (x-window-cursors window))
       (setf (gethash kind (x-window-cursors window))
             (let ((cursor
-                    (if (ignore-errors
-                          (cffi:foreign-symbol-pointer
-                           "XcursorLibraryLoadCursor"))
+                   (if (cffi:foreign-symbol-pointer
+                        "XcursorLibraryLoadCursor")
                         (cffi:foreign-funcall
                          "XcursorLibraryLoadCursor"
                          :pointer (x-window-display window)
@@ -427,10 +427,10 @@
       visual)))
 
 (fn (open-window integer) ((window x-window) info parent)
-  (let* ((display (x-window-display window))
-         (visual (cffi:foreign-slot-value
-                  info '(:struct visual-info) 'visual))
-         (depth (cffi:foreign-slot-value info '(:struct visual-info) 'depth)))
+  (let ((display (x-window-display window))
+        (visual (cffi:foreign-slot-value
+                 info '(:struct visual-info) 'visual))
+        (depth (cffi:foreign-slot-value info '(:struct visual-info) 'depth)))
     (setf (x-window-colormap window)
           (create-colormap display parent visual 0))
     (cffi:with-foreign-object (attrs '(:struct window-attributes))

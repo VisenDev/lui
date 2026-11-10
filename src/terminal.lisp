@@ -69,7 +69,7 @@
 
 (fn (cell-edge integer) ((position real))
   "Snap every box and clip edge to the same nearest terminal-cell boundary."
-  (floor (+ position 0.5)))
+  (floor (+ position 0.5f0)))
 
 (fn (cell-visible-p boolean) ((clip box) (x integer) (y integer)
                              (width integer))
@@ -128,33 +128,33 @@
         (assert (eq kind :circle))
         (let ((center-x (+ (box-x box) cx))
               (center-y (+ (box-y box) cy))
-              (extent (+ radius (if stroke 0.6 0)))
+              (extent (+ radius (if stroke 0.6f0 0)))
               (outline-style (cell-style (or stroke (widget-foreground widget))
                                    (widget-background widget) nil))
               (fill-style (cell-style (or fill (widget-foreground widget))
                                 (or fill (widget-background widget)) nil)))
           (loop :for row :from (max 0 (cell-edge (box-y clip))
-                                    (ceiling (- center-y extent 0.5)))
+                                    (ceiling (- center-y extent 0.5f0)))
                 :below (min (array-dimension cells 0)
                             (cell-edge (+ (box-y clip) (box-height clip)))
-                            (1+ (floor (+ center-y extent -0.5))))
+                            (1+ (floor (+ center-y extent -0.5f0))))
                 :do (loop :for column
                           :from (max 0 (cell-edge (box-x clip))
-                                     (ceiling (- center-x extent 0.5)))
+                                     (ceiling (- center-x extent 0.5f0)))
                           :below (min (array-dimension cells 1)
                                       (cell-edge (+ (box-x clip)
                                                     (box-width clip)))
-                                      (1+ (floor (+ center-x extent -0.5))))
+                                      (1+ (floor (+ center-x extent -0.5f0))))
                           :unless (aref borders row column)
                             :do (let* ((distance
-                                         (sqrt (+ (expt (- (+ column 0.5)
+                                        (sqrt (+ (expt (- (+ column 0.5f0)
                                                            center-x) 2)
-                                                  (expt (- (+ row 0.5)
+                                                 (expt (- (+ row 0.5f0)
                                                            center-y) 2))))
                                        (edge (and stroke
                                                   (<= (abs (- distance
                                                               radius))
-                                                      0.6))))
+                                                      0.6f0))))
                                   (when (or edge
                                             (and fill (< distance radius)))
                                     (setf (uncursed::cell-string (aref cells row column))
@@ -321,9 +321,9 @@
 
 (fn (render-terminal string) ((context context) &key ansi)
   "Render a plain or ANSI-colored snapshot through uncursed's cells and styles."
-  (let* ((cells (make-buffer (cell-edge (context-width context))
-                             (cell-edge (context-height context))))
-         (previous uncursed:*default-style*))
+  (let ((cells (make-buffer (cell-edge (context-width context))
+                            (cell-edge (context-height context))))
+        (previous uncursed:*default-style*))
     (paint-terminal context cells)
     (with-output-to-string (stream)
       (let ((*terminal-io* stream))
@@ -349,7 +349,7 @@
                   (char (vector-push-extend char buffer))
                   (t (let ((delay (lui.frame::frame-wait context)))
                        (when (zerop delay) (return nil))
-                       (sleep (min delay 0.02)))))))
+                       (sleep (min delay 0.02f0)))))))
 
 (fn (run-line-terminal context) ((draw function) &key title width height (interactive t))
   "Plain snapshots and line-oriented input for redirected or limited terminals."
@@ -420,7 +420,7 @@
         (:move
          (when (and (event-buttons pending)
                     (not (logbitp 0 (event-buttons pending))))
-           (setf capture nil)))))
+           (setf capture nil))) (otherwise nil)))
     (let* ((press (eq (event-kind event) :press))
            (id (if press (lui.frame::hit context (event-x event)
                                                (event-y event)) capture))
@@ -545,28 +545,27 @@
           (setf (input-quit-p input) t))
         (loop :for size := (input-sequence-length (input-pending input))
               :while size
-              :do (let* ((*standard-input*
-                           (make-string-input-stream
-                             (subseq (input-pending input) 0 size)))
-                         (event (uncursed-sys:read-event)))
-                    (decode-event input event context)
+              :do (let ((*standard-input*
+                         (make-string-input-stream
+                          (subseq (input-pending input) 0 size))))
+                    (decode-event input (uncursed-sys:read-event) context)
                     (setf (input-pending input)
                           (subseq (input-pending input) size)
                           (input-escape-time input) nil)))
         (when (string= (input-pending input) (string #\Escape))
           (let ((now (get-internal-real-time)))
-            (if (and (input-escape-time input)
-                     (>= (- now (input-escape-time input))
-                         (* 0.1 internal-time-units-per-second)))
-                (progn (key-event input :escape)
-                       (setf (input-pending input) ""
-                             (input-escape-time input) nil))
-                (unless (input-escape-time input)
-                  (setf (input-escape-time input) now)))))
+            (cond ((and (input-escape-time input)
+                        (>= (- now (input-escape-time input))
+                            (* 0.1f0 internal-time-units-per-second)))
+                   (key-event input :escape)
+                   (setf (input-pending input) ""
+                         (input-escape-time input) nil))
+                  ((null (input-escape-time input))
+                   (setf (input-escape-time input) now)))))
         (when (or (input-events input) (input-quit-p input)
                   (>= (get-internal-real-time) end))
           (return))
-        (sleep 0.005)))))
+        (sleep 0.005f0)))))
 
 (fn (slice-cells string) ((text string) (start integer) (width integer))
   (with-output-to-string (stream)
@@ -639,8 +638,8 @@
   (draw-focus (screen-context screen) screen))
 
 (fn (display-frame null) ((context context) screen)
-  (let* ((width (cell-edge (context-width context)))
-         (height (cell-edge (context-height context))))
+  (let ((width (cell-edge (context-width context)))
+        (height (cell-edge (context-height context))))
     (unless (and (slot-boundp screen 'uncursed::%canvas)
                  (= width (uncursed:cols screen)) (= height (uncursed:rows screen)))
       (setf (uncursed::canvas screen) (make-buffer width height)
@@ -657,7 +656,7 @@
 (fn (wait-frame null) ((input input) (context context) width height)
   (loop
     (let ((remaining (lui.frame::frame-wait context)))
-      (read-input input context (max 0.001 (min 0.1 remaining)))
+      (read-input input context (max 0.001f0 (min 0.1f0 remaining)))
       (when (or (zerop remaining) (input-events input) (input-quit-p input))
         (return)))
     (multiple-value-bind (columns rows) (terminal-size)

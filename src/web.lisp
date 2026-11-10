@@ -64,20 +64,20 @@
              (setf (jscl/ffi:oget g "lineWidth") stroke
                    (jscl/ffi:oget g "strokeStyle") (jscl/ffi:jsstring color))
              (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color)))
-         (if (zerop radius)
-             (if stroke
-                 ((jscl/ffi:oget g "strokeRect")
-                  (+ (box-x box) (/ stroke 2))
-                  (+ (box-y box) (/ stroke 2))
-                  (max 0 (- (box-width box) stroke))
-                  (max 0 (- (box-height box) stroke)))
-                 ((jscl/ffi:oget g "fillRect") (box-x box) (box-y box)
-                  (box-width box) (box-height box)))
-             (progn
-               (rounded-path g box radius (if stroke (/ stroke 2) 0))
-               (if stroke
-                   ((jscl/ffi:oget g "stroke"))
-                   ((jscl/ffi:oget g "fill"))))))
+         (cond ((zerop radius)
+                (if stroke
+                    ((jscl/ffi:oget g "strokeRect")
+                     (+ (box-x box) (/ stroke 2))
+                     (+ (box-y box) (/ stroke 2))
+                     (max 0 (- (box-width box) stroke))
+                     (max 0 (- (box-height box) stroke)))
+                    ((jscl/ffi:oget g "fillRect") (box-x box) (box-y box)
+                     (box-width box) (box-height box))))
+               (t
+                (rounded-path g box radius (if stroke (/ stroke 2) 0))
+                (if stroke
+                    ((jscl/ffi:oget g "stroke"))
+                    ((jscl/ffi:oget g "fill"))))))
        :polygons
        (lambda (paths color alpha)
          (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color)
@@ -206,38 +206,54 @@
                (let* ((x (box-x clip)) (y (box-y clip))
                       (right (+ x (box-width clip))) (bottom (+ y (box-height clip)))
                       (old (pop previous)))
-                 (if (and old (= x (overlay-region-x old)) (= y (overlay-region-y old))
-                          (= right (overlay-region-right old)) (= bottom (overlay-region-bottom old))
-                          (eq candidate (overlay-region-candidate old)))
-                     (progn (push old seen) (overlay-region-visible old))
-                     (progn
-                       (unless bands
-                         (setf previous nil bands (make-hash-table))
-                         (dolist (region seen) (index-region region)))
-                       (let* ((visible (and candidate (uncovered-p x y right bottom)))
-                              (region (make-overlay-region :x x :y y :right right :bottom bottom
-                                                           :candidate candidate :visible visible)))
-                         (push region seen)
-                         (index-region region)
-                         visible)))))
+                 (cond ((and old (= x (overlay-region-x old))
+                             (= y (overlay-region-y old))
+                             (= right (overlay-region-right old))
+                             (= bottom (overlay-region-bottom old))
+                             (eq candidate (overlay-region-candidate old)))
+                        (push old seen)
+                        (overlay-region-visible old))
+                       (t
+                        (unless bands
+                          (setf previous nil bands (make-hash-table))
+                          (dolist (region seen) (index-region region)))
+                        (let* ((visible
+                                 (and candidate
+                                      (uncovered-p x y right bottom)))
+                               (region
+                                 (make-overlay-region
+                                  :x x :y y :right right :bottom bottom
+                                  :candidate candidate :visible visible)))
+                          (push region seen)
+                          (index-region region)
+                          visible)))))
              (visit (node path interactive)
-               (let* ((key (if (element-id node) (list :id (element-id node)) path))
-                      (children (element-children node)) (clip (element-clip node))
-                      (widget (element-content node)))
+               (let ((key (if (element-id node)
+                              (list :id (element-id node)) path))
+                     (children (element-children node))
+                     (clip (element-clip node))
+                     (widget (element-content node)))
                  (let ((count (length children)))
                    (dotimes (offset count)
                      (let ((i (- count offset 1)))
                        (visit (aref children i) (cons i key)
-                              (or interactive (element-interactive-p node))))))
+                              (or interactive
+                                  (element-interactive-p node))))))
                  (when (and (plusp (box-width clip)) (plusp (box-height clip))
-                            (or (lui.widgets:widget-p widget) (element-interactive-p node)))
-                   (let ((kind (and (lui.widgets:widget-p widget) (lui.widgets:widget-kind widget))))
-                     (when (region-visible-p clip
-                             (and (case kind ((:cell :label :button :tab :list-item :checkbox :radio) t))
-                                  (or (not (eq kind :label))
-                                      (lui:toolkit-native-labels-p (lui.widgets:widget-style widget)))
-                                  (not (lui.widgets:widget-painter widget))))
-                       (vector-push-extend (list node (cons kind key) interactive) entries)))))))
+                            (or (lui.widgets:widget-p widget)
+                                (element-interactive-p node)))
+                   (let ((kind (and (lui.widgets:widget-p widget)
+                                    (lui.widgets:widget-kind widget))))
+                     (when (region-visible-p
+                            clip
+                            (and (member kind '(:cell :label :button :tab
+                                                :list-item :checkbox :radio))
+                                 (or (not (eq kind :label))
+                                     (lui:toolkit-native-labels-p
+                                      (lui.widgets:widget-style widget)))
+                                 (not (lui.widgets:widget-painter widget))))
+                       (vector-push-extend
+                        (list node (cons kind key) interactive) entries)))))))
       (visit root nil nil))
     (setf (web-app-overlay-geometry app) (nreverse seen))
     (reverse entries)))
@@ -283,8 +299,8 @@
 
 (fn (same-overlay-order-p boolean) ((records (vector dom-widget)) (entries (vector list)))
   (and (= (length records) (length entries))
-       (loop for record across records for entry across entries
-             always (equal (dom-widget-key record) (second entry)))))
+       (loop :for record :across records :for entry :across entries
+             :always (equal (dom-widget-key record) (second entry)))))
 
 (fn (reconcile-overlay (vector dom-widget)) ((app web-app) (entries (vector list)))
   ;; Look up keyed nodes and inspect DOM order only when membership or order changes.
@@ -294,9 +310,10 @@
     (let ((old (make-hash-table :test 'equal)) (layer (web-app-overlay app))
           (next (make-array 0 :element-type 'dom-widget :adjustable t :fill-pointer 0))
           (cache (web-app-overlay-cache app)) hidden)
-      (loop for record across order do (setf (gethash (dom-widget-key record) old) record))
+      (loop :for record :across order
+            :do (setf (gethash (dom-widget-key record) old) record))
       (dolist (record cache) (setf (gethash (dom-widget-key record) old) record))
-      (loop for entry across entries do
+      (loop :for entry :across entries :do
         (destructuring-bind (node key interactive) entry
           (declare (ignore interactive))
           (let* ((kind (car key))
@@ -310,25 +327,28 @@
                     (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"visible"))
             (vector-push-extend record next))))
       ;; Prefer newly hidden nodes over older cached entries when evicting.
-      (loop for record across order do
+      (loop :for record :across order :do
         (when (gethash (dom-widget-key record) old)
           (setf (dom-widget-hidden-p record) t
                 (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"hidden")
           (push record hidden)))
-      (setf hidden (nconc hidden (loop for record in cache
-                                       when (gethash (dom-widget-key record) old) collect record)))
-      (loop for record in (nthcdr *overlay-cache-limit* hidden)
-            do ((jscl/ffi:oget (dom-widget-element record) "remove")))
+      (setf hidden
+            (nconc hidden
+                   (loop :for record :in cache
+                         :when (gethash (dom-widget-key record) old)
+                         :collect record)))
+      (loop :for record :in (nthcdr *overlay-cache-limit* hidden)
+            :do ((jscl/ffi:oget (dom-widget-element record) "remove")))
       (when (nthcdr *overlay-cache-limit* hidden)
         (setf (cdr (nthcdr (1- *overlay-cache-limit*) hidden)) nil))
       (setf (web-app-overlay-cache app) hidden)
       (setf order next)
       (let ((cursor (jscl/ffi:oget layer "firstChild")))
-        (loop for record across order do
+        (loop :for record :across order :do
           (let ((element (dom-widget-element record)))
-            (loop while (and (not (eq cursor #j:null))
+            (loop :while (and (not (eq cursor #j:null))
                              (equal (jscl/ffi:oget cursor "style" "visibility") #j"hidden"))
-                  do (setf cursor (jscl/ffi:oget cursor "nextSibling")))
+                  :do (setf cursor (jscl/ffi:oget cursor "nextSibling")))
             (unless (eq element cursor) ((jscl/ffi:oget layer "insertBefore") element cursor))
             (setf cursor (jscl/ffi:oget element "nextSibling")))))
       (setf (web-app-overlay-order app) order))))
@@ -337,7 +357,8 @@
   (let* ((entries (overlay-candidates app (context-root (web-app-context app))))
          (records (reconcile-overlay app entries))
          (external (make-hash-table :test 'eq)))
-    (loop for (node key interactive) across entries for record across records do
+    (loop :for (node key interactive) :across entries
+          :for record :across records :do
       (let* ((kind (car key)) (label (eq kind :label)) (widget (element-content node))
              (element (dom-widget-element record))
              (text (if label (lui.widgets:widget-text widget)
@@ -396,7 +417,8 @@
              (decay (exp (/ (- elapsed) 190))))
         (incf delta (* speed 190 (- 1 decay)))
         (setf (web-app-scroll-time app) now
-              (web-app-velocity app) (if (< (* (abs speed) decay) 0.02) 0 (* speed decay)))))
+              (web-app-velocity app)
+              (if (< (* (abs speed) decay) 0.02f0) 0 (* speed decay)))))
     delta))
 
 (fn (draw-frame t) ((app web-app))
@@ -422,8 +444,9 @@
     (with-frame (context width height :events events)
       (funcall (web-app-callback app)))
     (when port
-      (let* ((page-height (context-height context))
-             (requested (shiftf (lui.frame::context-requested-page-top context) nil)))
+      (let ((page-height (context-height context))
+            (requested (shiftf (lui.frame::context-requested-page-top context)
+                               nil)))
         (when requested (setf delta (- requested origin)))
         (let ((offset (max 0 (min (- page-height height) (+ origin delta)))))
           (setf (web-app-viewport-offset app) offset
@@ -444,7 +467,7 @@
     ;; Commit the matching scroll position only after the pixels and DOM are ready.
     (when (and port (not (zerop delta)))
       (page-scroll-by port delta)
-      (when (< (abs (- (page-offset stage port) origin)) 0.01)
+      (when (< (abs (- (page-offset stage port) origin)) 0.01f0)
         (setf (web-app-velocity app) 0)))
     (unless (zerop (web-app-velocity app)) (refresh app))
     (when (some (lambda (e) (not (eq :move (event-kind e)))) events)
@@ -538,7 +561,7 @@
               ;; A committed, prepainted scroll needs no second frame. Native
               ;; scrolling and clamping to a different offset still repaint.
               (unless (< (abs (- (page-offset stage port)
-                                 (web-app-viewport-offset app))) 0.01)
+                                 (web-app-viewport-offset app))) 0.01f0)
                 (refresh app))))
       ((jscl/ffi:oget port "addEventListener") #j"scroll"
        (web-app-scroll-listener app)))
@@ -570,8 +593,8 @@
 (fn (run-web web-app) ((draw function) &key title width height (interactive t))
   (declare (ignore interactive))
   (setf (jscl/ffi:oget #j:document "title") (jscl/ffi:jsstring title))
-  (let* ((scroll-mode (if height :viewport (default-scroll-mode)))
-         (host (#j:document:createElement #j"main")))
+  (let ((scroll-mode (if height :viewport (default-scroll-mode)))
+        (host (#j:document:createElement #j"main")))
     ((jscl/ffi:oget host "setAttribute") #j"aria-label"
      (jscl/ffi:jsstring title))
     (setf (jscl/ffi:oget host "style" "width")

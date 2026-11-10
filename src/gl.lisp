@@ -138,8 +138,8 @@ void main() {
                      (dolist (index '(0 1 2 0 2 3))
                        (let ((point (aref quad index)))
                          (call-gl "glVertex2f"
-                                  :float (float (car point) 1.0)
-                                  :float (float (cdr point) 1.0) :void)))))
+                                  :float (float (car point) 1.0f0)
+                                  :float (float (cdr point) 1.0f0) :void)))))
                (call-gl "glEnd" :void)))
         (call-gl "glEndList" :void))
       (incf (gpu-geometry-builds gpu))
@@ -169,29 +169,30 @@ void main() {
         (call-gl "glPushMatrix" :void)
         (unwind-protect
              (progn
-               (call-gl "glTranslatef" :float (float x 1.0)
-                        :float (float y 1.0) :float 0.0 :void)
+               (call-gl "glTranslatef" :float (float x 1.0f0)
+                        :float (float y 1.0f0) :float 0.0f0 :void)
                (gl-polygons gpu local color alpha))
           (call-gl "glPopMatrix" :void))))))
 
 (fn (gl-text null) ((gpu gpu) (font font) (text string)
             (x real) (y real) (color string))
   (let* ((loader (font-loader font))
-         (scale (float (/ (font-size font) (zpb-ttf:units/em loader)) 1.0))
+         (scale (float (/ (font-size font) (zpb-ttf:units/em loader)) 1.0f0))
          (advance 0) (previous nil))
     (gl-color color 1)
     (call-gl "glPushMatrix" :void)
     (unwind-protect
          (progn
-           (call-gl "glTranslatef" :float (float x 1.0)
-                    :float (float y 1.0) :float 0.0 :void)
-           (call-gl "glScalef" :float scale :float (- scale) :float 1.0 :void)
+           (call-gl "glTranslatef" :float (float x 1.0f0)
+                    :float (float y 1.0f0) :float 0.0f0 :void)
+           (call-gl "glScalef" :float scale :float (- scale) :float 1.0f0
+                    :void)
            (loop :for char :across text
                  :do (when previous
                        (incf advance (zpb-ttf:kerning-offset
                                       previous char loader))
-                       (call-gl "glTranslatef" :float (float advance 1.0)
-                                :float 0.0 :float 0.0 :void))
+                       (call-gl "glTranslatef" :float (float advance 1.0f0)
+                                :float 0.0f0 :float 0.0f0 :void))
                      (gl-geometry gpu (glyph-polygons font char))
                      (setf advance (zpb-ttf:advance-width
                                     (zpb-ttf:find-glyph char loader))
@@ -248,20 +249,20 @@ void main() {
          (call-gl "glUniform1i" :int (uniform gpu "backdrop")
                   :int 0 :void)
          (call-gl "glUniform2f" :int (uniform gpu "resolution")
-                  :float (float (gpu-width gpu) 1.0)
-                  :float (float (gpu-height gpu) 1.0) :void)
+                  :float (float (gpu-width gpu) 1.0f0)
+                  :float (float (gpu-height gpu) 1.0f0) :void)
          (let ((scale (/ (gpu-width gpu) (gpu-logical-width gpu))))
            (call-gl "glUniform1f" :int (uniform gpu "pixelScale")
-                    :float (float scale 1.0) :void)
+                    :float (float scale 1.0f0) :void)
            (call-gl "glUniform1f" :int (uniform gpu "frost")
-                    :float (float (* frost scale) 1.0) :void))
+                    :float (float (* frost scale) 1.0f0) :void))
          (let ((box (pixel-box gpu box)))
            (call-gl "glUniform4f" :int (uniform gpu "bounds")
-                  :float (float (box-x box) 1.0)
+                    :float (float (box-x box) 1.0f0)
                   :float (float (- (gpu-height gpu) (box-y box)
-                                   (box-height box)) 1.0)
-                  :float (float (box-width box) 1.0)
-                  :float (float (box-height box) 1.0) :void))
+                                   (box-height box)) 1.0f0)
+                  :float (float (box-width box) 1.0f0)
+                  :float (float (box-height box) 1.0f0) :void))
          (gl-polygons gpu (make-array 1 :element-type 'contour :initial-element (rounded-polygon box radius)) "#ffffff" 1))
     (call-gl "glUseProgram" :uint 0 :void)))
 
@@ -391,8 +392,8 @@ void main() {
   (call-gl "glViewport" :int 0 :int 0 :int (gpu-width gpu)
            :int (gpu-height gpu) :void)
   (call-gl "glDisable" :uint #x0c11 :void)
-  (call-gl "glClearColor" :float 0.12 :float 0.14
-           :float 0.19 :float 1.0 :void)
+  (call-gl "glClearColor" :float 0.12f0 :float 0.14f0
+           :float 0.19f0 :float 1.0f0 :void)
   (call-gl "glClear" :uint #x4000 :void)
   (call-gl "glEnable" :uint #x0be2 :void)
   ;; Keep the opaque destination alpha while blending translucent RGB overlays.

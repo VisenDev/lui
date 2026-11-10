@@ -129,7 +129,7 @@
 
 (fn (properties null) ((title string) (width real) &rest pairs)
   (let ((accent (getf (toolkit-defaults) :accent "#258bff")))
-    (row (:width (grow) :gap (units 0.5))
+    (row (:width (grow) :gap (units 0.5f0))
       (lui:label "—" (lui:opt :width (fixed (units 2)) :font-size 14
                              :foreground accent))
       (lui:label title (lui:opt :width (grow) :font-size 14 :font-weight :bold
@@ -258,8 +258,8 @@
     (let ((index (position (debugger-state-selected state) rows :key #'entry-key
                            :test #'equal)))
       (when index
-        (let* ((top (* index step))
-               (viewport (max step (- height (units 2)))))
+        (let ((top (* index step))
+              (viewport (max step (- height (units 2)))))
           (setf offset
                 (max 0 (min top (max offset (- (+ top step) viewport)))))
           (scroll-to (id :tree) 0 offset)))))
@@ -287,7 +287,7 @@
               :for key := (entry-key entry)
               :do (row (:floating-p t :offset-y (* index step)
                                     :width (grow) :height (fixed step)
-                                    :gap (units 0.25) :cross-align :center)
+                                    :gap (units 0.25f0) :cross-align :center)
                     (emit (make-element
                            :width
                            (fixed (min (/ width 3)
@@ -323,8 +323,8 @@
          (width (min maximum (max minimum
                                   (if (debugger-state-width state)
                                       (units (debugger-state-width state))
-                                      (* window 0.4))))))
-    (loop for event across (events-for (id :resize)) do
+                                      (* window 0.4f0))))))
+    (loop :for event :across (events-for (id :resize)) :do
       (when (or (eq (event-kind event) :cancel)
                 (and (eq (event-kind event) :move)
                      (not (event-dragging-p event))))
@@ -347,7 +347,8 @@
            (case (event-key event)
              (:left (incf width (units 2)))
              (:right (decf width (units 2)))
-             (:home (setf width minimum)) (:end (setf width maximum)))))
+             (:home (setf width minimum)) (:end (setf width maximum))
+             (otherwise nil))) (otherwise nil))
         (setf width (min maximum (max minimum width))
               (debugger-state-width state) (/ width *unit*))
         (request-frame)))
@@ -376,8 +377,8 @@
          (height (min maximum
                       (max minimum (if (debugger-state-details-height state)
                                        (units (debugger-state-details-height state))
-                                       (* maximum 0.75))))))
-    (loop for event across (events-for (id :details-resize)) do
+                                       (* maximum 0.75f0))))))
+    (loop :for event :across (events-for (id :details-resize)) :do
       (when (or (eq (event-kind event) :cancel)
                 (and (eq (event-kind event) :move)
                      (not (event-dragging-p event))))
@@ -401,7 +402,9 @@
           (:key
            (case (event-key event)
              (:up (incf height (units 2))) (:down (decf height (units 2)))
-             (:home (setf height maximum)) (:end (setf height 0)))))
+             (:home (setf height maximum)) (:end (setf height 0))
+             (otherwise nil)))
+          (otherwise nil))
         (if (<= height (units 2))
             (close-details state)
             (setf height (min maximum (max minimum height))
@@ -444,10 +447,10 @@
                       :offset-x (- (context-width *context*) width)
                       :width (fixed width)
                       :height (fixed (lui.frame::context-viewport-height *context*))
-                      :padding (units 1) :gap (units 0.5) :opacity 1
+                      :padding (units 1) :gap (units 0.5f0) :opacity 1
                       :radius 0 :frost 0)
     (let ((header nil))
-      (row (:id (id :header) :width (grow) :gap (units 0.5))
+      (row (:id (id :header) :width (grow) :gap (units 0.5f0))
         (setf header *parent*)
         (lui:label "Layout debugger" (lui:opt :width (grow)))
         (when (lui:button (id :close) "Close")
@@ -457,31 +460,32 @@
                (debugger-header-height header (- width (units 2))))
              ;; Root/tree padding, three gaps and the divider also need room.
              (maximum (max 0 (- (lui.frame::context-viewport-height *context*) header-height
-                                (units 6.5))))
+                                (units 6.5f0))))
              (height (details-height state maximum)))
         (setf (element-height header) (fit header-height))
         (tree state width)
         (let ((node (gethash (debugger-state-selected state) (debugger-state-nodes state))))
-          (if node
-              (progn
-                (details-divider height)
-                (column (:id (id :property-pane) :width (grow)
-                         :height (fixed height) :gap (units 0.5))
-                  (row (:width (grow) :gap (units 0.5) :cross-align :center)
-                    (lui:label "Properties" (lui:opt :width (grow)))
-                    (lui:button (id :close-details) "×"
+          (cond (node
+                 (details-divider height)
+                 (column (:id (id :property-pane) :width (grow)
+                              :height (fixed height) :gap (units 0.5f0))
+                   (row (:width (grow) :gap (units 0.5f0) :cross-align
+                                :center)
+                     (lui:label "Properties" (lui:opt :width (grow)))
+                     (lui:button (id :close-details) "×"
                                  (lui:opt :width (fixed (units 5))
                                           :font-size 14
                                           :accessible-name "Close details")))
-                  (lui:panel (lui:opt :id (id :details)
-                                      :width (grow) :height (grow)
-                                      :scroll-p t :padding (units 1)
-                                      :gap (if (context-text-mode-p *context*)
-                                               0 (units 0.25))
-                                      :opacity 1 :radius 0 :frost 0)
-                    (details node width))))
-              (lui:label "Select a tree row for properties."
-                         (lui:opt :width (grow) :font-size 14))))))))
+                   (lui:panel (lui:opt :id (id :details)
+                                       :width (grow) :height (grow)
+                                       :scroll-p t :padding (units 1)
+                                       :gap (if (context-text-mode-p
+                                                 *context*)
+                                                0 (units 0.25f0))
+                                       :opacity 1 :radius 0 :frost 0)
+                     (details node width))))
+                (t (lui:label "Select a tree row for properties."
+                              (lui:opt :width (grow) :font-size 14)))))))))
 
 (fn (draw-debugger (or null element)) ((state debugger-state) (toolkit symbol) previous)
   (when (and (debugger-state-open-p state) (null previous)) (request-frame))
@@ -494,7 +498,7 @@
                     (third hover)))
              (node (gethash key (debugger-state-nodes state))))
         (when node
-          (highlight (element-box node) :bounds 0.18 "#ff8c00")
+          (highlight (element-box node) :bounds 0.18f0 "#ff8c00")
           (when (clipped-p node)
             (highlight (element-clip node) :clip 0 "#00c0ff")))
         (let ((width (debugger-width state)))

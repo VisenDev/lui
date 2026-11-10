@@ -39,26 +39,28 @@
                                       (background "#1f2430"))
   "Render DRAW once to PATHNAME and return the pathname. Sizes are PDF points."
   (assert (and (plusp width) (plusp height)))
-  (let* ((lui:*unit* 8)
-         (font (lui.font:open-font)))
-    (unwind-protect
-         (let* ((renderer (pdf-renderer font))
-                (context (make-context :measure
-                                       (lambda (widget available)
-                                         (measure-widget renderer widget available)))))
-           (with-frame (context width height) (funcall draw))
-           (pdf:with-document (:title title)
-             (pdf:with-page (:bounds (vector 0 0 width height))
-               (pdf:translate 0 height)
-               (pdf:scale 1 -1)
-               (let ((rgba (color-components background)))
-                 (pdf:set-rgb-fill (aref rgba 0) (aref rgba 1) (aref rgba 2)))
-               (pdf:basic-rect 0 0 width height)
-               (pdf:fill-path)
-               (paint-frame renderer context))
-             (pdf:write-document (pathname pathname)))
-           (pathname pathname))
-      (lui.font:close-font font))))
+  (let ((lui:*unit* 8))
+    (let ((font (lui.font:open-font)))
+      (unwind-protect
+           (let* ((renderer (pdf-renderer font))
+                  (context (make-context :measure
+                                         (lambda (widget available)
+                                           (measure-widget renderer widget
+                                                           available)))))
+             (with-frame (context width height) (funcall draw))
+             (pdf:with-document (:title title)
+               (pdf:with-page (:bounds (vector 0 0 width height))
+                 (pdf:translate 0 height)
+                 (pdf:scale 1 -1)
+                 (let ((rgba (color-components background)))
+                   (pdf:set-rgb-fill
+                    (aref rgba 0) (aref rgba 1) (aref rgba 2)))
+                 (pdf:basic-rect 0 0 width height)
+                 (pdf:fill-path)
+                 (paint-frame renderer context))
+               (pdf:write-document (pathname pathname)))
+             (pathname pathname))
+        (lui.font:close-font font)))))
 
 (fn (run-pdf pathname) ((draw function) &key title width height interactive)
   (declare (ignore interactive))

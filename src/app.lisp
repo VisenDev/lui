@@ -95,7 +95,8 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
          (name (or backend
                    (and *default-backend-function*
                         (funcall *default-backend-function*))
-                   (loop for backend across (available-backends) return backend)))
+                   (loop :for backend :across (available-backends)
+                         :return backend)))
          (runner (gethash name *backends*)))
     (unless runner
       (error "Backend ~S is not loaded. Available: ~S" name
@@ -410,12 +411,12 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
   ;; GETF's first-value rule, including an explicitly supplied NIL.
   (let ((selected nil) (selected-seen nil) (appearance nil))
     (do ((tail options (cddr tail))) ((null tail))
-      (if (eq (car tail) :selected-p)
-          (unless selected-seen
-            (setf selected (cadr tail) selected-seen t))
-          (progn
-            (push (car tail) appearance)
-            (push (cadr tail) appearance))))
+      (cond ((eq (car tail) :selected-p)
+             (unless selected-seen
+               (setf selected (cadr tail) selected-seen t)))
+            (t
+             (push (car tail) appearance)
+             (push (cadr tail) appearance))))
     (apply #'declare-widget kind style id text :value selected
            (nreconc appearance defaults))))
 
@@ -531,22 +532,25 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
     (make-array count :element-type '(cons integer string) :initial-contents (nreverse matches))))
 
 (fn (anchored-popup lui.layout:element) (id (anchor lui.layout:element) (options list))
-  (let* ((*parent* (lui.layout:make-element))
-         (pane (declare-panel *toolkit*
-                 (append options (opt :id id :floating-p t :opacity 1
-                                      :scroll-p t :scrollbar-p nil :clip-p t
-                                      :interactive-p t :keyboard-focus-p nil :padding (units 1))
-                         (toolkit-defaults)))))
-    (setf (lui.layout:element-popup-anchor pane) anchor)
-    (push pane (lui.frame::context-popups *context*))
-    pane))
+  (let ((*parent* (lui.layout:make-element)))
+    (let ((pane
+            (declare-panel
+             *toolkit*
+             (append options
+                     (opt :id id :floating-p t :opacity 1 :scroll-p t
+                          :scrollbar-p nil :clip-p t :interactive-p t
+                          :keyboard-focus-p nil :padding (units 1))
+                     (toolkit-defaults)))))
+      (setf (lui.layout:element-popup-anchor pane) anchor)
+      (push pane (lui.frame::context-popups *context*))
+      pane)))
 
 (fn (combobox-popup null) (id (matches (vector (cons integer string))) index (anchor lui.layout:element) reveal)
   (let* ((pane (anchored-popup (list id :popup) anchor nil))
          (*parent* pane))
-    (loop for match across matches for i from 0
-          for row-id = (list id :choice (car match))
-          do (list-item row-id (cdr match)
+    (loop :for match :across matches :for i :from 0
+          :for row-id := (list id :choice (car match))
+          :do (list-item row-id (cdr match)
                         (opt :width (lui.layout:grow) :selected-p (eql i index)))
              (let ((row (gethash row-id (lui.frame::context-ids *context*))))
                (setf (lui.layout:element-keyboard-focus-p row) nil)
@@ -565,7 +569,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
              (last (1- (length matches)))
              (old (and (combobox-state-open-p state) (combobox-state-highlight state)))
              (index (and (plusp (length matches)) old (min old last))))
-        (loop for event across events do
+        (loop :for event :across events :do
           (case (event-kind event)
             (:key (case (event-key event)
                     ((:up :down)
@@ -574,11 +578,14 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
                                    (if (eq :down (event-key event))
                                        (min last (1+ (or index -1)))
                                        (max 0 (1- (or index (1+ last))))))))
-                    (:escape (setf (combobox-state-open-p state) nil))))
+                    (:escape (setf (combobox-state-open-p state) nil))
+                    (otherwise nil)))
             (:activate
              (when (combobox-state-open-p state)
                (setf (combobox-state-open-p state) nil)
-               (return-from combobox-completion (and index (cdr (aref matches index))))))))
+               (return-from combobox-completion
+                 (and index (cdr (aref matches index))))))
+            (otherwise nil)))
         (setf (combobox-state-highlight state) index)
         (when (and (plusp (length matches)) (combobox-state-open-p state))
           (let ((clicked (find-if (lambda (match) (activated-p (list id :choice (car match))))
@@ -696,7 +703,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     (multiple-value-bind (y m) (shift-month year month offset)
       (values y m (case offset
                     (-1 (+ day (month-days y m)))
-                    (1 (- day count)) (t day))))))
+                    (1 (- day count)) (otherwise day))))))
 
 (fn (calendar-arrow-focus null) (id (state picker-state))
   (let ((focus (context-focus *context*)))
@@ -706,7 +713,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         (loop :for event :across (events-for focus) :do
           (let ((step (and (eq (event-kind event) :key)
                            (case (event-key event)
-                             (:left -1) (:right 1) (:up -7) (:down 7)))))
+                             (:left -1) (:right 1) (:up -7) (:down 7)
+                             (otherwise nil)))))
             (when step
               (multiple-value-bind (y m next)
                   (calendar-day (picker-state-year state)
@@ -753,7 +761,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                   (setf (picker-state-month state) m (picker-state-months-p state) nil))))))
         (let ((start (calendar-start year month)))
           (row (:width (lui.layout:grow))
-            (loop for name across "SMTWTFS" do
+            (loop :for name :across "SMTWTFS" :do
               (row (:width width :align :center)
                 (label (string name) (opt :font-size 13)))))
           (dotimes (week 6)
@@ -783,13 +791,14 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
 
 (fn (calendar-popup (values (or null date-parts) boolean))
     (id (state picker-state) (parts (or null date-parts)))
-  (let* ((trigger (list id :calendar)) (popup (list id :popup))
-         (focus (context-focus *context*))
-         (terminal (context-text-mode-p *context*)))
+  (let ((trigger (list id :calendar)) (popup (list id :popup))
+        (focus (context-focus *context*))
+        (terminal (context-text-mode-p *context*)))
     (let* ((input (list id :input))
            (field-click (or (activated-p input) (activated-p (list id :field))))
            (icon-click (calendar-item trigger "▦" :icon :calendar :accessible-name "Choose date"
-                                     :height (lui.layout:grow) :width (lui.layout:fixed (if terminal 3 26)))))
+                                      :height (lui.layout:grow) :width
+                                      (lui.layout:fixed (if terminal 3 26)))))
       (cond ((and icon-click (picker-state-open-p state))
              (setf (picker-state-open-p state) nil (context-focus *context*) trigger))
             ((or icon-click field-click)
@@ -815,7 +824,9 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                (setf (picker-state-open-p state) nil))
               (t
                (let ((*parent* (anchored-popup popup *parent*
-                                 (opt :width (lui.layout:fixed (if terminal 32 260))))))
+                                               (opt :width (lui.layout:fixed
+                                                            (if terminal 32
+                                                                260))))))
                  (multiple-value-bind (date action) (picker-calendar id state (or parts (local-today)))
                    (when action
                      (pop (lui.frame::context-popups *context*))
@@ -826,10 +837,11 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
 (fn (date-picker (or null string)) (id value &optional ((options list) nil))
   "Type a date as MM/DD/YYYY or pick it from the calendar. Return YYYY-MM-DD
 or NIL when cleared. An incomplete or invalid draft preserves the model value."
-  (let* ((date (parse-picker-date value))
-         (state (or (gethash id (context-state *context*))
-                    (setf (gethash id (context-state *context*)) (make-picker-state))))
-         (result value))
+  (let ((date (parse-picker-date value))
+        (state (or (gethash id (context-state *context*))
+                   (setf (gethash id (context-state *context*))
+                         (make-picker-state))))
+        (result value))
     (unless (equal value (picker-state-value state))
       (setf (picker-state-value state) value
             (picker-state-draft state) (if date (picker-display date) (or value ""))))

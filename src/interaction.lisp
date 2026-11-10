@@ -77,7 +77,7 @@ outside editing. Return an event or NIL; printable input remains text."
     (case key
       (:up (max 0 (1- index)))
       (:down (min (1- count) (1+ index)))
-      (:home 0) (:end (1- count)))))
+      (:home 0) (:end (1- count)) (otherwise nil))))
 
 (fn (reveal-rect (or null boolean)) (id (left real) (top real) (width real) (height real)
     &key ((leading-x real) 0) ((leading-y real) 0))

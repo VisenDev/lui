@@ -7,14 +7,13 @@
   (or (uiop:getenvp "WAYLAND_SOCKET")
       (let ((name (uiop:getenvp "WAYLAND_DISPLAY"))
             (directory (uiop:getenvp "XDG_RUNTIME_DIR")))
-        (when name
-          (ignore-errors
-            (probe-file
-             (if (uiop:absolute-pathname-p name) name
-                 (when directory
-                   (merge-pathnames name
-                                    (uiop:ensure-directory-pathname
-                                     directory))))))))))
+        (when (and name (or directory (uiop:absolute-pathname-p name)))
+          (handler-case
+              (probe-file
+               (if (uiop:absolute-pathname-p name) name
+                   (merge-pathnames
+                    name (uiop:ensure-directory-pathname directory))))
+            (file-error () nil))))))
 
 (fn (preferred-backend (or null symbol)) ()
   "Choose a registered host backend from the environment at run time."

@@ -47,8 +47,9 @@
     (flet ((bar (dx dy w h)
              (shape renderer (make-box :x (+ x dx) :y (+ y dy) :width w :height h)
                     0 color 1)))
-      (outline renderer (make-box :x x :y (+ y 2) :width 14 :height 12) 1 color 1 1.5)
-      (bar 1 5 12 1.5) (bar 3 0 2 4) (bar 9 0 2 4))))
+      (outline renderer (make-box :x x :y (+ y 2) :width 14 :height 12) 1
+               color 1 1.5f0)
+      (bar 1 5 12 1.5f0) (bar 3 0 2 4) (bar 9 0 2 4))))
 
 (fn (paint-text-field null)     ((renderer renderer) (node element))
   (let* ((widget (element-content node))
@@ -97,7 +98,7 @@
               (setf start (min (length text) (1+ end))))))
 
 (fn (paint-canvas null) ((renderer renderer) (node element))
-  (let* ((widget (element-content node)) (box (element-box node)))
+  (let ((widget (element-content node)) (box (element-box node)))
     (shape renderer box 0 (widget-background widget) 1)
     (dolist (command (widget-value widget))
       (destructuring-bind (kind cx cy radius stroke fill) command
@@ -122,8 +123,8 @@
 
 (fn (paint-focus-ring t) ((renderer renderer) (node element) (radius real))
   (when (and (focused-p node) (context-focus-visible-p *context*))
-    (let* ((widget (element-content node))
-           (box (element-box node)))
+    (let ((widget (element-content node))
+          (box (element-box node)))
       (outline renderer (inset-box box 2) (max 0 (- radius 2))
                (widget-accent widget) 1 2))))
 
@@ -149,7 +150,7 @@
                   (make-box :x (+ (box-x box) (/ (box-width box) 2) -1)
                             :y (box-y box) :width 2 :height (box-height box)))
               0 (widget-accent widget)
-              (if (or pressed (hovered-p (element-id node))) 1 0.5)))
+              (if (or pressed (hovered-p (element-id node))) 1 0.5f0)))
       ((eq kind :highlight)
        (shape renderer box 0 (widget-accent widget)
               (widget-opacity widget))
@@ -163,7 +164,7 @@
                               :y (+ (box-y box) (/ (- height size) 2))
                               :width size :height size)))
          (when (hovered-p (element-id node))
-           (shape renderer mark (/ size 2) foreground 0.12))
+           (shape renderer mark (/ size 2) foreground 0.12f0))
          (when (and (focused-p node) (context-focus-visible-p *context*))
            (outline renderer mark (/ size 2) foreground 1 1))
          (paint-calendar-icon renderer mark foreground)))
@@ -173,7 +174,7 @@
                   (widget-background widget)) 1)
        (when (and (not (widget-value widget))
                   (hovered-p (element-id node)))
-         (shape renderer box 0 foreground 0.12))
+         (shape renderer box 0 foreground 0.12f0))
        (when (and (lui.widgets::widget-center-text-p widget) (focused-p node)
                   (context-focus-visible-p *context*))
          (outline renderer box 1 (if (widget-value widget) (widget-color widget :on-accent) foreground) 1 1))
@@ -236,14 +237,14 @@
     (case kind
       (:panel nil)
       (:slider
-       (let* ((fraction (/ (- (widget-value widget)
+       (let ((fraction (/ (- (widget-value widget)
                              (widget-minimum widget))
                           (- (widget-maximum widget)
                              (widget-minimum widget))))
-              (track (make-box
-                      :x (+ (box-x box) 8)
-                      :y (+ (box-y box) (/ (box-height box) 2) -2)
-                      :width (max 0 (- (box-width box) 16)) :height 4)))
+             (track (make-box
+                     :x (+ (box-x box) 8)
+                     :y (+ (box-y box) (/ (box-height box) 2) -2)
+                     :width (max 0 (- (box-width box) 16)) :height 4)))
          (shape renderer track 2 (widget-color widget :track) 1)
          (setf (box-width track) (* fraction (box-width track)))
          (shape renderer track 2
@@ -252,7 +253,8 @@
                                 :y (- (box-y track) 5) :width 14 :height 14)))
            (shape renderer thumb (if (or translucent flat) 7 0)
                   (widget-color widget (if disabled :disabled-surface (if flat :thumb :light))) 1)
-           (when flat (outline renderer thumb 7 (widget-color widget :border) 0.6 1)))))
+           (when flat (outline renderer thumb 7 (widget-color widget :border)
+                               0.6f0 1)))))
       (:checkbox
        (let ((indicator (make-box :x x :y y :width 16 :height 16)))
          (shape renderer indicator (if (or translucent flat) 4 0)

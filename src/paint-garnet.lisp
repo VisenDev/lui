@@ -32,22 +32,25 @@
          (paths (gethash key cache)))
     (unless paths
       (when (>= (hash-table-count cache) 256) (clrhash cache))
-      (let* ((left (ceiling (box-x box))) (top (ceiling (box-y box)))
-             (right (floor (+ (box-x box) (box-width box))))
-             (bottom (floor (+ (box-y box) (box-height box)))))
-        (let ((squares (loop :for y :from top :below bottom
-                    :nconc (loop :for x :from (+ left (mod (+ left y) 2))
-                                 :below right :by 2
-                                 :when (or (null border)
-                                           (< x (+ left border))
-                                           (>= x (- right border))
-                                           (< y (+ top border))
-                                           (>= y (- bottom border)))
-                                   :collect (typed-vector point (cons x y) (cons (1+ x) y)
-                                                  (cons (1+ x) (1+ y))
-                                                  (cons x (1+ y)))))))
+      (let ((left (ceiling (box-x box))) (top (ceiling (box-y box)))
+            (right (floor (+ (box-x box) (box-width box))))
+            (bottom (floor (+ (box-y box) (box-height box)))))
+        (let ((squares
+                (loop :for y :from top :below bottom
+                      :nconc
+                      (loop :for x :from (+ left (mod (+ left y) 2))
+                            :below right :by 2
+                            :when (or (null border)
+                                      (< x (+ left border))
+                                      (>= x (- right border))
+                                      (< y (+ top border))
+                                      (>= y (- bottom border)))
+                            :collect
+                            (typed-vector point
+                              (cons x y) (cons (1+ x) y)
+                              (cons (1+ x) (1+ y)) (cons x (1+ y)))))))
           (setf paths (make-array (length squares) :element-type 'contour
-                                 :initial-contents squares)
+                                  :initial-contents squares)
                 (gethash key cache) paths))))
     (when paths
       (funcall (renderer-polygons renderer) paths (widget-color widget :outline) 1))))
@@ -128,7 +131,7 @@
                                       :initial-element (make-array 4 :element-type 'point :initial-contents stroke)) ink 1))))
          (paint-widget-text renderer node ink)))
       (:radio
-       (let* ((indicator (make-box :x (- (+ (box-x box) (box-width box)) 22)
+       (let ((indicator (make-box :x (- (+ (box-x box) (box-width box)) 22)
                                   :y (+ (box-y box)
                                         (max 0 (/ (- (box-height box) 18) 2)))
                                   :width 18 :height 18)))
@@ -181,7 +184,8 @@
              (geometry-offset-x g) +garnet-shadow-offset+
              (geometry-offset-y g) +garnet-shadow-offset+))
       ((:checkbox :radio) (setf (geometry-left g) 12 (geometry-right g) 36))
-      (:text-field (setf (geometry-left g) 6 (geometry-right g) 6)))
+      (:text-field (setf (geometry-left g) 6 (geometry-right g) 6))
+      (otherwise nil))
     g))
 
 (lui:register-toolkit-rendering :garnet :paint #'paint-garnet-widget
