@@ -55,7 +55,7 @@
          (font (renderer-font renderer))
          (area (text-box widget (element-box node)))
          (x (box-x area)) (y (box-y area)) (width (box-width area))
-         (text (widget-value widget))
+         (text (widget-display-value widget))
          (state (when (focused-p node)
                   (gethash (element-id node) (context-state *context*))))
          (cursor (when (typep state 'edit-state)

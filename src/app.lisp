@@ -356,7 +356,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
                foreground background palette radius frost minimum maximum step
                font-size font-family font-weight opacity accent disabled-p
                painter terminal-label terminal-border accessible-name
-               placeholder max-results selected-p text)
+               placeholder password-p max-results selected-p text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align
                    id direction
@@ -366,7 +366,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
                    palette radius frost minimum maximum step font-size font-family
                    font-weight opacity accent disabled-p painter
                    terminal-label terminal-border accessible-name
-                   placeholder max-results selected-p text))
+                   placeholder password-p max-results selected-p text))
   `(list ,@forms))
 
 (defmacro panel (options &body body)
@@ -460,7 +460,9 @@ and :COLUMN-GAP separates columns. Other options are layout element keywords."
                 (append (without-option :text options) defaults)))
 
 (define-control text-field (id value)
-  "Return the edited string and a change flag. Keep the returned string in your model."
+  "Return the edited string and a change flag. Keep the returned string in your model.
+:PASSWORD-P masks each character with *.
+The actual value stays in your model; presentation and copied text are masked."
   (value-widget :text-field style id value (getf options :placeholder "")
                 (append (without-option :placeholder options) defaults)))
 

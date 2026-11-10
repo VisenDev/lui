@@ -147,7 +147,8 @@
          (horizontal (+ (geometry-left g) (geometry-right g)))
          (vertical (+ (geometry-top g) (geometry-bottom g)))
          (text (when (geometry-text-p g)
-                 (if (geometry-value-p g) (widget-value widget)
+                 (if (geometry-value-p g)
+                     (widget-display-value widget)
                      (widget-text widget))))
          (size (lui.frame::memoized
                 (list :measure font (font-loader font) (font-size font)

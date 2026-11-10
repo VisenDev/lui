@@ -123,6 +123,12 @@
                                                     0 column)))))))))
 
 (fn run-tests ()
+  (let ((context (make-terminal-context)))
+    (with-frame (context 20 2)
+      (lui:text-field :secret "secret界" (lui:opt :password-p t)))
+    (let ((text (render-terminal context)))
+      (assert (search "*******" text))
+      (assert (not (search "secret" text)))))
   (test-text-rendering)
   (test-overlay)
   (test-terminal-overlap)

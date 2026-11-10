@@ -4,6 +4,25 @@
 
 (in-package #:lui.tests.widgets)
 
+(defun test-password ()
+  (let ((context (make-test-context)) (value "a界b"))
+    (with-frame (context 30 5)
+      (lui:text-field :password value (lui:opt :password-p t)))
+    (with-frame (context 30 5 :events
+                         (list (make-event :kind :text :id :password
+                                           :value "!")))
+      (multiple-value-bind (updated changed)
+          (lui:text-field :password value (lui:opt :password-p t))
+        (assert changed)
+        (setf value updated)))
+    (assert (string= value "a界b!"))
+    (let ((widget (element-content
+                   (gethash :password (lui.frame::context-ids context)))))
+      (assert (lui.widgets:widget-password-p widget))
+      (assert (string= "****" (lui.widgets:widget-display-value widget)))
+      (assert (string= "[****]"
+                       (lui.widgets:widget-terminal-text widget))))))
+
 (defun test-readline ()
   (let ((context (make-test-context))
         (text "alpha beta gamma"))
@@ -347,6 +366,7 @@
         (assert (not (lui.widgets:text-field-focused-p context)))))))
 
 (defun run-tests ()
+  (test-password)
   (test-retained-editor-state)
   (test-scrollbar)
   (test-readline)

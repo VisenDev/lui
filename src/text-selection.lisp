@@ -41,7 +41,7 @@
 (fn (selection-text string) ((node element))
   (let ((widget (element-content node)))
     (if (eq (widget-kind widget) :text-field)
-        (widget-value widget) (widget-text widget))))
+        (widget-display-value widget) (widget-text widget))))
 
 (fn (selection-area box) ((renderer renderer) (node element))
   (let* ((widget (element-content node)) (area (text-box widget (element-box node)))

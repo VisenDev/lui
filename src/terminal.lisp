@@ -600,7 +600,7 @@
              (field-p (eq (widget-kind widget) :text-field))
              (cursor (if (and field-p state)
                          (1+ (terminal-text-width
-                              (subseq (widget-value widget) 0
+                              (subseq (widget-display-value widget) 0
                                       (min (length (widget-value widget))
                                            (edit-state-cursor state)))))
                          0))

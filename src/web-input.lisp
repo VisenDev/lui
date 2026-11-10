@@ -379,7 +379,12 @@
                         "Canvas application"))
              (value (if (and widget (widget-p widget)
                              (eq (widget-kind widget) :text-field))
-                        (widget-value widget) "")))
+                        (widget-display-value widget) "")))
+        (setf (jscl/ffi:oget sink "spellcheck")
+              (if (and (widget-p widget) (widget-password-p widget))
+                  #j:false #j:true))
+        ((jscl/ffi:oget sink "setAttribute") #j"autocorrect" #j"off")
+        ((jscl/ffi:oget sink "setAttribute") #j"autocapitalize" #j"off")
         ((jscl/ffi:oget sink "setAttribute") #j"aria-label"
          (jscl/ffi:jsstring label))
         ((jscl/ffi:oget sink "setAttribute") #j"aria-valuetext"

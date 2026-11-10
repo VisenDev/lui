@@ -971,6 +971,33 @@
         (assert (member color fills :test #'equal)))
       (assert (member '("Preview" "#ffffff") texts :test #'equal)))))
 
+(defun test-password-presentation (font)
+  (let* ((painted nil) (copied nil)
+         (renderer (make-renderer
+                    :font font
+                    :polygons (lambda (&rest args) (declare (ignore args)))
+                    :text (lambda (font text &rest arguments)
+                            (declare (ignore font arguments))
+                            (push text painted))))
+         (context (make-context
+                   :copy (lambda (text) (setf copied text))
+                   :measure (lambda (widget width)
+                              (measure-widget renderer widget width)))))
+    (with-frame (context 300 100)
+      (lui:text-field :secret "secret界" (lui:opt :password-p t)))
+    (let* ((nodes (lui.draw::selectable-nodes context))
+           (node (aref nodes 0))
+           (state (gethash :secret (context-state context))))
+      (assert (string= "*******" (lui.draw::selection-text node)))
+      (setf (context-focus context) :secret
+            (edit-state-anchor state) 0)
+      (lui.draw::copy-selection context nodes
+                                (lui.draw::make-text-selection))
+      (assert (string= "*******" copied))
+      (let ((lui.frame:*context* context))
+        (lui.draw::paint-text-field renderer node))
+      (assert (equal '("*******") painted)))))
+
 (defun run-tests ()
   (test-shared-wrapping)
   (paint-text (make-renderer
@@ -981,6 +1008,7 @@
   (let ((font (open-font)))
     (unwind-protect
          (progn
+           (test-password-presentation font)
            (test-winding)
            (test-outlines font)
            (test-font-metrics font)

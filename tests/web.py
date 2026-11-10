@@ -844,6 +844,20 @@ class WebTests(unittest.TestCase):
         self.frames()
         self.assertEqual(self.focus_id(), ":FIXTURE")
 
+    def test_password_field(self):
+        host = self.fixture(body='''(setf *web-test-value*
+          (lui:text-field :fixture *web-test-value*
+            (lui:opt :password-p t :width (lui.layout:grow))))''')
+        self.replace_text(":FIXTURE", "secret界", host)
+        self.assertEqual(self.text_value(":FIXTURE", host), "secret界")
+        sink = self.page.locator(host + " textarea")
+        expect(sink).to_have_attribute("aria-valuetext", "*******")
+        expect(sink).to_have_attribute("spellcheck", "false")
+        self.page.keyboard.press("Backspace")
+        self.frames()
+        self.assertEqual(self.text_value(":FIXTURE", host), "secret")
+        expect(sink).to_have_attribute("aria-valuetext", "******")
+
     def test_focused_control_accessible_name_and_value(self):
         host = self.fixture()
         self.click_widget(id=":FIXTURE", host=host)

@@ -6,6 +6,7 @@
            #:widget-terminal-text #:declare-panel #:declare-widget
            #:value-widget
            #:scrollbar-thumb #:make-widget
+           #:widget-display-value #:widget-password-p
            #:widget-value #:widget-minimum #:widget-maximum #:widget-step
            #:widget-font-size #:widget-font-family #:widget-font-weight
            #:widget-opacity #:widget-accent
@@ -48,6 +49,7 @@
   (orientation :vertical :type (member :vertical :horizontal))
   (accessible-name nil :type (or null string))
   value
+  (password-p nil :type boolean)
   (minimum 0 :type real)
   (maximum 1 :type real)
   (step 0.01 :type real)
@@ -83,6 +85,13 @@
     (:accent (widget-accent widget))
     (otherwise (palette-color (widget-palette widget) role))))
 
+(fn (widget-display-value t) ((widget widget))
+  "Return the value for presentation, masking password fields."
+  (let ((value (widget-value widget)))
+    (if (and (widget-password-p widget)
+             (eq (widget-kind widget) :text-field))
+        (make-string (length value) :initial-element #\*) value)))
+
 (fn (widget-terminal-text string) ((widget widget))
   "Return WIDGET's portable text representation, computing it lazily as needed.
 An optional terminal-label callback overrides the standard kind-based label."
@@ -91,7 +100,7 @@ An optional terminal-label callback overrides the standard kind-based label."
             (if (widget-terminal-label widget)
                 (funcall (widget-terminal-label widget) widget)
                 (let ((text (widget-text widget))
-                      (value (widget-value widget)))
+                      (value (widget-display-value widget)))
               (case (widget-kind widget)
                 ((:label :list-item :cell) text)
                 ((:panel :canvas) "")
@@ -167,7 +176,8 @@ An optional terminal-label callback overrides the standard kind-based label."
      ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
      ((opacity real) 0.85) ((accent string) "#258bff") (disabled-p nil)
      painter terminal-label ((terminal-border (or null (string 6))) nil)
-     accessible-name icon center-text-p (palette *base-palette*))
+     accessible-name icon center-text-p (password-p nil)
+     (palette *base-palette*))
   "Declare a low-level widget in the current frame using STYLE and stable ID.
 Layout, typography, colors, optical effects, and backend extension callbacks
 are supplied as keywords. Return activation for enabled actionable kinds.
@@ -184,6 +194,7 @@ Most applications should use the public LUI controls with LUI:OPT instead."
            :opacity opacity :accent accent
            :disabled-p (not (null disabled-p)) :painter painter
            :icon icon :center-text-p center-text-p :terminal-label terminal-label
+           :password-p (not (null password-p))
            :terminal-border terminal-border
            :accessible-name accessible-name)))
     (emit (make-element

@@ -212,7 +212,8 @@
                                          (element-direction node))
                                      (length (element-children node))))
                 (list "Text" (if (widget-p widget) (widget-text widget) ""))
-                (list "Value" (when (widget-p widget) (widget-value widget))))
+                (list "Value" (when (widget-p widget)
+                                (widget-display-value widget))))
     (properties
      "Input" width
      (list "Flags"

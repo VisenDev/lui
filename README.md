@@ -854,3 +854,9 @@ nested layouts in one column.
 Columns use the widest content across rows. Extra width is shared equally,
 and narrow tables shrink columns proportionally before measuring row heights.
 Short rows can omit trailing cells. Row spanning is currently unsupported.
+
+Password fields use `(lui:text-field :password password
+(lui:opt :password-p t))`. Keep the returned actual string in your model.
+Built-in rendering, selection copying, accessibility text, and debugger values
+show one `*` per character. This is display masking, not encrypted storage;
+custom painters receive the original widget value.
