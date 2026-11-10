@@ -553,7 +553,10 @@ class X11Tests(unittest.TestCase):
                                (height (lui.layout:box-height box)))
                           (loop :for x :from 0 :below width :by 8
                                 :do (funcall (lui.draw:renderer-polygons renderer)
-                                             (list (lui.draw:rounded-polygon
+                                             (make-array
+                                              1 :element-type 'lui.layout:contour
+                                              :initial-element
+                                              (lui.draw:rounded-polygon
                                                     (lui.layout:make-box
                                                      :x x :width 8 :height height) 0))
                                              (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
@@ -603,7 +606,10 @@ class X11Tests(unittest.TestCase):
                           ;; Native stripes are drawn first; the glass callback samples them.
                           (loop :for x :from 0 :below 240 :by 8
                                 :do (funcall (lui.draw:renderer-polygons renderer)
-                                             (list (lui.draw:rounded-polygon
+                                             (make-array
+                                              1 :element-type 'lui.layout:contour
+                                              :initial-element
+                                              (lui.draw:rounded-polygon
                                                     (lui.layout:make-box :x x :width 8 :height 120)
                                                     0))
                                              (if (evenp (/ x 8)) "#000000" "#ffffff") 1))

@@ -26,24 +26,25 @@
 
 (let* ((display (lui.x11::open-display (cffi:null-pointer)))
        (window (lui.x11::make-x-window :display display))
-       (context (make-context :focus :button))
-       (widget (lui.widgets:make-widget :kind :button)))
+       (context (make-context
+                 :measure (lambda (widget width)
+                            (declare (ignore widget width))
+                            (values 160 30)))))
   (assert (not (cffi:null-pointer-p display)))
   (unwind-protect
        (progn
-         (setf (context-root context)
-               (make-element :id :button :content widget))
+         (with-frame (context 400 200)
+           (lui.glass:button :button "Button"))
+         (setf (context-focus context) :button)
          (assert (eq :backward
                      (event-key (translated-key display #xff09 1 context))))
          (assert (eq :activate
                      (event-kind (translated-key display 32 0 context))))
-         (setf (lui.widgets:widget-kind widget) :text-field)
+         (with-frame (context 400 200)
+           (lui.glass:text-field :button "value"))
          (assert (equal " "
                         (event-value (translated-key display 32 0 context))))
-         (setf (context-focus context) nil
-               (context-measure context)
-               (lambda (widget width)
-                 (declare (ignore widget width)) (values 160 30)))
+         (setf (context-focus context) nil)
          (with-frame (context 400 200)
            (lui.glass:text-field :edit "value"))
          (let* ((box (element-box

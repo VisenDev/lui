@@ -363,12 +363,15 @@
   (let* ((xkb (cffi:foreign-funcall "xkb_context_new" :uint 0 :pointer))
          (lui.wayland::*window*
            (lui.wayland::make-wl-window :xkb-context xkb))
-         (context (make-context :focus :edit))
+         (context (make-context
+                   :measure (lambda (widget width)
+                              (declare (ignore widget width))
+                              (values 160 30))))
          (*context* context)
          (null (cffi:null-pointer)))
-    (setf (context-root context)
-          (make-element :id :edit
-                        :content (lui.widgets:make-widget :kind :text-field)))
+    (with-frame (context 400 200)
+      (lui.glass:text-field :edit "value"))
+    (setf (context-focus context) :edit)
     (unwind-protect
          (progn
            (install-us-keymap lui.wayland::*window*)
@@ -404,12 +407,12 @@
                (assert (eq :backward (event-key event))))
              (modifiers 0)
              (expect 1 :escape)
-             (setf (lui.widgets:widget-kind
-                    (element-content (context-root context))) :button)
+             (with-frame (context 400 200)
+               (lui.glass:button :edit "Button"))
              (keyboard-key 57 1)
              (assert (eq :activate (event-kind (first (take-input)))))
-             (setf (lui.widgets:widget-kind
-                    (element-content (context-root context))) :text-field)
+             (with-frame (context 400 200)
+               (lui.glass:text-field :edit "value"))
              (keyboard-key 57 1)
              (assert (equal " " (event-value (first (take-input)))))
              (modifiers 4)
