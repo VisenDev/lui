@@ -350,7 +350,8 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
      ,@body))
 
 (defmacro opt (&rest forms &key width height padding gap align cross-align
-               id direction clip-p scroll-p scrollbar-p scrollbar-width
+               id direction column-gap column-span
+               clip-p scroll-p scrollbar-p scrollbar-width
                floating-p offset-x offset-y
                interactive-p keyboard-focus-p pointer-focus-p
                foreground background palette radius frost minimum maximum step
@@ -359,7 +360,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
                placeholder password-p max-results selected-p text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align
-                   id direction
+                   id direction column-gap column-span
                    clip-p scroll-p scrollbar-p scrollbar-width
                    floating-p offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
@@ -426,18 +427,32 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
   "Declare a selectable row and return activation. The caller owns selection."
   (selectable :list-item style id text options defaults))
 
-(defmacro table ((&rest options) &body rows)
-  "Lay out TABLE-ROWs with shared content-sized columns. :GAP separates rows
-and :COLUMN-GAP separates columns. Other options are layout element keywords."
-  `(column (:table-p t ,@options) ,@rows))
+(defmacro table (options &body rows)
+  "Lay out TABLE-ROWs with shared content-sized columns using OPT options.
+:GAP separates rows; :COLUMN-GAP separates columns. Accepts layout options."
+  `(let ((lui.frame:*parent*
+           (lui.frame:emit
+            (apply #'lui.layout:make-element
+                   :direction :column :table-p t ,options))))
+     ,@rows))
 
-(defmacro table-row (() &body cells)
-  "Declare a table row. Each direct child occupies one column by default."
-  `(row () ,@cells))
+(defmacro table-row (options &body cells)
+  "Declare a table row using OPT layout options or NIL for defaults.
+Each direct child occupies one column by default."
+  `(let ((lui.frame:*parent*
+           (lui.frame:emit
+            (apply #'lui.layout:make-element :direction :row ,options))))
+     ,@cells))
 
-(defmacro table-cell ((&rest options) &body contents)
-  "Group any number of widgets in a table cell. :COLUMN-SPAN defaults to one."
-  `(column (,@options :height (lui.layout:grow) :clip-p t) ,@contents))
+(defmacro table-cell (options &body contents)
+  "Group widgets in a table cell using OPT layout options or NIL for defaults.
+:COLUMN-SPAN defaults to one. Height grows and content clips by default."
+  `(let ((lui.frame:*parent*
+           (lui.frame:emit
+            (apply #'lui.layout:make-element :direction :column
+                   (append ,options
+                           (list :height (lui.layout:grow) :clip-p t))))))
+     ,@contents))
 
 (define-control cell (id text)
   "Display a compact grid cell. Use :selected-p to mark the active cell."

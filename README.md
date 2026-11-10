@@ -839,12 +839,14 @@ an example.
 
 `lui:cell` is a selectable text widget. Use it directly in a table row for a
 text-only cell, or use `lui:table-cell` to group labels, buttons, editors, or
-nested layouts in one column.
+nested layouts in one column. All three table containers accept `lui:opt`
+layout options, including expressions or stored option lists. Use `:column-gap`
+on the table and `:column-span` on a cell; use NIL for default options.
 
 ```lisp
-(lui:table (:width (lui:grow) :column-gap (lui:units 1))
+(lui:table (lui:opt :width (lui:grow) :column-gap (lui:units 1))
   (lui:table-row ()
-    (lui:table-cell (:column-span 2) (lui:label "Account")))
+    (lui:table-cell (lui:opt :column-span 2) (lui:label "Account")))
   (lui:table-row ()
     (lui:label "Name")
     (lui:table-cell ()

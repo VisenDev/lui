@@ -64,7 +64,8 @@
     (when (lui:button :reset "Reset") (setf (gallery-count g) 0))
     (lui:button :disabled "Disabled"
                 (lui:opt :disabled-p t)))
-  (lui:table (:width (lui:grow) :column-gap (lui:units 1) :gap (lui:units 0.5))
+  (lui:table (lui:opt :width (lui:grow) :column-gap (lui:units 1)
+                       :gap (lui:units 0.5))
     (lui:table-row ()
       (lui:label "Greeting")
       (lui:table-cell ()

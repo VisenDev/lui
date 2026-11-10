@@ -31,7 +31,7 @@
         (lui:label "18 Nov" (lui:opt :foreground "#147d73"))
         (lui:label "TARGET RELEASE" (lui:opt :foreground "#52677b"))))
     (lui:label "WORKSTREAMS" (lui:opt :foreground "#18324b"))
-    (lui:table (:width (lui:grow) :column-gap (lui:units 2)
+    (lui:table (lui:opt :width (lui:grow) :column-gap (lui:units 2)
                  :gap (lui:units 1))
       (lui:table-row ()
         (lui:label "WORKSTREAM" (lui:opt :foreground "#52677b"))
