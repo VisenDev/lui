@@ -186,6 +186,7 @@ ifeq ($(PLATFORM),web)
 else ifeq ($(PLATFORM),web-ecl)
 	ECL_WEB_APP=tests/web-ecl-app.lisp $(MAKE) --no-print-directory web-ecl-build
 	$(PYTHON) -u tests/web-ecl.py
+	$(PYTHON) -u tests/web-ecl-startup.py
 else
 	$(MAKE) --no-print-directory test-core
 ifneq ($(filter $(PLATFORM),x11 wayland win32 cocoa gl native),)

@@ -34,4 +34,5 @@ command -v "$EMCC" >/dev/null
     -sEXPORTED_RUNTIME_METHODS='["stringToNewUTF8"]' \
     -sEXPORTED_FUNCTIONS='["_main","_lui_callback","_lui_release","_malloc","_free"]' \
     --pre-js src/ecl-web.js -o build/web-ecl/lui.js
-cp examples/web-ecl.html build/web-ecl/index.html
+sed 's#../build/web-ecl/lui.js#lui.js#g' \
+    examples/web-ecl.html > build/web-ecl/index.html

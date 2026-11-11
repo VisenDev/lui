@@ -6,14 +6,21 @@
 <style>html,body{margin:0;background:#202432;color:white}#loading{padding:1rem}</style>
 <p id="loading" role="status">Loading LUI (ECL / WebAssembly)…</p>
 <script>
-var Module = {
-  onRuntimeInitialized() { document.getElementById('loading').remove(); },
-  onAbort(reason) {
-    const message = document.createElement('p');
-    message.textContent = 'LUI could not start: ' + reason;
+function startupFailed(reason) {
+  let message = document.getElementById('loading');
+  if (!message) {
+    message = document.createElement('p');
+    message.id = 'loading';
     document.body.appendChild(message);
   }
+  message.setAttribute('role', 'alert');
+  message.textContent = 'LUI could not start: ' + reason;
+}
+var Module = {
+  onRuntimeInitialized() { document.getElementById('loading').remove(); },
+  onAbort: startupFailed
 };
 </script>
-<script src="lui.js"></script>
+<script src="../build/web-ecl/lui.js"
+        onerror="startupFailed('Cannot load lui.js. Run make web-ecl-build and serve the page over HTTP.')"></script>
 </html>
