@@ -6,6 +6,7 @@
 (lui::expose-api mount unmount refresh)
 
 (defstruct web-app
+  #+lui-ecl-web (ffi-owner nil :type list)
   host stage overlay canvas graphics renderer context callback cleanup observer resize
   scrollport (scroll-listener nil :type (or null function)) (viewport-offset 0)
   (scroll-delta 0) (velocity 0) (scroll-time 0)
@@ -477,6 +478,12 @@
 
 (fn (refresh t) ((app web-app))
   "Request one redraw of a mounted application, coalescing pending requests."
+  #+lui-ecl-web
+  (let ((lui.web.ffi:*owner* (web-app-ffi-owner app)))
+    (schedule-refresh app))
+  #-lui-ecl-web (schedule-refresh app))
+
+(fn (schedule-refresh t) ((app web-app))
   (when (and (web-app-alive-p app) (not (web-app-pending-p app)))
     (cancel-deadline app)
     (setf (web-app-pending-p app) t)
@@ -509,7 +516,8 @@
   "Mount a Canvas 2D app in HOST. SCROLL-MODE is :PAGE for content expansion or
 :VIEWPORT for a fixed embedded view; the default is :PAGE on coarse pointers."
   (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
-  (let* ((page-scroll-p (eq scroll-mode :page))
+  (let* (#+lui-ecl-web (lui.web.ffi:*owner* (list :web-app))
+         (page-scroll-p (eq scroll-mode :page))
          (port (and page-scroll-p (page-scrollport host)))
          (stage (#j:document:createElement #j"div"))
          (labels (#j:document:createElement #j"div"))
@@ -520,9 +528,12 @@
                    :min-fps min-fps :max-fps max-fps
                    :measure (lambda (widget width)
                               (measure-widget renderer widget width))))
-         (app (make-web-app :host host :stage stage :overlay labels :canvas canvas :graphics g
-                            :renderer renderer :context context
-                            :callback callback :scrollport port))
+         (app (make-web-app
+               #+lui-ecl-web :ffi-owner
+               #+lui-ecl-web lui.web.ffi:*owner*
+               :host host :stage stage :overlay labels
+               :canvas canvas :graphics g :renderer renderer
+               :context context :callback callback :scrollport port))
          (resize (lambda (&rest ignored)
                    (declare (ignore ignored)) (refresh app))))
     (setf (jscl/ffi:oget canvas "style" "cssText")
@@ -570,6 +581,12 @@
 
 (fn (unmount t) ((app web-app))
   "Cancel scheduled work and release the mounted canvas and input listeners."
+  #+lui-ecl-web
+  (let ((lui.web.ffi:*owner* (web-app-ffi-owner app)))
+    (dispose-app app))
+  #-lui-ecl-web (dispose-app app))
+
+(fn (dispose-app t) ((app web-app))
   (when (web-app-alive-p app)
     (setf (web-app-alive-p app) nil)
     (cancel-deadline app)
@@ -585,7 +602,11 @@
     (setf (web-app-overlay-order app) #()
           (web-app-overlay-cache app) nil
           (web-app-overlay-geometry app) nil)
-    ((jscl/ffi:oget (web-app-stage app) "remove"))))
+    ((jscl/ffi:oget (web-app-stage app) "remove"))
+    #+lui-ecl-web
+    (progn
+      (setf (jscl/ffi:oget (web-app-canvas app) "luiApp") #j:null)
+      (lui.web.ffi:release-owner (web-app-ffi-owner app)))))
 
 (fn (css-size t) (value fallback)
   (if value ((jscl/ffi:oget (#j:String value) "concat") #j"px") fallback))
@@ -604,4 +625,4 @@
     (#j:document:body:appendChild host)
     (mount host draw :scroll-mode scroll-mode)))
 
-(register-backend :web #'run-web)
+(register-backend #+lui-ecl-web :web-ecl #-lui-ecl-web :web #'run-web)

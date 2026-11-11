@@ -182,8 +182,9 @@
     (if (renderer-text renderer)
         (funcall (renderer-text renderer) (renderer-font renderer)
                  text x y color)
-        #+jscl (error "The browser renderer requires a text drawing callback.")
-        #-jscl
+        #+(or jscl lui-ecl-web)
+        (error "The browser renderer requires a text drawing callback.")
+        #-(or jscl lui-ecl-web)
         (let* ((font (renderer-font renderer))
                (scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
                (cursor x)

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI — ECL / WebAssembly</title>
+<style>html,body{margin:0;background:#202432;color:white}#loading{padding:1rem}</style>
+<p id="loading" role="status">Loading LUI (ECL / WebAssembly)…</p>
+<script>
+var Module = {
+  onRuntimeInitialized() { document.getElementById('loading').remove(); },
+  onAbort(reason) {
+    const message = document.createElement('p');
+    message.textContent = 'LUI could not start: ' + reason;
+    document.body.appendChild(message);
+  }
+};
+</script>
+<script src="lui.js"></script>
+</html>

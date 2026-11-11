@@ -9,6 +9,9 @@ RUNNER ?=
 RUN_ARGS ?=
 PYTHON ?= python3
 JSCL ?= $(HOME)/clone/jscl
+ECL ?= $(if $(wildcard build/deps/ecl-host/bin/ecl),$(CURDIR)/build/deps/ecl-host/bin/ecl,ecl)
+EMCC ?= emcc
+ECL_WASM ?= $(CURDIR)/build/deps/ecl-wasm
 PORT ?= 8000
 BENCH_FRAMES ?= 240
 WARMUP ?= 30
@@ -23,7 +26,7 @@ ASDF_OUTPUT_TRANSLATIONS ?= (:output-translations (t ("$(CURDIR)/build/cache/" :
 export ASDF_OUTPUT_TRANSLATIONS
 
 NATIVE_PLATFORMS := terminal x11 wayland win32 cocoa
-TEST_PLATFORMS := $(NATIVE_PLATFORMS) web core native gl
+TEST_PLATFORMS := $(NATIVE_PLATFORMS) web web-ecl core native gl
 SOURCES := $(wildcard src/*.lisp examples/*.lisp) lui.asd \
 	scripts/setup.lisp scripts/build.lisp
 SUFFIX := $(if $(filter win32,$(PLATFORM)),.exe,)
@@ -50,7 +53,8 @@ help:
 	@echo 'make web-demo             Build and serve the browser demo at /'
 	@echo 'make terminal-demo        Build and run the terminal demo'
 	@echo 'make web-build            Build the JSCL browser demo'
-	@echo 'PLATFORM=terminal|x11|wayland|win32|cocoa|web (auto-detected by default)'
+	@echo 'make web-ecl-build        Compile the ECL / Emscripten browser demo'
+	@echo 'PLATFORM=terminal|x11|wayland|win32|cocoa|web|web-ecl (auto-detected by default)'
 	@echo 'Test-only platforms: core native gl. Options: SBCL, SBCL_FLAGS, JSCL, PYTHON'
 
 check-platform:
@@ -60,6 +64,9 @@ check-platform:
 ifeq ($(PLATFORM),web)
 build: web-build
 demo: web-demo
+else ifeq ($(PLATFORM),web-ecl)
+build: web-ecl-build
+demo: web-ecl-demo
 else
 build: $(DEMO)
 demo: $(DEMO)
@@ -132,6 +139,18 @@ web-demo: web-build
 	@echo 'Open http://localhost:$(PORT)/'
 	$(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 --directory build
 
+.PHONY: web-ecl-toolchain web-ecl-build web-ecl-demo
+web-ecl-toolchain:
+	bash scripts/build-ecl-toolchain.sh
+
+web-ecl-build:
+	ECL="$(ECL)" EMCC="$(EMCC)" ECL_WASM="$(ECL_WASM)" \
+		bash scripts/build-web-ecl.sh
+
+web-ecl-demo: web-ecl-build
+	@echo 'Open http://localhost:$(PORT)/'
+	$(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 --directory build/web-ecl
+
 test benchmark: check-platform
 	@mkdir -p build/logs
 	@log="build/logs/$@-$(PLATFORM)-$$(date +%Y%m%d-%H%M%S)-$$$$.log"; \
@@ -164,6 +183,9 @@ ifeq ($(PLATFORM),web)
 	@echo '[browser] RUN'
 	$(PYTHON) -u tests/web.py
 	@echo '[browser] PASS'
+else ifeq ($(PLATFORM),web-ecl)
+	ECL_WEB_APP=tests/web-ecl-app.lisp $(MAKE) --no-print-directory web-ecl-build
+	$(PYTHON) -u tests/web-ecl.py
 else
 	$(MAKE) --no-print-directory test-core
 ifneq ($(filter $(PLATFORM),x11 wayland win32 cocoa gl native),)
@@ -211,6 +233,9 @@ benchmark-platform: check-platform
 ifeq ($(PLATFORM),web)
 	$(MAKE) --no-print-directory web-build
 	$(PYTHON) -u tests/benchmark-web.py
+else ifeq ($(PLATFORM),web-ecl)
+	@echo 'ECL browser benchmarks are not implemented.' >&2
+	@exit 2
 else
 	$(SBCL) $(SBCL_FLAGS) --load scripts/benchmark.lisp
 endif

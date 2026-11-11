@@ -12,7 +12,7 @@ Cocoa. X11 uses one display connection for windowing and direct OpenGL rendering
 Load the library with `(asdf:load-system "lui")` to register the backends for
 your host. Use `lui/core` for the portable core with no external dependencies.
 Native graphical backends add CFFI, zpb-ttf, and system rendering libraries. Browser output uses
-JSCL and one high-DPI Canvas 2D surface per window. There is no application software pixel renderer; Vulkan remains future
+JSCL or ECL/Emscripten and one high-DPI Canvas 2D surface per window. There is no application software pixel renderer; Vulkan remains future
 work.
 
 ## Layout and widgets
@@ -421,6 +421,51 @@ bound to localhost with `--directory build`. Open the printed root URL
 a directory listing. `PORT` defaults to 8000. Stop the server with Ctrl-C.
 `make web-build` only builds JavaScript. Browser tests additionally need
 Playwright and Chromium.
+
+### ECL / WebAssembly browser backend
+
+`PLATFORM=web-ecl` compiles Lisp to C with ECL and links it to WebAssembly
+with Emscripten. The browser loads `lui.js` and `lui.wasm`; JSCL is not used
+in this build. Both browser builds share Canvas painting, DOM labels,
+accessibility, text editing, and page/viewport scrolling. The new backend is
+experimental; do not assume JSCL performance or browser coverage carries over.
+
+Use an ECL source checkout with `compile-file :target` support, a matching
+host compiler built with `--disable-threads`, and an installed Emscripten SDK.
+An older release with the same ECL version string may lack cross-compilation
+support. The development checkout used here is ECL `855f93431`, with
+Emscripten `4.0.12`. See the upstream
+[ECL build instructions](https://gitlab.com/embeddable-common-lisp/ecl/-/blob/develop/INSTALL)
+and [cross-compilation manual](https://ecl.common-lisp.dev/static/manual/System-building.html).
+The host must match the target's structure macro behavior as well as its version.
+
+Build both ECL configurations locally, without modifying the source checkout:
+
+```sh
+ECL_SOURCE=/path/to/ecl EMSDK_ENV=/path/to/emsdk/emsdk_env.sh \
+  make web-ecl-toolchain
+source /path/to/emsdk/emsdk_env.sh
+make web-ecl-build ECL="$PWD/build/deps/ecl-host/bin/ecl"
+make demo PLATFORM=web-ecl ECL="$PWD/build/deps/ecl-host/bin/ecl"
+make test PLATFORM=web-ecl ECL="$PWD/build/deps/ecl-host/bin/ecl"
+```
+
+The toolchain target requires the usual ECL native build prerequisites and
+an already installed SDK; it does not download dependencies. `JOBS` controls
+build parallelism. `ECL_WASM` selects the installed wasm ECL prefix (default
+`build/deps/ecl-wasm`); `ECL_TARGET_INFO` can select its `target-info.lsp`
+explicitly. `EMCC` selects the Emscripten compiler. Keep the SDK environment
+active for compilation, including the compiler paths recorded in target info.
+The build uses ECL's required pointer-spilling linker pass for garbage
+collection, a larger stack, and a persistent runtime for browser callbacks.
+
+Output is isolated in `build/web-ecl/`. Serve that directory over HTTP;
+`make web-ecl-demo` does this on localhost using `PORT`. For an application
+of your own, set `ECL_WEB_APP=/absolute/path/start.lisp` to a Lisp file that
+defines your draw function and calls `lui:run` (optionally with
+`:backend :web-ecl`). It is compiled and linked after the library. The
+default entry file runs the shared gallery. Browser objects cross a small
+interop bridge; no JSCL runtime or interpreter is needed for the application.
 
 ## Install and run
 

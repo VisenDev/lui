@@ -10,6 +10,7 @@ APIs and platform support; historical measurements are not current guarantees.
   are outside that budget. Prefer simplicity over artificial compression; flag
   any tradeoff that would reduce lines by making the implementation harder to
   understand. `make loc` reports cloc counts; also check physical line totals.
+  The user approved exceeding this cap for the ECL/Emscripten web backend.
 - This is a work-in-progress API. When replacing an API, remove the retired form
   and migrate its in-tree callers and documentation. Do not retain compatibility
   shims for obsolete APIs.
@@ -99,7 +100,7 @@ the change and report material limitations instead of claiming untested support.
 
 ### Browser behavior and performance
 
-- The browser uses JSCL and one high-DPI Canvas 2D surface per window, with
+- The browser uses JSCL or ECL/Emscripten and one high-DPI Canvas 2D surface per window, with
   read-only native HTML labels for selection/accessibility. Preserve native
   text selection, normal browser context menus, and accessible control actions.
   Occluded labels may be painted on canvas; a shared textarea handles editing,
@@ -135,6 +136,7 @@ benchmark targets. Scripts discover optional dependency checkouts under
 | Portable source runner | `sbcl --script tests/run.lisp`, `clisp -q -q tests/run.lisp`, `ecl -shell tests/run.lisp` |
 | JSCL source runner | `node /path/to/jscl/dist/jscl-node.js tests/run.lisp` |
 | Browser build / serve | `make web-build` / `make web-demo`; `JSCL` defaults to `~/clone/jscl`, `PORT` to 8000 |
+| ECL browser | `make web-ecl-build` / `make web-ecl-demo`; see README for the matching non-threaded host ECL and wasm toolchain |
 | Browser tests | `make test PLATFORM=web` or, after building, `python3 tests/web.py`; requires Playwright and Chromium |
 | Docs | `make docs-pages`; `make test-docs` checks extraction, examples, and offline browser behavior |
 | Native executable | `make demo PLATFORM=x11` (or another backend); `RUN_ARGS=--smoke-test` renders one frame and exits |
