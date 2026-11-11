@@ -33,6 +33,9 @@ APIs and platform support; historical measurements are not current guarantees.
 
 ## Finishing updates
 
+Work on the current branch by default. Do not create a new branch unless the
+user explicitly asks for one.
+
 After completing an update, run `make docs-pages` and commit any resulting
 changes to `docs/index.html` along with the update. Commit as work is completed
 and push finished updates, as requested by the user. Run checks appropriate to
