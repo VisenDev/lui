@@ -214,10 +214,11 @@ beveled checkboxes, and visually distinct disabled buttons. Garnet uses bold
 monospaced text, black hairlines, checker stipples, hard offset shadows, and X
 checkboxes inspired by the original Garnet gadgets. Window backgrounds remain
 opaque; Glass translucency composites within the application. The gallery also
-displays the previous layout solve in milliseconds and its theoretical FPS
-ceiling (1000 / milliseconds) in both the demo and docs. This layout-only timing
-includes measurement but excludes UI construction, painting, presentation, and
-idle/backend pacing; it is not an estimate of end-to-end rendering FPS.
+displays actual FPS alongside average layout processing milliseconds per frame
+in both the demo and docs. FPS includes idle/backend pacing. Layout time is a
+rolling average of the last 30 frames, shown with one decimal place; it includes
+measurement but excludes UI construction, painting, presentation, and pacing.
+Dividing 1000 by this time gives a layout-only FPS ceiling, not end-to-end FPS.
 Its sliders have tracks
 and thumbs, colors distinguish selection from pointer hover, and text/clip edges
 share cell rounding. Uncursed owns cell storage, Unicode widths, ANSI style encoding, and incremental

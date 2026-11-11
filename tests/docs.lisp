@@ -32,16 +32,22 @@
              (activate (id)
                (frame context draw (make-event :kind :activate :id id))))
       (frame context draw)
-      (assert (has-label context "Layout: measuring…"))
-      ;; The label uses the previous solve, independent of idle frame cadence.
-      (setf (lui.frame::context-layout-ms context) 4)
-      (frame context draw)
-      (assert (has-label context
-                         "4.000 ms/layout · 250.0 FPS layout-only max"))
-      (assert (>= (lui.frame::context-layout-ms context) 0))
-      (setf (lui.frame::context-layout-ms context) 0)
-      (frame context draw)
-      (assert (has-label context "Layout: below timer resolution"))
+      (assert (has-label context "FPS: measuring… · Layout: measuring…"))
+      ;; Cadence includes waits; layout time averages only measured work.
+      (let ((stats (lui.frame::make-frame-statistics)))
+        (setf (lui.frame::context-statistics context) stats)
+        (lui.frame::record-frame-statistics stats 2 0)
+        (lui.frame::record-frame-statistics stats 5 1)
+        (frame context draw)
+        (assert (has-label context "1.0 FPS · 3.5 ms/frame (layout)"))
+        ;; Once full, the rolling window discards the older samples.
+        (setf stats (lui.frame::make-frame-statistics)
+              (lui.frame::context-statistics context) stats)
+        (lui.frame::record-frame-statistics stats 100 0)
+        (dotimes (i 30)
+          (lui.frame::record-frame-statistics stats 4 (+ i 2)))
+        (frame context draw)
+        (assert (has-label context "1.0 FPS · 4.0 ms/frame (layout)")))
       ;; Symbols and details each retain an independent tall viewport.
       (let ((list (element-box (node-with-id context :docs-entries)))
             (detail (element-box (node-with-id context :docs-detail))))

@@ -54,6 +54,16 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
 
 (defstruct memo-entry (key nil :type list) (value nil :type t))
 
+(defstruct frame-statistics
+  (samples (make-array 30 :element-type 'real :initial-element 0)
+           :type (vector real))
+  (index 0 :type integer)
+  (count 0 :type integer)
+  (total-ms 0 :type real)
+  (fps 0 :type real)
+  (frames 0 :type integer)
+  (start nil :type (or null real)))
+
 (defstruct context
   "Per-window frame state: completed tree, focus, events, editing, and scrolling.
 The backend supplies measurement, clipboard, and optional input callbacks."
@@ -77,7 +87,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   last-click
   (min-fps *min-fps* :type real)
   (max-fps *max-fps* :type real)
-  (layout-ms nil :type (or null real))
+  (statistics (make-frame-statistics) :type frame-statistics)
   (time 0 :type real)
   (next-frame nil :type (or null real))
   focus
@@ -132,13 +142,36 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   #-jscl (* 1000 (/ (get-internal-real-time)
                    internal-time-units-per-second)))
 
+(fn (record-frame-statistics null)
+    ((stats frame-statistics) (ms real) (now real))
+  "Average the last 30 layout solves; sample actual cadence every half second."
+  (let ((samples (frame-statistics-samples stats))
+         (index (frame-statistics-index stats)))
+    (incf (frame-statistics-total-ms stats) (- ms (aref samples index)))
+    (setf (aref samples index) ms
+          (frame-statistics-index stats) (mod (1+ index) (length samples))
+          (frame-statistics-count stats)
+          (min (length samples) (1+ (frame-statistics-count stats)))))
+  (if (null (frame-statistics-start stats))
+      (setf (frame-statistics-start stats) now)
+      (let ((elapsed (- now (frame-statistics-start stats))))
+        (incf (frame-statistics-frames stats))
+        (when (>= elapsed 0.5f0)
+          (setf (frame-statistics-fps stats)
+                (/ (frame-statistics-frames stats) elapsed)
+                (frame-statistics-frames stats) 0
+                (frame-statistics-start stats) now))))
+  nil)
+
 (fn (frame-rate-label string) ()
-  "Report the previous layout solve, excluding drawing and backend pacing."
-  (let ((ms (context-layout-ms *context*)))
-    (cond ((null ms) "Layout: measuring…")
-          ((zerop ms) "Layout: below timer resolution")
-          (t (format nil "~,3F ms/layout · ~,1F FPS layout-only max"
-                     ms (/ 1000 ms))))))
+  "Report actual FPS and mean layout processing time, excluding painting."
+  (let* ((stats (context-statistics *context*))
+         (count (frame-statistics-count stats)))
+    (if (zerop count)
+        "FPS: measuring… · Layout: measuring…"
+        (format nil "~,1F FPS · ~,1F ms/frame (layout)"
+                (frame-statistics-fps stats)
+                (/ (frame-statistics-total-ms stats) count)))))
 
 (fn (frame-wait real) ((context context) &optional urgent
                 (now (/ (get-internal-real-time)
@@ -513,8 +546,10 @@ Clear focus/hover for removed controls and return the completed root element."
         (started (layout-clock)))
     (solve (context-root context) (context-width context)
            (context-viewport-height context) page-top)
-    (setf (context-layout-ms context) (- (layout-clock) started)
-          (context-height context)
+    (record-frame-statistics (context-statistics context)
+                             (- (layout-clock) started)
+                             (context-time context))
+    (setf (context-height context)
           (box-height (element-box (context-root context)))))
   (dolist (decorate (nreverse (context-after-layout context)))
     (funcall decorate))
