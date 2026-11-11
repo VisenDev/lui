@@ -14,7 +14,7 @@
   "Debugger state: visibility, selected snapshot node, expansion, and pane width."
   (open-p nil :type boolean) selected
   (details-height nil :type (or null real))
-  (details-grab nil :type (or null cons))
+  (details-grab nil :type (or null real))
   (reveal-selection-p nil :type boolean)
   (width nil :type (or null real)) (grab nil :type (or null real))
   (collapsed (make-hash-table :test 'equal) :type hash-table)
@@ -367,6 +367,29 @@
                                               node key)))))
   (values))
 
+(fn (resize-input (values real (or null real) boolean))
+    ((name symbol) (event event) (size real) grab (coordinate real)
+     (edge real) (keys list))
+  "Apply one divider event; return size, pointer grab offset, and change flag."
+  (let ((kind (event-kind event)) (changed nil))
+    (when (or (eq kind :cancel)
+              (and (eq kind :move) (not (event-dragging-p event))))
+      (setf grab nil))
+    (case kind
+      (:press
+       (when (eq (event-button event) :primary)
+         (setf grab (+ coordinate size (- edge)) changed t
+               (context-focus *context*) (id name))))
+      ((:move :release)
+       (when grab
+         (setf size (+ edge (- coordinate) grab) changed t)
+         (when (eq kind :release) (setf grab nil))))
+      (:key
+       (let ((entry (assoc (event-key event) keys)))
+         (when entry (setf size (cdr entry) changed t))))
+      (otherwise nil))
+    (values size grab changed)))
+
 (fn (debugger-width real) ((state debugger-state))
   "Resolve the debugger pane width within the available viewport bounds."
   (let* ((window (context-width *context*)) (minimum (min window (units 25)))
@@ -376,36 +399,17 @@
                                       (units (debugger-state-width state))
                                       (* window 0.4f0))))))
     (loop :for event :across (events-for (id :resize)) :do
-          (when (or (eq (event-kind event) :cancel)
-                    (and (eq (event-kind event) :move)
-                         (not (event-dragging-p event))))
-            (setf (debugger-state-grab state) nil))
-          (when (or (and (eq (event-kind event) :press)
-                         (eq (event-button event) :primary))
-                    (and (debugger-state-grab state)
-                         (member (event-kind event) '(:move :release)))
-                    (and (eq (event-kind event) :key)
-                         (member (event-key event) '(:left :right :home
-                                                     :end))))
-            (case (event-kind event)
-              (:press
-               (setf (debugger-state-grab state) (- (event-x event) (- window
-                                                                       width))
-                     (context-focus *context*) (id :resize)))
-              ((:move :release)
-               (setf width (+ (- window (event-x event)) (debugger-state-grab
-                                                          state)))
-               (when (eq (event-kind event) :release)
-                 (setf (debugger-state-grab state) nil)))
-              (:key
-               (case (event-key event)
-                 (:left (incf width (units 2)))
-                 (:right (decf width (units 2)))
-                 (:home (setf width minimum)) (:end (setf width maximum))
-                 (otherwise nil))) (otherwise nil))
-            (setf width (min maximum (max minimum width))
-                  (debugger-state-width state) (/ width *unit*))
-            (request-frame)))
+          (multiple-value-bind (next grab changed)
+              (resize-input :resize event width (debugger-state-grab state)
+                            (event-x event) window
+                            (list (cons :left (+ width (units 2)))
+                                  (cons :right (- width (units 2)))
+                                  (cons :home minimum) (cons :end maximum)))
+            (setf (debugger-state-grab state) grab)
+            (when changed
+              (setf width (min maximum (max minimum next))
+                    (debugger-state-width state) (/ width *unit*))
+              (request-frame))))
     (unless (equal (context-active *context*) (id :resize))
       (setf (debugger-state-grab state) nil))
     width))
@@ -433,47 +437,29 @@
 
 (fn (details-height real) ((state debugger-state) (maximum (real 0 *)))
   "Resolve the selected-node details height within the debugger pane."
-  (let* ((minimum (min maximum (units (if (context-text-mode-p *context*)
-                                          6 12))))
-         (height (min maximum
-                      (max minimum (if (debugger-state-details-height state)
-                                       (units (debugger-state-details-height
-                                               state))
+  (let* ((minimum (min maximum
+                       (units (if (context-text-mode-p *context*) 6 12))))
+         (height (min maximum (max minimum
+                                   (if (debugger-state-details-height state)
+                                       (units
+                                        (debugger-state-details-height state))
                                        (* maximum 0.75f0))))))
     (loop :for event :across (events-for (id :details-resize)) :do
-          (when (or (eq (event-kind event) :cancel)
-                    (and (eq (event-kind event) :move)
-                         (not (event-dragging-p event))))
-            (setf (debugger-state-details-grab state) nil))
-          (when (or (and (eq (event-kind event) :press)
-                         (eq (event-button event) :primary))
-                    (and (debugger-state-details-grab state)
-                         (member (event-kind event) '(:move :release)))
-                    (and (eq (event-kind event) :key)
-                         (member (event-key event) '(:up :down :home :end))))
-            (case (event-kind event)
-              (:press
-               (setf (debugger-state-details-grab state) (cons (event-y
-                                                                event) height)
-                     (context-focus *context*) (id :details-resize)))
-              ((:move :release)
-               (setf height (+ (cdr (debugger-state-details-grab state))
-                               (- (car (debugger-state-details-grab state))
-                                  (event-y event))))
-               (when (eq (event-kind event) :release)
-                 (setf (debugger-state-details-grab state) nil)))
-              (:key
-               (case (event-key event)
-                 (:up (incf height (units 2))) (:down (decf height (units 2)))
-                 (:home (setf height maximum)) (:end (setf height 0))
-                 (otherwise nil)))
-              (otherwise nil))
-            (if (<= height (units 2))
-                (close-details state)
-                (setf height (min maximum (max minimum height))
-                      (debugger-state-details-height state) (/ height
-                                                               *unit*)))
-            (request-frame)))
+          (multiple-value-bind (next grab changed)
+              (resize-input :details-resize event height
+                            (debugger-state-details-grab state)
+                            (event-y event) 0
+                            (list (cons :up (+ height (units 2)))
+                                  (cons :down (- height (units 2)))
+                                  (cons :home maximum) (cons :end 0)))
+            (setf (debugger-state-details-grab state) grab)
+            (when changed
+              (setf height next)
+              (if (<= height (units 2)) (close-details state)
+                  (setf height (min maximum (max minimum height))
+                        (debugger-state-details-height state)
+                        (/ height *unit*)))
+              (request-frame))))
     (unless (equal (context-active *context*) (id :details-resize))
       (setf (debugger-state-details-grab state) nil))
     height))

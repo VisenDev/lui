@@ -84,10 +84,8 @@ void main() {
           (call-gl "glGetShaderInfoLog" :uint shader :int 4096
                    :pointer (cffi:null-pointer) :pointer log :void)
           (call-gl "glDeleteShader" :uint shader :void)
-          (error 'lui.conditions:backend-error :backend :gl
-                 :operation :compile-shader :format-control "GL shader: ~A"
-                 :format-arguments (list (cffi:foreign-string-to-lisp
-                                          log))))))
+          (lui.conditions:fail-backend :gl :compile-shader "GL shader: ~A"
+                                       (cffi:foreign-string-to-lisp log)))))
     shader))
 
 (fn (make-program integer) ()
@@ -105,9 +103,8 @@ void main() {
                       :pointer status :void)
              (when (zerop (cffi:mem-ref status :int))
                (call-gl "glDeleteProgram" :uint program :void)
-               (error 'lui.conditions:backend-error
-                      :backend :gl :operation :make-program
-                      :format-control "Cannot link the GL glass shader.")))
+               (lui.conditions:fail-backend :gl :make-program
+                                            "Cannot link the GL glass shader.")))
            program)
       (call-gl "glDeleteShader" :uint vertex :void)
       (when (plusp fragment)
@@ -136,9 +133,8 @@ void main() {
       (when (>= (hash-table-count (gpu-geometry gpu)) 512)
         (clear-geometry gpu))
       (setf display-list (call-gl "glGenLists" :int 1 :uint))
-      (when (zerop display-list) (error 'lui.conditions:backend-error
-                                        :backend :gl :operation :gl-geometry
-                                        :format-control "Cannot allocate GL geometry."))
+      (when (zerop display-list) (lui.conditions:fail-backend :gl :gl-geometry
+                                                              "Cannot allocate GL geometry."))
       (call-gl "glNewList" :uint display-list :uint #x1300 :void)
       (unwind-protect
            (progn
@@ -148,8 +144,9 @@ void main() {
                               (lambda (quad)
                                 (dolist (index '(0 1 2 0 2 3))
                                   (let ((point (aref quad index)))
-                                    (call-gl "glVertex2f"
-                                             :float (float (car point) 1.0f0)
+                                    (call-gl "glVertex2f" :float
+                                             (float
+                                              (car point) 1.0f0)
                                              :float (float (cdr point) 1.0f0)
                                              :void)))))
                (call-gl "glEnd" :void)))
@@ -233,8 +230,8 @@ void main() {
   "Set OpenGL scissoring from a logical clip rectangle."
   (let* ((pixels (pixel-box gpu box))
          (left (floor (box-x pixels))) (top (floor (box-y pixels)))
-         (right (ceiling (+ (box-x pixels) (box-width pixels))))
-         (bottom (ceiling (+ (box-y pixels) (box-height pixels)))))
+         (right (ceiling (box-right pixels)))
+         (bottom (ceiling (box-bottom pixels))))
     (call-gl "glScissor" :int left :int (max 0 (- (gpu-height gpu) bottom))
              :int (max 0 (- right left)) :int (max 0 (- bottom top)) :void))
   (values))
@@ -252,9 +249,9 @@ void main() {
          (margin (ceiling (+ 2 (* scale (+ 3 (/ (abs frost) 2))))))
          (x (max 0 (- (floor (box-x area)) margin)))
          (top (max 0 (- (floor (box-y area)) margin)))
-         (right (min w (+ (ceiling (+ (box-x area) (box-width area)))
+         (right (min w (+ (ceiling (box-right area))
                           margin)))
-         (bottom (min h (+ (ceiling (+ (box-y area) (box-height area)))
+         (bottom (min h (+ (ceiling (box-bottom area))
                            margin)))
          (y (- h bottom)))
     (unless (and (< x right) (< top bottom)) (return-from gl-glass (values)))
@@ -295,9 +292,8 @@ void main() {
   "Return a successful EGL result or signal BACKEND-ERROR with the EGL status."
   (when (or (null result) (eql result 0)
             (and (cffi:pointerp result) (cffi:null-pointer-p result)))
-    (error 'lui.conditions:backend-error :backend :gl
-           :operation :egl-check :format-control "~A failed (EGL ~X)."
-           :format-arguments (list operation (call-egl "eglGetError" :int))))
+    (lui.conditions:fail-backend :gl :egl-check "~A failed (EGL ~X)."
+                                 operation (call-egl "eglGetError" :int)))
   result)
 
 (fn (initialize-gpu gpu) ((gpu gpu) (font font))

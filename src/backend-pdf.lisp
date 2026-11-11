@@ -46,17 +46,14 @@
     (let ((font (lui.font:open-font)))
       (unwind-protect
            (let* ((renderer (pdf-renderer font))
-                  (context (make-context :measure
-                                         (lambda (widget available)
-                                           (measure-widget renderer widget
-                                                           available)))))
+                  (context (make-render-context renderer)))
              (with-frame (context width height) (funcall draw))
              (pdf:with-document (:title title)
                (pdf:with-page (:bounds (vector 0 0 width height))
                  (pdf:translate 0 height) (pdf:scale 1 -1)
                  (let ((rgba (color-components background)))
-                   (pdf:set-rgb-fill
-                    (aref rgba 0) (aref rgba 1) (aref rgba 2)))
+                   (pdf:set-rgb-fill (aref rgba 0) (aref rgba 1) (aref rgba
+                                                                       2)))
                  (pdf:basic-rect 0 0 width height)
                  (pdf:fill-path) (paint-frame renderer context))
                (pdf:write-document (pathname pathname)))

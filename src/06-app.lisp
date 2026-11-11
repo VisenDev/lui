@@ -125,10 +125,8 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
                          :return backend)))
          (runner (gethash name *backends*)))
     (unless runner
-      (error 'lui.conditions:configuration-error
-             :setting :backend :value name :operation :run
-             :format-control "Backend ~S is not loaded. Available: ~S"
-             :format-arguments (list name (available-backends))))
+      (lui.conditions:fail-configuration :backend name :run
+                                         "Backend ~S is not loaded. Available: ~S" name (available-backends)))
     (funcall runner draw :title title :width width :height height
              :interactive interactive)))
 
@@ -145,11 +143,10 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 
 (fn (find-toolkit toolkit) ((name symbol))
   "Resolve a toolkit name or signal a CONFIGURATION-ERROR for an unknown name."
-  (or (gethash name *toolkits*) (error 'lui.conditions:configuration-error
-                                       :setting :toolkit :value name
-                                       :operation :find-toolkit
-                                       :format-control "Unknown toolkit ~S."
-                                       :format-arguments (list name))))
+  (or (gethash name *toolkits*)
+      (lui.conditions:fail-configuration :toolkit
+                                         name :find-toolkit "Unknown toolkit ~S."
+                                         name)))
 
 (fn (rendering-option t) ((name symbol) (key symbol))
   "Resolve an inherited toolkit rendering policy through its parent chain."
@@ -201,10 +198,8 @@ inherit only from an explicit PARENT."
   (loop :for ancestor := parent
         :then (%toolkit-parent (find-toolkit ancestor))
         :while ancestor :when (eq ancestor name)
-        :do (error 'lui.conditions:configuration-error
-                   :setting :toolkit :value name :operation :register-toolkit
-                   :format-control "Circular toolkit inheritance at ~S."
-                   :format-arguments (list name)))
+        :do (lui.conditions:fail-configuration :toolkit name
+                                               :register-toolkit "Circular toolkit inheritance at ~S." name))
   (when paint-p (check-type paint (or null function)))
   (when geometry-p (check-type geometry (or null function)))
   (incf *toolkit-revision*)
@@ -212,8 +207,8 @@ inherit only from an explicit PARENT."
         (make-toolkit :parent parent :defaults defaults :controls controls
                       :paint (if paint-p paint :inherit)
                       :geometry (if geometry-p geometry :inherit)
-                      :native-labels (if labels-p (not (null native-labels))
-                                         :inherit)))
+                      :native-labels
+                      (if labels-p (not (null native-labels)) :inherit)))
   name)
 
 (fn (current-toolkit symbol) ()
@@ -341,31 +336,28 @@ inherit only from an explicit PARENT."
   "Return the names accepted by WITH-PALETTE."
   (map '(vector symbol) #'car *named-palettes*))
 
+(defparameter *palette-readers*
+  '((:control-background . palette-control-background)
+    (:background . palette-background)
+    (:foreground . palette-foreground) (:accent . palette-accent)
+    (:window-background . palette-window-background)
+    (:selection . palette-selection)
+    (:border . palette-border) (:disabled . palette-disabled)
+    (:disabled-accent . palette-disabled-accent)
+    (:disabled-surface . palette-disabled-surface)
+    (:disabled-bevel-light . palette-disabled-bevel-light)
+    (:disabled-bevel-dark . palette-disabled-bevel-dark)
+    (:outline . palette-outline)
+    (:light . palette-light) (:shadow . palette-shadow)
+    (:bevel-light . palette-bevel-light) (:bevel-dark . palette-bevel-dark)
+    (:track . palette-track) (:cell-background . palette-cell-background)
+    (:cell-foreground . palette-cell-foreground)
+    (:on-accent . palette-on-accent) (:thumb . palette-thumb))
+  "Palette roles and their standard structure readers.")
+
 (fn (palette-options list) ((palette palette))
-  "Translate palette fields into widget options for the current toolkit."
-  (loop :for role :in '(:control-background :background :foreground :accent
-                        :window-background :selection :border :disabled
-                        :disabled-accent :disabled-surface
-                        :disabled-bevel-light
-                        :disabled-bevel-dark :outline :light :shadow
-                        :bevel-light
-                        :bevel-dark :track :cell-background :cell-foreground
-                        :on-accent :thumb)
-        :for reader :in (list #'palette-control-background
-                              #'palette-background #'palette-foreground
-                              #'palette-accent
-                              #'palette-window-background #'palette-selection
-                              #'palette-border #'palette-disabled
-                              #'palette-disabled-accent
-                              #'palette-disabled-surface
-                              #'palette-disabled-bevel-light
-                              #'palette-disabled-bevel-dark #'palette-outline
-                              #'palette-light #'palette-shadow
-                              #'palette-bevel-light
-                              #'palette-bevel-dark #'palette-track
-                              #'palette-cell-background
-                              #'palette-cell-foreground
-                              #'palette-on-accent #'palette-thumb)
+  "Translate non-NIL palette fields into widget options for the current toolkit."
+  (loop :for (role . reader) :in *palette-readers*
         :for color := (funcall reader palette)
         :when color :append (list role color)))
 
@@ -373,11 +365,9 @@ inherit only from an explicit PARENT."
   "Call FUNCTION with a resolved palette dynamically bound for declarations."
   (let* ((value (etypecase palette
                   (symbol (or (cdr (assoc palette *named-palettes*))
-                              (error 'lui.conditions:configuration-error
-                                     :setting :palette :value palette
-                                     :operation :call-with-palette
-                                     :format-control "Unknown palette ~S."
-                                     :format-arguments (list palette))))
+                              (lui.conditions:fail-configuration
+                               :palette palette :call-with-palette
+                               "Unknown palette ~S." palette)))
                   (palette palette)))
          (*palette* (append (palette-options value) *palette*)))
     (funcall draw)))
@@ -397,10 +387,9 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
   "Invoke a user-defined control from the current toolkit or its ancestors."
   (apply (or (override kind (or *toolkit-definition*
                                 (find-toolkit *toolkit*)))
-             (error 'lui.conditions:configuration-error
-                    :setting :control :value kind :operation :control
-                    :format-control "No ~S control in toolkit ~S."
-                    :format-arguments (list kind *toolkit*)))
+             (lui.conditions:fail-configuration
+              :control kind :control
+              "No ~S control in toolkit ~S." kind *toolkit*))
          arguments))
 
 (defmacro with-toolkit ((designator) &body body)
@@ -523,12 +512,12 @@ Each direct child occupies one column by default."
 (define-control cell (id text)
   "Display a compact grid cell. Use :selected-p to mark the active cell."
   (selectable :cell style id text options
-              (list* :background (lui.widgets::palette-color palette
-                                                             :cell-background
-                                                             "#ffffff")
-                     :foreground (lui.widgets::palette-color palette
-                                                             :cell-foreground
-                                                             "#202430")
+              (list* :background
+                     (lui.widgets::palette-color palette
+                                                 :cell-background "#ffffff")
+                     :foreground
+                     (lui.widgets::palette-color palette
+                                                 :cell-foreground "#202430")
                      defaults)))
 
 (define-control checkbox (id value text)

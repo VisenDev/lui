@@ -97,10 +97,8 @@
 (fn (require-object sb-sys:system-area-pointer) (object (description string))
   "Return a non-null object or signal BACKEND-ERROR describing the failed operation."
   (when (null-object-p object)
-    (error 'lui.conditions:backend-error
-           :backend :cocoa :operation :require-object
-           :format-control "Cannot create Cocoa ~A."
-           :format-arguments (list description)))
+    (lui.conditions:fail-backend :cocoa :require-object
+                                 "Cannot create Cocoa ~A." description))
   object)
 
 (fn (ns-string sb-sys:system-area-pointer) ((text string))
@@ -260,10 +258,8 @@
           class (selector name)
           (sb-alien:alien-sap (sb-alien:alien-callable-function function))
           signature))
-    (error 'lui.conditions:backend-error
-           :backend :cocoa :operation :install-method
-           :format-control "Cannot install Cocoa method ~A."
-           :format-arguments (list name)))
+    (lui.conditions:fail-backend :cocoa :install-method
+                                 "Cannot install Cocoa method ~A." name))
   (values))
 
 (fn (view-class sb-sys:system-area-pointer) (&optional accelerated)
@@ -552,9 +548,10 @@
                  *stacktrace-method* original *stacktrace-reported-p* nil)
            (unwind-protect
                 (progn
-                  (replace-stacktrace-method method
-                                             (sb-alien:alien-sap
-                                              (sb-alien:alien-callable-function 'nonempty-stacktrace)))
+                  (replace-stacktrace-method
+                   method
+                   (sb-alien:alien-sap
+                    (sb-alien:alien-callable-function 'nonempty-stacktrace)))
                   (funcall function))
              (replace-stacktrace-method method original)
              (setf *stacktrace-method* nil *stacktrace-placeholder* nil)
@@ -720,8 +717,7 @@
   "Run a Cocoa application window and restore native resources on normal or error exit."
   (with-cocoa-float-mode
       (let ((pool (message object
-                           (message object (objc-class "NSAutoreleasePool")
-                                    "alloc")
+                           (message object (objc-class "NSAutoreleasePool" ) "alloc" )
                            "init"))
             (application nil) (format nil) (gl nil) (gpu nil) (font nil)
             (renderer nil) (context nil) (*app* (make-cocoa-app)) (*unit* 8))
@@ -730,14 +726,9 @@
                (setf application (message object (objc-class "NSApplication")
                                           "sharedApplication")
                      font (open-font) renderer
-                     (make-renderer :font font
-                                    :polygons #'cocoa-polygons
-                                    :text #'cocoa-text
-                                    :clip #'cocoa-clip)
-                     context (make-context :copy #'copy-text :measure
-                                           (lambda (widget width)
-                                             (measure-widget renderer widget
-                                                             width)))
+                     (make-renderer :font font :polygons #'cocoa-polygons
+                                    :text #'cocoa-text :clip #'cocoa-clip)
+                     context (make-render-context renderer :copy #'copy-text)
                      (cocoa-app-renderer *app*) renderer
                      (cocoa-app-context *app*) context)
                (message objc-bool application "setActivationPolicy:"
@@ -750,8 +741,7 @@
                         objc-bool 1)
                (unless (null-object-p format)
                  (setf gl (require-object
-                           (message object (cocoa-app-view *app*)
-                                    "openGLContext")
+                           (message object (cocoa-app-view *app*) "openGLContext")
                            "OpenGL context"))
                  (message sb-alien:void gl "makeCurrentContext")
                  (disable-cocoa-vsync gl)
@@ -763,11 +753,11 @@
 (fn (run-cocoa context) ((draw function) &rest options)
   "Run DRAW in an AppKit window on the SBCL main thread. OPTIONS are the LUI:RUN window keywords."
   (unless (member :darwin *features*)
-    (error 'lui.conditions:backend-error :backend :cocoa :operation :run-cocoa
-           :format-control "The Cocoa backend requires macOS and SBCL."))
+    (lui.conditions:fail-backend
+     :cocoa :run-cocoa "The Cocoa backend requires macOS and SBCL."))
   (unless (sb-thread:main-thread-p)
-    (error 'lui.conditions:backend-error :backend :cocoa :operation :run-cocoa
-           :format-control "Run Cocoa on the main thread."))
+    (lui.conditions:fail-backend :cocoa :run-cocoa
+                                 "Run Cocoa on the main thread."))
   (with-cocoa-float-mode
       (sb-alien:load-shared-object
        "/System/Library/Frameworks/AppKit.framework/AppKit")

@@ -84,9 +84,9 @@
     ((clip box) (x integer) (y integer) (width integer))
   "Test whether a cell span is contained in the solved clip rectangle."
   (and (>= x (cell-edge (box-x clip)))
-       (<= (+ x width) (cell-edge (+ (box-x clip) (box-width clip))))
+       (<= (+ x width) (cell-edge (box-right clip)))
        (>= y (cell-edge (box-y clip)))
-       (<= (1+ y) (cell-edge (+ (box-y clip) (box-height clip))))))
+       (<= (1+ y) (cell-edge (box-bottom clip)))))
 
 (fn (paint-character (or null integer))
     ((cells array) style (row integer) (column integer) (left integer)
@@ -109,8 +109,8 @@
   "Paint a terminal panel's background and toolkit border characters."
   (let* ((box (element-box node))
          (left (cell-edge (box-x box))) (top (cell-edge (box-y box)))
-         (right (1- (cell-edge (+ (box-x box) (box-width box)))))
-         (bottom (1- (cell-edge (+ (box-y box) (box-height box)))))
+         (right (1- (cell-edge (box-right box))))
+         (bottom (1- (cell-edge (box-bottom box))))
          (border (or (widget-terminal-border widget)
                      (if (zerop (widget-radius widget)) "++++-|" "╭╮╰╯─│")))
          (horizontal (char border 4)) (vertical (char border 5)))
@@ -151,14 +151,13 @@
           (loop :for row :from (max 0 (cell-edge (box-y clip))
                                     (ceiling (- center-y extent 0.5f0)))
                 :below (min (array-dimension cells 0)
-                            (cell-edge (+ (box-y clip) (box-height clip)))
+                            (cell-edge (box-bottom clip))
                             (1+ (floor (+ center-y extent -0.5f0))))
                 :do (loop :for column
                           :from (max 0 (cell-edge (box-x clip))
                                      (ceiling (- center-x extent 0.5f0)))
                           :below (min (array-dimension cells 1)
-                                      (cell-edge (+ (box-x clip)
-                                                    (box-width clip)))
+                                      (cell-edge (box-right clip))
                                       (1+ (floor (+ center-x extent -0.5f0))))
                           :unless (aref borders row column)
                           :do (let* ((distance
@@ -247,8 +246,8 @@
      :thumb (when (eq (widget-kind widget) :scrollbar) (scrollbar-thumb node))
      :x (cell-edge (+ (box-x box) padding))
      :y (cell-edge (+ (box-y box) padding))
-     :right (cell-edge (- (+ (box-x box) (box-width box)) padding))
-     :bottom (cell-edge (- (+ (box-y box) (box-height box)) padding)))))
+     :right (cell-edge (- (box-right box) padding))
+     :bottom (cell-edge (- (box-bottom box) padding)))))
 
 (fn (paint-terminal-cell (values))
     ((state terminal-paint-state) cell border (row integer) (column integer))
@@ -266,7 +265,7 @@
                               :test #'string=)))
        (setf (uncursed::cell-string cell)
              (if (<= (cell-edge (box-y thumb)) row
-                     (1- (cell-edge (+ (box-y thumb) (box-height thumb)))))
+                     (1- (cell-edge (box-bottom thumb))))
                  "█" "│")
              (uncursed::cell-style cell) (terminal-paint-state-style state)))
       ((and (eq kind :splitter)
@@ -330,11 +329,10 @@
                          (eq (widget-kind widget) :panel))))
         (loop :for row :from (max 0 (cell-edge (box-y clip)))
               :below (min (array-dimension cells 0)
-                          (cell-edge (+ (box-y clip) (box-height clip))))
+                          (cell-edge (box-bottom clip)))
               :do (loop :for column :from (max 0 (cell-edge (box-x clip)))
                         :below (min (array-dimension cells 1)
-                                    (cell-edge (+ (box-x clip) (box-width
-                                                                clip))))
+                                    (cell-edge (box-right clip)))
                         :do (when opaque (setf (aref borders row column) nil))
                         (paint-terminal-cell state (aref cells row column)
                                              (aref borders row column)
@@ -677,7 +675,7 @@
              (x (max 0 origin (cell-edge (box-x clip))))
              (y (cell-edge (+ (box-y box) padding)))
              (right (min (context-width context)
-                         (cell-edge (+ (box-x clip) (box-width clip)))
+                         (cell-edge (box-right clip))
                          (cell-edge (+ (box-x box) (box-width box)
                                        (- padding)))))
              (width (max 0 (- right x)))
@@ -699,7 +697,7 @@
                        (widget-terminal-text widget))))
         (when (and (plusp width) (<= 0 y) (< y (context-height context))
                    (<= (cell-edge (box-y clip)) y)
-                   (< y (cell-edge (+ (box-y clip) (box-height clip)))))
+                   (< y (cell-edge (box-bottom clip))))
           ;; Focus is part of the canvas so incremental redraws can erase it.
           (let ((text (slice-cells text (+ offset (- x origin)) width)))
             ;; Focus uses the terminal's default colors, not the panel palette.

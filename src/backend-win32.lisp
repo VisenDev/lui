@@ -20,8 +20,8 @@
   `(cffi:defcfun (,@name :convention :stdcall) ,result ,@args))
 
 (api ("MsgWaitForMultipleObjectsEx" wait-messages) :uint
-     (count :uint) (handles :pointer) (timeout :uint) (mask :uint) (flags
-                                                                    :uint))
+     (count :uint) (handles :pointer) (timeout :uint) (mask :uint)
+     (flags :uint))
 
 (api ("OpenClipboard" open-clipboard) :int (window :pointer))
 (api ("CloseClipboard" close-clipboard) :int)
@@ -175,18 +175,15 @@
 
 (fn (checked (values)) ((status integer))
   "Signal BACKEND-ERROR for a nonzero GDI+ status."
-  (unless (zerop status) (error 'lui.conditions:backend-error
-                                :backend :win32 :operation :checked
-                                :format-control "GDI+ status ~D."
-                                :format-arguments (list status)))
+  (unless (zerop status) (lui.conditions:fail-backend :win32 :checked
+                                                      "GDI+ status ~D."
+                                                      status))
   (values))
 
 (fn (nonnull cffi:foreign-pointer) (pointer)
   "Return a non-null foreign pointer or signal BACKEND-ERROR with the Windows status."
-  (when (cffi:null-pointer-p pointer) (error 'lui.conditions:backend-error
-                                             :backend :win32
-                                             :operation :nonnull
-                                             :format-control "Win32 allocation failed."))
+  (when (cffi:null-pointer-p pointer) (lui.conditions:fail-backend :win32
+                                                                   :nonnull "Win32 allocation failed."))
   pointer)
 
 (fn (signed-word integer) ((value integer))
@@ -517,9 +514,8 @@
              (unless (plusp
                       (bit-blt target-dc 0 0 width height
                                source-dc x y #x00cc0020))
-               (error 'lui.conditions:backend-error
-                      :backend :win32 :operation :capture-backdrop
-                      :format-control "Native backdrop capture failed."))
+               (lui.conditions:fail-backend :win32 :capture-backdrop
+                                            "Native backdrop capture failed."))
              (setf complete t)
              image)
         (when source-dc (release-graphics-dc source source-dc))
@@ -621,9 +617,8 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
   "Build and paint one application frame into WINDOW's backing surface."
   (cffi:with-foreign-object (rect :int 4)
     (unless (plusp (client-rect (win-window-handle window) rect))
-      (error 'lui.conditions:backend-error
-             :backend :win32 :operation :render-frame
-             :format-control "GetClientRect failed."))
+      (lui.conditions:fail-backend :win32 :render-frame
+                                   "GetClientRect failed."))
     (let ((width (max 1 (cffi:mem-aref rect :int 2)))
           (height (max 1 (cffi:mem-aref rect :int 3))))
       (unless (and (= width (win-window-width window))
@@ -644,16 +639,15 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
                   (bit-blt dc 0 0 (win-window-width window)
                            (win-window-height window) (win-window-dc window)
                            0 0 #x00cc0020))
-           (error 'lui.conditions:backend-error :backend :win32
-                  :operation :render-frame :format-control "BitBlt failed."))
+           (lui.conditions:fail-backend :win32 :render-frame
+                                        "BitBlt failed."))
       (release-dc (win-window-handle window) dc)))
   context)
 
 (fn (register-window-class (eql t)) ((class-name string))
   "Register a unique Win32 window class, releasing its temporary UTF-16 name."
   (cffi:with-foreign-object (class '(:struct window-class))
-    (loop :for i :below
-          (cffi:foreign-type-size '(:struct window-class)) :do
+    (loop :for i :below (cffi:foreign-type-size '(:struct window-class)) :do
           (setf (cffi:mem-aref class :uint8 i) 0))
     (cffi:with-foreign-slots
         ((procedure cursor name instance) class (:struct window-class))
@@ -663,9 +657,8 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
             instance (module-handle (cffi:null-pointer)))
       (unwind-protect
            (unless (plusp (register-class class))
-             (error 'lui.conditions:backend-error
-                    :backend :win32 :operation :run-win32
-                    :format-control "RegisterClassW failed."))
+             (lui.conditions:fail-backend :win32 :run-win32
+                                          "RegisterClassW failed."))
         (cffi:foreign-string-free name)))
     t))
 
@@ -680,16 +673,13 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
                          :glass (lambda (box radius blur)
                                   (blur-backdrop window box radius blur))))
          (context
-          (make-context :copy
-                        (lambda (text)
-                          (copy-text (win-window-handle window) text))
-                        :measure
-                        (lambda (widget width)
-                          (measure-widget renderer widget width)))))
+          (make-render-context renderer :copy
+                               (lambda (text)
+                                 (copy-text
+                                  (win-window-handle window) text)))))
     (setf (win-window-context window) context)
     (when *window-hook* (funcall *window-hook* window))
-    (loop
-     (pump-messages window)
+    (loop (pump-messages window)
      (when (win-window-quit window) (return context))
      (let ((input (win-window-events window)))
        (setf (win-window-redraw-p window) nil)
@@ -726,9 +716,8 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
                        (cffi:mem-aref rect :int 2) (or width 720)
                        (cffi:mem-aref rect :int 3) (or height 520))
                  (unless (plusp (adjust-rect rect #x00cf0000 0))
-                   (error 'lui.conditions:backend-error
-                          :backend :win32 :operation :run-win32
-                          :format-control "AdjustWindowRect failed."))
+                   (lui.conditions:fail-backend :win32 :run-win32
+                                                "AdjustWindowRect failed."))
                  (setf (win-window-handle window)
                        (nonnull
                         (create-window 0 name caption #x00cf0000 80 80

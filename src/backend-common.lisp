@@ -47,16 +47,6 @@
     (setf (font-loader font) nil)
     (values))
 
-  (fn (font-face font) ((font font) (family symbol) (weight symbol))
-    (let ((owner (or (font-owner font) font))
-          (index (+ (ecase family (:sans-serif 0) (:monospace 2))
-                    (ecase weight (:normal 0) (:bold 1)))))
-      (if (zerop index) owner
-          (or (aref (font-faces owner) index)
-              (setf (aref (font-faces owner) index)
-                    (make-font :loader (font-loader owner) :owner owner
-                               :size (font-size owner)
-                               :family family :weight weight))))))
 
   (fn (font-css string) ((font font))
     "Return the CSS font shorthand used by measurement and drawing."
@@ -108,7 +98,6 @@
     (lui.text:wrap-lines text width
                          (lambda (text start end)
                            (text-width font (subseq text start end)))))
-
 
   (fn (wrap-text (vector string))
       ((font font) (text string) (width (or null real)))
@@ -195,17 +184,6 @@
     (clrhash (font-cache font))
     (values))
 
-  (fn (font-face font) ((font font) (family symbol) (weight symbol))
-    "Resolve a sans-serif or monospace face at normal or bold weight; reuse it until the owner is closed."
-    (let ((owner (or (font-owner font) font))
-          (index (+ (ecase family (:sans-serif 0) (:monospace 2))
-                    (ecase weight (:normal 0) (:bold 1)))))
-      (if (zerop index) owner
-          (or (aref (font-faces owner) index)
-              (let* ((path (resolve-face family weight))
-                     (face (open-font path (font-size owner))))
-                (setf (font-owner face) owner
-                      (aref (font-faces owner) index) face))))))
 
   (fn (scale-font real) ((font font))
     (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
@@ -288,6 +266,24 @@
                                        polygons))))
                 (coerce (nreverse polygons) 'contours))))))
 
+(fn (font-face font) ((font font) (family symbol) (weight symbol))
+  "Resolve a sans-serif or monospace face at normal or bold weight; reuse it until the owner is closed."
+  (let ((owner (or (font-owner font) font))
+        (index (+ (ecase family (:sans-serif 0) (:monospace 2))
+                  (ecase weight (:normal 0) (:bold 1)))))
+    (if (zerop index) owner
+        (or (aref (font-faces owner) index)
+            (let ((face
+                   #+(or jscl lui-ecl-web)
+                   (make-font :loader (font-loader owner)
+                              :size (font-size owner)
+                              :family family :weight weight)
+                   #-(or jscl lui-ecl-web)
+                   (open-font (resolve-face family weight)
+                              (font-size owner))))
+              (setf (font-owner face) owner
+                    (aref (font-faces owner) index) face))))))
+
 (defpackage #:lui.draw
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui.font)
   (:import-from #:lui
@@ -298,17 +294,18 @@
                 #:geometry-min-width #:geometry-min-height #:geometry-center-x
                 #:geometry-center-y #:geometry-offset-x #:geometry-offset-y
                 #:geometry-text-p #:geometry-value-p #:widget-geometry
-                #:text-box
-                #:rounded-polygon #:color-components #:paint-text #:shape
+                #:text-box #:rounded-polygon #:color-components #:paint-text
+                #:shape
                 #:outline #:inset-box #:focused-p #:widget-font)
   (:export #:renderer #:make-renderer #:renderer-font #:renderer-polygons
            #:renderer-clip #:renderer-glass #:renderer-text
            #:renderer-surface #:renderer-stipple
-           #:paint-frame #:measure-widget #:widget-font #:focused-p #:shape
+           #:make-render-context #:paint-frame #:measure-widget #:widget-font
+           #:focused-p #:shape
            #:outline #:inset-box
            #:geometry #:make-geometry #:geometry-left #:geometry-top
-           #:geometry-right
-           #:geometry-value-p #:geometry-text-p #:geometry-bottom
+           #:geometry-right #:geometry-value-p #:geometry-text-p
+           #:geometry-bottom
            #:geometry-min-width #:geometry-min-height
            #:geometry-center-x #:geometry-center-y #:geometry-offset-x
            #:geometry-offset-y
@@ -435,12 +432,19 @@
 (fn (widget-geometry geometry) ((widget widget))
   "Return the active toolkit's shared text geometry for WIDGET."
   (funcall (or (lui:toolkit-geometry (widget-style widget))
-               (error 'lui.conditions:configuration-error
-                      :setting :geometry :value (widget-style widget)
-                      :operation :widget-geometry
-                      :format-control "Toolkit ~S has no graphical geometry."
-                      :format-arguments (list (widget-style widget))))
+               (lui.conditions:fail-configuration :geometry
+                                                  (widget-style widget)
+                                                  :widget-geometry
+                                                  "Toolkit ~S has no graphical geometry."
+                                                  (widget-style widget)))
            widget))
+
+(fn (make-render-context context) ((renderer renderer) &rest options)
+  "Create a frame context measured by RENDERER, with backend-specific OPTIONS."
+  (apply #'make-context
+         :measure (lambda (widget width)
+                    (measure-widget renderer widget width))
+         options))
 
 (fn (measure-widget (values number number))
     ((renderer renderer) (widget widget) width)
@@ -492,9 +496,8 @@
         (funcall (renderer-text renderer) (renderer-font renderer)
                  text x y color)
         #+(or jscl lui-ecl-web)
-        (error 'lui.conditions:configuration-error
-               :setting :text-renderer :value nil :operation :paint-text
-               :format-control "The browser renderer requires a text drawing callback.")
+        (lui.conditions:fail-configuration :text-renderer nil :paint-text
+                                           "The browser renderer requires a text drawing callback.")
         #-(or jscl lui-ecl-web)
         (let* ((font (renderer-font renderer))
                (scale (/ (font-size font) (zpb-ttf:units/em (font-loader
@@ -519,8 +522,8 @@
                          color 1)
                 (incf cursor
                       (* scale (zpb-ttf:advance-width
-                                (zpb-ttf:find-glyph char
-                                                    (font-loader font)))))
+                                (zpb-ttf:find-glyph char (font-loader
+                                                          font)))))
                 (setf previous char))))))
 
 (fn (inset-box box) ((box box) (inset real))
@@ -564,11 +567,12 @@
   (let* ((widget (element-content node))
          (paint (or (widget-painter widget) (lui:toolkit-paint (widget-style
                                                                 widget))
-                    (error 'lui.conditions:configuration-error
-                           :setting :painter :value (widget-style widget)
-                           :operation :paint-widget
-                           :format-control "Toolkit ~S has no graphical painter."
-                           :format-arguments (list (widget-style widget)))))
+                    (lui.conditions:fail-configuration :painter
+                                                       (widget-style widget)
+                                                       :paint-widget
+                                                       "Toolkit ~S has no graphical painter."
+                                                       (widget-style
+                                                        widget))))
          (font (renderer-font renderer)))
     (funcall (renderer-clip renderer) (element-clip node))
     (unwind-protect
@@ -591,17 +595,13 @@
                                        (let ((clip (element-clip node)))
                                          (and
                                           (< (box-y clip)
-                                             (+
-                                              (box-y viewport) (box-height
-                                                                viewport)))
+                                             (box-bottom viewport))
                                           (< (box-y viewport)
-                                             (+ (box-y clip) (box-height
-                                                              clip))))))
+                                             (box-bottom clip)))))
                                    (not (and external-labels
                                              (gethash node external-labels))))
                           (paint-widget renderer node))))
     (finish-selection renderer context)))
-
 
 (defstruct text-selection
   anchor focus anchor-text focus-text anchor-key focus-key field
@@ -761,9 +761,9 @@
     (loop :for node :across nodes :do
           (let* ((box (element-clip node))
                  (dx (max 0 (- (box-x box) x)
-                          (- x (+ (box-x box) (box-width box)))))
+                          (- x (box-right box))))
                  (dy (max 0 (- (box-y box) y)
-                          (- y (+ (box-y box) (box-height box)))))
+                          (- y (box-bottom box))))
                  (d dy))
             (when (and (plusp (box-width box)) (plusp (box-height box))
                        (or (null distance) (< d distance)
@@ -959,7 +959,6 @@
                (shiftf (text-selection-pending-copy-p selection) nil))
       (copy-selection context (or nodes (selectable-nodes context))
                       selection))))
-
 
 (fn (standard-geometry geometry) ((widget widget))
   "Return shared widget geometry for standard toolkit painting and measurement."
@@ -1332,7 +1331,6 @@
       (:text-field (paint-text-field renderer node))
       (otherwise (paint-widget-text renderer node foreground)))))
 
-
 (fn (paint-glass-scrollbar t) ((renderer renderer) (node element))
   "Paint a translucent glass scrollbar track and thumb."
   (let* ((widget (element-content node)) (box (element-box node))
@@ -1348,20 +1346,6 @@
     (shape renderer face radius foreground (if hover 0.5f0 0.32f0))
     (outline renderer face radius foreground 0.4f0
              (min 1 (/ (box-width face) 2)))))
-
-(fn (paint-glass-body t) ((renderer renderer) (node element))
-  "Paint standard controls with the glass toolkit's surfaces and effects."
-  (paint-standard-body renderer node t nil))
-
-(fn (paint-glass-widget t) ((renderer renderer) (node element))
-  "Paint a complete glass widget, including shared controls and scrollbars."
-  (paint-shared-widget renderer node (widget-radius (element-content node)) 0
-                       #'paint-glass-scrollbar #'paint-glass-body))
-
-(lui:register-toolkit-rendering :glass :paint #'paint-glass-widget
-                                :geometry #'standard-geometry :native-labels
-                                t)
-
 
 (fn (motif-bevel t)
     ((renderer renderer) (widget widget) (box box) &optional recessed
@@ -1401,20 +1385,6 @@
     (shape renderer (element-box node) 0 foreground 0.15f0)
     (shape renderer (scrollbar-thumb node) 0 (widget-accent widget) 1)))
 
-(fn (paint-motif-body t) ((renderer renderer) (node element))
-  "Paint standard control bodies with Motif bevels."
-  (paint-standard-body renderer node nil #'motif-bevel))
-
-(fn (paint-motif-widget t) ((renderer renderer) (node element))
-  "Paint a complete Motif widget using shared and toolkit-specific primitives."
-  (paint-shared-widget renderer node 0 0 #'paint-motif-scrollbar
-                       #'paint-motif-body))
-
-(lui:register-toolkit-rendering :motif :paint #'paint-motif-widget
-                                :geometry #'standard-geometry :native-labels
-                                t)
-
-
 (fn (macos-bevel t)
     ((renderer renderer) (widget widget) (box box) &optional recessed
      disabled)
@@ -1443,14 +1413,6 @@
                                 (- width 4) :height 1)
              0 (if recessed light dark) 1))))
 
-(fn (paint-macos-body t) ((renderer renderer) (node element))
-  "Paint standard control bodies using the macOS surface treatment."
-  (paint-standard-body renderer node nil #'macos-bevel t))
-
-(fn (paint-qt-body t) ((renderer renderer) (node element))
-  "Paint standard control bodies using the Qt surface treatment."
-  (paint-standard-body renderer node nil #'qt-bevel))
-
 (fn (paint-desktop-scrollbar t)
     ((renderer renderer) (node element) (bevel function))
   "Paint a desktop scrollbar using the supplied track and thumb colors."
@@ -1468,29 +1430,31 @@
   "Paint the Qt scrollbar track and thumb."
   (paint-desktop-scrollbar renderer node #'qt-bevel))
 
-(fn (paint-macos-widget t) ((renderer renderer) (node element))
-  "Paint a complete macOS widget with shared control geometry."
-  (paint-shared-widget renderer node 6 0 #'paint-macos-scrollbar
-                       #'paint-macos-body))
+(fn (register-standard-painter symbol)
+    ((name symbol) radius (scrollbar function) bevel &key translucent flat)
+  "Register standard control painting with toolkit-specific surface callbacks."
+  (let ((body (lambda (renderer node)
+                (paint-standard-body renderer node translucent bevel flat))))
+    (lui:register-toolkit-rendering
+     name :geometry #'standard-geometry :native-labels t
+     :paint (lambda (renderer node)
+              (paint-shared-widget
+               renderer node
+               (or radius (widget-radius (element-content node)))
+               0 scrollbar body)))))
 
-(fn (paint-qt-widget t) ((renderer renderer) (node element))
-  "Paint a complete Qt widget with shared control geometry."
-  (paint-shared-widget renderer node 2 0 #'paint-qt-scrollbar
-                       #'paint-qt-body))
-
-(lui:register-toolkit-rendering :macos :paint #'paint-macos-widget
-                                :geometry #'standard-geometry :native-labels
-                                t)
-(lui:register-toolkit-rendering :qt :paint #'paint-qt-widget
-                                :geometry #'standard-geometry :native-labels
-                                t)
-
+(register-standard-painter :glass nil #'paint-glass-scrollbar nil
+                           :translucent t)
+(register-standard-painter :motif 0 #'paint-motif-scrollbar #'motif-bevel)
+(register-standard-painter :macos 6 #'paint-macos-scrollbar #'macos-bevel
+                           :flat t)
+(register-standard-painter :qt 2 #'paint-qt-scrollbar #'qt-bevel)
 
 (fn (rectangle-path contour) ((box box))
   "Return a polygon contour tracing a rectangular box."
   (let ((x (box-x box)) (y (box-y box))
-        (right (+ (box-x box) (box-width box)))
-        (bottom (+ (box-y box) (box-height box))))
+        (right (box-right box))
+        (bottom (box-bottom box)))
     (typed-vector point (cons x y) (cons right y) (cons right bottom)
                   (cons x bottom))))
 
@@ -1529,8 +1493,8 @@
     (unless paths
       (when (>= (hash-table-count cache) 256) (clrhash cache))
       (let ((left (ceiling (box-x box))) (top (ceiling (box-y box)))
-            (right (floor (+ (box-x box) (box-width box))))
-            (bottom (floor (+ (box-y box) (box-height box)))))
+            (right (floor (box-right box)))
+            (bottom (floor (box-bottom box))))
         (let ((squares
                (loop :for y :from top :below bottom
                      :nconc
@@ -1593,7 +1557,7 @@
     ((renderer renderer) (node element) (widget widget) (box box) hover
      pressed (ink string))
   "Paint the Garnet checkbox indicator and its interaction feedback."
-  (let* ((square (make-box :x (- (+ (box-x box) (box-width box)) 24)
+  (let* ((square (make-box :x (- (box-right box) 24)
                            :y (+ (box-y box)
                                  (max 0 (/ (- (box-height box) 24) 2)))
                            :width 24 :height 24))
@@ -1621,7 +1585,7 @@
     ((renderer renderer) (node element) (widget widget) (box box) hover
      (ink string))
   "Paint the Garnet radio indicator and its interaction feedback."
-  (let ((indicator (make-box :x (- (+ (box-x box) (box-width box)) 22)
+  (let ((indicator (make-box :x (- (box-right box) 22)
                              :y (+ (box-y box)
                                    (max 0 (/ (- (box-height box) 18) 2)))
                              :width 18 :height 18)))

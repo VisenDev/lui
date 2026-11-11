@@ -1,6 +1,7 @@
 (defpackage #:lui.conditions
   (:use #:cl)
-  (:export #:lui-error #:configuration-error #:backend-error #:font-error
+  (:export #:fail-backend #:fail-configuration
+           #:lui-error #:configuration-error #:backend-error #:font-error
            #:frame-state-error #:error-operation #:error-setting
            #:error-value #:error-backend #:error-font-request))
 (in-package #:lui.conditions)
@@ -44,6 +45,20 @@ path or font directory before opening the next graphical window."))
    "An operation requires a completed frame or another unavailable frame state.
 ERROR-OPERATION identifies the attempted operation; complete a frame before
 retrying an operation that reads its solved layout."))
+
+(lui.fn:fn (fail-backend nil)
+    ((backend symbol) (operation symbol) (control string) &rest arguments)
+  "Signal BACKEND-ERROR with platform, operation, and formatted diagnostic."
+  (error 'backend-error :backend backend :operation operation
+         :format-control control :format-arguments arguments))
+
+(lui.fn:fn (fail-configuration nil)
+    ((setting symbol) value (operation symbol) (control string)
+     &rest arguments)
+  "Signal CONFIGURATION-ERROR with the rejected setting and requested value."
+  (error 'configuration-error :setting setting :value value
+         :operation operation :format-control control
+         :format-arguments arguments))
 
 (defpackage #:lui.text
   (:use #:cl #:lui.fn)

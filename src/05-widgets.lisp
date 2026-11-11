@@ -203,10 +203,8 @@ are supplied as keywords. Return activation for enabled actionable kinds.
 Most applications should use the public LUI controls with LUI:OPT instead."
   (when (eq kind :tab) (navigate-tabs))
   (let ((measure (or (context-measure *context*)
-                     (error 'lui.conditions:configuration-error
-                            :setting :text-measurer :value nil
-                            :operation :declare-widget
-                            :format-control "A backend text measurer is required.")))
+                     (lui.conditions:fail-configuration :text-measurer nil
+                                                        :declare-widget "A backend text measurer is required.")))
         (widget
          (make-widget
           :kind kind :style style :palette (copy-list palette) :text text
@@ -266,34 +264,23 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
   (let ((cursor :default))
     (when (context-root context)
       (walk-elements (context-root context)
-                     (lambda (node)
-                       (let ((widget (element-content node))
-                             (clip
-                              (element-clip node)))
-                         (when (and (widget-p widget) (<= (box-x clip) x)
-                                    (< x (+ (box-x clip) (box-width clip)))
-                                    (<= (box-y clip) y)
-                                    (< y (+ (box-y clip) (box-height clip))))
-                           (setf cursor
-                                 (cond ((widget-disabled-p widget)
-                                        (if (eq (widget-kind widget) :cell)
-                                            :default :not-allowed))
-                                       ((eq (widget-kind widget) :splitter)
-                                        (if
-                                         (eq (widget-orientation widget)
-                                             :horizontal)
-                                         :resize-vertical :resize-horizontal))
-                                       ((member (widget-kind widget) '
-                                                (:label :text-field))
-                                        :text)
-                                       (
-                                        (member (widget-kind widget)
-                                                '
-                                                (:button :checkbox :radio
-                                                         :tab :slider
-                                                         :list-item :cell))
-                                        :pointer)
-                                       (t :default))))))))
+        (lambda (node)
+          (let ((widget (element-content node)))
+            (when (and (widget-p widget)
+                       (lui.frame::contains-p (element-clip node) x y))
+              (setf cursor
+                (if (widget-disabled-p widget)
+                    (if (eq (widget-kind widget) :cell)
+                        :default :not-allowed)
+                    (case (widget-kind widget)
+                      (:splitter
+                       (if (eq (widget-orientation widget) :horizontal)
+                           :resize-vertical :resize-horizontal))
+                      ((:label :text-field) :text)
+                      ((:button :checkbox :radio :tab :slider
+                        :list-item :cell)
+                       :pointer)
+                      (otherwise :default)))))))))
     cursor))
 
 (fn (horizontal-selection-key symbol) ((key symbol) extend)
@@ -610,7 +597,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
                  (when (eq (event-button event) :primary)
                    (setf handled t (scrollbar-state-grab state) nil)
                    (if (<= (box-y thumb) (event-y event)
-                           (+ (box-y thumb) (box-height thumb)))
+                           (box-bottom thumb))
                        (setf (scrollbar-state-grab state)
                              (- (event-y event) (box-y thumb)))
                        (incf offset (if (< (event-y event) (box-y thumb))
@@ -646,7 +633,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
            (width (scroll-gutter owner))
            (height (max 0 (- (box-height bounds) (* 2 padding))))
            (widget (element-content owner))
-           (box (make-box :x (- (+ (box-x bounds) (box-width bounds))
+           (box (make-box :x (- (box-right bounds)
                                 padding width)
                           :y (+ (box-y bounds) padding)
                           :width width :height height))

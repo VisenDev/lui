@@ -54,8 +54,8 @@
          (display :pointer) (colormap :ulong))
 (binding ("XCreateWindow" create-window) :ulong
          (display :pointer) (parent :ulong) (x :int) (y :int)
-         (width :uint) (height :uint) (border :uint) (depth :int) (class
-                                                                   :uint)
+         (width :uint) (height :uint) (border :uint) (depth :int)
+         (class :uint)
          (visual :pointer) (mask :ulong) (attributes :pointer))
 
 (binding ("XDestroyWindow" destroy-window)
@@ -255,10 +255,10 @@
                   (lui.widgets:activation-focused-p context))
              (make-event :kind :activate))
             ((= code #xff0d) (make-event :kind :activate))
-            (key (make-event :kind :key :key
-                             (lui.widgets:horizontal-selection-key key
-                                                                   (and
-                                                                    text-p shift))))
+            (key (make-event
+                  :kind :key :key
+                  (lui.widgets:horizontal-selection-key
+                   key (and text-p shift))))
             ((and (plusp length) (not control) (not alt))
              (make-event :kind :text :value
                          (cffi:foreign-string-to-lisp
@@ -388,9 +388,8 @@
         (setf (cffi:mem-aref attrs :int 8) 0
               visual (choose-visual display screen attrs)))
       (when (cffi:null-pointer-p visual)
-        (error 'lui.conditions:backend-error
-               :backend :x11 :operation :glx-visual
-               :format-control "No double-buffered OpenGL visual on this X display."))
+        (lui.conditions:fail-backend :x11 :glx-visual
+                                     "No double-buffered OpenGL visual on this X display."))
       visual)))
 
 (fn (open-window integer) ((window x-window) info parent)
@@ -472,10 +471,9 @@
          (w (or width 720)) (h (or height 520))
          (window (make-x-window :display display :width w :height h))
          (glx (cffi:null-pointer)) (font nil) (gpu nil) (*unit* 8))
-    (when (cffi:null-pointer-p display) (error 'lui.conditions:backend-error
-                                               :backend :x11
-                                               :operation :run-x11
-                                               :format-control "Cannot open X11 display."))
+    (when (cffi:null-pointer-p display)
+      (lui.conditions:fail-backend :x11
+                                   :run-x11 "Cannot open X11 display."))
     (unwind-protect
          (let* ((screen (default-screen display))
                 (info (glx-visual display screen))
@@ -488,9 +486,8 @@
            (when (or (cffi:null-pointer-p glx)
                      (zerop (make-current display (x-window-window window)
                                           glx)))
-             (error 'lui.conditions:backend-error
-                    :backend :x11 :operation :run-x11 :format-control
-                    "Cannot activate the X11 OpenGL context."))
+             (lui.conditions:fail-backend :x11 :run-x11
+                                          "Cannot activate the X11 OpenGL context."))
            (setf font (open-font) gpu (attach-gpu font w h)
                  (x-window-clipboard window)
                  (intern-atom display "CLIPBOARD" 0))
@@ -502,11 +499,10 @@
              (set-protocols display (x-window-window window) atom 1))
            (map-window display (x-window-window window))
            (let ((context
-                  (make-context
-                   :copy (lambda (text) (copy-clipboard window text))
-                   :measure (lambda (widget width)
-                              (measure-widget (gpu-renderer gpu)
-                                              widget width)))))
+                  (make-render-context (gpu-renderer gpu)
+                                       :copy (lambda (text)
+                                               (copy-clipboard window
+                                                               text)))))
              (setf (x-window-context window) context)
              (draw-window window gpu context draw interactive delete)))
       (close-x11-window window display glx gpu font))))

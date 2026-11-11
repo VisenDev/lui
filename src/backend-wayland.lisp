@@ -124,14 +124,14 @@ Return bytes written, or -1 when the connection is not writable or has failed."
 (fn (request cffi:foreign-pointer)
     (proxy (opcode integer) result-interface (args list) &optional version
      (destroy-p nil))
-  "Marshal a Wayland request OPCODE to PROXY with typed argument conses ARGS.
+  "Marshal a Wayland request OPCODE to PROXY with alternating foreign types and values in ARGS.
 RESULT-INTERFACE names a created proxy type or is NIL. VERSION defaults to the
 proxy version; DESTROY-P tells libwayland to destroy the sending proxy."
   (let ((strings nil))
     (unwind-protect
          (cffi:with-foreign-object (arguments '(:union argument)
-                                              (max 1 (length args)))
-           (loop :for (type . value) :in args :for i :from 0
+                                              (max 1 (/ (length args) 2)))
+           (loop :for (type value) :on args :by #'cddr :for i :from 0
                  :for pointer :=
                  (cffi:mem-aptr arguments '(:union argument) i)
                  :do
@@ -143,8 +143,8 @@ proxy version; DESTROY-P tells libwayland to destroy the sending proxy."
            (marshal proxy opcode
                     (if result-interface (interface result-interface)
                         (cffi:null-pointer))
-                    (or version (proxy-version proxy))
-                    (if destroy-p 1 0) arguments))
+                    (or version (proxy-version proxy)) (if destroy-p 1 0)
+                    arguments))
       (dolist (string strings) (cffi:foreign-string-free string)))))
 
 (fn (listen-proxy cffi:foreign-pointer) (proxy (callbacks list))
@@ -154,9 +154,8 @@ proxy version; DESTROY-P tells libwayland to destroy the sending proxy."
           :do (setf (cffi:mem-aref listeners :pointer i) callback))
     (unless (zerop (add-listener proxy listeners (cffi:null-pointer)))
       (cffi:foreign-free listeners)
-      (error 'lui.conditions:backend-error
-             :backend :wayland :operation :listen-proxy
-             :format-control "Cannot install Wayland listener."))
+      (lui.conditions:fail-backend :wayland :listen-proxy
+                                   "Cannot install Wayland listener."))
     listeners))
 
 (fn (pump-display (values)) (display &optional (timeout 16))
@@ -166,13 +165,11 @@ Signal an error when the display disconnects or its read/dispatch operation fail
         (not (zerop
               (cffi:foreign-funcall "wl_display_prepare_read"
                                     :pointer display :int)))
-        :do
-        (setf timeout 0)
+        :do (setf timeout 0)
         (when (minusp (cffi:foreign-funcall "wl_display_dispatch_pending"
                                             :pointer display :int))
-          (error 'lui.conditions:backend-error
-                 :backend :wayland :operation :pump-display
-                 :format-control "Wayland display disconnected.")))
+          (lui.conditions:fail-backend :wayland :pump-display
+                                       "Wayland display disconnected.")))
   (flush-display display)
   (cffi:with-foreign-object (poll '(:struct pollfd))
     (cffi:with-foreign-slots ((fd events revents) poll (:struct pollfd))
@@ -185,16 +182,14 @@ Signal an error when the display disconnects or its read/dispatch operation fail
             (when (minusp
                    (cffi:foreign-funcall "wl_display_read_events"
                                          :pointer display :int))
-              (error 'lui.conditions:backend-error
-                     :backend :wayland :operation :pump-display
-                     :format-control "Wayland read failed."))
+              (lui.conditions:fail-backend :wayland :pump-display
+                                           "Wayland read failed."))
             (cffi:foreign-funcall "wl_display_cancel_read"
                                   :pointer display :void))))
     (when (minusp (cffi:foreign-funcall "wl_display_dispatch_pending"
                                         :pointer display :int))
-      (error 'lui.conditions:backend-error
-             :backend :wayland :operation :pump-display
-             :format-control "Wayland dispatch failed.")))
+      (lui.conditions:fail-backend :wayland :pump-display
+                                   "Wayland dispatch failed.")))
   (values))
 
 ;; XDG shell and optional desktop extensions. See NOTICE for licenses.
@@ -371,15 +366,15 @@ Free all interface allocations on return or error; proxies must not outlive it."
                         (cffi:pointer-eq proxy
                                          (wl-window-clipboard-source
                                           *window*))
-                        (member mime '("text/plain;charset=utf-8"
-                                       "text/plain")
+                        (member mime '
+                                ("text/plain;charset=utf-8" "text/plain")
                                 :test #'string=))
                    (or (wl-window-clipboard-text *window*) "") "") fd)
             (error () nil)))
 (callback clipboard-cancelled ()
           (when (and (wl-window-clipboard-source *window*)
-                     (cffi:pointer-eq proxy (wl-window-clipboard-source
-                                             *window*)))
+                     (cffi:pointer-eq proxy
+                                      (wl-window-clipboard-source *window*)))
             (release-clipboard-source *window*)))
 
 (callback clipboard-offer ((offer :pointer))
@@ -401,8 +396,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
   (when (and (wl-window-clipboard-manager window) (wl-window-seat window))
     (let ((device
            (request (wl-window-clipboard-manager window) 1 "wl_data_device"
-                    (list (cons :pointer (cffi:null-pointer))
-                          (cons :pointer (wl-window-seat window))) 1)))
+                    (list :pointer (cffi:null-pointer)
+                          :pointer (wl-window-seat window)) 1)))
       (setf (wl-window-clipboard-device window) device)
       (attach-listener device
                        (list (cffi:callback clipboard-offer)
@@ -420,7 +415,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
     (release-clipboard-source window)
     (let ((source
            (request (wl-window-clipboard-manager window) 0 "wl_data_source"
-                    (list (cons :pointer (cffi:null-pointer))) 1)))
+                    (list :pointer (cffi:null-pointer)) 1)))
       (setf (wl-window-clipboard-source window) source
             (wl-window-clipboard-text window) (copy-seq text)
             (wl-window-clipboard-listener window)
@@ -428,10 +423,10 @@ Free all interface allocations on return or error; proxies must not outlive it."
                                        (cffi:callback clipboard-send)
                                        (cffi:callback clipboard-cancelled))))
       (dolist (mime '("text/plain;charset=utf-8" "text/plain"))
-        (request source 0 nil (list (cons :string mime))))
+        (request source 0 nil (list :string mime)))
       (request (wl-window-clipboard-device window) 1 nil
-               (list (cons :pointer source)
-                     (cons :uint32 (wl-window-clipboard-serial window))))
+               (list :pointer source :uint32
+                     (wl-window-clipboard-serial window)))
       (flush-display (wl-window-display window)))))
 
 (fn (cursor-shape integer) ((kind symbol))
@@ -483,7 +478,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
       (unless (wl-window-cursor-surface *window*)
         (setf (wl-window-cursor-surface *window*)
               (request (wl-window-compositor *window*) 0 "wl_surface"
-                       (list (cons :pointer (cffi:null-pointer)))))
+                       (list :pointer (cffi:null-pointer))))
         (attach-listener (wl-window-cursor-surface *window*)
                          (list (cffi:callback surface-enter)
                                (cffi:callback surface-leave)
@@ -492,18 +487,18 @@ Free all interface allocations on return or error; proxies must not outlive it."
       (cffi:with-foreign-slots
           ((width height hotspot-x hotspot-y) image (:struct cursor-image))
         (request (wl-window-pointer *window*) 0 nil
-                 (list (cons :uint32 (wl-window-cursor-serial *window*))
-                       (cons :pointer (wl-window-cursor-surface *window*))
-                       (cons :int32 hotspot-x) (cons :int32 hotspot-y)))
+                 (list :uint32 (wl-window-cursor-serial *window*)
+                       :pointer (wl-window-cursor-surface *window*) :int32
+                       hotspot-x
+                       :int32 hotspot-y))
         (request (wl-window-cursor-surface *window*) 1 nil
-                 (list (cons :pointer
-                             (cffi:foreign-funcall
-                              "wl_cursor_image_get_buffer"
-                              :pointer image :pointer))
-                       (cons :int32 0) (cons :int32 0)))
+                 (list
+                  :pointer (cffi:foreign-funcall
+                            "wl_cursor_image_get_buffer" :pointer image
+                            :pointer)
+                  :int32 0 :int32 0))
         (request (wl-window-cursor-surface *window*) 2 nil
-                 (list (cons :int32 0) (cons :int32 0)
-                       (cons :int32 width) (cons :int32 height)))
+                 (list :int32 0 :int32 0 :int32 width :int32 height))
         (request (wl-window-cursor-surface *window*) 6 nil nil))
       t)))
 
@@ -517,9 +512,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
       (unless (eq kind (wl-window-cursor-kind *window*))
         (when (cond ((wl-window-cursor-device *window*)
                      (request (wl-window-cursor-device *window*) 1 nil
-                              (list (cons :uint32
-                                          (wl-window-cursor-serial *window*))
-                                    (cons :uint32 (cursor-shape kind))))
+                              (list :uint32 (wl-window-cursor-serial *window*)
+                                    :uint32 (cursor-shape kind)))
                      t)
                     (t (set-themed-cursor kind)))
           (setf (wl-window-cursor-kind *window*) kind))))))
@@ -531,8 +525,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
     (setf (wl-window-cursor-device *window*)
           (request (wl-window-cursor-manager *window*) 1
                    "wp_cursor_shape_device_v1"
-                   (list (cons :pointer (cffi:null-pointer))
-                         (cons :pointer (wl-window-pointer *window*))))
+                   (list :pointer (cffi:null-pointer)
+                         :pointer (wl-window-pointer *window*)))
           (wl-window-cursor-kind *window*) nil)
     (update-cursor)))
 
@@ -548,8 +542,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
           (setf (wl-window-buttons *window*) 0
                 (wl-window-cursor-serial *window*) serial
                 (wl-window-cursor-kind *window*) nil
-                (wl-window-x *window*) (/ x 256.0f0)
-                (wl-window-y *window*) (/ y 256.0f0))
+                (wl-window-x *window*) (/ x 256.0f0) (wl-window-y *window*)
+                (/ y 256.0f0))
           (queue-input :move :buttons 0
                        :x (wl-window-x *window*) :y (wl-window-y *window*))
           (update-cursor))
@@ -576,8 +570,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
           (when (member button '(#x110 #x111))
             (let ((bit (if (= button #x111) 2 1)))
               (setf (wl-window-buttons *window*)
-                    (if (zerop state) (logandc2 (wl-window-buttons *window*)
-                                                bit)
+                    (if (zerop state)
+                        (logandc2 (wl-window-buttons *window*) bit)
                         (logior (wl-window-buttons *window*) bit))))
             (queue-input (if (zerop state) :release :press)
                          :button (if (= button #x111) :secondary :primary)
@@ -628,22 +622,24 @@ Free all interface allocations on return or error; proxies must not outlive it."
                    (loop :with offset := 0
                          :for count :=
                          (when (< offset size)
-                           (cffi:foreign-funcall "read" :int fd
-                                                 :pointer
-                                                 (cffi:inc-pointer text
-                                                                   offset)
-                                                 :size (- size offset) :long))
+                           (cffi:foreign-funcall
+                            "read" :int fd
+                            :pointer (cffi:inc-pointer text offset)
+                            :size (- size offset) :long))
                          :while (< offset size)
                          :do (when (<= count 0) (return))
                          (incf offset count)
-                         :finally
-                         (setf (cffi:mem-aref text :char size) 0)
+                         :finally (setf (cffi:mem-aref text :char size) 0)
                          (release-keymap *window*)
-                         (let ((keymap
-                                (cffi:foreign-funcall
-                                 "xkb_keymap_new_from_string"
-                                 :pointer (wl-window-xkb-context *window*)
-                                 :pointer text :uint 1 :uint 0 :pointer)))
+                         (let
+                             (
+                              (keymap
+                               (cffi:foreign-funcall "xkb_keymap_new_from_string"
+                                                     :pointer
+                                                     (wl-window-xkb-context
+                                                      *window*)
+                                                     :pointer text :uint 1
+                                                     :uint 0 :pointer)))
                            (unless (cffi:null-pointer-p keymap)
                              (setf (wl-window-keymap *window*) keymap
                                    (wl-window-key-state *window*)
@@ -732,8 +728,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
             (0
              (when (eql code (wl-window-repeat-code *window*))
                (stop-key-repeat *window*)))
-            (1
-             (emit-key-input code) (start-key-repeat code)) (otherwise nil)))
+            (1 (emit-key-input code) (start-key-repeat code)) (otherwise
+                                                               nil)))
 
 (callback keyboard-repeat-info ((rate :int32) (delay :int32))
           (setf (wl-window-repeat-rate *window*) (max 0 rate)
@@ -797,11 +793,11 @@ Free all interface allocations on return or error; proxies must not outlive it."
             (setf (wl-window-cursor-serial *window*) nil
                   (wl-window-cursor-kind *window*) nil))
           (unless (logtest capabilities 2) (release-keyboard *window*))
-          (when (and (logtest capabilities 1) (null (wl-window-pointer
-                                                     *window*)))
+          (when (and (logtest capabilities 1) (null
+                                               (wl-window-pointer *window*)))
             (let ((pointer
                    (request proxy 0 "wl_pointer"
-                            (list (cons :pointer (cffi:null-pointer)))
+                            (list :pointer (cffi:null-pointer))
                             (wl-window-seat-version *window*))))
               (setf (wl-window-pointer *window*) pointer)
               (attach-listener pointer (list (cffi:callback pointer-enter)
@@ -810,11 +806,11 @@ Free all interface allocations on return or error; proxies must not outlive it."
                                              (cffi:callback pointer-button)
                                              (cffi:callback pointer-axis)))
               (create-cursor-device)))
-          (when (and (logtest capabilities 2) (null (wl-window-keyboard
-                                                     *window*)))
+          (when (and (logtest capabilities 2) (null
+                                               (wl-window-keyboard *window*)))
             (let ((keyboard
                    (request proxy 1 "wl_keyboard"
-                            (list (cons :pointer (cffi:null-pointer)))
+                            (list :pointer (cffi:null-pointer))
                             (wl-window-seat-version *window*))))
               (setf (wl-window-keyboard *window*) keyboard)
               (attach-listener keyboard
@@ -826,7 +822,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
                                      (cffi:callback keyboard-repeat-info))))))
 
 (callback shell-ping ((serial :uint32))
-          (request proxy 3 nil (list (cons :uint32 serial))))
+          (request proxy 3 nil (list :uint32 serial)))
 
 (callback registry-global
           ((name :uint32) (interface-name :string) (version :uint32))
@@ -834,8 +830,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
                         '("wl_compositor" "xdg_wm_base" "wl_seat" "wl_shm"
                           "wl_data_device_manager"
                           "zxdg_decoration_manager_v1" "wp_viewporter"
-                          "wp_fractional_scale_manager_v1"
-                          "wp_cursor_shape_manager_v1")
+                          "wp_fractional_scale_manager_v1" "wp_cursor_shape_manager_v1")
                         :test #'string=)
             (let* ((version
                     (min version
@@ -844,10 +839,9 @@ Free all interface allocations on return or error; proxies must not outlive it."
                                (t 1))))
                    (object
                     (request proxy 0 interface-name
-                             (list (cons :uint32 name)
-                                   (cons :string interface-name)
-                                   (cons :uint32 version)
-                                   (cons :pointer (cffi:null-pointer)))
+                             (list :uint32 name :string interface-name
+                                   :uint32 version
+                                   :pointer (cffi:null-pointer))
                              version)))
               (cond ((string= interface-name "wl_compositor")
                      (setf (wl-window-compositor *window*) object
@@ -872,9 +866,10 @@ Free all interface allocations on return or error; proxies must not outlive it."
                     (t
                      (setf (wl-window-seat *window*) object
                            (wl-window-seat-version *window*) version)
-                     (attach-listener
-                      object (list (cffi:callback seat-capabilities)
-                                   (cffi:callback seat-name))))))))
+                     (attach-listener object
+                                      (list
+                                       (cffi:callback seat-capabilities)
+                                       (cffi:callback seat-name))))))))
 
 (callback registry-remove ((name :uint32)) (declare (ignore name)))
 
@@ -907,13 +902,13 @@ Free all interface allocations on return or error; proxies must not outlive it."
              (wl-window-fractional-manager window))
     (setf (wl-window-viewport window)
           (request (wl-window-viewporter window) 1 "wp_viewport"
-                   (list (cons :pointer (cffi:null-pointer))
-                         (cons :pointer (wl-window-surface window))))
+                   (list :pointer (cffi:null-pointer)
+                         :pointer (wl-window-surface window)))
           (wl-window-fractional-object window)
           (request (wl-window-fractional-manager window) 1
                    "wp_fractional_scale_v1"
-                   (list (cons :pointer (cffi:null-pointer))
-                         (cons :pointer (wl-window-surface window)))))
+                   (list :pointer (cffi:null-pointer)
+                         :pointer (wl-window-surface window))))
     (attach-listener (wl-window-fractional-object window)
                      (list (cffi:callback fractional-preferred-scale))))
   (values))
@@ -937,16 +932,16 @@ Free all interface allocations on return or error; proxies must not outlive it."
         (buffer-scale (if (wl-window-viewport window)
                           1 (wl-window-buffer-scale window))))
     (when (and (>= (wl-window-compositor-version window) 3)
-               (not (eql buffer-scale
-                         (wl-window-applied-buffer-scale window))))
+               (not (eql buffer-scale (wl-window-applied-buffer-scale
+                                       window))))
       (request (wl-window-surface window) 8 nil
-               (list (cons :int32 buffer-scale)))
+               (list :int32 buffer-scale))
       (setf (wl-window-applied-buffer-scale window) buffer-scale))
     (when (and (wl-window-viewport window)
                (or (/= width (wl-window-viewport-width window))
                    (/= height (wl-window-viewport-height window))))
       (request (wl-window-viewport window) 2 nil
-               (list (cons :int32 width) (cons :int32 height)))
+               (list :int32 width :int32 height))
       (setf (wl-window-viewport-width window) width
             (wl-window-viewport-height window) height))
     (setf (gpu-logical-width gpu) width (gpu-logical-height gpu) height)
@@ -972,7 +967,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
   (setf (wl-window-configured-p window) t))
 
 (callback surface-configure ((serial :uint32))
-          (request proxy 4 nil (list (cons :uint32 serial)))
+          (request proxy 4 nil (list :uint32 serial))
           (accept-surface-configure *window*))
 
 (fn (create-decoration (or null cffi:foreign-pointer)) ((window wl-window))
@@ -981,12 +976,12 @@ Free all interface allocations on return or error; proxies must not outlive it."
     (setf (wl-window-decoration window)
           (request (wl-window-decoration-manager window) 1
                    "zxdg_toplevel_decoration_v1"
-                   (list (cons :pointer (cffi:null-pointer))
-                         (cons :pointer (wl-window-toplevel window)))))
+                   (list :pointer (cffi:null-pointer)
+                         :pointer (wl-window-toplevel window))))
     (attach-listener (wl-window-decoration window)
                      (list (cffi:callback decoration-configure)))
     ;; Version 1 requires this before the first surface commit or buffer.
-    (request (wl-window-decoration window) 1 nil (list (cons :uint32 2)))))
+    (request (wl-window-decoration window) 1 nil (list :uint32 2))))
 
 (fn (destroy-extension (or null cffi:foreign-pointer)) (proxy)
   "Destroy a non-NIL extension proxy through its protocol destructor."
@@ -1028,8 +1023,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
   (values))
 
 (callback toplevel-configure
-          ((width :int32) (height :int32) (states :pointer))
-          (declare (ignore states))
+          ((width :int32) (height :int32) (states :pointer)) (declare
+                                                              (ignore states))
           (when (and (plusp width) (plusp height))
             (setf (wl-window-width *window*) width
                   (wl-window-height *window*) height)))
@@ -1085,17 +1080,15 @@ Free all interface allocations on return or error; proxies must not outlive it."
   "Render frames and process input until the active Wayland window closes."
   (let* ((gpu (wl-window-gpu *window*)) (renderer (gpu-renderer gpu))
          (context
-          (make-context :copy
-                        (when (wl-window-clipboard-device *window*)
-                          (let ((window *window*))
-                            (lambda (text) (copy-clipboard window text))))
-                        :measure (lambda (widget width)
-                                   (measure-widget renderer widget width))))
+          (make-render-context renderer
+                               :copy (when
+                                         (wl-window-clipboard-device *window*)
+                                       (let ((window *window*))
+                                         (lambda (text)
+                                           (copy-clipboard window text))))))
          (*context* context))
-    (loop :with events
-          :until (wl-window-quit-p *window*)
-          :do
-          (sync-window-size *window*)
+    (loop :with events :until (wl-window-quit-p *window*)
+          :do (sync-window-size *window*)
           (repeat-input)
           (setf events (nreverse (shiftf (wl-window-events *window*) nil)))
           (with-frame
@@ -1115,33 +1108,31 @@ Free all interface allocations on return or error; proxies must not outlive it."
         (cffi:foreign-funcall "xkb_context_new" :uint 0 :pointer)
         (wl-window-registry *window*)
         (request display 1 "wl_registry"
-                 (list (cons :pointer (cffi:null-pointer))) 1))
+                 (list :pointer (cffi:null-pointer)) 1))
   (attach-listener (wl-window-registry *window*)
                    (list (cffi:callback registry-global)
                          (cffi:callback registry-remove)))
   (when (minusp (roundtrip display))
-    (error 'lui.conditions:backend-error
-           :backend :wayland :operation :run-window
-           :format-control "Wayland registry roundtrip failed."))
+    (lui.conditions:fail-backend :wayland :run-window
+                                 "Wayland registry roundtrip failed."))
   (create-clipboard-device *window*)
   (unless (and (wl-window-compositor *window*) (wl-window-shell *window*))
-    (error 'lui.conditions:backend-error
-           :backend :wayland :operation :run-window
-           :format-control "Wayland compositor requires wl_compositor and xdg_wm_base."))
+    (lui.conditions:fail-backend :wayland :run-window
+                                 "Wayland compositor requires wl_compositor and xdg_wm_base."))
   (values))
 
 (fn (configure-wayland-surface (values)) (display title)
   "Create the desktop surface, install listeners, and wait for initial configuration."
   (setf (wl-window-surface *window*)
         (request (wl-window-compositor *window*) 0 "wl_surface"
-                 (list (cons :pointer (cffi:null-pointer))))
+                 (list :pointer (cffi:null-pointer)))
         (wl-window-xdg *window*)
         (request (wl-window-shell *window*) 2 "xdg_surface"
-                 (list (cons :pointer (cffi:null-pointer))
-                       (cons :pointer (wl-window-surface *window*))))
+                 (list :pointer (cffi:null-pointer)
+                       :pointer (wl-window-surface *window*)))
         (wl-window-toplevel *window*)
         (request (wl-window-xdg *window*) 1 "xdg_toplevel"
-                 (list (cons :pointer (cffi:null-pointer)))))
+                 (list :pointer (cffi:null-pointer))))
   (attach-listener (wl-window-xdg *window*)
                    (list (cffi:callback surface-configure)))
   (attach-listener (wl-window-toplevel *window*)
@@ -1149,14 +1140,13 @@ Free all interface allocations on return or error; proxies must not outlive it."
                          (cffi:callback toplevel-close)))
   (create-decoration *window*)
   (create-scaling *window*)
-  (request (wl-window-toplevel *window*) 2 nil (list (cons :string title)))
-  (request (wl-window-toplevel *window*) 3 nil (list (cons :string "lui" )))
+  (request (wl-window-toplevel *window*) 2 nil (list :string title))
+  (request (wl-window-toplevel *window*) 3 nil (list :string "lui"))
   (request (wl-window-surface *window*) 6 nil nil)
   (loop :until (wl-window-configured-p *window*)
         :do (when (minusp (dispatch-display display))
-              (error 'lui.conditions:backend-error
-                     :backend :wayland :operation :run-window
-                     :format-control "Wayland initial configure failed.")))
+              (lui.conditions:fail-backend :wayland :run-window
+                                           "Wayland initial configure failed.")))
   (values))
 
 (fn (run-window (or null context))
@@ -1167,9 +1157,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
                                    :height (or height 520)))
          (*unit* 8))
     (when (cffi:null-pointer-p display)
-      (error 'lui.conditions:backend-error
-             :backend :wayland :operation :run-window
-             :format-control "Cannot connect to the Wayland display."))
+      (lui.conditions:fail-backend :wayland :run-window
+                                   "Cannot connect to the Wayland display."))
     (unwind-protect
          (progn
            (discover-wayland-globals display)
@@ -1184,8 +1173,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
                    (wl-window-font *window*) (open-font)
                    (wl-window-gpu *window*)
                    (open-gpu display (wl-window-native *window*)
-                             (wl-window-font *window*)
-                             pixel-width pixel-height)))
+                             (wl-window-font *window*) pixel-width
+                             pixel-height)))
            (run-wayland-frames draw display interactive))
       (close-wayland-window display))))
 

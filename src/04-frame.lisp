@@ -203,8 +203,8 @@ The backend supplies measurement, clipboard, and optional input callbacks."
 
 (fn (contains-p boolean) ((bounds box) (x real) (y real))
   "Test whether X/Y lies inside BOUNDS, excluding its right and bottom edges."
-  (and (<= (box-x bounds) x) (< x (+ (box-x bounds) (box-width bounds)))
-       (<= (box-y bounds) y) (< y (+ (box-y bounds) (box-height bounds)))))
+  (and (<= (box-x bounds) x) (< x (box-right bounds))
+       (<= (box-y bounds) y) (< y (box-bottom bounds))))
 
 (fn (hit t) ((context context) (x real) (y real))
   "Find the deepest interactive element whose solved clip contains X/Y."
@@ -563,9 +563,20 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
   "Whether ID was activated by this frame's pointer or keyboard input."
   (not (null (gethash id (context-activated *context*)))))
 
+(fn (remember-scroll-offsets (values)) ((context context))
+  "Retain the completed layout's scroll offsets for the next frame."
+  (clrhash (context-scroll context))
+  (walk-elements (context-root context)
+                 (lambda (node)
+                   (when (and (element-id node) (element-scroll-p node))
+                     (setf (gethash (element-id node)
+                                    (context-scroll context))
+                           (cons (element-scroll-x node)
+                                 (element-scroll-y node))))))
+  (values))
+
 (fn (end-frame element) ((context context))
-  "Complete CONTEXT: draw its overlay, solve layout, and retain input regions.
-Clear focus/hover for removed controls and return the completed root element."
+  "Complete CONTEXT: draw its overlay, solve layout, and retain input regions. Clear focus/hover for removed controls and return the completed root element."
   (assert (context-building-p context))
   (dolist (popup (nreverse (context-popups context)))
     (append-child (context-root context) popup))
@@ -599,13 +610,7 @@ Clear focus/hover for removed controls and return the completed root element."
              (unless (gethash id (context-ids context))
                (remhash id (context-state context))))
            (context-state context))
-  (clrhash (context-scroll context))
-  (walk-elements (context-root context)
-                 (lambda (node)
-                   (when (and (element-id node) (element-scroll-p node))
-                     (setf (gethash (element-id node) (context-scroll context))
-                           (cons (element-scroll-x node)
-                                 (element-scroll-y node))))))
+  (remember-scroll-offsets context)
   (let ((motion (context-scroll-motion context)))
     (when motion
       (if (gethash (aref (scroll-motion-path motion) 0) (context-ids context))

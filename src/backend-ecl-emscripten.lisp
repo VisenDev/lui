@@ -19,10 +19,8 @@
 
 (fn (operation t) ((code integer) (arguments list))
   "Call the JavaScript bridge operation with Lisp arguments; reject host execution."
-  #+lui-ecl-host (error 'lui.conditions:backend-error
-                        :backend :web-ecl :operation :operation
-                        :format-control "Browser operation ~D in host: ~S"
-                        :format-arguments (list code arguments))
+  #+lui-ecl-host (lui.conditions:fail-backend :web-ecl :operation
+                                              "Browser operation ~D in host: ~S" code arguments)
   #-lui-ecl-host
   (ffi:c-inline (code arguments) (:int :object) :object
                 "lui_js_operation(#0, #1)" :one-liner t))
