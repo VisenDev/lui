@@ -106,7 +106,9 @@ class DocsWebTests(unittest.TestCase):
                 ui.page.goto(path.as_uri())
                 ui.frames()
                 self.assertEqual(ui.page.locator("main canvas").count(), 1)
-                self.assertTrue(any("FPS" in n["text"] for n in ui.nodes()))
+                self.assertTrue(any("ms/layout" in n["text"] and
+                                    "FPS layout-only max" in n["text"]
+                                    for n in ui.nodes()))
                 ui.widget(text="Toolkit: Qt")
                 ui.click_widget(text="Cycle toolkit")
                 ui.widget(text="Toolkit: Glass")

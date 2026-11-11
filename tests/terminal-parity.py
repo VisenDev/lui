@@ -24,7 +24,7 @@ def program(backend, toolkit, page):
 {load}
 (asdf:load-system "lui/demo")
 (setf (symbol-function 'lui.frame::frame-rate-label)
-      (lambda (state) (declare (ignore state)) "Frame rate: parity"))
+      (lambda (&rest state) (declare (ignore state)) "Frame rate: parity"))
 (let ((gallery (lui.example:make-gallery :toolkit :{toolkit} :page :{page}
                                        :name "A界é 🦊" :editor "Unicode 界é 🦊 clipped text"))
       (first t))

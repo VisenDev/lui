@@ -26,7 +26,6 @@
   (preview "Ocean")
   (preview-color "#335d91")
   (preview-count 0)
-  (frame-rate (lui.frame::make-frame-rate))
   (filtered-items nil)
   (last-filter nil))
 
@@ -243,7 +242,7 @@
     (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
       (lui:label (format nil "Palette: ~A" (string-capitalize (symbol-name (gallery-palette g)))))
       (lui:button :palette "Cycle palette" (lui:opt :disabled-p (modal-p g))))
-    (lui:label (lui.frame::frame-rate-label (gallery-frame-rate g)))
+    (lui:label (lui.frame::frame-rate-label))
     (lui:row (:width (lui:grow) :gap (lui:units 1))
       (dolist (page *pages*)
         (when (lui:tab (list :page (first page)) (second page)

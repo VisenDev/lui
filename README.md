@@ -214,8 +214,11 @@ beveled checkboxes, and visually distinct disabled buttons. Garnet uses bold
 monospaced text, black hairlines, checker stipples, hard offset shadows, and X
 checkboxes inspired by the original Garnet gadgets. Window backgrounds remain
 opaque; Glass translucency composites within the application. The gallery also
-displays FPS and average frame time on graphical backends; these include backend
-pacing. The terminal labels its event-driven rendering instead. Its sliders have tracks
+displays the previous layout solve in milliseconds and its theoretical FPS
+ceiling (1000 / milliseconds) in both the demo and docs. This layout-only timing
+includes measurement but excludes UI construction, painting, presentation, and
+idle/backend pacing; it is not an estimate of end-to-end rendering FPS.
+Its sliders have tracks
 and thumbs, colors distinguish selection from pointer hover, and text/clip edges
 share cell rounding. Uncursed owns cell storage, Unicode widths, ANSI style encoding, and incremental
 screen updates; LUI supplies widget layout and input translation. Plain snapshots remain

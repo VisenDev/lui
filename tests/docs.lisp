@@ -32,7 +32,16 @@
              (activate (id)
                (frame context draw (make-event :kind :activate :id id))))
       (frame context draw)
-      (assert (has-label context "Terminal: event-driven rendering"))
+      (assert (has-label context "Layout: measuring…"))
+      ;; The label uses the previous solve, independent of idle frame cadence.
+      (setf (lui.frame::context-layout-ms context) 4)
+      (frame context draw)
+      (assert (has-label context
+                         "4.000 ms/layout · 250.0 FPS layout-only max"))
+      (assert (>= (lui.frame::context-layout-ms context) 0))
+      (setf (lui.frame::context-layout-ms context) 0)
+      (frame context draw)
+      (assert (has-label context "Layout: below timer resolution"))
       ;; Symbols and details each retain an independent tall viewport.
       (let ((list (element-box (node-with-id context :docs-entries)))
             (detail (element-box (node-with-id context :docs-detail))))

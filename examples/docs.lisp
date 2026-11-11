@@ -86,7 +86,6 @@
      "Build commands use GNU Make, Bash, and SBCL. Python is used by the existing integration tests and local web server. make test PLATFORM=core runs portable checks; native, gl, and platform-specific targets cover additional paths. See README for configuration, source registry setup, and the verified platform matrix.")))
 
 (defstruct browser
-  (frame-rate (lui.frame::make-frame-rate))
   (clicks 0 :type integer) (panel-clicks 0 :type integer)
   (date nil :type (or null string))
   (checked-p t :type boolean) (cell-p nil :type boolean)
@@ -524,7 +523,7 @@
             (setf (browser-palette state)
                   (aref names (mod (1+ (position (browser-palette state) names)) (length names)))))
           (lui:request-frame)))
-      (lui:label (lui.frame::frame-rate-label (browser-frame-rate state)))
+      (lui:label (lui.frame::frame-rate-label))
       (lui:row (:width (lui:grow) :height (lui:grow) :gap (lui:units 1))
         (navigation state)
         (if (>= (lui.frame:context-width lui.frame:*context*) (lui:units 80))

@@ -77,6 +77,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   last-click
   (min-fps *min-fps* :type real)
   (max-fps *max-fps* :type real)
+  (layout-ms nil :type (or null real))
   (time 0 :type real)
   (next-frame nil :type (or null real))
   focus
@@ -125,27 +126,19 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   "Monotonic seconds sampled once for the current frame."
   (context-time *context*))
 
-(defstruct frame-rate
-  (fps 0.0f0 :type real)
-  (count 0 :type integer)
-  (start nil :type (or null real)))
+(fn (layout-clock real) ()
+  "High-resolution elapsed-time clock in milliseconds."
+  #+jscl (#j:performance:now)
+  #-jscl (* 1000 (/ (get-internal-real-time)
+                   internal-time-units-per-second)))
 
-(fn (frame-rate-label string) ((rate frame-rate))
-  "Sample frame cadence without scheduling additional redraws."
-  (when (context-text-mode-p *context*)
-    (return-from frame-rate-label "Terminal: event-driven rendering"))
-  (let ((now (frame-time)))
-    (if (null (frame-rate-start rate))
-        (setf (frame-rate-start rate) now)
-        (let ((elapsed (- now (frame-rate-start rate))))
-          (incf (frame-rate-count rate))
-          (when (>= elapsed 0.5f0)
-            (setf (frame-rate-fps rate) (/ (frame-rate-count rate) elapsed)
-                  (frame-rate-count rate) 0
-                  (frame-rate-start rate) now)))))
-  (let ((fps (frame-rate-fps rate)))
-    (format nil "~,1F FPS · ~,2F ms/frame" fps
-            (if (plusp fps) (/ 1000 fps) 0.0f0))))
+(fn (frame-rate-label string) ()
+  "Report the previous layout solve, excluding drawing and backend pacing."
+  (let ((ms (context-layout-ms *context*)))
+    (cond ((null ms) "Layout: measuring…")
+          ((zerop ms) "Layout: below timer resolution")
+          (t (format nil "~,3F ms/layout · ~,1F FPS layout-only max"
+                     ms (/ 1000 ms))))))
 
 (fn (frame-wait real) ((context context) &optional urgent
                 (now (/ (get-internal-real-time)
@@ -515,9 +508,14 @@ Clear focus/hover for removed controls and return the completed root element."
   (when (context-overlay context)
     (let ((*context* context) (*parent* (context-root context)))
       (funcall (context-overlay context) (context-previous-root context))))
-  (let ((page-top (when (context-page-height-p context) (context-page-top context))))
-    (solve (context-root context) (context-width context) (context-viewport-height context) page-top)
-    (setf (context-height context) (box-height (element-box (context-root context)))))
+  (let ((page-top (when (context-page-height-p context)
+                    (context-page-top context)))
+        (started (layout-clock)))
+    (solve (context-root context) (context-width context)
+           (context-viewport-height context) page-top)
+    (setf (context-layout-ms context) (- (layout-clock) started)
+          (context-height context)
+          (box-height (element-box (context-root context)))))
   (dolist (decorate (nreverse (context-after-layout context)))
     (funcall decorate))
   (flet ((interactive-p (id)
