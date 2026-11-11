@@ -3,8 +3,29 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LUI — ECL / WebAssembly</title>
-<style>html,body{margin:0;background:#202432;color:white}#loading{padding:1rem}</style>
-<p id="loading" role="status">Loading LUI (ECL / WebAssembly)…</p>
+<style>
+/* Match the default Qt palette before Lisp creates the first frame. */
+html, body { margin: 0; background: #efefef; color: #202020; }
+#loading {
+  position: fixed; inset: 0; z-index: 1;
+  display: grid; place-items: center;
+  background: #efefef;
+}
+.loading-spinner {
+  width: 2rem; height: 2rem;
+  border: 3px solid #d4d4d4; border-top-color: #308cc6;
+  border-radius: 50%;
+  animation: loading-spin 900ms linear infinite;
+}
+#loading[role="alert"] { padding: 1.5rem; font: 1rem system-ui, sans-serif; }
+@keyframes loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner { animation: none; }
+}
+</style>
+<div id="loading" role="status" aria-label="Loading LUI">
+  <span class="loading-spinner" aria-hidden="true"></span>
+</div>
 <script>
 function startupFailed(reason) {
   let message = document.getElementById('loading');
@@ -14,10 +35,24 @@ function startupFailed(reason) {
     document.body.appendChild(message);
   }
   message.setAttribute('role', 'alert');
+  message.removeAttribute('aria-label');
   message.textContent = 'LUI could not start: ' + reason;
 }
 var Module = {
-  onRuntimeInitialized() { document.getElementById('loading').remove(); },
+  onRuntimeInitialized() {
+    requestAnimationFrame(function waitForCanvas() {
+      const loading = document.getElementById('loading');
+      if (!loading || loading.getAttribute('role') === 'alert') return;
+      const canvas = document.querySelector('main canvas');
+      if (canvas && canvas.width && canvas.height) {
+        requestAnimationFrame(() => {
+          if (loading.getAttribute('role') === 'status') loading.remove();
+        });
+      } else {
+        requestAnimationFrame(waitForCanvas);
+      }
+    });
+  },
   onAbort: startupFailed
 };
 </script>

@@ -36,7 +36,7 @@ IDs so a release, keypress, or edit can find the same control on the next
 frame. For example, this entire application runs with any loaded backend:
 
 ```lisp
-(defun counter (&optional (toolkit :glass))
+(defun counter (&optional (toolkit :qt))
   (let ((count 0))
     (lui:run
      (lambda ()
@@ -79,6 +79,9 @@ The public API is available through `lui:`. Optional systems add their API to
 the same package when loaded: for example, `lui/debug` adds
 `lui:set-debugger-enabled`, and `lui/web` adds `lui:mount`. Implementation
 packages are for backend and library maintenance.
+
+Qt is the default toolkit on every platform. Use `lui:with-toolkit` to select
+a different appearance.
 
 Use the optional final `lui:opt` form for widget customization. Its keyword
 lambda list is visible to SLIME; layout keys such as `:gap` apply to panels,

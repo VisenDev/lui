@@ -136,7 +136,7 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
     (funcall runner draw :title title :width width :height height
              :interactive interactive)))
 
-(defvar *toolkit* :glass)
+(defvar *toolkit* :qt)
 (defvar *toolkit-definition* nil)
 (defvar *palette* nil)
 

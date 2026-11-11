@@ -12,7 +12,7 @@
     model))
 
 (defstruct state
-  (task :counter :type symbol) (toolkit :glass :type symbol)
+  (task :counter :type symbol) (toolkit :qt :type symbol)
   (count 0 :type integer)
   (celsius "0" :type string) (fahrenheit "32" :type string)
   (return-p nil :type boolean)
@@ -294,9 +294,10 @@
 (defun draw (state)
   (lui:with-toolkit ((state-toolkit state))
     (lui:panel (lui:opt :id :seven-window :width (lui:grow) :height (lui:grow)
-                        :background (ecase (state-toolkit state)
-                                      (:glass "#202430") (:motif "#b8b8b8")
-                                      (:garnet "#ffffff"))
+                        :background
+                        (let ((colors (lui:toolkit-palette)))
+                          (getf colors :window-background
+                                (getf colors :background)))
                         :opacity 1 :radius 0 :frost 0
                         :padding (lui:units 1) :gap (lui:units 1))
       (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
@@ -304,11 +305,12 @@
         (when (lui:button :seven-toolkit
                           (ecase (state-toolkit state)
                             (:glass "Glass") (:motif "Motif")
-                            (:garnet "Garnet"))
+                            (:garnet "Garnet") (:macos "macOS") (:qt "Qt"))
                           (lui:opt :disabled-p (modal-p state)))
           (setf (state-toolkit state)
                 (case (state-toolkit state)
-                  (:glass :motif) (:motif :garnet) (otherwise :glass)))
+                  (:glass :motif) (:motif :garnet) (:garnet :macos)
+                  (:macos :qt) (otherwise :glass)))
           (lui:request-frame)))
       (draw-content state))))
 
