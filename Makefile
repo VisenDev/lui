@@ -247,3 +247,7 @@ else ifeq ($(PLATFORM),web-ecl)
 else
 	$(SBCL) $(SBCL_FLAGS) --load scripts/benchmark.lisp
 endif
+
+.PHONY: lint
+lint:
+	$(PYTHON) scripts/lint.py

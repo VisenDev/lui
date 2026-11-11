@@ -1,8 +1,9 @@
 (defpackage #:lui.interaction
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame)
   (:import-from #:lui
-    #:key-pressed-p #:text-input-event #:visible-span #:list-index
-    #:reveal-rect #:take-events #:event-targets #:reset-editor #:edit-value)
+                #:key-pressed-p #:text-input-event #:visible-span #:list-index
+                #:reveal-rect #:take-events #:event-targets #:reset-editor
+                #:edit-value)
   (:export #:key-pressed-p #:text-input-event #:visible-span #:list-index
            #:reveal-rect #:take-events #:event-targets #:reset-editor
            #:edit-value))
@@ -34,7 +35,8 @@
     (setf (gethash id (context-state *context*))
           (lui.widgets:make-edit-state :cursor length :anchor length))))
 
-(fn (edit-value string) (id (text string) &optional ((events sequence) (take-events id)))
+(fn (edit-value string) (id (text string) &optional ((events sequence)
+                                                     (take-events id)))
   "Apply editor events without declaring a widget; preserve caret and kill state."
   (let* ((state (or (gethash id (context-state *context*))
                     (reset-editor id text)))
@@ -71,7 +73,10 @@ outside editing. Return an event or NIL; printable input remains text."
   (values (max 0 (min (1- count) (floor (- offset header) size)))
           (min count (1+ (ceiling (- (+ offset viewport) header) size)))))
 
-(fn (list-index (or null integer)) ((key symbol) (index integer) (count (integer 0 *)))
+(fn (list-index (or null integer))
+    ((key symbol) (index integer) (count
+                                   (integer 0
+                                            *)))
   "Move a bounded list selection; return NIL for an unrelated key/empty list."
   (when (plusp count)
     (case key
@@ -79,8 +84,10 @@ outside editing. Return an event or NIL; printable input remains text."
       (:down (min (1- count) (1+ index)))
       (:home 0) (:end (1- count)) (otherwise nil))))
 
-(fn (reveal-rect (or null boolean)) (id (left real) (top real) (width real) (height real)
-    &key ((leading-x real) 0) ((leading-y real) 0))
+(fn (reveal-rect (or null boolean)) (id (left real) (top real) (width real)
+                                     (height real)
+                                     &key ((leading-x real) 0) ((leading-y
+                                                                 real) 0))
   "Scroll a content rectangle into view, reserving optional leading header space."
   (let ((viewport (previous-box id)))
     (when viewport
@@ -94,12 +101,16 @@ outside editing. Return an event or NIL; printable input remains text."
           (when (lui.frame::context-page-height-p *context*)
             (let* ((origin (+ (box-y viewport) top (- next-y)))
                    (current (lui.frame::context-page-top *context*))
-                   (target (max 0 (min (- origin leading-y)
-                                       (max current (- (+ origin height)
-                                                       (lui.frame::context-viewport-height *context*)))))))
+                   (target
+                     (max 0
+                                (min (- origin leading-y)
+                                     (max current
+                                          (- (+ origin height)
+                                            (lui.frame::context-viewport-height *context*)))))))
               (unless (= target current)
                 (setf (lui.frame::context-page-top *context*) target
-                      (lui.frame::context-requested-page-top *context*) target)
+                      (lui.frame::context-requested-page-top *context*)
+                      target)
                 (request-frame))))
           (unless (and (= x next-x) (= y next-y))
             (scroll-to id next-x next-y)

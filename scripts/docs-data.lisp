@@ -8,6 +8,9 @@
 ;; Keep public reexports here even when their definitions live in hidden modules.
 (defparameter *public-api*
   '(("lui"
+     "LUI-ERROR" "CONFIGURATION-ERROR" "BACKEND-ERROR" "FONT-ERROR"
+     "FRAME-STATE-ERROR" "ERROR-OPERATION" "ERROR-SETTING" "ERROR-VALUE"
+     "ERROR-BACKEND" "ERROR-FONT-REQUEST"
      "RUN" "REGISTER-BACKEND" "AVAILABLE-BACKENDS" "UNITS" "*BACKEND*"
      "*UNIT*" "WITH-TOOLKIT" "CURRENT-TOOLKIT" "TOOLKIT-DEFAULTS"
      "REGISTER-TOOLKIT" "REGISTER-TOOLKIT-RENDERING" "TOOLKIT-PAINT"
@@ -219,7 +222,8 @@ are read for resolution; only explicitly selected exports enter the reference."
                    (list :package (definition-package current base)
                          :name (local-name base) :kind kind
                          :signature (if (member kind '(:variable :constant
-                                                       :structure :type))
+                                                       :structure :type
+                                                       :condition))
                                         (string-downcase (local-name base))
                                         (signature name args))
                          :documentation (or documentation "")
@@ -304,6 +308,14 @@ are read for resolution; only explicitly selected exports enter the reference."
                     (record name :function
                             (mapcar #'first (remove-if #'stringp body))
                             (find-if #'stringp body))))
+                 ((string= head "DEFINE-CONDITION")
+                  (record (second form) :condition nil
+                          (second (assoc :documentation (cddddr form))))
+                  (dolist (slot (fourth form))
+                    (let ((reader (getf (cdr slot) :reader)))
+                      (when reader
+                        (record reader :function '(condition)
+                                (getf (cdr slot) :documentation))))))
                  ((member head '("DEFSTRUCT" "DEFSTRUCT*") :test #'string=)
                   (structure form))
                  ((member head '("DEFVAR" "DEFPARAMETER" "DEFCONSTANT")

@@ -1,7 +1,8 @@
 (defpackage #:lui.widgets
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame)
   (:export #:widget #:widget-p #:widget-kind #:widget-style #:widget-text
-           #:widget-color #:widget-palette #:widget-foreground #:widget-background #:widget-radius
+           #:widget-color #:widget-palette #:widget-foreground
+           #:widget-background #:widget-radius
            #:widget-frost #:widget-terminal-border
            #:widget-terminal-text #:declare-panel #:declare-widget
            #:value-widget
@@ -14,28 +15,31 @@
            #:widget-painter
            #:edit-state #:edit-state-cursor
            #:edit-state-anchor #:make-edit-state #:edit-text #:readline-key
+           #:horizontal-selection-key
            #:text-field-focused-p #:activation-focused-p #:cursor-at))
 
 (in-package #:lui.widgets)
 
 (fn (muted-ink string) ((foreground string) (background string))
   "Soften a foreground color against its surface for secondary text."
-  (if (every (lambda (color) (and (= (length color) 7) (char= (char color 0) #\#)))
+  (if (every (lambda (color) (and (= (length color) 7) (char= (char color 0)
+                                                              #\#)))
              (list foreground background))
       (with-output-to-string (stream)
         (write-char #\# stream)
         (loop :for i :in '(1 3 5)
               :for fg := (parse-integer foreground
-                                       :start i :end (+ i 2) :radix 16)
+                                        :start i :end (+ i 2) :radix 16)
               :for bg := (parse-integer background
-                                       :start i :end (+ i 2) :radix 16)
+                                        :start i :end (+ i 2) :radix 16)
               :do (format stream "~2,'0X" (round (+ (* 2 fg) bg) 3))))
       foreground))
 
 (defparameter *base-palette*
   '(:foreground "#ffffff" :background "#303040" :accent "#258bff"
     :disabled "#777777" :selection "#e7effa" :border "#939ba5" :outline "#000000"
-    :thumb "#ffffff" :on-accent "#ffffff" :light "#ffffff" :shadow "#000000" :track "#777777"
+    :thumb "#ffffff" :on-accent "#ffffff" :light "#ffffff" :shadow "#000000"
+    :track "#777777"
     :disabled-accent "#999999" :disabled-surface "#a0a0a0"
     :bevel-light "#ffffff" :bevel-dark "#505050"
     :disabled-bevel-light "#d0d0d0" :disabled-bevel-dark "#989898"
@@ -73,7 +77,9 @@
   (frost 12 :type real))
 
 (fn (palette-color (or null string)) ((palette list) (role symbol)
-                                     &optional ((default (or null string)) nil))
+                                      &optional ((default (or null string))
+                                                 nil))
+  "Resolve KEY in the widget palette, falling back to the supplied color."
   ;; Palette lookup stays small and allocation-free in the per-widget hot path.
   (cond ((null palette) default)
         ((eq (car palette) role) (cadr palette))
@@ -103,37 +109,43 @@ An optional terminal-label callback overrides the standard kind-based label."
                 (funcall (widget-terminal-label widget) widget)
                 (let ((text (widget-text widget))
                       (value (widget-display-value widget)))
-              (case (widget-kind widget)
-                ((:label :list-item :cell) text)
-                ((:panel :canvas) "")
-                (:gauge
-                 (let ((filled (round (* 10 (min 1 (max 0 value))))))
-                   (format nil "[~A~A] ~D%"
-                           (make-string filled :initial-element #\#)
-                           (make-string (- 10 filled) :initial-element #\.)
-                           (round (* 100 (min 1 (max 0 value)))))))
-                (:checkbox (format nil "[~A] ~A" (if value "x" " ") text))
-                (:radio (format nil "(~A) ~A" (if value "*" " ") text))
-                (:slider
-                 (format nil "~A [~D%]" text
-                         (round (* 100 (/ (- value (widget-minimum widget))
-                                           (- (widget-maximum widget)
-                                              (widget-minimum widget)))))))
-                (:text-field (format nil "[~A]" (if (zerop (length value)) text value)))
-                (:tab (format nil (if value "[ ~A ]" "  ~A  ") text))
-                (otherwise
-                 (format nil (if (zerop (widget-radius widget))
-                                 "[ ~A ]" "( ~A )") text))))))))
+                  (case (widget-kind widget)
+                    ((:label :list-item :cell) text)
+                    ((:panel :canvas) "")
+                    (:gauge
+                     (let ((filled (round (* 10 (min 1 (max 0 value))))))
+                       (format nil "[~A~A] ~D%"
+                               (make-string filled :initial-element #\#)
+                               (make-string (- 10 filled) :initial-element
+                                            #\.)
+                               (round (* 100 (min 1 (max 0 value)))))))
+                    (:checkbox (format nil "[~A] ~A" (if value "x" " ") text))
+                    (:radio (format nil "(~A) ~A" (if value "*" " ") text))
+                    (:slider
+                     (format nil "~A [~D%]" text
+                             (round (* 100 (/ (- value (widget-minimum
+                                                        widget))
+                                              (- (widget-maximum widget)
+                                                 (widget-minimum widget)))))))
+                    (:text-field (format nil "[~A]" (if (zerop (length
+                                                                value)) text
+                                                                value)))
+                    (:tab (format nil (if value "[ ~A ]" "  ~A  ") text))
+                    (otherwise
+                     (format nil (if (zerop (widget-radius widget))
+                                     "[ ~A ]" "( ~A )") text))))))))
 
 (fn (tab-arrow-p boolean) ((event event))
+  "Recognize directional keyboard input used to navigate a tab group."
   (and (eq (event-kind event) :key)
        (not (null (member (event-key event) '(:left :right :home :end))))))
 
 (fn (navigate-tabs (values)) ()
+  "Route tab-group arrow keys once per frame using the previous layout."
   (when (and (not (context-tabs-handled-p *context*))
              (context-previous-root *context*)
              (loop :for events :being :the :hash-values
-                     :of (context-events *context*)
+                   :of (context-events *context*)
                    :thereis (some #'tab-arrow-p events)))
     (setf (context-tabs-handled-p *context*) t)
     (walk-elements
@@ -171,35 +183,57 @@ An optional terminal-label callback overrides the standard kind-based label."
 
 (fn (declare-widget boolean)
     ((kind symbol) (style symbol) id (text string) &key ((width sizing) (fit))
-     ((height sizing) (fit)) ((padding real) 0)
-     ((floating-p boolean) nil) ((offset-x real) 0) ((offset-y real) 0)
-     ((foreground string) "#ffffff") ((background string) "#303040")
-     ((radius real) 12) ((frost real) 12) value ((minimum real) 0)
-     ((maximum real) 1) ((step real) 0.01f0) ((font-size real) 16)
-     ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
-     ((opacity real) 0.85f0) ((accent string) "#258bff") (disabled-p nil)
-     painter terminal-label ((terminal-border (or null (string 6))) nil)
-     accessible-name icon center-text-p (password-p nil)
-     (palette *base-palette*))
+                                                     ((height sizing) (fit))
+                                                     ((padding real) 0)
+                                                     ((floating-p boolean)
+                                                      nil) ((offset-x real)
+                                                      0) ((offset-y real) 0)
+                                                     ((foreground string) "#ffffff") ((background string) "#303040")
+                                                     ((radius real) 12)
+                                                     ((frost real) 12) value
+                                                     ((minimum real) 0)
+                                                     ((maximum real) 1)
+                                                     ((step real) 0.01f0)
+                                                     ((font-size real) 16)
+                                                     ((font-family symbol)
+                                                      :sans-serif)
+                                                     ((font-weight symbol)
+                                                      :normal)
+                                                     ((opacity real) 0.85f0)
+                                                     ((accent string) "#258bff") (disabled-p nil)
+                                                     painter terminal-label
+                                                     ((terminal-border
+                                                       (or
+                                                        null
+                                                        (string 6))) nil)
+                                                     accessible-name icon
+                                                     center-text-p
+                                                     (password-p nil)
+                                                     (palette *base-palette*))
   "Declare a low-level widget in the current frame using STYLE and stable ID.
 Layout, typography, colors, optical effects, and backend extension callbacks
 are supplied as keywords. Return activation for enabled actionable kinds.
 Most applications should use the public LUI controls with LUI:OPT instead."
   (when (eq kind :tab) (navigate-tabs))
   (let ((measure (or (context-measure *context*)
-                     (error "A backend text measurer is required.")))
+                     (error 'lui.conditions:configuration-error
+                            :setting :text-measurer :value nil
+                            :operation :declare-widget
+                            :format-control "A backend text measurer is required.")))
         (widget
-          (make-widget
-           :kind kind :style style :palette (copy-list palette) :text text :foreground foreground
-           :background background :radius radius :frost frost :value value
-           :minimum minimum :maximum maximum :step step :font-size font-size
-           :font-family font-family :font-weight font-weight
-           :opacity opacity :accent accent
-           :disabled-p (not (null disabled-p)) :painter painter
-           :icon icon :center-text-p center-text-p :terminal-label terminal-label
-           :password-p (not (null password-p))
-           :terminal-border terminal-border
-           :accessible-name accessible-name)))
+         (make-widget
+          :kind kind :style style :palette (copy-list palette) :text text
+          :foreground foreground
+          :background background :radius radius :frost frost :value value
+          :minimum minimum :maximum maximum :step step :font-size font-size
+          :font-family font-family :font-weight font-weight
+          :opacity opacity :accent accent
+          :disabled-p (not (null disabled-p)) :painter painter
+          :icon icon :center-text-p center-text-p :terminal-label
+          terminal-label
+          :password-p (not (null password-p))
+          :terminal-border terminal-border
+          :accessible-name accessible-name)))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding
            :floating-p floating-p :offset-x offset-x :offset-y offset-y
@@ -220,6 +254,7 @@ Most applications should use the public LUI controls with LUI:OPT instead."
   (last-command nil :type symbol))
 
 (fn (focused-widget (or null widget)) ((context context))
+  "Find the focused widget in the previous completed layout, or return NIL."
   (when (context-root context)
     (let ((node (gethash (context-focus context)
                          (lui.frame::context-ids context))))
@@ -237,7 +272,8 @@ Backends use this to activate controls with Space without stealing editor text."
   (let ((widget (focused-widget context)))
     (and (widget-p widget) (not (widget-disabled-p widget))
          (not (null (member (widget-kind widget)
-                            '(:button :checkbox :radio :tab :list-item :cell)))))))
+                            '(:button :checkbox :radio :tab :list-item
+                              :cell)))))))
 
 (fn (cursor-at symbol) ((context context) (x real) (y real))
   "Return the cursor kind at X,Y, respecting clipping and topmost widgets.
@@ -269,6 +305,12 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
                          (t :default))))))))
     cursor))
 
+(fn (horizontal-selection-key symbol) ((key symbol) extend)
+  "Map horizontal arrows to selection-extending commands when EXTEND is true."
+  (if extend
+      (case key (:left :shift-left) (:right :shift-right) (otherwise key))
+      key))
+
 (fn (readline-key symbol) ((key string) &key control alt shift)
   "Translate modified keys to shared editor commands; NIL leaves native handling."
   (let* ((name (string-downcase key))
@@ -285,14 +327,14 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
            arrow))
       (control
        (let ((command (cdr (assoc name
-                                 '(("a" . :home) ("e" . :end)
-                                   ("b" . :left) ("f" . :right)
-                                   ("p" . :up) ("n" . :down)
-                                   ("d" . :delete) ("h" . :backspace)
-                                   ("k" . :kill-end) ("u" . :kill-start)
-                                   ("w" . :kill-word) ("y" . :yank)
-                                   ("t" . :transpose))
-                                 :test #'string=))))
+                                  '(("a" . :home) ("e" . :end)
+                                    ("b" . :left) ("f" . :right)
+                                    ("p" . :up) ("n" . :down)
+                                    ("d" . :delete) ("h" . :backspace)
+                                    ("k" . :kill-end) ("u" . :kill-start)
+                                    ("w" . :kill-word) ("y" . :yank)
+                                    ("t" . :transpose))
+                                  :test #'string=))))
          (if shift
              (case command
                (:home :shift-home) (:end :shift-end)
@@ -301,19 +343,22 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
              command)))
       (alt
        (cdr (assoc name '(("b" . :word-left) ("f" . :word-right)
-                         ("d" . :kill-word-forward)
-                         ("backspace" . :kill-word))
+                          ("d" . :kill-word-forward)
+                          ("backspace" . :kill-word))
                    :test #'string=))))))
 
 (fn (line-start integer) ((text string) (cursor integer))
+  "Return the start index of the line containing POSITION in TEXT."
   (let ((newline (position #\Newline text :end cursor :from-end t)))
     (if newline (1+ newline) 0)))
 
 (fn (line-end integer) ((text string) (cursor integer))
+  "Return the end index of the line containing POSITION in TEXT."
   (or (position #\Newline text :start cursor) (length text)))
 
 (fn (word-position integer) ((text string) (cursor integer)
-                            (direction integer) &optional whitespace)
+                             (direction integer) &optional whitespace)
+  "Find the next word boundary for a directional editor motion."
   (let ((index (if (minusp direction) (1- cursor) cursor)))
     (flet ((word-p (character)
              (if whitespace
@@ -327,116 +372,183 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
             :do (incf index direction)))
     (if (minusp direction) (1+ index) index)))
 
+(fn (move-editor-cursor (values))
+    ((text string) (state edit-state) (position integer) &optional extend)
+  "Clamp the caret to TEXT and collapse selection unless EXTEND is true."
+  (setf (edit-state-cursor state) (max 0 (min (length text) position)))
+  (unless extend
+    (setf (edit-state-anchor state) (edit-state-cursor state)))
+  (values))
+
+(fn (replace-editor-selection string)
+    ((text string) (state edit-state) (start integer) (end integer)
+     (replacement string))
+  "Replace START..END and collapse STATE's selection after the inserted text."
+  (setf (edit-state-cursor state) (+ start (length replacement))
+        (edit-state-anchor state) (edit-state-cursor state))
+  (concatenate 'string (subseq text 0 start) replacement (subseq text end)))
+
+(fn (kill-editor-selection string)
+    ((text string) (state edit-state) (start integer) (end integer) backward)
+  "Remove START..END and append to a consecutive kill in the proper direction."
+  (when (< start end)
+    (let ((killed (subseq text start end)))
+      (setf (edit-state-kill state)
+            (if (member (edit-state-last-command state)
+                        '(:kill-end :kill-start :kill-word
+                          :kill-word-forward))
+                (if backward
+                    (concatenate 'string killed (edit-state-kill state))
+                    (concatenate 'string (edit-state-kill state) killed))
+                killed)))
+    (setf text (replace-editor-selection text state start end "")))
+  text)
+
+(fn (move-editor-line (values))
+    ((text string) (state edit-state) (direction integer))
+  "Move to the adjacent line while preserving the column where possible."
+  (let* ((cursor (edit-state-cursor state))
+         (left (line-start text cursor))
+         (column (- cursor left))
+         (next (if (minusp direction) (1- left)
+                   (1+ (line-end text cursor)))))
+    (when (<= 0 next (length text))
+      (move-editor-cursor text state
+                          (min (line-end text next)
+                               (+ (line-start text next) column)))))
+  (values))
+
+(fn (editor-motion-p boolean)
+    ((text string) (state edit-state) (key symbol)
+     (start integer) (end integer))
+  "Apply a caret-motion KEY and report whether it was handled."
+  (let ((cursor (edit-state-cursor state)))
+    (flet ((move-to (position &optional extend)
+             (move-editor-cursor text state position extend)))
+      (case key
+        (:left (move-to (if (< start end) start (1- cursor))))
+        (:right (move-to (if (< start end) end (1+ cursor))))
+        (:shift-left (move-to (1- cursor) t))
+        (:shift-right (move-to (1+ cursor) t))
+        (:home (move-to (line-start text cursor)))
+        (:end (move-to (line-end text cursor)))
+        (:shift-home (move-to (line-start text cursor) t))
+        (:shift-end (move-to (line-end text cursor) t))
+        (:up (move-editor-line text state -1))
+        (:down (move-editor-line text state 1))
+        ((:word-left :shift-word-left)
+         (move-to (word-position text cursor -1) (eq key :shift-word-left)))
+        ((:word-right :shift-word-right)
+         (move-to (word-position text cursor 1) (eq key :shift-word-right)))
+        (:select-all
+         (setf (edit-state-anchor state) 0
+               (edit-state-cursor state) (length text)))
+        (otherwise (return-from editor-motion-p nil)))))
+  t)
+
+(fn (edit-text-key string)
+    ((text string) (state edit-state) (key symbol)
+     (start integer) (end integer))
+  "Apply a text-editing KEY, preserving kill accumulation and caret movement."
+  (when (editor-motion-p text state key start end)
+    (return-from edit-text-key text))
+  (let ((cursor (edit-state-cursor state)))
+    (case key
+      (:backspace
+       (when (= start end) (setf start (max 0 (1- cursor))))
+       (setf text (replace-editor-selection text state start end "")))
+      (:delete
+       (when (= start end) (setf end (min (length text) (1+ cursor))))
+       (setf text (replace-editor-selection text state start end "")))
+      (:kill-end
+       (when (= start end)
+         (setf end (line-end text cursor))
+         (when (and (< end (length text)) (= cursor end)) (incf end)))
+       (setf text (kill-editor-selection text state start end nil)))
+      (:kill-start
+       (when (= start end) (setf start (line-start text cursor)))
+       (setf text (kill-editor-selection text state start end t)))
+      (:kill-word
+       (when (= start end) (setf start (word-position text cursor -1 t)))
+       (setf text (kill-editor-selection text state start end t)))
+      (:kill-word-forward
+       (when (= start end) (setf end (word-position text cursor 1)))
+       (setf text (kill-editor-selection text state start end nil)))
+      (:yank
+       (setf text (replace-editor-selection
+                   text state start end (edit-state-kill state))))
+      (:transpose
+       (when (and (plusp cursor) (> (length text) 1))
+         (let ((right (min cursor (1- (length text)))))
+           (setf text (copy-seq text))
+           (rotatef (char text (1- right)) (char text right))
+           (move-editor-cursor text state (1+ right)))))
+      (otherwise nil)))
+  text)
+
 (fn (edit-text string) ((text string) (state edit-state) (events sequence))
   "Apply ordered editor EVENTS to TEXT using mutable caret/selection STATE.
 Return the new text; preserve the editor's kill/yank state between frames.
 Events include semantic Readline keys, text insertion, and replacement changes."
   (loop :for event-index :below (length events)
         :for event := (elt events event-index) :do
-    (setf (edit-state-cursor state)
-          (max 0 (min (length text) (edit-state-cursor state)))
-          (edit-state-anchor state)
-          (max 0 (min (length text) (edit-state-anchor state))))
-    (let* ((cursor (edit-state-cursor state))
-           (start (min cursor (edit-state-anchor state)))
-           (end (max cursor (edit-state-anchor state))))
-      (labels ((replace-selection (replacement)
-                 (setf text
-                       (concatenate 'string (subseq text 0 start) replacement
-                                    (subseq text end))
-                       (edit-state-cursor state)
-                       (+ start (length replacement))
-                       (edit-state-anchor state) (edit-state-cursor state)))
-               (move-cursor (position &optional extend)
-                 (setf (edit-state-cursor state)
-                       (max 0 (min (length text) position)))
-                 (unless extend
-                   (setf (edit-state-anchor state)
-                         (edit-state-cursor state))))
-               (kill-selection (backward)
-                 (when (< start end)
-                   (let ((killed (subseq text start end)))
-                     (setf (edit-state-kill state)
-                           (if (member (edit-state-last-command state)
-                                       '(:kill-end :kill-start :kill-word
-                                         :kill-word-forward))
-                               (if backward
-                                   (concatenate 'string killed
-                                                (edit-state-kill state))
-                                   (concatenate
-                                    'string (edit-state-kill state) killed))
-                               killed)))
-                   (replace-selection "")))
-               (move-line (direction)
-                 (let* ((left (line-start text cursor))
-                        (column (- cursor left))
-                        (next (if (minusp direction)
-                                  (1- left) (1+ (line-end text cursor)))))
-                   (when (<= 0 next (length text))
-                     (let ((begin (line-start text next)))
-                       (move-cursor (min (line-end text next)
-                                         (+ begin column))))))))
-        (case (event-kind event)
-          (:change
-           (when (stringp (event-value event))
-             (setf text (event-value event))
-             (move-cursor (length text))))
-          (:text (replace-selection (event-value event)))
-          (:key
-           (case (event-key event)
-             (:left (move-cursor (if (< start end) start (1- cursor))))
-             (:right (move-cursor (if (< start end) end (1+ cursor))))
-             (:shift-left (move-cursor (1- cursor) t))
-             (:shift-right (move-cursor (1+ cursor) t))
-             (:home (move-cursor (line-start text cursor)))
-             (:end (move-cursor (line-end text cursor)))
-             (:shift-home (move-cursor (line-start text cursor) t))
-             (:shift-end (move-cursor (line-end text cursor) t))
-             (:up (move-line -1))
-             (:down (move-line 1))
-             ((:word-left :shift-word-left)
-              (move-cursor (word-position text cursor -1)
-                           (eq (event-key event) :shift-word-left)))
-             ((:word-right :shift-word-right)
-              (move-cursor (word-position text cursor 1)
-                           (eq (event-key event) :shift-word-right)))
-             (:select-all
-              (setf (edit-state-anchor state) 0
-                    (edit-state-cursor state) (length text)))
-             (:backspace
-              (when (= start end) (setf start (max 0 (1- cursor))))
-              (replace-selection ""))
-             (:delete
-              (when (= start end) (setf end (min (length text) (1+ cursor))))
-              (replace-selection ""))
-             (:kill-end
-              (when (= start end)
-                (setf end (line-end text cursor))
-                (when (< end (length text))
-                  (when (= cursor end) (incf end))))
-              (kill-selection nil))
-             (:kill-start
-              (when (= start end) (setf start (line-start text cursor)))
-              (kill-selection t))
-             (:kill-word
-              (when (= start end)
-                (setf start (word-position text cursor -1 t)))
-              (kill-selection t))
-             (:kill-word-forward
-              (when (= start end) (setf end (word-position text cursor 1)))
-              (kill-selection nil))
-             (:yank (replace-selection (edit-state-kill state)))
-             (:transpose
-              (when (and (plusp cursor) (> (length text) 1))
-                (let ((right (min cursor (1- (length text)))))
-                  (setf text (copy-seq text))
-                  (rotatef (char text (1- right)) (char text right))
-                  (move-cursor (1+ right)))))
-             (otherwise nil)))
-          (otherwise nil))
+        (move-editor-cursor text state (edit-state-cursor state) t)
+        (setf (edit-state-anchor state)
+              (max 0 (min (length text) (edit-state-anchor state))))
+        (let ((start (min (edit-state-cursor state) (edit-state-anchor
+                                                     state)))
+              (end (max (edit-state-cursor state) (edit-state-anchor state))))
+          (case (event-kind event)
+            (:change
+             (when (stringp (event-value event))
+               (setf text (event-value event))
+               (move-editor-cursor text state (length text))))
+            (:text
+             (setf text (replace-editor-selection
+                         text state start end (event-value event))))
+            (:key
+             (setf text (edit-text-key text state (event-key event) start
+                                       end)))
+            (otherwise nil)))
         (setf (edit-state-last-command state)
-              (and (eq (event-kind event) :key) (event-key event))))))
+              (and (eq (event-kind event) :key) (event-key event))))
   text)
+
+(fn (slider-value real) (id (value real) (options list) (events (vector
+                                                                 event)))
+  "Apply slider input, then clamp and snap the value to the configured step."
+  (let ((minimum (getf options :minimum 0))
+        (maximum (getf options :maximum 1))
+        (step (getf options :step 0.01f0))
+        (box (previous-box id)))
+    (assert (and (< minimum maximum) (> step 0)))
+    (loop :for event :across events :do
+          (case (event-kind event)
+            (:change
+             (when (realp (event-value event))
+               (setf value (event-value event))))
+            ((:press :move)
+             (when (and box (plusp (box-width box))
+                        (eq (event-button event) :primary)
+                        (or (eq (event-kind event) :press)
+                            (event-dragging-p event)))
+               (setf value
+                     (+ minimum
+                        (* (- maximum minimum)
+                           (/ (- (event-x event) (box-x box))
+                              (box-width box)))))))
+            (:key
+             (case (event-key event)
+               ((:right :up) (incf value step))
+               ((:left :down) (decf value step))
+               (:home (setf value minimum))
+               (:end (setf value maximum))
+               (otherwise nil)))
+            (otherwise nil)))
+    (max minimum
+         (min maximum
+              (+ minimum
+                 (* step (round (/ (- value minimum) step))))))))
 
 (fn (value-widget (values t boolean))
     ((kind symbol) (style symbol) id value (text string) (options list))
@@ -449,48 +561,16 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
        (when (and (not (getf options :disabled-p)) (activated-p id))
          (setf value (not value)))
        (loop :for event :across events :do
-         (when (eq (event-kind event) :change)
-           (setf value (not (null (event-value event)))))))
+             (when (eq (event-kind event) :change)
+               (setf value (not (null (event-value event)))))))
       (:radio
        (when (and (not (getf options :disabled-p)) (activated-p id))
          (setf value (getf options :choice)))
        (loop :for event :across events :do
-         (when (eq (event-kind event) :change)
-           (setf value (event-value event)))))
+             (when (eq (event-kind event) :change)
+               (setf value (event-value event)))))
       (:slider
-       (let ((minimum (getf options :minimum 0))
-             (maximum (getf options :maximum 1))
-             (step (getf options :step 0.01f0))
-             (box (previous-box id)))
-         (assert (and (< minimum maximum) (> step 0)))
-         (loop :for event :across events :do
-           (case (event-kind event)
-             (:change
-              (when (realp (event-value event))
-                (setf value (event-value event))))
-             ((:press :move)
-              (when (and box (plusp (box-width box))
-                         (eq (event-button event) :primary)
-                         (or (eq (event-kind event) :press)
-                             (event-dragging-p event)))
-                (setf value
-                      (+ minimum
-                         (* (- maximum minimum)
-                            (/ (- (event-x event) (box-x box))
-                               (box-width box)))))))
-             (:key
-              (case (event-key event)
-                ((:right :up) (incf value step))
-                ((:left :down) (decf value step))
-                (:home (setf value minimum))
-                (:end (setf value maximum))
-                (otherwise nil)))
-             (otherwise nil)))
-         (setf value
-               (max minimum
-                    (min maximum
-                         (+ minimum
-                            (* step (round (/ (- value minimum) step)))))))))
+       (setf value (slider-value id value options events)))
       (:text-field
        (let ((state
               (or (gethash id (context-state *context*))
@@ -527,8 +607,10 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
                        (/ offset (max 1 (- extent viewport))))))))
 
 (fn (scrollbar-input t) (id owner)
+  "Translate scrollbar dragging, clicking, and keys into a scroll position."
   (let* ((events (events-for id))
-         (state (when (plusp (length events)) (gethash id (context-state *context*))))
+         (state (when (plusp (length events)) (gethash id (context-state
+                                                           *context*))))
          (old (when state (scrollbar-state-node state))))
     (when old
       (let* ((value (widget-value (element-content old)))
@@ -538,39 +620,42 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
              (track (element-box old)) (thumb (scrollbar-thumb old))
              (travel (- (box-height track) (box-height thumb))))
         (loop :for event :across events :do
-          (case (event-kind event)
-            (:press
-             (when (eq (event-button event) :primary)
-               (setf handled t (scrollbar-state-grab state) nil)
-               (if (<= (box-y thumb) (event-y event)
-                       (+ (box-y thumb) (box-height thumb)))
-                   (setf (scrollbar-state-grab state)
-                         (- (event-y event) (box-y thumb)))
-                   (incf offset (if (< (event-y event) (box-y thumb))
-                                    (- page) page)))))
-            (:move
-             (when (and (scrollbar-state-grab state) (plusp travel)
-                        (event-dragging-p event))
-               (setf handled t offset
-                     (* limit (/ (- (event-y event) (box-y track)
-                                     (scrollbar-state-grab state)) travel)))))
-            ((:release :cancel) (setf (scrollbar-state-grab state) nil))
-            (:key
-             (when (member (event-key event)
-                           '(:up :left :down :right :page-up :page-down
-                             :home :end))
-               (setf handled t))
-             (case (event-key event)
-               ((:up :left) (decf offset (max 1 (/ page 10))))
-               ((:down :right) (incf offset (max 1 (/ page 10))))
-               (:page-up (decf offset page))
-               (:page-down (incf offset page))
-               (:home (setf offset 0))
-               (:end (setf offset limit)) (otherwise nil))) (otherwise nil))
-          (setf offset (max 0 (min limit offset))))
+              (case (event-kind event)
+                (:press
+                 (when (eq (event-button event) :primary)
+                   (setf handled t (scrollbar-state-grab state) nil)
+                   (if (<= (box-y thumb) (event-y event)
+                           (+ (box-y thumb) (box-height thumb)))
+                       (setf (scrollbar-state-grab state)
+                             (- (event-y event) (box-y thumb)))
+                       (incf offset (if (< (event-y event) (box-y thumb))
+                                        (- page) page)))))
+                (:move
+                 (when (and (scrollbar-state-grab state) (plusp travel)
+                            (event-dragging-p event))
+                   (setf handled t offset
+                         (* limit (/ (- (event-y event) (box-y track)
+                                        (scrollbar-state-grab state))
+                                     travel)))))
+                ((:release :cancel) (setf (scrollbar-state-grab state) nil))
+                (:key
+                 (when (member (event-key event)
+                               '(:up :left :down :right :page-up :page-down
+                                 :home :end))
+                   (setf handled t))
+                 (case (event-key event)
+                   ((:up :left) (decf offset (max 1 (/ page 10))))
+                   ((:down :right) (incf offset (max 1 (/ page 10))))
+                   (:page-up (decf offset page))
+                   (:page-down (incf offset page))
+                   (:home (setf offset 0))
+                   (:end (setf offset limit)) (otherwise nil))) (otherwise
+                 nil))
+              (setf offset (max 0 (min limit offset))))
         (when handled (scroll-to owner (scroll-position owner) offset))))))
 
 (fn (decorate-scrollbar (or null element)) ((owner element) id)
+  "Attach scrollbar interaction and visuals to an overflowing container."
   (when (plusp (element-scroll-limit-y owner))
     (let* ((bounds (element-box owner)) (padding (element-padding owner))
            (width (scroll-gutter owner))
@@ -582,7 +667,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
                           :width width :height height))
            (node (make-element
                   :id id :box box :clip (intersect-boxes box
-                                                       (element-clip owner))
+                                                         (element-clip owner))
                   :floating-p t :interactive-p t :pointer-focus-p t
                   :content
                   (make-widget
@@ -608,8 +693,9 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
       (let ((key (car tail)) (value (cadr tail)))
         (case key
           ((:palette :foreground :background :radius :frost :opacity :accent
-            :font-size :font-family :font-weight :painter :terminal-label :terminal-border
-            :accessible-name)
+                     :font-size :font-family :font-weight :painter
+                     :terminal-label :terminal-border
+                     :accessible-name)
            (push key appearance)
            (push value appearance))
           (otherwise

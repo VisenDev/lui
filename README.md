@@ -908,9 +908,42 @@ symbols are qualified or explicitly imported. Data uses `defstruct`, with typed
 slots and functions through `lui.fn`, adapted from `open-orders`. Normal Lisp code wraps at
 78 columns; LOOP clauses use keyword symbols.
 
-Run `mallet src --strict --disable no-package-use --disable error-without-custom-condition`.
-The disabled rules conflict with the internal-package `:use` convention and the
-struct-only policy: custom conditions introduce condition classes.
+Run `make lint` with Mallet installed. The runner normalizes typed `fn` headers
+into `defun` headers in temporary copies so Mallet can inspect their bodies.
+It runs strict rules plus complexity, function-length, and missing-docstring
+checks, and fails on informational findings as well as warnings. Only
+`no-package-use` is disabled for the internal-package convention. The JSON
+report is written to `build/logs/mallet-normalized.json`.
+
+### Error conditions
+
+Explicit LUI failures use documented `define-condition` types exported by `lui`:
+
+- `lui-error` is the common base, inheriting `simple-error` diagnostic formatting.
+  `error-operation` identifies the operation that failed.
+- `configuration-error` reports unavailable backends, toolkits, palettes,
+  controls, or rendering callbacks. Inspect `error-setting` and `error-value`.
+- `backend-error` reports platform failures; `error-backend` identifies the backend.
+- `font-error`, a backend-error subtype, adds `error-font-request` for the font
+  family/weight request that could not be loaded.
+- `frame-state-error` reports an operation that requires a completed frame.
+
+For example, catch a configuration failure without intercepting unrelated errors:
+
+```lisp
+(handler-case
+    (lui:run #'draw-application :backend :x11)
+  (lui:configuration-error (condition)
+    (format *error-output* "Missing ~S: ~S (~A)~%"
+            (lui:error-setting condition)
+            (lui:error-value condition)
+            condition)))
+```
+
+Load or configure the missing capability before retrying. Backend cleanup still
+runs when a condition unwinds through the application lifecycle. Invalid argument
+assertions and errors raised by application callbacks retain their own condition
+types; they are not indiscriminately wrapped as backend errors.
 
 ### macOS 13 menu-bar auto-hide crash
 

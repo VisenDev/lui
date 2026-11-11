@@ -1,75 +1,88 @@
 (defpackage #:lui
   (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
+  (:import-from #:lui.conditions
+                #:lui-error #:configuration-error #:backend-error #:font-error
+                #:frame-state-error #:error-operation #:error-setting
+                #:error-value
+                #:error-backend #:error-font-request)
   (:import-from #:lui.layout
-    #:point #:contour #:contours #:sizing #:fit #:grow #:fixed #:percent #:box
-    #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
-    #:element-content)
+                #:point #:contour #:contours #:sizing #:fit #:grow #:fixed
+                #:percent #:box
+                #:make-box #:box-x #:box-y #:box-width #:box-height
+                #:element-box
+                #:element-content)
   (:import-from #:lui.frame
-    #:row #:column #:with-frame #:frame-time #:request-frame #:previous-box
-    #:scroll-position #:scroll-to #:activated-p #:activated-ids #:hovered-p
-    #:event #:event-kind #:event-x #:event-y #:event-id #:event-value
-           #:event-key #:event-button #:event-buttons #:event-clicks
-           #:event-dragging-p)
+                #:row #:column #:with-frame #:frame-time #:request-frame
+                #:previous-box
+                #:scroll-position #:scroll-to #:activated-p #:activated-ids
+                #:hovered-p
+                #:event #:event-kind #:event-x #:event-y #:event-id
+                #:event-value
+                #:event-key #:event-button #:event-buttons #:event-clicks
+                #:event-dragging-p)
   (:import-from #:lui.widgets
-    #:declare-widget #:widget-text)
+                #:declare-widget #:widget-text)
   ;; Public symbols are owned here; optional implementations import them.
   ;; Loading a backend supplies its functions without mutating this package.
   (:export
-    #:key-pressed-p #:text-input-event #:visible-span #:list-index
-    #:reveal-rect #:take-events #:event-targets #:reset-editor #:edit-value
-    #:*glass-defaults* #:*motif-defaults* #:*macos-defaults* #:*qt-defaults*
-    #:*garnet-defaults* #:set-debugger-enabled #:debugger-enabled-p
-    #:debugger-state #:make-debugger-state #:debugger-state-open-p
-    #:debugger-state-selected #:debugger-state-width #:font #:open-font
-    #:close-font #:font-size #:text-width #:line-height #:baseline
-    #:wrap-text #:glyph-polygons #:*font-path* #:*font-paths*
-    #:*font-directories* #:*font-names* #:font-face #:renderer
-    #:renderer-font #:renderer-polygons #:renderer-clip #:renderer-glass
-    #:renderer-text #:geometry #:make-geometry #:geometry-left
-    #:geometry-top #:geometry-right #:geometry-bottom #:geometry-min-width
-    #:geometry-min-height #:geometry-center-x #:geometry-center-y
-    #:geometry-offset-x #:geometry-offset-y #:geometry-text-p
-    #:geometry-value-p #:widget-geometry #:text-box #:rounded-polygon
-    #:color-components #:paint-text #:shape #:outline #:inset-box
-    #:focused-p #:widget-font #:render-pdf #:*pdf-output*
-    #:make-terminal-context #:render-terminal #:terminal-text-width
-    #:text-lines #:cell-edge #:mount #:unmount #:refresh
-    #:point #:contour #:contours #:sizing #:fit #:grow #:fixed #:percent #:box
-    #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
-    #:element-content #:row #:column #:with-frame #:frame-time #:request-frame
-    #:previous-box #:scroll-position #:scroll-to #:activated-p #:activated-ids
-    #:hovered-p #:event #:event-kind #:event-x #:event-y #:event-id
-           #:event-value #:event-key #:event-button #:event-buttons
-           #:event-clicks #:event-dragging-p #:declare-widget #:widget-text
-           #:run #:register-backend #:available-backends #:units #:*backend*
-           #:*unit* #:with-toolkit #:with-palette #:toolkit-palette
-           #:widget-color #:current-toolkit #:toolkit-defaults
-           #:available-palettes #:palette #:palette-p #:make-palette
-           #:palette-thumb
-           #:palette-control-background #:palette-background
-           #:palette-foreground
-           #:palette-accent #:palette-window-background #:palette-selection
-           #:palette-border #:palette-disabled #:palette-disabled-accent
-           #:palette-disabled-surface #:palette-disabled-bevel-light
-           #:palette-disabled-bevel-dark
-           #:palette-outline #:palette-light #:palette-shadow
-           #:palette-bevel-light #:palette-bevel-dark #:palette-track
-           #:palette-cell-background #:palette-cell-foreground
-           #:palette-on-accent
-           #:+palette-default+ #:+palette-light+ #:+palette-dark+
-           #:+palette-ocean+ #:+palette-forest+
-           #:register-toolkit
-           #:register-toolkit-rendering #:toolkit-paint #:toolkit-geometry
-           #:toolkit-native-labels-p
-           #:control
-           #:define-toolkit
-           #:table #:table-row #:table-cell
-           #:opt #:panel #:label
-           #:button #:tab #:checkbox #:radio #:slider
-           #:text-field #:cell #:list-item #:gauge #:canvas
-           #:date-picker #:searchable-combobox
-           #:*default-backend-function*
-           #:*toolkit-revision*))
+   #:lui-error #:configuration-error #:backend-error #:font-error
+   #:frame-state-error #:error-operation #:error-setting #:error-value
+   #:error-backend #:error-font-request
+   #:key-pressed-p #:text-input-event #:visible-span #:list-index
+   #:reveal-rect #:take-events #:event-targets #:reset-editor #:edit-value
+   #:*glass-defaults* #:*motif-defaults* #:*macos-defaults* #:*qt-defaults*
+   #:*garnet-defaults* #:set-debugger-enabled #:debugger-enabled-p
+   #:debugger-state #:make-debugger-state #:debugger-state-open-p
+   #:debugger-state-selected #:debugger-state-width #:font #:open-font
+   #:close-font #:font-size #:text-width #:line-height #:baseline
+   #:wrap-text #:glyph-polygons #:*font-path* #:*font-paths*
+   #:*font-directories* #:*font-names* #:font-face #:renderer
+   #:renderer-font #:renderer-polygons #:renderer-clip #:renderer-glass
+   #:renderer-text #:geometry #:make-geometry #:geometry-left
+   #:geometry-top #:geometry-right #:geometry-bottom #:geometry-min-width
+   #:geometry-min-height #:geometry-center-x #:geometry-center-y
+   #:geometry-offset-x #:geometry-offset-y #:geometry-text-p
+   #:geometry-value-p #:widget-geometry #:text-box #:rounded-polygon
+   #:color-components #:paint-text #:shape #:outline #:inset-box
+   #:focused-p #:widget-font #:render-pdf #:*pdf-output*
+   #:make-terminal-context #:render-terminal #:terminal-text-width
+   #:text-lines #:cell-edge #:mount #:unmount #:refresh
+   #:point #:contour #:contours #:sizing #:fit #:grow #:fixed #:percent #:box
+   #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
+   #:element-content #:row #:column #:with-frame #:frame-time #:request-frame
+   #:previous-box #:scroll-position #:scroll-to #:activated-p #:activated-ids
+   #:hovered-p #:event #:event-kind #:event-x #:event-y #:event-id
+   #:event-value #:event-key #:event-button #:event-buttons
+   #:event-clicks #:event-dragging-p #:declare-widget #:widget-text
+   #:run #:register-backend #:available-backends #:units #:*backend*
+   #:*unit* #:with-toolkit #:with-palette #:toolkit-palette
+   #:widget-color #:current-toolkit #:toolkit-defaults
+   #:available-palettes #:palette #:palette-p #:make-palette
+   #:palette-thumb
+   #:palette-control-background #:palette-background
+   #:palette-foreground
+   #:palette-accent #:palette-window-background #:palette-selection
+   #:palette-border #:palette-disabled #:palette-disabled-accent
+   #:palette-disabled-surface #:palette-disabled-bevel-light
+   #:palette-disabled-bevel-dark
+   #:palette-outline #:palette-light #:palette-shadow
+   #:palette-bevel-light #:palette-bevel-dark #:palette-track
+   #:palette-cell-background #:palette-cell-foreground
+   #:palette-on-accent
+   #:+palette-default+ #:+palette-light+ #:+palette-dark+
+   #:+palette-ocean+ #:+palette-forest+
+   #:register-toolkit
+   #:register-toolkit-rendering #:toolkit-paint #:toolkit-geometry
+   #:toolkit-native-labels-p
+   #:control
+   #:define-toolkit
+   #:table #:table-row #:table-cell
+   #:opt #:panel #:label
+   #:button #:tab #:checkbox #:radio #:slider
+   #:text-field #:cell #:list-item #:gauge #:canvas
+   #:date-picker #:searchable-combobox
+   #:*default-backend-function*
+   #:*toolkit-revision*))
 (in-package #:lui)
 
 (defvar *backends* (make-hash-table :test 'eq))
@@ -88,7 +101,8 @@
 
 (fn (available-backends (vector symbol)) ()
   "Return a vector of backend names registered in this Lisp image."
-  (let ((results (make-array 1 :element-type 'symbol :initial-element nil :adjustable t :fill-pointer 0)))
+  (let ((results (make-array 1 :element-type 'symbol :initial-element nil
+                             :adjustable t :fill-pointer 0)))
     (maphash (lambda (name runner)
                (declare (ignore runner))
                (vector-push-extend name results))
@@ -97,7 +111,8 @@
 
 (fn (run t)
     ((draw function) &key (backend *backend*) ((title string) "LUI") width
-     height (interactive t) ((min-fps real) 1) ((max-fps real) 240))
+                       height (interactive t) ((min-fps real) 1) ((max-fps
+                                                                   real) 240))
   "Run the same immediate-mode DRAW function on any registered backend.
 Backend-specific window, DOM, input, frame, and lifetime management stay in LUI.
 WIDTH/HEIGHT are optional backend coordinates; omit them for sensible defaults.
@@ -113,8 +128,11 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
                          :return backend)))
          (runner (gethash name *backends*)))
     (unless runner
-      (error "Backend ~S is not loaded. Available: ~S" name
-             (available-backends)))
+      (error 'lui.conditions:configuration-error
+             :setting :backend :value name
+             :operation :run
+             :format-control "Backend ~S is not loaded. Available: ~S"
+             :format-arguments (list name (available-backends))))
     (funcall runner draw :title title :width width :height height
              :interactive interactive)))
 
@@ -123,19 +141,26 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 (defvar *palette* nil)
 
 (defstruct (toolkit (:conc-name %toolkit-))
-  parent defaults controls (paint :inherit) (geometry :inherit) (native-labels :inherit))
+  parent defaults controls (paint :inherit) (geometry :inherit)
+  (native-labels :inherit))
 (defvar *toolkits* (make-hash-table :test 'eq))
 
 (defvar *toolkit-revision* 0)
 
 (fn (find-toolkit toolkit) ((name symbol))
-  (or (gethash name *toolkits*) (error "Unknown toolkit ~S." name)))
+  "Resolve a toolkit name or signal a CONFIGURATION-ERROR for an unknown name."
+  (or (gethash name *toolkits*) (error 'lui.conditions:configuration-error
+                                       :setting :toolkit :value name
+                                       :operation :find-toolkit
+                                       :format-control "Unknown toolkit ~S."
+                                       :format-arguments (list name))))
 
 (fn (rendering-option t) ((name symbol) (key symbol))
+  "Resolve an inherited toolkit rendering policy through its parent chain."
   (let* ((entry (find-toolkit name))
          (value (ecase key (:paint (%toolkit-paint entry))
-                          (:geometry (%toolkit-geometry entry))
-                          (:native-labels (%toolkit-native-labels entry)))))
+                       (:geometry (%toolkit-geometry entry))
+                       (:native-labels (%toolkit-native-labels entry)))))
     (if (not (eq value :inherit)) value
         (when (and (%toolkit-parent entry)
                    (or (not (eq key :native-labels))
@@ -155,9 +180,13 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
   "Return whether NAME delegates graphical labels to native text rendering."
   (not (null (rendering-option name :native-labels))))
 
-(fn (register-toolkit-rendering symbol) ((name symbol) &key (paint nil paint-p)
-                                           (geometry nil geometry-p)
-                                           (native-labels nil labels-p))
+(fn (register-toolkit-rendering symbol)
+    ((name symbol) &key (paint nil
+                               paint-p)
+                     (geometry nil
+                               geometry-p)
+                     (native-labels nil
+                                    labels-p))
   "Set graphical callbacks for registered NAME. Omitted keys retain their
 settings or inherit from :PARENT; explicit NIL disables the inherited setting."
   (let ((entry (find-toolkit name)))
@@ -165,21 +194,31 @@ settings or inherit from :PARENT; explicit NIL disables the inherited setting."
     (when geometry-p (check-type geometry (or null function)))
     (when paint-p (setf (%toolkit-paint entry) paint))
     (when geometry-p (setf (%toolkit-geometry entry) geometry))
-    (when labels-p (setf (%toolkit-native-labels entry) (not (null native-labels))))
+    (when labels-p (setf (%toolkit-native-labels entry)
+                     (not
+                       (null
+                         native-labels))))
     (incf *toolkit-revision*))
   name)
 
 (fn (register-toolkit symbol) ((name symbol) &key parent defaults controls
-                                   (paint nil paint-p) (geometry nil geometry-p)
-                                   (native-labels nil labels-p))
+                                               (paint nil paint-p)
+                                               (geometry
+                                                nil
+                                                geometry-p)
+                                               (native-labels nil labels-p))
   "Register a toolkit. DEFAULTS is a plist or a zero-argument function.
 CONTROLS maps control names to functions taking the public arguments and options.
 PAINT, GEOMETRY and NATIVE-LABELS configure graphical rendering; omitted values
 inherit only from an explicit PARENT."
   (loop :for ancestor := parent
-          :then (%toolkit-parent (find-toolkit ancestor))
+        :then (%toolkit-parent (find-toolkit ancestor))
         :while ancestor :when (eq ancestor name)
-          :do (error "Circular toolkit inheritance at ~S." name))
+        :do (error 'lui.conditions:configuration-error
+                   :setting :toolkit :value name
+                   :operation :register-toolkit
+                   :format-control "Circular toolkit inheritance at ~S."
+                   :format-arguments (list name)))
   (when paint-p (check-type paint (or null function)))
   (when geometry-p (check-type geometry (or null function)))
   (incf *toolkit-revision*)
@@ -187,7 +226,8 @@ inherit only from an explicit PARENT."
         (make-toolkit :parent parent :defaults defaults :controls controls
                       :paint (if paint-p paint :inherit)
                       :geometry (if geometry-p geometry :inherit)
-                      :native-labels (if labels-p (not (null native-labels)) :inherit)))
+                      :native-labels (if labels-p (not (null native-labels))
+                                         :inherit)))
   name)
 
 (fn (current-toolkit symbol) ()
@@ -195,6 +235,7 @@ inherit only from an explicit PARENT."
   *toolkit*)
 
 (fn (defaults-of list) ((entry toolkit))
+  "Collect toolkit defaults, evaluating dynamic providers for this declaration."
   (let* ((parent (%toolkit-parent entry))
          (source (%toolkit-defaults entry))
          (defaults (if (functionp source) (funcall source) source)))
@@ -202,9 +243,12 @@ inherit only from an explicit PARENT."
         defaults)))
 
 (fn (resolve-palette list) ((defaults list))
+  "Resolve a palette object, provider, or registered palette name."
   (labels ((colors (tail)
              (cond ((null tail) lui.widgets::*base-palette*)
-                   ((eq (car tail) :palette) (append (cadr tail) (colors (cddr tail))))
+                   ((eq (car tail) :palette) (append (cadr tail) (colors
+                                                                  (cddr
+                                                                   tail))))
                    ((member (car tail) '(:foreground :background :accent))
                     (list* (car tail) (cadr tail) (colors (cddr tail))))
                    (t (colors (cddr tail))))))
@@ -219,10 +263,16 @@ inherit only from an explicit PARENT."
   (let* ((defaults (defaults-of (find-toolkit name)))
          (palette (copy-list (resolve-palette defaults))))
     (values (list* :palette palette
-                   :foreground (lui.widgets::palette-color palette :foreground)
-                   :background (or (when (member kind '(:button :tab :text-field))
-                                     (lui.widgets::palette-color palette :control-background))
-                                   (lui.widgets::palette-color palette :background))
+                   :foreground (lui.widgets::palette-color palette
+                                                           :foreground)
+                   :background
+                   (or
+                    (when (member kind '(:button :tab
+                                         :text-field))
+                      (lui.widgets::palette-color palette
+                                                  :control-background))
+                    (lui.widgets::palette-color palette
+                                                :background))
                    :accent (lui.widgets::palette-color palette :accent)
                    (without-option :palette defaults))
             palette)))
@@ -261,43 +311,43 @@ inherit only from an explicit PARENT."
 (defconstant +palette-light+
   (if (boundp '+palette-light+) (symbol-value '+palette-light+)
       (make-palette :control-background "#ffffff" :background "#eeeeee"
-                   :foreground "#202124" :accent "#2563eb"
-                   :window-background "#e4e7eb" :selection "#dbeafe" :border
-                   "#808891"))
+                    :foreground "#202124" :accent "#2563eb"
+                    :window-background "#e4e7eb" :selection "#dbeafe" :border
+                    "#808891"))
   "Built-in immutable palette for WITH-PALETTE.")
 (defconstant +palette-dark+
   (if (boundp '+palette-dark+) (symbol-value '+palette-dark+)
       (make-palette :control-background "#424954" :background "#292d35"
-                   :foreground "#eeeeee" :accent "#79b8ff"
-                   :disabled "#89919d" :disabled-accent "#626c7a"
-                   :disabled-surface
-                  "#343a44"
-                   :disabled-bevel-light "#424954" :disabled-bevel-dark
-                   "#242830"
-                   :window-background "#1d2026" :selection "#34465e" :border
-                   "#78818f"
-                   :outline "#aab4c3" :light "#424954" :shadow "#111318"
-                   :bevel-light "#505866" :bevel-dark "#171a20" :track
-                   "#626c7a"
-                   :cell-background "#23272e" :cell-foreground "#eeeeee"
-                   :on-accent
-                  "#101820"))
+                    :foreground "#eeeeee" :accent "#79b8ff"
+                    :disabled "#89919d" :disabled-accent "#626c7a"
+                    :disabled-surface
+                    "#343a44"
+                    :disabled-bevel-light "#424954" :disabled-bevel-dark
+                    "#242830"
+                    :window-background "#1d2026" :selection "#34465e" :border
+                    "#78818f"
+                    :outline "#aab4c3" :light "#424954" :shadow "#111318"
+                    :bevel-light "#505866" :bevel-dark "#171a20" :track
+                    "#626c7a"
+                    :cell-background "#23272e" :cell-foreground "#eeeeee"
+                    :on-accent
+                    "#101820"))
   "Built-in immutable palette for WITH-PALETTE.")
 (defconstant +palette-ocean+
   (if (boundp '+palette-ocean+) (symbol-value '+palette-ocean+)
       (make-palette :control-background "#f1fbfd" :background "#dceef3"
-                   :foreground "#123544" :accent "#087e9a"
-                   :window-background "#bfdce5" :selection "#b7e5ef" :border
-                   "#4c8696"
-                   :cell-background "#f1fbfd" :cell-foreground "#123544"))
+                    :foreground "#123544" :accent "#087e9a"
+                    :window-background "#bfdce5" :selection "#b7e5ef" :border
+                    "#4c8696"
+                    :cell-background "#f1fbfd" :cell-foreground "#123544"))
   "Built-in immutable palette for WITH-PALETTE.")
 (defconstant +palette-forest+
   (if (boundp '+palette-forest+) (symbol-value '+palette-forest+)
       (make-palette :control-background "#f5faf1" :background "#e4ecdf"
-                   :foreground "#243b28" :accent "#387348"
-                   :window-background "#cbdac4" :selection "#c5dfbd" :border
-                   "#6b8762"
-                   :cell-background "#f5faf1" :cell-foreground "#243b28"))
+                    :foreground "#243b28" :accent "#387348"
+                    :window-background "#cbdac4" :selection "#c5dfbd" :border
+                    "#6b8762"
+                    :cell-background "#f5faf1" :cell-foreground "#243b28"))
   "Built-in immutable palette for WITH-PALETTE.")
 
 
@@ -313,30 +363,42 @@ inherit only from an explicit PARENT."
   (map '(vector symbol) #'car *named-palettes*))
 
 (fn (palette-options list) ((palette palette))
+  "Translate palette fields into widget options for the current toolkit."
   (loop :for role :in '(:control-background :background :foreground :accent
-                   :window-background :selection :border :disabled
-                   :disabled-accent :disabled-surface :disabled-bevel-light
-                   :disabled-bevel-dark :outline :light :shadow :bevel-light
-                   :bevel-dark :track :cell-background :cell-foreground
-                   :on-accent :thumb)
+                        :window-background :selection :border :disabled
+                        :disabled-accent :disabled-surface
+                        :disabled-bevel-light
+                        :disabled-bevel-dark :outline :light :shadow
+                        :bevel-light
+                        :bevel-dark :track :cell-background :cell-foreground
+                        :on-accent :thumb)
         :for reader :in (list #'palette-control-background
-                   #'palette-background #'palette-foreground #'palette-accent
-                   #'palette-window-background #'palette-selection
-                   #'palette-border #'palette-disabled
-                   #'palette-disabled-accent #'palette-disabled-surface
-                   #'palette-disabled-bevel-light
-                   #'palette-disabled-bevel-dark #'palette-outline
-                   #'palette-light #'palette-shadow #'palette-bevel-light
-                   #'palette-bevel-dark #'palette-track
-                   #'palette-cell-background #'palette-cell-foreground
-                   #'palette-on-accent #'palette-thumb)
+                              #'palette-background #'palette-foreground
+                              #'palette-accent
+                              #'palette-window-background #'palette-selection
+                              #'palette-border #'palette-disabled
+                              #'palette-disabled-accent
+                              #'palette-disabled-surface
+                              #'palette-disabled-bevel-light
+                              #'palette-disabled-bevel-dark #'palette-outline
+                              #'palette-light #'palette-shadow
+                              #'palette-bevel-light
+                              #'palette-bevel-dark #'palette-track
+                              #'palette-cell-background
+                              #'palette-cell-foreground
+                              #'palette-on-accent #'palette-thumb)
         :for color := (funcall reader palette)
         :when color :append (list role color)))
 
 (fn (call-with-palette t) ((palette (or palette symbol)) (draw function))
+  "Call FUNCTION with a resolved palette dynamically bound for declarations."
   (let* ((value (etypecase palette
                   (symbol (or (cdr (assoc palette *named-palettes*))
-                              (error "Unknown palette ~S." palette)))
+                              (error 'lui.conditions:configuration-error
+                                     :setting :palette :value palette
+                                     :operation :call-with-palette
+                                     :format-control "Unknown palette ~S."
+                                     :format-arguments (list palette))))
                   (palette palette)))
          (*palette* (append (palette-options value) *palette*)))
     (funcall draw)))
@@ -347,6 +409,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
   `(call-with-palette ,palette (lambda () ,@body)))
 
 (fn (override (or null function)) ((kind symbol) (entry toolkit))
+  "Merge explicit widget options with defaults, preserving explicit NIL values."
   (or (cdr (assoc kind (%toolkit-controls entry)))
       (let ((parent (%toolkit-parent entry)))
         (when parent (override kind (find-toolkit parent))))))
@@ -355,7 +418,11 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
   "Invoke a user-defined control from the current toolkit or its ancestors."
   (apply (or (override kind (or *toolkit-definition*
                                 (find-toolkit *toolkit*)))
-             (error "No ~S control in toolkit ~S." kind *toolkit*))
+             (error 'lui.conditions:configuration-error
+                    :setting :control :value kind
+                    :operation :control
+                    :format-control "No ~S control in toolkit ~S."
+                    :format-arguments (list kind *toolkit*)))
          arguments))
 
 (defmacro with-toolkit ((designator) &body body)
@@ -365,21 +432,26 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
      ,@body))
 
 (defmacro opt (&rest forms &key width height padding gap align cross-align
-               id direction column-gap column-span
-               clip-p scroll-p scrollbar-p scrollbar-width
-               floating-p offset-x offset-y
-               interactive-p keyboard-focus-p pointer-focus-p
-               foreground background palette radius frost minimum maximum step
-               font-size font-family font-weight opacity accent disabled-p
-               painter terminal-label terminal-border accessible-name
-               placeholder password-p max-results selected-p text)
+                             id direction column-gap column-span
+                             clip-p scroll-p scrollbar-p scrollbar-width
+                             floating-p offset-x offset-y
+                             interactive-p keyboard-focus-p pointer-focus-p
+                             foreground background palette radius frost
+                             minimum maximum step
+                             font-size font-family font-weight opacity accent
+                             disabled-p
+                             painter terminal-label terminal-border
+                             accessible-name
+                             placeholder password-p max-results selected-p
+                             text)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align
                    id direction column-gap column-span
                    clip-p scroll-p scrollbar-p scrollbar-width
                    floating-p offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
-                   palette radius frost minimum maximum step font-size font-family
+                   palette radius frost minimum maximum step font-size
+                   font-family
                    font-weight opacity accent disabled-p painter
                    terminal-label terminal-border accessible-name
                    placeholder password-p max-results selected-p text))
@@ -388,11 +460,12 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
 (defmacro panel (options &body body)
   "Draw a styled container and attach widgets declared in BODY as children."
   `(let ((lui.frame:*parent*
-           (lui.widgets:declare-panel
-            *toolkit* (append ,options (toolkit-defaults)))))
+          (lui.widgets:declare-panel
+           *toolkit* (append ,options (toolkit-defaults)))))
      ,@body))
 
 (defmacro define-control (name args doc &body body)
+  "Define a control function that resolves toolkit defaults before declaring it."
   (let ((kind (intern (symbol-name name) :keyword)))
     `(fn (,name t) (,@args &optional options)
        ,doc
@@ -400,7 +473,8 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
               (custom (override ,kind entry)))
          (if custom (funcall custom ,@args options)
              (let ((style *toolkit*))
-               (multiple-value-bind (defaults palette) (toolkit-defaults *toolkit* ,kind)
+               (multiple-value-bind (defaults palette) (toolkit-defaults
+                                                        *toolkit* ,kind)
                  (declare (ignorable palette))
                  ,@body)))))))
 
@@ -413,6 +487,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
   (apply #'declare-widget :button style id text (append options defaults)))
 
 (fn (without-option list) ((key symbol) (options list))
+  "Return an option plist without KEY and its associated value."
   (let ((result nil))
     (do ((tail options (cddr tail))) ((null tail) (nreverse result))
       (unless (eq (car tail) key)
@@ -420,7 +495,8 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
         (push (cadr tail) result)))))
 
 (fn (selectable boolean) ((kind symbol) (style symbol) id (text string)
-                (options list) (defaults list))
+                          (options list) (defaults list))
+  "Declare a selectable control and return whether it was activated."
   ;; Extract selection while removing its public option in one pass. Preserve
   ;; GETF's first-value rule, including an explicitly supplied NIL.
   (let ((selected nil) (selected-seen nil) (appearance nil))
@@ -446,34 +522,39 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
   "Lay out TABLE-ROWs with shared content-sized columns using OPT options.
 :GAP separates rows; :COLUMN-GAP separates columns. Accepts layout options."
   `(let ((lui.frame:*parent*
-           (lui.frame:emit
-            (apply #'lui.layout:make-element
-                   :direction :column :table-p t ,options))))
+          (lui.frame:emit
+           (apply #'lui.layout:make-element
+                  :direction :column :table-p t ,options))))
      ,@rows))
 
 (defmacro table-row (options &body cells)
   "Declare a table row using OPT layout options or NIL for defaults.
 Each direct child occupies one column by default."
   `(let ((lui.frame:*parent*
-           (lui.frame:emit
-            (apply #'lui.layout:make-element :direction :row ,options))))
+          (lui.frame:emit
+           (apply #'lui.layout:make-element :direction :row ,options))))
      ,@cells))
 
 (defmacro table-cell (options &body contents)
   "Group widgets in a table cell using OPT layout options or NIL for defaults.
 :COLUMN-SPAN defaults to one. Height grows and content clips by default."
   `(let ((lui.frame:*parent*
-           (lui.frame:emit
-            (apply #'lui.layout:make-element :direction :column
-                   (append ,options
-                           (list :height (lui.layout:grow) :clip-p t))))))
+          (lui.frame:emit
+           (apply #'lui.layout:make-element :direction :column
+                  (append ,options
+                          (list :height (lui.layout:grow) :clip-p t))))))
      ,@contents))
 
 (define-control cell (id text)
   "Display a compact grid cell. Use :selected-p to mark the active cell."
   (selectable :cell style id text options
-              (list* :background (lui.widgets::palette-color palette :cell-background "#ffffff")
-                     :foreground (lui.widgets::palette-color palette :cell-foreground "#202430") defaults)))
+              (list* :background (lui.widgets::palette-color palette
+                                                             :cell-background
+                                                             "#ffffff")
+                     :foreground (lui.widgets::palette-color palette
+                                                             :cell-foreground
+                                                             "#202430")
+                     defaults)))
 
 (define-control checkbox (id value text)
   "Return the new boolean and a second value indicating a change."
@@ -512,7 +593,8 @@ control functions in label/button/tab/checkbox/radio/slider/text-field/cell/
 list-item/gauge/canvas order. Each control accepts a final OPT form."
   (let ((functions '(label button tab checkbox radio slider text-field cell
                      list-item gauge canvas))
-        (args '((text) (id text) (id text) (id value text) (id value choice text)
+        (args '((text) (id text) (id text) (id value text) (id value choice
+                                                            text)
                 (id value) (id value) (id text) (id text) (id fraction)
                 (id commands))))
     `(progn
@@ -533,7 +615,10 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
 (defstruct (combobox-state (:include edit-state))
   open-p focused-p filter-p highlight)
 
-(fn (combobox-matches (vector (cons integer string))) ((query string) (choices sequence) (limit (integer 1 *)))
+(fn (combobox-matches (vector (cons integer string))) ((query string)
+                                                       (choices sequence)
+                                                       (limit (integer 1 *)))
+  "Return source-index/label pairs matching QUERY, limited to LIMIT choices."
   ;; Keep the source index for IDs so filtering never retargets a pointer event.
   (let ((index 0) (count 0) matches)
     (block collect
@@ -543,70 +628,97 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
                    (when (= (incf count) limit) (return-from collect)))
                  (incf index))
            choices))
-    (make-array count :element-type '(cons integer string) :initial-contents (nreverse matches))))
+    (make-array count :element-type '(cons integer string) :initial-contents
+                (nreverse matches))))
 
-(fn (anchored-popup lui.layout:element) (id (anchor lui.layout:element) (options list))
+(fn (anchored-popup lui.layout:element) (id (anchor lui.layout:element)
+                                         (options list))
+  "Declare a floating popup whose geometry is constrained to ANCHOR."
   (let ((*parent* (lui.layout:make-element)))
     (let ((pane
-            (declare-panel
-             *toolkit*
-             (append options
-                     (opt :id id :floating-p t :opacity 1 :scroll-p t
-                          :scrollbar-p nil :clip-p t :interactive-p t
-                          :keyboard-focus-p nil :padding (units 1))
-                     (toolkit-defaults)))))
+           (declare-panel
+            *toolkit*
+            (append options
+                    (opt :id id :floating-p t :opacity 1 :scroll-p t
+                         :scrollbar-p nil :clip-p t :interactive-p t
+                         :keyboard-focus-p nil :padding (units 1))
+                    (toolkit-defaults)))))
       (setf (lui.layout:element-popup-anchor pane) anchor)
       (push pane (lui.frame::context-popups *context*))
       pane)))
 
 (fn (combobox-popup (values))
     (id (matches (vector (cons integer string))) index (anchor
-     lui.layout:element) reveal)
+                                                        lui.layout:element)
+     reveal)
+  "Declare the filtered combobox choices with stable source-index IDs."
   (let* ((pane (anchored-popup (list id :popup) anchor nil))
          (*parent* pane))
     (loop :for match :across matches :for i :from 0
           :for row-id := (list id :choice (car match))
           :do (list-item row-id (cdr match)
-                        (opt :width (lui.layout:grow) :selected-p (eql i index)))
-             (let ((row (gethash row-id (lui.frame::context-ids *context*))))
-               (setf (lui.layout:element-keyboard-focus-p row) nil)
-               (when (and reveal (eql index i))
-                 (setf (lui.layout:element-popup-reveal pane) row)))))
+                         (opt :width (lui.layout:grow) :selected-p
+                           (eql i
+                             index)))
+          (let ((row (gethash row-id (lui.frame::context-ids *context*))))
+            (setf (lui.layout:element-keyboard-focus-p row) nil)
+            (when (and reveal (eql index i))
+              (setf (lui.layout:element-popup-reveal pane) row)))))
   (values))
 
-(fn (combobox-completion (or null string)) (id (state combobox-state) (text string)
-                         (choices sequence) (limit (integer 1 *))
-                         (events (vector event)) (anchor lui.layout:element))
-  (let ((navigate (find-if (lambda (event)
-                             (and (eq :key (event-kind event))
-                                  (member (event-key event) '(:up :down)))) events)))
+(fn (completion-navigation-p boolean) ((event event))
+  "Recognize up/down keyboard events that navigate completion choices."
+  (and (eq :key (event-kind event))
+       (not (null (member (event-key event) '(:up :down))))))
+
+(fn (completion-next-index (or null integer))
+    ((matches sequence) index (last integer) (event event))
+  "Advance the highlighted completion index, retaining NIL for an empty result set."
+  (when (plusp (length matches))
+    (if (eq :down (event-key event))
+        (min last (1+ (or index -1)))
+        (max 0 (1- (or index (1+ last)))))))
+
+(fn (combobox-completion (or null string)) (id (state combobox-state) (text
+                                                                       string)
+                                            (choices sequence) (limit
+                                                                (integer 1 *))
+                                            (events (vector event))
+                                            (anchor
+                                             lui.layout:element))
+  "Apply autocomplete navigation or selection to the combobox editor state."
+  (let ((navigate (find-if #'completion-navigation-p events)))
     (when (or navigate (combobox-state-open-p state))
-      (let* ((matches (combobox-matches (if (combobox-state-filter-p state) text "")
+      (let* ((matches (combobox-matches (if (combobox-state-filter-p state)
+                                            text "")
                                         choices limit))
              (last (1- (length matches)))
-             (old (and (combobox-state-open-p state) (combobox-state-highlight state)))
+             (old (and (combobox-state-open-p state)
+                       (combobox-state-highlight state)))
              (index (and (plusp (length matches)) old (min old last))))
         (loop :for event :across events :do
-          (case (event-kind event)
-            (:key (case (event-key event)
-                    ((:up :down)
-                     (setf (combobox-state-open-p state) t
-                           index (when (plusp (length matches))
-                                   (if (eq :down (event-key event))
-                                       (min last (1+ (or index -1)))
-                                       (max 0 (1- (or index (1+ last))))))))
-                    (:escape (setf (combobox-state-open-p state) nil))
-                    (otherwise nil)))
-            (:activate
-             (when (combobox-state-open-p state)
-               (setf (combobox-state-open-p state) nil)
-               (return-from combobox-completion
-                 (and index (cdr (aref matches index))))))
-            (otherwise nil)))
+              (case (event-kind event)
+                (:key (case (event-key event)
+                        ((:up :down)
+                         (setf (combobox-state-open-p state) t
+                               index (completion-next-index matches index
+                                                            last event)))
+                        (:escape (setf (combobox-state-open-p state) nil))
+                        (otherwise nil)))
+                (:activate
+                 (when (combobox-state-open-p state)
+                   (setf (combobox-state-open-p state) nil)
+                   (return-from combobox-completion
+                     (and index (cdr (aref matches index))))))
+                (otherwise nil)))
         (setf (combobox-state-highlight state) index)
         (when (and (plusp (length matches)) (combobox-state-open-p state))
-          (let ((clicked (find-if (lambda (match) (activated-p (list id :choice (car match))))
-                                  matches)))
+          (let ((clicked (find-if
+                          (lambda (match) (activated-p (list id
+                                                             :choice
+                                                             (car
+                                                              match))))
+                          matches)))
             (when clicked
               (setf (combobox-state-open-p state) nil)
               (return-from combobox-completion (cdr clicked))))
@@ -621,9 +733,12 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (let* ((text (or value ""))
          (state (or (gethash id (context-state *context*))
                     (setf (gethash id (context-state *context*))
-                          (make-combobox-state :cursor (length text) :anchor (length text)))))
+                          (make-combobox-state :cursor (length text) :anchor
+                                               (length text)))))
          (limit (getf options :max-results 20))
-         (focused (and (not (getf options :disabled-p)) (equal id (context-focus *context*))))
+         (focused (and (not (getf options :disabled-p)) (equal id
+                                                               (context-focus
+                                                                *context*))))
          (events (events-for id))
          (press (lui.frame::context-pointer-press *context*))
          (popup-box (previous-box (list id :popup)))
@@ -632,28 +747,38 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
          (result (if (string= edited text) value edited)))
     (check-type limit (integer 1 *))
     (cond ((not focused) (setf (combobox-state-open-p state) nil))
-          ((or (not (combobox-state-focused-p state)) (find :press events :key #'event-kind))
-           (setf (combobox-state-open-p state) t (combobox-state-filter-p state) nil
-                 (combobox-state-highlight state) nil))
+          ((or (not (combobox-state-focused-p state)) (find :press events
+                                                            :key
+                                                            #'event-kind))
+           (setf (combobox-state-open-p state) t (combobox-state-filter-p
+                                                  state) nil
+                                                  (combobox-state-highlight
+                                                   state) nil))
           ((and press (not (and popup-box (lui.frame::contains-p popup-box
-                                               (event-x press) (event-y press)))))
+                                                                 (event-x
+                                                                  press)
+                                                                 (event-y
+                                                                  press)))))
            (setf (combobox-state-open-p state) nil)))
     (setf (combobox-state-focused-p state) focused)
     (when (and focused (not (string= edited text)))
       (setf (combobox-state-open-p state) t (combobox-state-filter-p state) t
             (combobox-state-highlight state) nil))
     (when focused
-      (let ((choice (combobox-completion id state edited choices limit events anchor)))
+      (let ((choice (combobox-completion id state edited choices limit events
+                                         anchor)))
         (when choice
           (setf result choice (edit-state-anchor state) (length choice)
                 (edit-state-cursor state) (length choice))
           (let ((widget (lui.layout:element-content anchor)))
-            (when (and (widget-p widget) (eq :text-field (widget-kind widget)))
+            (when (and (widget-p widget) (eq :text-field (widget-kind
+                                                          widget)))
               (setf (widget-value widget) choice)))
           (request-frame))))
     (values result (not (equal result value)))))
 
 (fn (month-days (integer 28 31)) ((year integer) (month (integer 1 12)))
+  "Return the number of days in MONTH of YEAR, including leap-year February."
   (if (= month 2)
       (if (and (zerop (mod year 4))
                (or (not (zerop (mod year 100))) (zerop (mod year 400))))
@@ -662,8 +787,11 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
 
 (deftype date-parts () '(vector integer 3))
 
-(fn (make-date-parts date-parts) ((year integer) (month integer) (day integer))
-  (make-array 3 :element-type 'integer :initial-contents (list year month day)))
+(fn (make-date-parts date-parts) ((year integer) (month integer) (day
+                                                                  integer))
+  "Validate numeric year/month/day parts and construct the date representation."
+  (make-array 3 :element-type 'integer :initial-contents (list year month
+                                                               day)))
 
 (fn (parse-picker-date (or null date-parts)) (text)
   "Parse YYYY-MM-DD or MM/DD/YYYY into a year/month/day vector, checking leap years."
@@ -681,12 +809,17 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
           (make-date-parts year month day))))))
 
 (fn (picker-display string) ((date (or null date-parts)))
-  (if date (format nil "~2,'0D/~2,'0D/~4,'0D" (aref date 1) (aref date 2) (aref date 0)) ""))
+  "Format a date value for display in the date picker text field."
+  (if date (format nil "~2,'0D/~2,'0D/~4,'0D" (aref date 1) (aref date 2)
+                   (aref date 0)) ""))
 
 (fn (picker-value (or null string)) ((date (or null date-parts)))
-  (when date (format nil "~4,'0D-~2,'0D-~2,'0D" (aref date 0) (aref date 1) (aref date 2))))
+  "Parse the picker's editable date text into its canonical date value."
+  (when date (format nil "~4,'0D-~2,'0D-~2,'0D" (aref date 0) (aref date 1)
+                     (aref date 2))))
 
 (fn (calendar-start (integer 0 6)) ((year integer) (month (integer 1 12)))
+  "Find the first displayed day in the six-week calendar grid."
   ;; Gregorian weekday, Sunday = 0, independent of time zones and OS clocks.
   (let* ((previous (1- year))
          (days (+ (* 365 previous) (floor previous 4)
@@ -699,17 +832,20 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     "September" "October" "November" "December"))
 
 (fn (local-today date-parts) ()
-    (multiple-value-bind (s m h day month year)
-        (decode-universal-time (get-universal-time))
-        (declare (ignore s m h))
+  "Return today's date in the local timezone as a canonical date string."
+  (multiple-value-bind (s m h day month year)
+      (decode-universal-time (get-universal-time))
+    (declare (ignore s m h))
     (make-date-parts year month day)))
 
 (fn (shift-month (values integer (integer 1 12)))
     ((year integer) (month (integer 1 12)) (delta integer))
+  "Shift the displayed calendar month, carrying across year boundaries."
   (multiple-value-bind (year-offset index) (floor (+ month -1 delta) 12)
     (values (+ year year-offset) (1+ index))))
 
 (fn (calendar-item boolean) (id (text string) &rest options)
+  "Declare one selectable calendar entry with its date-specific options."
   (list-item id text (append options (opt :font-size 14))))
 
 (fn (calendar-day (values integer integer integer))
@@ -723,24 +859,69 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                     (1 (- day count)) (otherwise day))))))
 
 (fn (calendar-arrow-focus (values)) (id (state picker-state))
+  "Move calendar keyboard focus according to arrow and paging keys."
   (let ((focus (context-focus *context*)))
     (when (and (consp focus) (equal (first focus) id)
                (eq (second focus) :day))
       (let ((day (third focus)))
         (loop :for event :across (events-for focus) :do
-          (let ((step (and (eq (event-kind event) :key)
-                           (case (event-key event)
-                             (:left -1) (:right 1) (:up -7) (:down 7)
-                             (otherwise nil)))))
-            (when step
-              (multiple-value-bind (y m next)
-                  (calendar-day (picker-state-year state)
-                                (picker-state-month state) (+ day step))
-                (when (<= 1 y 9999)
-                  (setf day next
-                        (picker-state-year state) y
-                        (picker-state-month state) m
-                        (context-focus *context*) (list id :day day))))))))))
+              (let ((step (and (eq (event-kind event) :key)
+                               (case (event-key event)
+                                 (:left -1) (:right 1) (:up -7) (:down 7)
+                                 (otherwise nil)))))
+                (when step
+                  (multiple-value-bind (y m next)
+                      (calendar-day (picker-state-year state)
+                                    (picker-state-month state) (+ day step))
+                    (when (<= 1 y 9999)
+                      (setf day next
+                            (picker-state-year state) y
+                            (picker-state-month state) m
+                            (context-focus *context*) (list id :day
+                                                            day))))))))))
+  (values))
+
+(fn (calendar-header (values))
+    (id (state picker-state) (year integer) (month integer) months)
+  "Declare month/year navigation and update the picker state when activated."
+  (row (:width (lui.layout:grow))
+    (when (calendar-item (list id :month-menu)
+                         (format nil "~A ~4,'0D ▼"
+                                 (aref *month-names* (1-
+                                                      month)) year)
+                         :width (lui.layout:grow) :font-weight :bold)
+      (setf (picker-state-months-p state) (not months)))
+    (dolist (step '(-1 1))
+      (multiple-value-bind (y m) (shift-month year month (* step (if months
+                                                                     12 1)))
+        (when (calendar-item (list id (if (minusp step) :previous-month
+                                          :next-month))
+                             (if (minusp step) "↑" "↓") :font-size 19
+                             :center-text-p t
+                             :width (lui.layout:fixed (if
+                                                       (context-text-mode-p
+                                                        *context*) 3 28))
+                             :disabled-p (not (<= 1 y 9999))
+                             :accessible-name (if months (if (minusp step) "Previous year" "Next year")
+                                                  (if (minusp step) "Previous month" "Next month")))
+          (setf (picker-state-year state) y (picker-state-month state) m)))))
+  (values))
+
+(fn (calendar-month-grid (values))
+    (id (state picker-state) (month integer))
+  "Declare the month chooser and switch back to the day grid after selection."
+  (dotimes (r 4)
+    (row (:width (lui.layout:grow))
+      (dotimes (c 3)
+        (let ((m (+ 1 (* r 3) c)))
+          (when (calendar-item (list id :month m) (subseq (aref
+                                                           *month-names* (1-
+                                                                          m))
+                                                          0 3)
+                               :width (lui.layout:percent (/ 1 3))
+                               :selected-p (= m month))
+            (setf (picker-state-month state) m (picker-state-months-p
+                                                state) nil))))))
   (values))
 
 (fn (picker-calendar (values (or null date-parts) boolean))
@@ -754,34 +935,15 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
          (foreground (getf palette :foreground "#ffffff"))
          (muted (lui.widgets::muted-ink foreground (getf palette :background "#303040")))
          (ink (getf palette :accent foreground)))
-    (row (:width (lui.layout:grow))
-      (when (calendar-item (list id :month-menu)
-                           (format nil "~A ~4,'0D ▼" (aref *month-names* (1- month)) year)
-                           :width (lui.layout:grow) :font-weight :bold)
-        (setf (picker-state-months-p state) (not months)))
-      (dolist (step '(-1 1))
-        (multiple-value-bind (y m) (shift-month year month (* step (if months 12 1)))
-          (when (calendar-item (list id (if (minusp step) :previous-month :next-month))
-                               (if (minusp step) "↑" "↓") :font-size 19 :center-text-p t
-                               :width (lui.layout:fixed (if (context-text-mode-p *context*) 3 28))
-                               :disabled-p (not (<= 1 y 9999))
-                               :accessible-name (if months (if (minusp step) "Previous year" "Next year")
-                                                    (if (minusp step) "Previous month" "Next month")))
-            (setf (picker-state-year state) y (picker-state-month state) m)))))
+    (calendar-header id state year month months)
     (setf year (picker-state-year state) month (picker-state-month state))
     (if (picker-state-months-p state)
-        (dotimes (r 4)
-          (row (:width (lui.layout:grow))
-            (dotimes (c 3)
-              (let ((m (+ 1 (* r 3) c)))
-                (when (calendar-item (list id :month m) (subseq (aref *month-names* (1- m)) 0 3)
-                                     :width (lui.layout:percent (/ 1 3)) :selected-p (= m month))
-                  (setf (picker-state-month state) m (picker-state-months-p state) nil))))))
+        (calendar-month-grid id state month)
         (let ((start (calendar-start year month)))
           (row (:width (lui.layout:grow))
             (loop :for name :across "SMTWTFS" :do
-              (row (:width width :align :center)
-                (label (string name) (opt :font-size 13)))))
+                  (row (:width width :align :center)
+                    (label (string name) (opt :font-size 13)))))
           (dotimes (week 6)
             (row (:width (lui.layout:grow))
               (dotimes (column 7)
@@ -807,48 +969,75 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         (return-from picker-calendar (values (local-today) t))))
     (values nil nil)))
 
+(fn (calendar-trigger (values))
+    (id (state picker-state) parts trigger terminal)
+  "Toggle the calendar from its icon or field and establish its initial date and focus."
+  (let* ((input (list id :input))
+         (field-click (or (activated-p input) (activated-p (list id
+                                                                 :field))))
+         (icon-click (calendar-item trigger "▦" :icon :calendar
+                                    :accessible-name "Choose date"
+                                    :height (lui.layout:grow) :width
+                                    (lui.layout:fixed (if terminal 3 26)))))
+    (cond ((and icon-click (picker-state-open-p state))
+           (setf (picker-state-open-p state) nil (context-focus *context*)
+                 trigger))
+          ((or icon-click field-click)
+           (when (or icon-click (not (picker-state-open-p state)))
+             (let ((initial (or parts (local-today))))
+               (setf (picker-state-open-p state) t (picker-state-months-p
+                                                    state) nil
+                                                    (picker-state-year state)
+                                                    (aref initial 0)
+                                                    (picker-state-month
+                                                     state) (aref initial 1))
+               (when icon-click
+                 (setf (context-focus *context*) (list id :day (aref
+                                                                initial
+                                                                2))))))
+           (when field-click (setf (context-focus *context*) input)))))
+  (values))
+
 (fn (calendar-popup (values (or null date-parts) boolean))
     (id (state picker-state) (parts (or null date-parts)))
+  "Declare the date-picker overlay and return a selected date and change flag."
   (let ((trigger (list id :calendar)) (popup (list id :popup))
         (focus (context-focus *context*))
         (terminal (context-text-mode-p *context*)))
-    (let* ((input (list id :input))
-           (field-click (or (activated-p input) (activated-p (list id :field))))
-           (icon-click (calendar-item trigger "▦" :icon :calendar :accessible-name "Choose date"
-                                      :height (lui.layout:grow) :width
-                                      (lui.layout:fixed (if terminal 3 26)))))
-      (cond ((and icon-click (picker-state-open-p state))
-             (setf (picker-state-open-p state) nil (context-focus *context*) trigger))
-            ((or icon-click field-click)
-             (when (or icon-click (not (picker-state-open-p state)))
-               (let ((initial (or parts (local-today))))
-                 (setf (picker-state-open-p state) t (picker-state-months-p state) nil
-                       (picker-state-year state) (aref initial 0)
-                       (picker-state-month state) (aref initial 1))
-                 (when icon-click
-                   (setf (context-focus *context*) (list id :day (aref initial 2))))))
-             (when field-click (setf (context-focus *context*) input)))))
+    (calendar-trigger id state parts trigger terminal)
     (when (picker-state-open-p state)
       (let ((press (lui.frame::context-pointer-press *context*))
             (bounds (previous-box popup)))
         (cond ((and press bounds
-                    (not (some (lambda (target) (find :press (events-for target) :key #'event-kind))
-                               (list trigger (list id :input) (list id :field))))
-                    (not (lui.frame::contains-p bounds (event-x press) (event-y press))))
+                    (not (some (lambda (target) (find :press (events-for
+                                                              target) :key
+                                                              #'event-kind))
+                               (list trigger (list id :input) (list id
+                                                                    :field))))
+                    (not (lui.frame::contains-p bounds (event-x press)
+                                                (event-y press))))
                (setf (picker-state-open-p state) nil))
               ((find :escape (events-for focus) :key #'event-key)
-               (setf (picker-state-open-p state) nil (context-focus *context*) trigger))
-              ((and bounds focus (not (and (consp focus) (equal (first focus) id))))
+               (setf (picker-state-open-p state) nil (context-focus
+                                                      *context*) trigger))
+              ((and bounds focus (not (and (consp focus) (equal (first focus)
+                                                                id))))
                (setf (picker-state-open-p state) nil))
               (t
                (let ((*parent* (anchored-popup popup *parent*
                                                (opt :width (lui.layout:fixed
                                                             (if terminal 32
                                                                 260))))))
-                 (multiple-value-bind (date action) (picker-calendar id state (or parts (local-today)))
+                 (multiple-value-bind (date action)
+                     (picker-calendar id state
+                                      (or
+                                       parts
+                                       (local-today)))
                    (when action
                      (pop (lui.frame::context-popups *context*))
-                     (setf (picker-state-open-p state) nil (context-focus *context*) trigger)
+                     (setf (picker-state-open-p state) nil (context-focus
+                                                            *context*)
+                           trigger)
                      (return-from calendar-popup (values date t)))))))))
     (values nil nil)))
 
@@ -862,30 +1051,35 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
         (result value))
     (unless (equal value (picker-state-value state))
       (setf (picker-state-value state) value
-            (picker-state-draft state) (if date (picker-display date) (or value ""))))
+            (picker-state-draft state) (if date (picker-display date) (or
+                                                                       value ""))))
     (column (:id id :width (getf options :width (lui.layout:fit)))
-      (panel (append (opt :id (list id :field) :interactive-p t :keyboard-focus-p nil)
+      (panel (append (opt :id (list id :field) :interactive-p t
+                          :keyboard-focus-p nil)
                      options (opt :direction :row :padding 1 :gap 0))
-        (let* ((old (picker-state-draft state))
-               (draft (text-field (list id :input) old
-                                  (opt :width (lui.layout:grow) :accessible-name "Date"
-                                       :placeholder "mm/dd/yyyy"))))
-          (unless (equal old draft)
-            (let ((parsed (parse-picker-date draft)))
-              (setf (picker-state-draft state) draft)
-              (when (or parsed (zerop (length draft)))
-                (setf date parsed result (picker-value parsed)))
-              (when parsed
-                (setf (picker-state-year state) (aref parsed 0)
-                      (picker-state-month state) (aref parsed 1))))))
-        (multiple-value-bind (chosen action) (calendar-popup id state date)
-          (when action
-            (setf date chosen result (picker-value chosen)
-                  (picker-state-draft state) (picker-display chosen))
-            (request-frame)))))
+             (let* ((old (picker-state-draft state))
+                    (draft (text-field (list id :input) old
+                                       (opt :width (lui.layout:grow)
+                                            :accessible-name "Date"
+                                            :placeholder "mm/dd/yyyy"))))
+               (unless (equal old draft)
+                 (let ((parsed (parse-picker-date draft)))
+                   (setf (picker-state-draft state) draft)
+                   (when (or parsed (zerop (length draft)))
+                     (setf date parsed result (picker-value parsed)))
+                   (when parsed
+                     (setf (picker-state-year state) (aref parsed 0)
+                           (picker-state-month state) (aref parsed 1))))))
+             (multiple-value-bind (chosen action) (calendar-popup id state
+                                                                  date)
+               (when action
+                 (setf date chosen result (picker-value chosen)
+                       (picker-state-draft state) (picker-display chosen))
+                 (request-frame)))))
     (unless (equal result value)
       (setf (picker-state-draft state) (picker-display date)
             (picker-state-value state) result)
       (request-frame))
-    (when (and (picker-state-open-p state) (plusp (length (activated-ids)))) (request-frame))
+    (when (and (picker-state-open-p state) (plusp (length (activated-ids))))
+      (request-frame))
     result))

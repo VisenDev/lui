@@ -13,6 +13,7 @@
                             things)))))
 
   (defun parse-typed-lambda-list (parameters)
+    "Return the ordinary lambda list, FTYPE arguments, and local type declarations."
     (let ((mode :required) lambda-list argument-types declarations)
       (dolist (parameter parameters)
         (cond ((member parameter '(&optional &key &rest &aux))
@@ -51,7 +52,8 @@ Optional/key parameters use ((NAME TYPE) DEFAULT SUPPLIED-P)."
            (loop :while (and (consp (first body)) (eq (caar body) 'declare))
                  :collect (pop body))))
       `(progn
-         (declaim (ftype (function ,argument-types ,return-type) ,function-name))
+         (declaim (ftype (function ,argument-types ,return-type)
+                         ,function-name))
          (defun ,function-name ,lambda-list
            ,@(when docstring (list docstring))
            (declare ,@types)
@@ -74,8 +76,10 @@ Optional/key parameters use ((NAME TYPE) DEFAULT SUPPLIED-P)."
                                               (remove-if
                                                (lambda (body)
                                                  (and (consp body)
-                                                      (eq (car body) 'check-type)))
+                                                      (eq (car body)
+                                                          'check-type)))
                                                (cdddr form)))))
                              (t (mapcar #'without-slot-checks form)))))
               (without-slot-checks
-               (macroexpand (funcall original form environment) environment)))))))
+                  (macroexpand (funcall original form environment)
+                               environment)))))))

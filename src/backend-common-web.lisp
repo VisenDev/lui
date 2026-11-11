@@ -4,272 +4,472 @@
 
 (in-package #:lui.web.input)
 
-(fn (install-input function)
-    (host canvas (context context) (queue function) &key page-scroll-p scroll-page)
-  "Install canvas input and one shared IME sink. Return an idempotent cleanup."
-  (let ((sink (#j:document:createElement #j"textarea"))
-        (listeners nil)
-        (pending nil)
-        (pending-root (context-root context))
-        (pointer nil)
-        (touch-start nil)
-        (touch-motion nil)
-        (touch-y nil)
-        (touch-native nil)
-        (touch-time nil)
-        (touch-velocity 0)
-        (composing nil)
-        (alive t)
-        (old-copy (context-copy context))
-        (old-tab ((jscl/ffi:oget canvas "getAttribute") #j"tabindex"))
-        (old-touch (jscl/ffi:oget canvas "style" "touchAction"))
-        (old-cursor (jscl/ffi:oget canvas "style" "cursor")))
-    (labels
-        ((listen (node name callback)
-           (let ((options (jscl/ffi:new #j:Object)))
-             (setf (jscl/ffi:oget options "passive") #j:false)
-             ((jscl/ffi:oget node "addEventListener")
-              (jscl/ffi:jsstring name) callback options))
-           (push (list node name callback) listeners))
-         (input-context ()
-           (unless (eq pending-root (context-root context))
-             (setf pending nil pending-root (context-root context)))
-           (pending-input-context context pending))
-         (send (event)
-           (when alive
-             (input-context)
-             (push event pending)
-             (funcall queue event)))
-         (stop (event) ((jscl/ffi:oget event "preventDefault")))
-         (flag (event name)
-           (jscl/ffi:clbool (jscl/ffi:oget event name)))
-         (focus-without-scroll (element)
-           (let ((options (jscl/ffi:new #j:Object)))
-             (setf (jscl/ffi:oget options "preventScroll") #j:true)
-             ((jscl/ffi:oget element "focus") options)))
-         (release ()
-           (let ((id pointer))
-             (setf pointer nil)
-             (when (and id (jscl/ffi:clbool
-                            ((jscl/ffi:oget canvas "hasPointerCapture") id)))
-               ((jscl/ffi:oget canvas "releasePointerCapture") id))))
-         (cancel ()
-           (setf touch-start nil touch-motion nil touch-y nil)
-           (release)
-           (send (make-event :kind :cancel :buttons 0)))
-         (current-p (event)
-           (or (null pointer)
-               (eql pointer (jscl/ffi:oget event "pointerId"))))
-         (position-event (event kind &rest arguments)
-           (let ((rect ((jscl/ffi:oget host "getBoundingClientRect"))))
-             (apply #'make-event :kind kind
-                    :x (- (jscl/ffi:oget event "clientX")
-                          (jscl/ffi:oget rect "left"))
-                    :y (- (jscl/ffi:oget event "clientY")
-                          (jscl/ffi:oget rect "top")) arguments)))
-         (pointer-event (event kind)
-           (let ((input (position-event
-                         event kind
-                         :buttons (jscl/ffi:oget event "buttons")
-                         :button (if (= 2 (jscl/ffi:oget event "button"))
-                                     :secondary :primary)
-                         :clicks (max 1 (jscl/ffi:oget event "detail")))))
-             (setf (jscl/ffi:oget canvas "style" "cursor")
-                   (jscl/ffi:jsstring
-                    (case (cursor-at context (event-x input) (event-y input))
-                      (:pointer "pointer") (:text "text")
-                      (:not-allowed "not-allowed")
-                      (:resize-horizontal "ew-resize")
-                      (:resize-vertical "ns-resize")
-                      (otherwise "default"))))
-             (send input)))
-         (text (value)
-           (when (and value (not (eq value #j:null))
-                      (not (eq value #j:undefined)))
-             (let ((value (jscl/ffi:clstring value)))
-               (unless (zerop (length value))
-                 (send (make-event :kind :text :value value)))))))
-      ;; A single offscreen control supplies browser text services for all fields.
-      ((jscl/ffi:oget sink "setAttribute") #j"aria-label" #j"Text input")
-      (setf (jscl/ffi:oget sink "tabIndex") -1
-            (jscl/ffi:oget sink "style" "cssText")
-            #j"position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none"
-            (jscl/ffi:oget canvas "tabIndex") 0
-            (jscl/ffi:oget canvas "style" "touchAction")
-            (if page-scroll-p #j"pinch-zoom" #j"none"))
-      ((jscl/ffi:oget host "appendChild") sink)
-      (setf (context-copy context)
-            (lambda (value)
-              (let ((clipboard (jscl/ffi:oget #j:navigator "clipboard")))
-                (unless (eq clipboard #j:undefined)
-                  (let ((promise ((jscl/ffi:oget clipboard "writeText")
-                                  (jscl/ffi:jsstring value))))
-                    ((jscl/ffi:oget promise "catch")
-                     (lambda (error) (declare (ignore error)))))))))
-      (listen canvas "focus"
-              (lambda (event) (declare (ignore event))
-                (unless page-scroll-p (focus-without-scroll sink))))
-      (listen host "pointerdown"
-              (lambda (event)
-                (when (and (current-p event)
-                           (or (eq (jscl/ffi:oget event "target") canvas)
-                               (and page-scroll-p
-                                    (not (eq (jscl/ffi:oget event "target") sink))
-                                    (equal (jscl/ffi:oget event "pointerType") #j"touch"))))
-                  (setf touch-native (not (eq (jscl/ffi:oget event "target") canvas)))
-                  (let ((touch (and page-scroll-p
-                                    (equal (jscl/ffi:oget event "pointerType") #j"touch"))))
-                    (when touch (funcall scroll-page 0))
-                    (setf touch-start (when touch
-                                        (cons (jscl/ffi:oget event "clientX")
-                                              (jscl/ffi:oget event "clientY"))))
-                    ;; Suppress the compatibility mouse click that would refocus
-                    ;; the canvas after we focus the editor.
-                    (setf touch-time (jscl/ffi:oget event "timeStamp")
-                          touch-velocity 0
-                          touch-motion (when touch :pending)
-                          touch-y (when touch (jscl/ffi:oget event "clientY")))
-                    (unless touch-native (stop event))
-                    (unless touch (focus-without-scroll sink))
-                    (setf pointer (jscl/ffi:oget event "pointerId"))
-                    (unless touch-native
-                      ((jscl/ffi:oget canvas "setPointerCapture") pointer)
-                      (pointer-event event :press))))))
-      (listen host "pointermove"
-              (lambda (event)
-                (when (and (current-p event)
-                           (or pointer (eq (jscl/ffi:oget event "target") canvas)))
-                  (cond
-                    (touch-start
-                     (let* ((x (jscl/ffi:oget event "clientX"))
-                            (y (jscl/ffi:oget event "clientY"))
-                            (dx (- x (car touch-start)))
-                            (dy (- y (cdr touch-start)))
-                            (selection (#j:window:getSelection))
-                            (selecting (and touch-native
-                                            (not (eq selection #j:null))
-                                            (jscl/ffi:clbool
-                                             ((jscl/ffi:oget selection "containsNode")
-                                              (jscl/ffi:oget event "target") #j:true))
-                                            (not (jscl/ffi:clbool
-                                                  (jscl/ffi:oget selection "isCollapsed"))))))
-                       ;; Delay the shared drag until the gesture has a direction.
-                       ;; A pan cancels the press, so lifting cannot activate it.
-                       (when selecting (setf touch-motion :selection))
-                       (when (and (eq touch-motion :pending)
-                                  (>= (max (abs dx) (abs dy)) 8))
-                         (setf touch-motion
-                               (if (and scroll-page (> (abs dy) (abs dx)))
-                                   :pan :horizontal))
-                         (when (and (eq touch-motion :pan) (not touch-native))
-                           (send (make-event :kind :cancel :buttons 0))))
-                       (case touch-motion
-                         (:pan
-                          (stop event)
-                          (let ((elapsed (- (jscl/ffi:oget event "timeStamp") touch-time)))
-                            (when (plusp elapsed)
-                              (setf touch-velocity (/ (- touch-y y) elapsed))))
-                          (funcall scroll-page (- touch-y y)))
-                         (:horizontal
-                          (unless touch-native (pointer-event event :move)))
-                         (otherwise nil))
-                       (unless (eq touch-motion :pending)
-                         (setf touch-y y touch-time (jscl/ffi:oget event "timeStamp")))))
-                    (t (pointer-event event :move))))))
-      (listen host "pointerup"
-              (lambda (event)
-                (when (and pointer (current-p event))
-                  (when (eq touch-motion :pan)
-                    (funcall scroll-page 0
-                             (if (< (- (jscl/ffi:oget event "timeStamp") touch-time) 100)
-                                 touch-velocity 0)))
-                  (unless (or touch-native (eq touch-motion :pan))
-                    (pointer-event event :release))
-                  (when (and (not touch-native) (not (eq touch-motion :pan)) touch-start
-                             (< (abs (- (car touch-start) (jscl/ffi:oget event "clientX"))) 8)
-                             (< (abs (- (cdr touch-start) (jscl/ffi:oget event "clientY"))) 8))
-                    (let ((input (input-context)) (position (position-event event :release)))
-                      (focus-without-scroll
-                       (if (and (text-field-focused-p input)
-                                (equal (context-focus input)
-                                       (lui.frame::hit input (event-x position) (event-y position))))
-                           sink canvas))))
-                  (setf touch-start nil touch-motion nil touch-y nil touch-native nil)
-                  (release))))
-      (dolist (name '("pointercancel" "lostpointercapture"))
-        (listen host name
-                (lambda (event)
-                  (when (and pointer (current-p event)) (cancel)))))
-      (listen canvas "pointerleave"
-              (lambda (event)
-                (unless pointer (pointer-event event :move))))
-      (listen host "wheel"
-              (lambda (event)
-                ;; Keep browser zoom shortcuts native.
-                (unless (and page-scroll-p (flag event "ctrlKey"))
-                  (stop event)
-                  (let* ((mode (jscl/ffi:oget event "deltaMode"))
-                         (delta (jscl/ffi:oget event "deltaY"))
-                         (pixels (* delta (case mode
-                                            (1 16)
-                                            (2 (context-height context))
-                                            (otherwise 1)))))
-                    (if (and page-scroll-p scroll-page)
-                        (funcall scroll-page pixels)
-                        (send (position-event
-                               event :scroll
-                               :scroll-mode (if (and (zerop mode)
-                                                     (< (abs delta) 20))
-                                                :immediate :smooth)
-                               :value pixels)))))))
-      ;; Touch taps can focus the canvas without summoning the software keyboard.
-      (listen host "keydown"
-              (lambda (event)
-                (unless (or (not (or (eq (jscl/ffi:oget event "target") canvas)
-                                     (eq (jscl/ffi:oget event "target") sink)))
-                            composing (flag event "isComposing")
-                            (eql 229 (jscl/ffi:oget event "keyCode")))
-                  (let* ((key (jscl/ffi:clstring
-                               (jscl/ffi:oget event "key")))
-                         (control (flag event "ctrlKey"))
-                         (alt (flag event "altKey"))
-                         (meta (flag event "metaKey"))
-                         (shift (flag event "shiftKey"))
-                         (input (input-context))
-                         (editing (text-field-focused-p input))
-                         (command
-                           (or (when (and editing (not meta)
-                                          (not (and control alt)))
-                                 (readline-key key :control control
-                                                   :alt alt :shift shift))
-                               (cdr (assoc key
-                                      '(("ArrowLeft" . :left)
-                                        ("ArrowRight" . :right)
-                                        ("ArrowUp" . :up)
-                                        ("ArrowDown" . :down)
-                                        ("Home" . :home) ("End" . :end)
-                                        ("PageUp" . :page-up)
-                                        ("PageDown" . :page-down)
-                                        ("Backspace" . :backspace)
-                                        ("Delete" . :delete)
-                                        ("Escape" . :escape))
-                                      :test #'string=)))))
-                    (cond
-                      ;; Clipboard shortcuts must reach browser clipboard events.
-                      ((and (or control meta) (not alt)
-                            (member (string-downcase key) '("c" "v" "x")
-                                    :test #'string=)))
-                      ((string= key "Tab")
-                       (stop event)
-                       (send (make-event :kind :tab
+(defstruct input-session
+  "Browser input resources and gesture state owned by one mounted application."
+  (host nil :type t)
+  (canvas nil :type t)
+  (context (make-context) :type context)
+  (queue #'identity :type function)
+  (page-scroll-p nil :type boolean)
+  (scroll-page nil :type (or null function))
+  (sink nil :type t)
+  (listeners nil :type list)
+  (pending nil :type list)
+  (pending-root nil :type (or null lui.layout:element))
+  (pointer nil :type t)
+  (touch-start nil :type list)
+  (touch-motion nil :type symbol)
+  (touch-y nil :type (or null real))
+  (touch-native nil :type t)
+  (touch-time nil :type (or null real))
+  (touch-velocity 0 :type real)
+  (composing nil :type boolean)
+  (alive t :type boolean)
+  (old-copy nil :type (or null function))
+  (old-tab nil :type t)
+  (old-touch nil :type t)
+  (old-cursor nil :type t))
+
+(fn (input-listen (values))
+    ((session input-session) node (name string) (handler function))
+  "Register a session event handler and retain its callback for cleanup."
+  (let ((options (jscl/ffi:new #j:Object))
+        (callback (lambda (event) (funcall handler session event))))
+    (setf (jscl/ffi:oget options "passive") #j:false)
+    ((jscl/ffi:oget node "addEventListener")
+     (jscl/ffi:jsstring name) callback options)
+    (push (list node name callback) (input-session-listeners session)))
+  (values))
+
+(fn (pending-session-context context) ((session input-session))
+  "Resolve pending input against the current completed frame."
+  (let ((context (input-session-context session)))
+    (unless (eq (input-session-pending-root session) (context-root context))
+      (setf (input-session-pending session) nil
+            (input-session-pending-root session) (context-root context)))
+    (pending-input-context context (input-session-pending session))))
+
+(fn (input-send t)
+    ((session input-session) event)
+  "Queue input only while the session is alive, retaining pending focus changes."
+  (when (input-session-alive session)
+    (pending-session-context session)
+    (push event (input-session-pending session))
+    (funcall (input-session-queue session) event)))
+
+(fn (input-stop t)
+    (event)
+  "Prevent the browser default action for an input event."
+  ((jscl/ffi:oget event "preventDefault")))
+
+(fn (input-flag boolean)
+    (event (name string))
+  "Read a JavaScript event flag as a Lisp boolean."
+  (jscl/ffi:clbool (jscl/ffi:oget event name)))
+
+(fn (input-focus-without-scroll t)
+    (element)
+  "Focus a native input element without moving its scroll container."
+  (let ((options (jscl/ffi:new #j:Object)))
+    (setf (jscl/ffi:oget options "preventScroll") #j:true)
+    ((jscl/ffi:oget element "focus") options)))
+
+(fn (input-release t)
+    ((session input-session))
+  "Release the session's captured pointer if capture is still held."
+  (let ((id (input-session-pointer session)))
+    (setf (input-session-pointer session) nil)
+    (when (and id (jscl/ffi:clbool
+                   ((jscl/ffi:oget (input-session-canvas session) "hasPointerCapture") id)))
+      ((jscl/ffi:oget (input-session-canvas session) "releasePointerCapture")
+       id))))
+
+(fn (input-cancel t)
+    ((session input-session))
+  "Cancel gesture state, release capture, and queue a cancellation event."
+  (setf (input-session-touch-start session) nil
+        (input-session-touch-motion session) nil
+        (input-session-touch-y session) nil)
+  (input-release session)
+  (input-send session (make-event :kind :cancel :buttons 0)))
+
+(fn (input-current-p boolean)
+    ((session input-session) event)
+  "Test whether EVENT belongs to the session's current pointer."
+  (or (null (input-session-pointer session))
+      (eql (input-session-pointer session) (jscl/ffi:oget event
+                                                          "pointerId"))))
+
+(fn (input-position-event event)
+    ((session input-session) event kind &rest arguments)
+  "Translate browser client coordinates into a LUI event relative to the host."
+  (let ((rect ((jscl/ffi:oget (input-session-host session) "getBoundingClientRect"))))
+    (apply #'make-event :kind kind
+           :x (- (jscl/ffi:oget event "clientX")
+                 (jscl/ffi:oget rect "left"))
+           :y (- (jscl/ffi:oget event "clientY")
+                 (jscl/ffi:oget rect "top")) arguments)))
+
+(fn (input-pointer-event t)
+    ((session input-session) event kind)
+  "Queue pointer input and update the canvas cursor for its target."
+  (let ((input (input-position-event session
+                                     event kind
+                                     :buttons (jscl/ffi:oget event "buttons")
+                                     :button (if (= 2 (jscl/ffi:oget event "button"))
+                                                 :secondary :primary)
+                                     :clicks (max 1 (jscl/ffi:oget event "detail")))))
+    (setf (jscl/ffi:oget (input-session-canvas session) "style" "cursor")
+          (jscl/ffi:jsstring
+           (case (cursor-at (input-session-context session) (event-x input)
+                            (event-y input))
+             (:pointer "pointer") (:text "text")
+             (:not-allowed "not-allowed")
+             (:resize-horizontal "ew-resize")
+             (:resize-vertical "ns-resize")
+             (otherwise "default"))))
+    (input-send session input)))
+
+(fn (input-text t)
+    ((session input-session) value)
+  "Queue nonempty text supplied by browser editing or clipboard events."
+  (when (and value (not (eq value #j:null))
+             (not (eq value #j:undefined)))
+    (let ((value (jscl/ffi:clstring value)))
+      (unless (zerop (length value))
+        (input-send session (make-event :kind :text :value value))))))
+
+(fn (dispose-input-session t) ((session input-session))
+  "Remove listeners and the IME sink once, restoring the canvas and clipboard callback."
+  (when (input-session-alive session)
+    (input-cancel session)
+    (setf (input-session-alive session) nil)
+    (dolist (listener (input-session-listeners session))
+      (destructuring-bind (node name callback) listener
+        ((jscl/ffi:oget node "removeEventListener")
+         (jscl/ffi:jsstring name) callback)))
+    ((jscl/ffi:oget (input-session-sink session) "remove"))
+    (if (eq (input-session-old-tab session) #j:null)
+        ((jscl/ffi:oget (input-session-canvas session) "removeAttribute") #j"tabindex")
+        ((jscl/ffi:oget (input-session-canvas session) "setAttribute") #j"tabindex" (input-session-old-tab session)))
+    (setf (jscl/ffi:oget (input-session-canvas session) "style"
+                         "touchAction") (input-session-old-touch session)
+                         (jscl/ffi:oget (input-session-canvas session)
+                                        "style" "cursor")
+                         (input-session-old-cursor session))
+    (setf (input-session-listeners session) nil (context-copy
+                                                 (input-session-context
+                                                  session))
+          (input-session-old-copy session))))
+
+(fn (configure-input-session (values)) ((session input-session))
+  "Install the shared IME sink and clipboard writer for the session."
+  ((jscl/ffi:oget (input-session-sink session) "setAttribute") #j"aria-label"
+   #j"Text input")
+  (setf (jscl/ffi:oget (input-session-sink session) "tabIndex") -1
+        (jscl/ffi:oget (input-session-sink session) "style" "cssText")
+        #j"position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none"
+        (jscl/ffi:oget (input-session-canvas session) "tabIndex") 0
+        (jscl/ffi:oget (input-session-canvas session) "style" "touchAction")
+        (if (input-session-page-scroll-p session) #j"pinch-zoom" #j"none"))
+  ((jscl/ffi:oget (input-session-host session) "appendChild")
+   (input-session-sink session))
+  (setf (context-copy (input-session-context session))
+        (lambda (value)
+          (let ((clipboard (jscl/ffi:oget #j:navigator "clipboard")))
+            (unless (eq clipboard #j:undefined)
+              (let ((promise ((jscl/ffi:oget clipboard "writeText")
+                              (jscl/ffi:jsstring value))))
+                ((jscl/ffi:oget promise "catch")
+                 (lambda (error) (declare (ignore error)))))))))
+  (values))
+
+(fn (listen-input-session (values)) ((session input-session))
+  "Register pointer, keyboard, composition, clipboard, and focus listeners."
+  (input-listen session (input-session-canvas session) "focus"
+                #'handle-browser-focus)
+  (input-listen session (input-session-host session) "pointerdown"
+                #'handle-browser-pointerdown)
+  (input-listen session (input-session-host session) "pointermove"
+                #'handle-browser-pointermove)
+  (input-listen session (input-session-host session) "pointerup"
+                #'handle-browser-pointerup)
+  (dolist (name '("pointercancel" "lostpointercapture"))
+    (input-listen session (input-session-host session) name
+                  #'handle-browser-cancel))
+  (input-listen session (input-session-canvas session) "pointerleave"
+                #'handle-browser-pointerleave)
+  (input-listen session (input-session-host session) "wheel"
+                #'handle-browser-wheel)
+  (input-listen session (input-session-host session) "keydown"
+                #'handle-browser-keydown)
+  (input-listen session (input-session-sink session) "compositionstart"
+                #'handle-browser-compositionstart)
+  (input-listen session (input-session-sink session) "compositionend"
+                #'handle-browser-compositionend)
+  (input-listen session (input-session-sink session) "beforeinput"
+                #'handle-browser-beforeinput)
+  (input-listen session (input-session-sink session) "input"
+                #'handle-browser-input)
+  (input-listen session (input-session-sink session) "paste"
+                #'handle-browser-paste)
+  (dolist (name '("copy" "cut"))
+    (input-listen session (input-session-sink session) name
+                  #'handle-browser-clipboard))
+  (input-listen session (input-session-sink session) "blur"
+                #'handle-browser-blur)
+  (input-listen session #j:window "blur" #'handle-browser-window-blur)
+  (values))
+
+(fn (handle-browser-focus t)
+    ((session input-session) event)
+  "Handle the browser focus event for this input session."
+  (declare (ignore event))
+  (unless (input-session-page-scroll-p session) (input-focus-without-scroll (input-session-sink
+                                                          session))))
+
+(fn (handle-browser-pointerdown t)
+    ((session input-session) event)
+  "Handle the browser pointerdown event for this input session."
+  (when (and (input-current-p session event)
+             (or (eq (jscl/ffi:oget event "target") (input-session-canvas
+                                                     session))
+                 (and (input-session-page-scroll-p session)
+                      (not (eq (jscl/ffi:oget event "target")
+                               (input-session-sink session)))
+                      (equal (jscl/ffi:oget event "pointerType") #j"touch"))))
+    (setf (input-session-touch-native session) (not (eq (jscl/ffi:oget event "target") (input-session-canvas session))))
+    (let ((touch (and (input-session-page-scroll-p session)
+                      (equal (jscl/ffi:oget event "pointerType") #j"touch"))))
+      (when touch (funcall (input-session-scroll-page session) 0))
+      (setf (input-session-touch-start session) (when touch
+                                                  (cons (jscl/ffi:oget event "clientX")
+                                                        (jscl/ffi:oget event "clientY"))))
+      ;; Suppress the compatibility mouse click that would refocus
+      ;; the canvas after we focus the editor.
+      (setf (input-session-touch-time session) (jscl/ffi:oget event "timeStamp")
+            (input-session-touch-velocity session) 0
+            (input-session-touch-motion session) (when touch :pending)
+            (input-session-touch-y session) (when touch (jscl/ffi:oget event "clientY")))
+      (unless (input-session-touch-native session) (input-stop event))
+      (unless touch (input-focus-without-scroll (input-session-sink
+                                                 session)))
+      (setf (input-session-pointer session) (jscl/ffi:oget event "pointerId"))
+      (unless (input-session-touch-native session)
+        ((jscl/ffi:oget (input-session-canvas session) "setPointerCapture")
+         (input-session-pointer session))
+        (input-pointer-event session event :press)))))
+
+(fn (native-touch-selection-p boolean)
+    ((session input-session) selection event)
+  "Test whether this touch is extending native browser text selection."
+  (and (input-session-touch-native session)
+       (not (eq selection #j:null))
+       (jscl/ffi:clbool
+        ((jscl/ffi:oget selection "containsNode")
+         (jscl/ffi:oget event "target") #j:true))
+       (not (jscl/ffi:clbool
+             (jscl/ffi:oget selection "isCollapsed")))))
+
+(fn (resolve-touch-direction (values))
+    ((session input-session) (dx real) (dy real))
+  "Resolve a pending gesture direction and cancel control activation when it becomes a pan."
+  (when (and (eq (input-session-touch-motion session) :pending)
+             (>= (max (abs dx) (abs dy)) 8))
+    (setf (input-session-touch-motion session)
+          (if (and (input-session-scroll-page session) (> (abs dy) (abs dx)))
+              :pan :horizontal))
+    (when (and (eq (input-session-touch-motion session) :pan)
+               (not
+                (input-session-touch-native session)))
+      (input-send session (make-event :kind :cancel :buttons 0))))
+  (values))
+
+(fn (handle-browser-pointermove t)
+    ((session input-session) event)
+  "Handle the browser pointermove event for this input session."
+  (when (and (input-current-p session event)
+             (or (input-session-pointer session) (eq (jscl/ffi:oget event "target") (input-session-canvas session))))
+    (cond
+      ((input-session-touch-start session)
+       (let* ((x (jscl/ffi:oget event "clientX"))
+              (y (jscl/ffi:oget event "clientY"))
+              (dx (- x (car (input-session-touch-start session))))
+              (dy (- y (cdr (input-session-touch-start session))))
+              (selection (#j:window:getSelection))
+              (selecting (native-touch-selection-p session selection event)))
+         ;; Delay the shared drag until the gesture has a direction.
+         ;; A pan cancels the press, so lifting cannot activate it.
+         (when selecting (setf (input-session-touch-motion session)
+                               :selection))
+         (resolve-touch-direction session dx dy)
+         (case (input-session-touch-motion session)
+           (:pan
+            (input-stop event)
+            (let ((elapsed (- (jscl/ffi:oget event "timeStamp")
+                              (input-session-touch-time session))))
+              (when (plusp elapsed)
+                (setf (input-session-touch-velocity session)
+                      (/
+                       (-
+                        (input-session-touch-y session) y) elapsed))))
+            (funcall (input-session-scroll-page session)
+                     (-
+                      (input-session-touch-y session) y)))
+           (:horizontal
+            (unless (input-session-touch-native session) (input-pointer-event
+                                                          session event
+                                                          :move)))
+           (otherwise nil))
+         (unless (eq (input-session-touch-motion session) :pending)
+           (setf (input-session-touch-y session) y (input-session-touch-time
+                                                    session) (jscl/ffi:oget
+                                                    event "timeStamp")))))
+      (t (input-pointer-event session event :move)))))
+
+(fn (handle-browser-pointerup t)
+    ((session input-session) event)
+  "Handle the browser pointerup event for this input session."
+  (when (and (input-session-pointer session) (input-current-p session event))
+    (when (eq (input-session-touch-motion session) :pan)
+      (funcall (input-session-scroll-page session) 0
+               (if (< (- (jscl/ffi:oget event "timeStamp")
+                         (input-session-touch-time session)) 100)
+                   (input-session-touch-velocity session) 0)))
+    (unless (or (input-session-touch-native session)
+                (eq
+                 (input-session-touch-motion session) :pan))
+      (input-pointer-event session event :release))
+    (when (and (not (input-session-touch-native session))
+               (not
+                (eq
+                 (input-session-touch-motion session) :pan))
+               (input-session-touch-start session)
+               (< (abs (-
+                        (car
+                         (input-session-touch-start session))
+                        (jscl/ffi:oget event "clientX"))) 8)
+               (< (abs (-
+                        (cdr
+                         (input-session-touch-start session))
+                        (jscl/ffi:oget event "clientY"))) 8))
+      (let ((input (pending-session-context session)) (position
+                                                       (input-position-event
+                                                        session event
+                                                        :release)))
+        (input-focus-without-scroll (if
+                                     (and (text-field-focused-p input)
+                                          (equal (context-focus input)
+                                                 (lui.frame::hit input
+                                                                 (event-x
+                                                                  position)
+                                                                 (event-y
+                                                                  position))))
+                                     (input-session-sink session)
+                                     (input-session-canvas session)))))
+    (setf (input-session-touch-start session) nil
+          (input-session-touch-motion session) nil
+          (input-session-touch-y session) nil
+          (input-session-touch-native session) nil)
+    (input-release session)))
+
+(fn (handle-browser-cancel t)
+    ((session input-session) event)
+  "Handle pointer capture cancellation."
+  (when (and (input-session-pointer session) (input-current-p session event))
+    (input-cancel session)))
+
+(fn (handle-browser-pointerleave t)
+    ((session input-session) event)
+  "Handle the browser pointerleave event for this input session."
+  (unless (input-session-pointer session) (input-pointer-event session event
+                                                               :move)))
+
+(fn (handle-browser-wheel t)
+    ((session input-session) event)
+  "Handle the browser wheel event for this input session."
+  (unless (and (input-session-page-scroll-p session) (input-flag event "ctrlKey"))
+    (input-stop event)
+    (let* ((mode (jscl/ffi:oget event "deltaMode"))
+           (delta (jscl/ffi:oget event "deltaY"))
+           (pixels (* delta (case mode
+                              (1 16)
+                              (2 (context-height (input-session-context
+                                                  session)))
+                              (otherwise 1)))))
+      (if (and (input-session-page-scroll-p session)
+               (input-session-scroll-page session))
+          (funcall (input-session-scroll-page session) pixels)
+          (input-send session (input-position-event session
+                                                    event :scroll
+                                                    :scroll-mode
+                                                    (if
+                                                     (and
+                                                      (zerop
+                                                       mode)
+                                                      (<
+                                                       (abs
+                                                        delta) 20))
+                                                     :immediate :smooth)
+                                                    :value pixels))))))
+
+(fn (browser-key-command symbol)
+    ((key string) editing meta control alt shift)
+  "Resolve Readline commands and browser navigation key names."
+  (or (when (and editing (not meta)
+                 (not (and control alt)))
+        (readline-key key :control control
+                      :alt alt :shift shift))
+      (cdr (assoc key
+                  '(("ArrowLeft" . :left)
+                    ("ArrowRight" . :right)
+                    ("ArrowUp" . :up)
+                    ("ArrowDown" . :down)
+                    ("Home" . :home) ("End" . :end)
+                    ("PageUp" . :page-up)
+                    ("PageDown" . :page-down)
+                    ("Backspace" . :backspace)
+                    ("Delete" . :delete)
+                    ("Escape" . :escape))
+                  :test #'string=))))
+
+(fn (handle-browser-keydown t)
+    ((session input-session) event)
+  "Handle the browser keydown event for this input session."
+  (unless (or (not (or (eq (jscl/ffi:oget event "target")
+                           (input-session-canvas session))
+                       (eq (jscl/ffi:oget event "target") (input-session-sink
+                                                           session))))
+              (input-session-composing session) (input-flag event "isComposing")
+              (eql 229 (jscl/ffi:oget event "keyCode")))
+    (let* ((key (jscl/ffi:clstring
+                 (jscl/ffi:oget event "key")))
+           (control (input-flag event "ctrlKey"))
+           (alt (input-flag event "altKey"))
+           (meta (input-flag event "metaKey"))
+           (shift (input-flag event "shiftKey"))
+           (input (pending-session-context session))
+           (editing (text-field-focused-p input))
+           (command
+            (browser-key-command key editing meta control alt shift)))
+      (cond
+        ;; Clipboard shortcuts must reach browser clipboard events.
+        ((and (or control meta) (not alt)
+              (member (string-downcase key) '("c" "v" "x")
+                      :test #'string=)))
+        ((string= key "Tab")
+         (input-stop event)
+         (input-send session (make-event :kind :tab
                                          :key (when shift :backward))))
-                      ((or (string= key "Enter")
-                           (and (string= key " ")
-                                (activation-focused-p input)))
-                       (stop event) (send (make-event :kind :activate)))
-                      (command
-                       (stop event)
-                       (send (make-event
+        ((or (string= key "Enter")
+             (and (string= key " ")
+                  (activation-focused-p input)))
+         (input-stop event)
+         (input-send session (make-event :kind
+                                         :activate)))
+        (command
+         (input-stop event)
+         (input-send session (make-event
                               :kind :key
                               :key (if (and editing shift)
                                        (case command
@@ -278,91 +478,114 @@
                                          (:home :shift-home)
                                          (:end :shift-end)
                                          (otherwise command))
-                                       command)))))))))
-      (listen sink "compositionstart"
-              (lambda (event) (declare (ignore event))
-                (setf composing t)))
-      (listen sink "compositionend"
-              (lambda (event)
-                (setf composing nil)
-                (text (jscl/ffi:oget event "data"))
-                (setf (jscl/ffi:oget sink "value") #j"")))
-      (listen sink "beforeinput"
-              (lambda (event)
-                (unless (or composing (flag event "isComposing"))
-                  (stop event)
-                  ;; Composition text was committed by COMPOSITIONEND.
-                  (unless (member
-                           (jscl/ffi:clstring
-                            (jscl/ffi:oget event "inputType"))
-                           '("insertCompositionText" "insertFromComposition"
-                             "insertFromPaste") :test #'string=)
-                    (text (jscl/ffi:oget event "data"))))))
-      (listen sink "input"
-              (lambda (event) (declare (ignore event))
-                (unless composing
-                  (setf (jscl/ffi:oget sink "value") #j""))))
-      (listen sink "paste"
-              (lambda (event)
-                (stop event)
-                (text ((jscl/ffi:oget event "clipboardData" "getData")
-                       #j"text/plain"))))
-      (dolist (name '("copy" "cut"))
-        (listen sink name
-                (lambda (event)
-                  (stop event)
-                  ;; Shared selection handling owns both editor and label text.
-                  (let ((nodes (lui.draw::selectable-nodes context))
-                        (context context)
-                        (copied nil))
-                    (let ((original (context-copy context)))
-                      (unwind-protect
-                           (progn
-                             (setf (context-copy context)
-                                   (lambda (value)
-                                     (setf copied t)
-                                     ((jscl/ffi:oget
-                                       event "clipboardData" "setData")
-                                      #j"text/plain"
-                                      (jscl/ffi:jsstring value))))
-                             (lui.draw::copy-selection
-                              context nodes
-                              (or (context-selection context)
-                                  (lui.draw::make-text-selection))))
-                        (setf (context-copy context) original)))
-                    (when (and copied (text-field-focused-p context)
-                               (string= "cut"
-                                        (jscl/ffi:clstring
-                                         (jscl/ffi:oget event "type"))))
-                      (let ((state (gethash (context-focus context)
-                                            (context-state context))))
-                        (when (and (typep state 'edit-state)
-                                   (/= (edit-state-anchor state)
-                                       (edit-state-cursor state)))
-                          (send (make-event :kind :key
-                                            :key :backspace)))))))))
-      (listen sink "blur"
-              (lambda (event) (declare (ignore event))
-                (setf composing nil)
-                (setf (jscl/ffi:oget sink "value") #j"")
-                (cancel)))
-      (listen #j:window "blur"
-              (lambda (event) (declare (ignore event)) (cancel)))
-      (lambda ()
-        (when alive
-          (cancel)
-          (setf alive nil)
-          (dolist (listener listeners)
-            (destructuring-bind (node name callback) listener
-              ((jscl/ffi:oget node "removeEventListener")
-               (jscl/ffi:jsstring name) callback)))
-          ((jscl/ffi:oget sink "remove"))
-          (if (eq old-tab #j:null)
-              ((jscl/ffi:oget canvas "removeAttribute") #j"tabindex")
-              ((jscl/ffi:oget canvas "setAttribute") #j"tabindex" old-tab))
-          (setf (jscl/ffi:oget canvas "style" "touchAction") old-touch
-                (jscl/ffi:oget canvas "style" "cursor") old-cursor)
-          (setf listeners nil (context-copy context) old-copy))))))
+                                       command))))))))
+
+(fn (handle-browser-compositionstart t)
+    ((session input-session) event)
+  "Handle the browser compositionstart event for this input session."
+  (declare (ignore event))
+  (setf (input-session-composing session) t))
+
+(fn (handle-browser-compositionend t)
+    ((session input-session) event)
+  "Handle the browser compositionend event for this input session."
+  (setf (input-session-composing session) nil)
+  (input-text session (jscl/ffi:oget event "data"))
+  (setf (jscl/ffi:oget (input-session-sink session) "value") #j""))
+
+(fn (handle-browser-beforeinput t)
+    ((session input-session) event)
+  "Handle the browser beforeinput event for this input session."
+  (unless (or (input-session-composing session) (input-flag event "isComposing"))
+    (input-stop event)
+    ;; Composition text was committed by COMPOSITIONEND.
+    (unless (member
+             (jscl/ffi:clstring
+              (jscl/ffi:oget event "inputType"))
+             '("insertCompositionText" "insertFromComposition"
+               "insertFromPaste") :test #'string=)
+      (input-text session (jscl/ffi:oget event "data")))))
+
+(fn (handle-browser-input t)
+    ((session input-session) event)
+  "Handle the browser input event for this input session."
+  (declare (ignore event))
+  (unless (input-session-composing session)
+    (setf (jscl/ffi:oget (input-session-sink session) "value") #j"")))
+
+(fn (handle-browser-paste t)
+    ((session input-session) event)
+  "Handle the browser paste event for this input session."
+  (input-stop event)
+  (input-text session ((jscl/ffi:oget event "clipboardData" "getData")
+                       #j"text/plain")))
+
+(fn (handle-browser-clipboard t)
+    ((session input-session) event)
+  "Handle browser copy and cut using the shared LUI selection."
+  (input-stop event)
+  ;; Shared selection handling owns both editor and label text.
+  (let ((nodes (lui.draw::selectable-nodes (input-session-context session)))
+        (copied nil))
+    (let ((original (context-copy (input-session-context session))))
+      (unwind-protect
+           (progn
+             (setf (context-copy (input-session-context session))
+                   (lambda (value)
+                     (setf copied t)
+                     ((jscl/ffi:oget
+                       event "clipboardData" "setData")
+                      #j"text/plain"
+                      (jscl/ffi:jsstring value))))
+             (lui.draw::copy-selection
+              (input-session-context session) nodes
+              (or (context-selection (input-session-context session))
+                  (lui.draw::make-text-selection))))
+        (setf (context-copy (input-session-context session)) original)))
+    (when (and copied (text-field-focused-p (input-session-context session))
+               (string= "cut"
+                        (jscl/ffi:clstring
+                         (jscl/ffi:oget event "type"))))
+      (let ((state (gethash (context-focus (input-session-context session))
+                            (context-state (input-session-context session)))))
+        (when (and (typep state 'edit-state)
+                   (/= (edit-state-anchor state)
+                       (edit-state-cursor state)))
+          (input-send session (make-event :kind :key
+                                          :key :backspace)))))))
+
+(fn (handle-browser-blur t)
+    ((session input-session) event)
+  "Handle the browser blur event for this input session."
+  (declare (ignore event))
+  (setf (input-session-composing session) nil)
+  (setf (jscl/ffi:oget (input-session-sink session) "value") #j"")
+  (input-cancel session))
+
+(fn (handle-browser-window-blur t)
+    ((session input-session) event)
+  "Handle the browser blur event for this input session."
+  (declare (ignore event)) (input-cancel session))
+
+(fn (install-input function)
+    (host canvas (context context) (queue function) &key page-scroll-p
+                                                      scroll-page)
+  "Install canvas input and one shared IME sink. Return an idempotent cleanup."
+  (let ((session (make-input-session :host host :canvas canvas :context
+                                     context
+                                     :queue queue :page-scroll-p page-scroll-p
+                                     :scroll-page scroll-page
+                                     :sink (#j:document:createElement #j"textarea")
+                                     :pending-root (context-root context)
+                                     :old-copy (context-copy context)
+                                     :old-tab ((jscl/ffi:oget canvas "getAttribute") #j"tabindex")
+                                     :old-touch (jscl/ffi:oget canvas "style"
+                                                               "touchAction")
+                                     :old-cursor (jscl/ffi:oget canvas
+                                                                "style" "cursor"))))
+    (configure-input-session session)
+    (listen-input-session session)
+    (values (lambda () (dispose-input-session session)))))
 
 
 (fn (update-accessibility t) (canvas (context context))
@@ -397,19 +620,22 @@
 (defpackage #:lui.web
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.draw)
   (:import-from #:lui
-    #:mount #:unmount #:refresh)
+                #:mount #:unmount #:refresh)
   (:export #:mount #:unmount #:refresh))
 (in-package #:lui.web)
 
 (defstruct web-app
   #+lui-ecl-web (ffi-owner nil :type list)
-  host stage overlay canvas graphics renderer context callback cleanup observer resize
-  scrollport (scroll-listener nil :type (or null function)) (viewport-offset 0)
+  host stage overlay canvas graphics renderer context callback cleanup
+  observer resize
+  scrollport (scroll-listener nil :type (or null function)) (viewport-offset
+                                                             0)
   (scroll-delta 0) (velocity 0) (scroll-time 0)
   (overlay-order #() :type vector) overlay-geometry overlay-cache
   animation-frame deadline-timer events pending-p (alive-p t))
 
 (fn (page-scrollport t) (host)
+  "Find the nearest vertically scrolling ancestor of HOST, or the browser window."
   (do ((element host (jscl/ffi:oget element "parentElement")))
       ((eq element #j:null) #j:window)
     (let ((overflow (jscl/ffi:oget
@@ -418,11 +644,13 @@
         (return element)))))
 
 (fn (page-viewport-height real) (port)
+  "Return the visible height of a scroll container in CSS pixels."
   (if (eq port #j:window)
       #j:window:innerHeight
       (jscl/ffi:oget port "clientHeight")))
 
 (fn (page-offset real) (stage port)
+  "Return STAGE's vertical offset relative to its scroll container's viewport."
   (let ((top (jscl/ffi:oget
               ((jscl/ffi:oget stage "getBoundingClientRect")) "top")))
     (if (eq port #j:window)
@@ -433,19 +661,119 @@
            top))))
 
 (fn (page-scroll-by t) (port delta)
+  "Move PORT immediately by DELTA CSS pixels without browser smooth scrolling."
   (let ((options (jscl/ffi:new #j:Object)))
     (setf (jscl/ffi:oget options "top") delta
           (jscl/ffi:oget options "behavior") #j"instant")
     ((jscl/ffi:oget port "scrollBy") options)))
 
 (fn (rounded-path t) (g (box box) radius &optional (inset 0))
+  "Begin a rounded rectangular Canvas path, optionally inset from BOX."
   ((jscl/ffi:oget g "beginPath"))
   ((jscl/ffi:oget g "roundRect")
    (+ inset (box-x box)) (+ inset (box-y box))
    (max 0 (- (box-width box) (* 2 inset)))
    (max 0 (- (box-height box) (* 2 inset))) (max 0 (- radius inset))))
 
+(fn (canvas-surface t) (g box radius color alpha &optional stroke)
+  "Paint a filled or stroked rounded Canvas surface."
+  (setf (jscl/ffi:oget g "globalAlpha") alpha)
+  (if stroke
+      (setf (jscl/ffi:oget g "lineWidth") stroke
+            (jscl/ffi:oget g "strokeStyle") (jscl/ffi:jsstring color))
+      (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color)))
+  (cond ((zerop radius)
+         (if stroke
+             ((jscl/ffi:oget g "strokeRect")
+              (+ (box-x box) (/ stroke 2))
+              (+ (box-y box) (/ stroke 2))
+              (max 0 (- (box-width box) stroke))
+              (max 0 (- (box-height box) stroke)))
+             ((jscl/ffi:oget g "fillRect") (box-x box) (box-y box)
+              (box-width box) (box-height box))))
+        (t
+         (rounded-path g box radius (if stroke (/ stroke 2) 0))
+         (if stroke
+             ((jscl/ffi:oget g "stroke"))
+             ((jscl/ffi:oget g "fill"))))))
+
+(fn (canvas-polygons t) (g paths color alpha)
+  "Fill closed Canvas contours with a shared color and alpha."
+  (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color)
+        (jscl/ffi:oget g "globalAlpha") alpha)
+  ((jscl/ffi:oget g "beginPath"))
+  (dotimes (index (length paths))
+    (let ((path (aref paths index)))
+      (when (plusp (length path))
+        ((jscl/ffi:oget g "moveTo") (car (aref path 0)) (cdr (aref path 0)))
+        (dotimes (i (1- (length path)))
+          (let ((p (aref path (1+ i))))
+            ((jscl/ffi:oget g "lineTo") (car p) (cdr p))))
+        ((jscl/ffi:oget g "closePath")))))
+  ((jscl/ffi:oget g "fill")))
+
+(fn (canvas-text t) (g font text x y color)
+  "Paint text with the resolved browser font and baseline."
+  (setf (jscl/ffi:oget g "globalAlpha") 1
+        (jscl/ffi:oget g "font")
+        (jscl/ffi:jsstring (lui.font:font-css font))
+        (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color))
+  ((jscl/ffi:oget g "fillText") (jscl/ffi:jsstring text) x y))
+
+(fn (canvas-stipple t) (g tile ink patterns box border color)
+  "Reuse a colored checkerboard pattern to fill a rectangle or border."
+  (let ((pattern (gethash color patterns)))
+    (unless pattern
+      ((jscl/ffi:oget ink "clearRect") 0 0 2 2)
+      (setf (jscl/ffi:oget ink "fillStyle") (jscl/ffi:jsstring color))
+      ((jscl/ffi:oget ink "fillRect") 0 0 1 1)
+      ((jscl/ffi:oget ink "fillRect") 1 1 1 1)
+      (setf pattern ((jscl/ffi:oget g "createPattern") tile #j"repeat")
+            (gethash color patterns) pattern))
+    (setf (jscl/ffi:oget g "globalAlpha") 1
+          (jscl/ffi:oget g "fillStyle") pattern))
+  (rounded-path g box 0)
+  (when (and border (> (box-width box) (* 2 border))
+             (> (box-height box) (* 2 border)))
+    ((jscl/ffi:oget g "rect") (+ (box-x box) border)
+     (+ (box-y box) border) (- (box-width box) (* 2 border))
+     (- (box-height box) (* 2 border))))
+  ((jscl/ffi:oget g "fill") #j"evenodd"))
+
+(fn (canvas-glass t) (canvas g sample blur box radius frost)
+  "Sample the visible backdrop into a reduced scratch canvas and paint it through a rounded clip."
+  (when (plusp frost)
+    (let* ((scale #j:window:devicePixelRatio)
+           (offset (jscl/ffi:oget canvas "luiViewportOffset"))
+           (x (max 0 (box-x box)))
+           (y (max offset (box-y box)))
+           (w (max 0 (- (min (+ (box-x box) (box-width box))
+                             (/ (jscl/ffi:oget canvas "width") scale)) x)))
+           (h (max 0 (- (min (+ (box-y box) (box-height box))
+                             (+ offset (/ (jscl/ffi:oget canvas "height")
+                                          scale))) y)))
+           (step (max 1 (/ frost 2)))
+           (sw (max 1 (ceiling (/ w step))))
+           (sh (max 1 (ceiling (/ h step)))))
+      ;; Restrict the scratch bitmap to the visible artwork. The original
+      ;; rounded surface still supplies the destination clip.
+      (when (and (plusp w) (plusp h))
+        (when (> sw (jscl/ffi:oget sample "width"))
+          (setf (jscl/ffi:oget sample "width") sw))
+        (when (> sh (jscl/ffi:oget sample "height"))
+          (setf (jscl/ffi:oget sample "height") sh))
+        ((jscl/ffi:oget blur "clearRect") 0 0 sw sh)
+        ((jscl/ffi:oget blur "drawImage") canvas
+         (* scale x) (* scale (- y offset)) (* scale w) (* scale h) 0 0 sw sh)
+        ((jscl/ffi:oget g "save"))
+        (rounded-path g box radius)
+        ((jscl/ffi:oget g "clip"))
+        (setf (jscl/ffi:oget g "globalAlpha") 1)
+        ((jscl/ffi:oget g "drawImage") sample 0 0 sw sh x y w h)
+        ((jscl/ffi:oget g "restore"))))))
+
 (fn (canvas-renderer renderer) (canvas g)
+  "Create Canvas drawing callbacks with reusable stipple and backdrop scratch surfaces."
   (let* ((tile (#j:document:createElement #j"canvas"))
          (ink ((jscl/ffi:oget tile "getContext") #j"2d"))
          (sample (#j:document:createElement #j"canvas"))
@@ -456,46 +784,13 @@
        :font (lui.font:open-font)
        :surface
        (lambda (box radius color alpha &optional stroke)
-         (setf (jscl/ffi:oget g "globalAlpha") alpha)
-         (if stroke
-             (setf (jscl/ffi:oget g "lineWidth") stroke
-                   (jscl/ffi:oget g "strokeStyle") (jscl/ffi:jsstring color))
-             (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color)))
-         (cond ((zerop radius)
-                (if stroke
-                    ((jscl/ffi:oget g "strokeRect")
-                     (+ (box-x box) (/ stroke 2))
-                     (+ (box-y box) (/ stroke 2))
-                     (max 0 (- (box-width box) stroke))
-                     (max 0 (- (box-height box) stroke)))
-                    ((jscl/ffi:oget g "fillRect") (box-x box) (box-y box)
-                     (box-width box) (box-height box))))
-               (t
-                (rounded-path g box radius (if stroke (/ stroke 2) 0))
-                (if stroke
-                    ((jscl/ffi:oget g "stroke"))
-                    ((jscl/ffi:oget g "fill"))))))
+         (canvas-surface g box radius color alpha stroke))
        :polygons
        (lambda (paths color alpha)
-         (setf (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color)
-               (jscl/ffi:oget g "globalAlpha") alpha)
-         ((jscl/ffi:oget g "beginPath"))
-         (dotimes (index (length paths))
-           (let ((path (aref paths index)))
-             (when (plusp (length path))
-               ((jscl/ffi:oget g "moveTo") (car (aref path 0)) (cdr (aref path 0)))
-               (dotimes (i (1- (length path)))
-                 (let ((p (aref path (1+ i))))
-                   ((jscl/ffi:oget g "lineTo") (car p) (cdr p))))
-               ((jscl/ffi:oget g "closePath")))))
-         ((jscl/ffi:oget g "fill")))
+         (canvas-polygons g paths color alpha))
        :text
        (lambda (font text x y color)
-         (setf (jscl/ffi:oget g "globalAlpha") 1
-               (jscl/ffi:oget g "font")
-               (jscl/ffi:jsstring (lui.font:font-css font))
-               (jscl/ffi:oget g "fillStyle") (jscl/ffi:jsstring color))
-         ((jscl/ffi:oget g "fillText") (jscl/ffi:jsstring text) x y))
+         (canvas-text g font text x y color))
        :clip
        (lambda (box)
          ((jscl/ffi:oget g "restore"))
@@ -504,55 +799,13 @@
          ((jscl/ffi:oget g "clip")))
        :stipple
        (lambda (box border color)
-         (let ((pattern (gethash color patterns)))
-           (unless pattern
-             ((jscl/ffi:oget ink "clearRect") 0 0 2 2)
-             (setf (jscl/ffi:oget ink "fillStyle") (jscl/ffi:jsstring color))
-             ((jscl/ffi:oget ink "fillRect") 0 0 1 1)
-             ((jscl/ffi:oget ink "fillRect") 1 1 1 1)
-             (setf pattern ((jscl/ffi:oget g "createPattern") tile #j"repeat")
-                   (gethash color patterns) pattern))
-           (setf (jscl/ffi:oget g "globalAlpha") 1
-                 (jscl/ffi:oget g "fillStyle") pattern))
-         (rounded-path g box 0)
-         (when (and border (> (box-width box) (* 2 border))
-                    (> (box-height box) (* 2 border)))
-           ((jscl/ffi:oget g "rect") (+ (box-x box) border)
-            (+ (box-y box) border) (- (box-width box) (* 2 border))
-            (- (box-height box) (* 2 border))))
-         ((jscl/ffi:oget g "fill") #j"evenodd"))
+         (canvas-stipple g tile ink patterns box border color))
        :glass
        (lambda (box radius frost)
-         (when (plusp frost)
-           (let* ((scale #j:window:devicePixelRatio)
-                  (offset (jscl/ffi:oget canvas "luiViewportOffset"))
-                  (x (max 0 (box-x box)))
-                  (y (max offset (box-y box)))
-                  (w (max 0 (- (min (+ (box-x box) (box-width box))
-                                        (/ (jscl/ffi:oget canvas "width") scale)) x)))
-                  (h (max 0 (- (min (+ (box-y box) (box-height box))
-                                        (+ offset (/ (jscl/ffi:oget canvas "height") scale))) y)))
-                  (step (max 1 (/ frost 2)))
-                  (sw (max 1 (ceiling (/ w step))))
-                  (sh (max 1 (ceiling (/ h step)))))
-             ;; Restrict the scratch bitmap to the visible artwork. The original
-             ;; rounded surface still supplies the destination clip.
-             (when (and (plusp w) (plusp h))
-               (when (> sw (jscl/ffi:oget sample "width"))
-                 (setf (jscl/ffi:oget sample "width") sw))
-               (when (> sh (jscl/ffi:oget sample "height"))
-                 (setf (jscl/ffi:oget sample "height") sh))
-               ((jscl/ffi:oget blur "clearRect") 0 0 sw sh)
-               ((jscl/ffi:oget blur "drawImage") canvas
-                (* scale x) (* scale (- y offset)) (* scale w) (* scale h) 0 0 sw sh)
-               ((jscl/ffi:oget g "save"))
-               (rounded-path g box radius)
-               ((jscl/ffi:oget g "clip"))
-               (setf (jscl/ffi:oget g "globalAlpha") 1)
-               ((jscl/ffi:oget g "drawImage") sample 0 0 sw sh x y w h)
-               ((jscl/ffi:oget g "restore"))))))))))
+         (canvas-glass canvas g sample blur box radius frost))))))
 
 (fn (queue-event t) ((app web-app) (event event))
+  "Queue an application input event and request a redraw."
   (when (web-app-alive-p app)
     (if (and (eq (event-kind event) :move)
              (web-app-events app)
@@ -562,12 +815,14 @@
     (refresh app)))
 
 (fn (cancel-deadline (values)) ((app web-app))
+  "Cancel APP's pending frame deadline and clear its timer handle."
   (when (web-app-deadline-timer app)
     (#j:clearTimeout (web-app-deadline-timer app))
     (setf (web-app-deadline-timer app) nil))
   (values))
 
 (fn (schedule-deadline t) ((app web-app))
+  "Schedule a redraw for the context's next animation or idle deadline."
   (unless (web-app-pending-p app)
     (cancel-deadline app)
     (let ((delay (lui.frame::frame-wait (web-app-context app))))
@@ -583,107 +838,144 @@
 
 (defstruct overlay-region x y right bottom candidate visible)
 
-(fn (overlay-candidates (vector list)) ((app web-app) (root element))
-  ;; Earlier regions in this walk paint in front of later ones. An unchanged
-  ;; prefix therefore has exactly the same occlusion as on the previous frame.
-  (let ((previous (web-app-overlay-geometry app)) seen bands
-        (entries (make-array 0 :element-type 'list :adjustable t :fill-pointer 0)))
-    (labels ((index-region (region)
-               (do ((band (floor (overlay-region-y region) 64) (1+ band))
-                    (end (ceiling (overlay-region-bottom region) 64)))
-                   ((>= band end))
-                 (push region (gethash band bands))))
-             (uncovered-p (x y right bottom)
-               (do ((band (floor y 64) (1+ band)) (end (ceiling bottom 64)))
-                   ((>= band end) t)
-                 (dolist (other (gethash band bands))
-                   (when (and (< x (overlay-region-right other)) (< (overlay-region-x other) right)
-                              (< y (overlay-region-bottom other)) (< (overlay-region-y other) bottom))
-                     (return-from uncovered-p nil)))))
-             (region-visible-p (clip candidate)
-               (let* ((x (box-x clip)) (y (box-y clip))
-                      (right (+ x (box-width clip))) (bottom (+ y (box-height clip)))
-                      (old (pop previous)))
-                 (cond ((and old (= x (overlay-region-x old))
-                             (= y (overlay-region-y old))
-                             (= right (overlay-region-right old))
-                             (= bottom (overlay-region-bottom old))
-                             (eq candidate (overlay-region-candidate old)))
-                        (push old seen)
-                        (overlay-region-visible old))
-                       (t
-                        (unless bands
-                          (setf previous nil bands (make-hash-table))
-                          (dolist (region seen) (index-region region)))
-                        (let* ((visible
-                                 (and candidate
-                                      (uncovered-p x y right bottom)))
-                               (region
-                                 (make-overlay-region
-                                  :x x :y y :right right :bottom bottom
-                                  :candidate candidate :visible visible)))
-                          (push region seen)
-                          (index-region region)
-                          visible)))))
-             (visit (node path interactive)
-               (let ((key (if (element-id node)
-                              (list :id (element-id node)) path))
-                     (children (element-children node))
-                     (clip (element-clip node))
-                     (widget (element-content node)))
-                 (let ((count (length children)))
-                   (dotimes (offset count)
-                     (let ((i (- count offset 1)))
-                       (visit (aref children i) (cons i key)
+(defstruct overlay-scan
+  "Occlusion index and reusable geometry accumulated during one overlay walk."
+  (previous nil :type list) (seen nil :type list)
+  (bands nil :type (or null hash-table))
+  (entries (make-array 0 :element-type 'list :adjustable t :fill-pointer 0)
+           :type (vector list)))
+
+(fn (index-overlay-region t) ((scan overlay-scan) region)
+  "Index a painted region by vertical bands for occlusion queries."
+  (do ((band (floor (overlay-region-y region) 64) (1+ band))
+       (end (ceiling (overlay-region-bottom region) 64)))
+      ((>= band end))
+    (push region (gethash band (overlay-scan-bands scan)))))
+
+(fn (overlay-uncovered-p t) ((scan overlay-scan) x y right bottom)
+  "Test whether a rectangle is unobstructed by earlier painted regions."
+  (do ((band (floor y 64) (1+ band)) (end (ceiling bottom 64)))
+      ((>= band end) t)
+    (dolist (other (gethash band (overlay-scan-bands scan)))
+      (when (and (< x (overlay-region-right other)) (< (overlay-region-x
+                                                        other) right)
+                 (< y (overlay-region-bottom other)) (< (overlay-region-y
+                                                         other) bottom))
+        (return-from overlay-uncovered-p nil)))))
+
+(fn (overlay-region-visible-p t) ((scan overlay-scan) clip candidate)
+  "Reuse unchanged visibility or update the scan's occlusion index."
+  (let* ((x (box-x clip)) (y (box-y clip))
+         (right (+ x (box-width clip))) (bottom (+ y (box-height clip)))
+         (old (pop (overlay-scan-previous scan))))
+    (cond ((and old (= x (overlay-region-x old))
+                (= y (overlay-region-y old))
+                (= right (overlay-region-right old))
+                (= bottom (overlay-region-bottom old))
+                (eq candidate (overlay-region-candidate old)))
+           (push old (overlay-scan-seen scan))
+           (overlay-region-visible old))
+          (t
+           (unless (overlay-scan-bands scan)
+             (setf (overlay-scan-previous scan) nil (overlay-scan-bands scan)
+                   (make-hash-table))
+             (dolist (region (overlay-scan-seen scan)) (index-overlay-region
+                                                        scan region)))
+           (let* ((visible
+                   (and candidate
+                        (overlay-uncovered-p scan x y right bottom)))
+                  (region
+                   (make-overlay-region
+                    :x x :y y :right right :bottom bottom
+                    :candidate candidate :visible visible)))
+             (push region (overlay-scan-seen scan))
+             (index-overlay-region scan region)
+             visible)))))
+
+(fn (visit-overlay-node t) ((scan overlay-scan) node path interactive)
+  "Walk children front to back and collect unoccluded native-label candidates."
+  (let ((key (if (element-id node)
+                 (list :id (element-id node)) path))
+        (children (element-children node))
+        (clip (element-clip node))
+        (widget (element-content node)))
+    (let ((count (length children)))
+      (dotimes (offset count)
+        (let ((i (- count offset 1)))
+          (visit-overlay-node scan (aref children i) (cons i key)
                               (or interactive
                                   (element-interactive-p node))))))
-                 (when (and (plusp (box-width clip)) (plusp (box-height clip))
-                            (or (lui.widgets:widget-p widget)
-                                (element-interactive-p node)))
-                   (let ((kind (and (lui.widgets:widget-p widget)
-                                    (lui.widgets:widget-kind widget))))
-                     (when (region-visible-p
-                            clip
-                            (and (member kind '(:cell :label :button :tab
-                                                :list-item :checkbox :radio))
-                                 (or (not (eq kind :label))
-                                     (lui:toolkit-native-labels-p
-                                      (lui.widgets:widget-style widget)))
-                                 (not (lui.widgets:widget-painter widget))))
-                       (vector-push-extend
-                        (list node (cons kind key) interactive) entries)))))))
-      (visit root nil nil))
-    (setf (web-app-overlay-geometry app) (nreverse seen))
-    (reverse entries)))
+    (when (and (plusp (box-width clip)) (plusp (box-height clip))
+               (or (lui.widgets:widget-p widget)
+                   (element-interactive-p node)))
+      (let ((kind (and (lui.widgets:widget-p widget)
+                       (lui.widgets:widget-kind widget))))
+        (when (overlay-region-visible-p scan
+                                        clip
+                                        (and (member kind '(:cell :label
+                                                            :button :tab
+                                                            :list-item
+                                                            :checkbox :radio))
+                                             (or (not (eq kind :label))
+                                                 (lui:toolkit-native-labels-p
+                                                  (lui.widgets:widget-style
+                                                   widget)))
+                                             (not (lui.widgets:widget-painter
+                                                   widget))))
+          (vector-push-extend
+           (list node (cons kind key) interactive) (overlay-scan-entries
+                                                    scan)))))))
+
+(fn (overlay-candidates (vector list)) ((app web-app) (root element))
+  "Collect unoccluded native-label candidates, reusing unchanged occlusion results."
+  ;; Earlier regions paint in front; an unchanged prefix retains its occlusion.
+  (let ((scan (make-overlay-scan :previous (web-app-overlay-geometry app))))
+    (visit-overlay-node scan root nil nil)
+    (setf (web-app-overlay-geometry app) (nreverse (overlay-scan-seen scan)))
+    (reverse (overlay-scan-entries scan))))
 
 (fn (css-pixels t) ((n real))
+  "Convert a numeric dimension to a JavaScript CSS pixel string."
   ((jscl/ffi:oget (#j:String n) "concat") #j"px"))
 
 (fn (position-dom-widget (values)) ((record dom-widget) (box box) (clip box))
-  (let* ((x (box-x box)) (y (box-y box)) (w (box-width box)) (h (box-height box))
+  "Update an overlay's position and clipping only when its geometry changes."
+  (let* ((x (box-x box)) (y (box-y box)) (w (box-width box)) (h (box-height
+                                                                 box))
          (left (- (box-x clip) x)) (top (- (box-y clip) y))
-         (right (- w left (box-width clip))) (bottom (- h top (box-height clip)))
+         (right (- w left (box-width clip))) (bottom (- h top (box-height
+                                                               clip)))
          (old (dom-widget-geometry record)))
     (destructuring-bind (&optional ox oy ow oh otop oright obottom oleft) old
       (unless (and (eql x ox) (eql y oy) (eql w ow) (eql h oh)
-                   (eql top otop) (eql right oright) (eql bottom obottom) (eql left oleft))
+                   (eql top otop) (eql right oright) (eql bottom obottom)
+                   (eql left oleft))
         (let ((style (jscl/ffi:oget (dom-widget-element record) "style")))
-          (unless (eql x ox) (setf (jscl/ffi:oget style "left") (css-pixels x)))
-          (unless (eql y oy) (setf (jscl/ffi:oget style "top") (css-pixels y)))
-          (unless (eql w ow) (setf (jscl/ffi:oget style "width") (css-pixels w)))
-          (unless (eql h oh) (setf (jscl/ffi:oget style "height") (css-pixels h)))
-          (unless (and (eql top otop) (eql right oright) (eql bottom obottom) (eql left oleft))
+          (unless (eql x ox) (setf (jscl/ffi:oget style "left") (css-pixels
+                                                                 x)))
+          (unless (eql y oy) (setf (jscl/ffi:oget style "top") (css-pixels
+                                                                y)))
+          (unless (eql w ow) (setf (jscl/ffi:oget style "width") (css-pixels
+                                                                  w)))
+          (unless (eql h oh) (setf (jscl/ffi:oget style "height") (css-pixels
+                                                                   h)))
+          (unless (and (eql top otop) (eql right oright) (eql bottom obottom)
+                       (eql left oleft))
             (setf (jscl/ffi:oget style "clipPath")
                   (if (= 0 top right bottom left) #j"none"
                       ((jscl/ffi:oget #j"inset(" "concat")
-                       top #j"px " right #j"px " bottom #j"px " left #j"px)"))))
-          (setf (dom-widget-geometry record) (list x y w h top right bottom left))))))
+                       top #j"px " right #j"px " bottom #j"px " left
+                       #j"px)"))))
+          (setf (dom-widget-geometry record) (list x y w h top right bottom
+                                                   left))))))
   (values))
 
 (fn (make-semantic-button t) ((app web-app) (node element) (kind symbol))
+  "Create an accessible native control that queues LUI activation for NODE."
   ;; The canvas keeps pointer capture and toolkit keyboard navigation. Native
   ;; button activation also lets assistive technology invoke the same action.
-  (let ((button (#j:document:createElement #j"button")) (id (element-id node)))
+  (let ((button (#j:document:createElement #j"button")) (id (element-id
+                                                             node)))
     (setf (jscl/ffi:oget button "type") #j"button"
           (jscl/ffi:oget button "tabIndex") -1
           (jscl/ffi:oget button "onclick")
@@ -695,41 +987,65 @@
        (jscl/ffi:jsstring (string-downcase (symbol-name kind)))))
     button))
 
-(fn (same-overlay-order-p boolean) ((records (vector dom-widget)) (entries (vector list)))
+(fn (same-overlay-order-p boolean) ((records (vector dom-widget)) (entries
+                                                                   (vector
+                                                                    list)))
+  "Test whether overlay records already match the candidate keys in order."
   (and (= (length records) (length entries))
        (loop :for record :across records :for entry :across entries
              :always (equal (dom-widget-key record) (second entry)))))
 
-(fn (reconcile-overlay (vector dom-widget)) ((app web-app) (entries (vector list)))
+(fn (order-overlay-elements (values))
+    (layer (order (vector dom-widget)))
+  "Move visible native elements into layout order while leaving cached hidden nodes in place."
+  (let ((cursor (jscl/ffi:oget layer "firstChild")))
+    (loop :for record :across order :do
+          (let ((element (dom-widget-element record)))
+            (loop :while (and (not (eq cursor #j:null))
+                              (equal (jscl/ffi:oget cursor "style" "visibility") #j"hidden"))
+                  :do (setf cursor (jscl/ffi:oget cursor "nextSibling")))
+            (unless (eq element cursor) ((jscl/ffi:oget layer "insertBefore")
+                                         element cursor))
+            (setf cursor (jscl/ffi:oget element "nextSibling")))))
+  (values))
+
+(fn (reconcile-overlay (vector dom-widget)) ((app web-app) (entries (vector
+                                                                     list)))
+  "Reuse keyed DOM records, reconcile their order, and bound the hidden-node cache."
   ;; Look up keyed nodes and inspect DOM order only when membership or order changes.
   (let ((order (web-app-overlay-order app)))
     (when (same-overlay-order-p order entries)
       (return-from reconcile-overlay order))
     (let ((old (make-hash-table :test 'equal)) (layer (web-app-overlay app))
-          (next (make-array 0 :element-type 'dom-widget :adjustable t :fill-pointer 0))
+          (next (make-array 0 :element-type 'dom-widget :adjustable t
+                            :fill-pointer 0))
           (cache (web-app-overlay-cache app)) hidden)
       (loop :for record :across order
             :do (setf (gethash (dom-widget-key record) old) record))
-      (dolist (record cache) (setf (gethash (dom-widget-key record) old) record))
+      (dolist (record cache) (setf (gethash (dom-widget-key record) old)
+                                   record))
       (loop :for entry :across entries :do
-        (destructuring-bind (node key interactive) entry
-          (declare (ignore interactive))
-          (let* ((kind (car key))
-                 (record (or (gethash key old)
-                             (make-dom-widget :key key :element
-                               (if (eq kind :label) (#j:document:createElement #j"span")
-                                   (make-semantic-button app node kind))))))
-            (remhash key old)
-            (when (dom-widget-hidden-p record)
-              (setf (dom-widget-hidden-p record) nil
-                    (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"visible"))
-            (vector-push-extend record next))))
+            (destructuring-bind (node key interactive) entry
+              (declare (ignore interactive))
+              (let* ((kind (car key))
+                     (record
+                      (or (gethash key old)
+                          (make-dom-widget :key key :element
+                                           (if (eq kind :label)
+                                               (#j:document:createElement #j"span")
+                                               (make-semantic-button
+                                                app node kind))))))
+                (remhash key old)
+                (when (dom-widget-hidden-p record)
+                  (setf (dom-widget-hidden-p record) nil
+                        (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"visible"))
+                (vector-push-extend record next))))
       ;; Prefer newly hidden nodes over older cached entries when evicting.
       (loop :for record :across order :do
-        (when (gethash (dom-widget-key record) old)
-          (setf (dom-widget-hidden-p record) t
-                (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"hidden")
-          (push record hidden)))
+            (when (gethash (dom-widget-key record) old)
+              (setf (dom-widget-hidden-p record) t
+                    (jscl/ffi:oget (dom-widget-element record) "style" "visibility") #j"hidden")
+              (push record hidden)))
       (setf hidden
             (nconc hidden
                    (loop :for record :in cache
@@ -741,72 +1057,104 @@
         (setf (cdr (nthcdr (1- *overlay-cache-limit*) hidden)) nil))
       (setf (web-app-overlay-cache app) hidden)
       (setf order next)
-      (let ((cursor (jscl/ffi:oget layer "firstChild")))
-        (loop :for record :across order :do
-          (let ((element (dom-widget-element record)))
-            (loop :while (and (not (eq cursor #j:null))
-                             (equal (jscl/ffi:oget cursor "style" "visibility") #j"hidden"))
-                  :do (setf cursor (jscl/ffi:oget cursor "nextSibling")))
-            (unless (eq element cursor) ((jscl/ffi:oget layer "insertBefore") element cursor))
-            (setf cursor (jscl/ffi:oget element "nextSibling")))))
+      (order-overlay-elements layer order)
       (setf (web-app-overlay-order app) order))))
 
+(fn (sync-semantic-state (values))
+    ((record dom-widget) (widget lui.widgets:widget) element (kind symbol))
+  "Update native disabled and checked/pressed attributes only when widget state changes."
+  (let ((state (list (not (null (lui.widgets:widget-value widget)))
+                     (lui.widgets:widget-disabled-p widget))))
+    (unless (equal state (dom-widget-state record))
+      (setf (dom-widget-state record) state
+            (jscl/ffi:oget element "disabled") (if (second state) #j:true
+                                                   #j:false))
+      (when (member kind '(:checkbox :radio :tab))
+        ((jscl/ffi:oget element "setAttribute")
+         (if (eq kind :tab) #j"aria-pressed" #j"aria-checked")
+         (if (first state) #j"true" #j"false")))))
+  (values))
+
+(fn (sync-label-style (values))
+    ((app web-app) (record dom-widget) widget element appearance interactive
+     label)
+  "Update label font, color, alignment, and pointer policy only when appearance changes."
+  (unless (equal appearance (dom-widget-style record))
+    (let ((font (lui.draw::widget-font (web-app-renderer app)
+                                       widget))
+          (style (jscl/ffi:oget element "style")))
+      (setf (jscl/ffi:oget style "pointerEvents") (if interactive
+                                                      #j"none" #j"auto")
+            (jscl/ffi:oget style "font") (jscl/ffi:jsstring
+                                          (lui.font:font-css font))
+            (jscl/ffi:oget style "lineHeight") (css-pixels
+                                                (lui.font:line-height font))
+            (jscl/ffi:oget style "color") (jscl/ffi:jsstring
+                                           (lui.widgets:widget-foreground
+                                            widget))
+            (jscl/ffi:oget style "textAlign")
+            (if (and label (geometry-center-x (widget-geometry
+                                               widget))) #j"center" #j"left")
+            (dom-widget-style record) appearance)))
+  (values))
+
 (fn (sync-overlay hash-table) ((app web-app))
-  (let* ((entries (overlay-candidates app (context-root (web-app-context app))))
+  "Update native labels and accessible controls; return the nodes painted by the DOM."
+  (let* ((entries (overlay-candidates app (context-root (web-app-context
+                                                         app))))
          (records (reconcile-overlay app entries))
          (external (make-hash-table :test 'eq)))
     (loop :for (node key interactive) :across entries
           :for record :across records :do
-      (let* ((kind (car key)) (label (eq kind :label)) (widget (element-content node))
-             (element (dom-widget-element record))
-             (text (if label (lui.widgets:widget-text widget)
-                       (or (lui.widgets:widget-accessible-name widget) (lui.widgets:widget-text widget))))
-             (appearance (and label (list interactive (lui.widgets:widget-font-size widget)
-                                          (lui.widgets:widget-font-family widget)
-                                          (lui.widgets:widget-font-weight widget)
-                                          (lui.widgets:widget-foreground widget)
-                                          (geometry-center-x (widget-geometry widget))))))
-        (unless (dom-widget-geometry record)
-          (setf (jscl/ffi:oget element "style" "cssText")
-                (if label
-                    #j"position:absolute;display:block;margin:0;padding:0;border:0;white-space:pre-wrap;overflow:hidden;user-select:text;-webkit-user-select:text;cursor:text"
-                    #j"position:absolute;display:block;margin:0;padding:0;border:0;opacity:0;pointer-events:none;user-select:none")))
-        (position-dom-widget record
-                             (if label (lui.draw::selection-area (web-app-renderer app) node)
-                                 (element-box node)) (element-clip node))
-        (unless (equal appearance (dom-widget-style record))
-          (let ((font (lui.draw::widget-font (web-app-renderer app) widget))
-                (style (jscl/ffi:oget element "style")))
-            (setf (jscl/ffi:oget style "pointerEvents") (if interactive #j"none" #j"auto")
-                  (jscl/ffi:oget style "font") (jscl/ffi:jsstring (lui.font:font-css font))
-                  (jscl/ffi:oget style "lineHeight") (css-pixels (lui.font:line-height font))
-                  (jscl/ffi:oget style "color") (jscl/ffi:jsstring (lui.widgets:widget-foreground widget))
-                  (jscl/ffi:oget style "textAlign")
-                  (if (and label (geometry-center-x (widget-geometry widget))) #j"center" #j"left")
-                  (dom-widget-style record) appearance)))
-        (if label (setf (gethash node external) t)
-            (let ((state (list (not (null (lui.widgets:widget-value widget)))
-                               (lui.widgets:widget-disabled-p widget))))
-              (unless (equal state (dom-widget-state record))
-                (setf (dom-widget-state record) state
-                      (jscl/ffi:oget element "disabled") (if (second state) #j:true #j:false))
-                (when (member kind '(:checkbox :radio :tab))
-                  ((jscl/ffi:oget element "setAttribute")
-                   (if (eq kind :tab) #j"aria-pressed" #j"aria-checked")
-                   (if (first state) #j"true" #j"false"))))))
-        (unless (equal text (dom-widget-text record))
-          (if label (setf (jscl/ffi:oget element "textContent") (jscl/ffi:jsstring text))
-              ((jscl/ffi:oget element "setAttribute") #j"aria-label" (jscl/ffi:jsstring text)))
-          (setf (dom-widget-text record) text))))
+          (let* ((kind (car key)) (label (eq kind :label)) (widget
+                                                            (element-content
+                                                             node))
+                 (element (dom-widget-element record))
+                 (text (if label (lui.widgets:widget-text widget)
+                           (or (lui.widgets:widget-accessible-name widget)
+                               (lui.widgets:widget-text widget))))
+                 (appearance (and label (list interactive
+                                              (lui.widgets:widget-font-size
+                                               widget)
+                                              (lui.widgets:widget-font-family
+                                               widget)
+                                              (lui.widgets:widget-font-weight
+                                               widget)
+                                              (lui.widgets:widget-foreground
+                                               widget)
+                                              (geometry-center-x
+                                               (widget-geometry widget))))))
+            (unless (dom-widget-geometry record)
+              (setf (jscl/ffi:oget element "style" "cssText")
+                    (if label
+                        #j"position:absolute;display:block;margin:0;padding:0;border:0;white-space:pre-wrap;overflow:hidden;user-select:text;-webkit-user-select:text;cursor:text"
+                        #j"position:absolute;display:block;margin:0;padding:0;border:0;opacity:0;pointer-events:none;user-select:none")))
+            (position-dom-widget record
+                                 (if label (lui.draw::selection-area
+                                            (web-app-renderer app) node)
+                                     (element-box node)) (element-clip node))
+            (sync-label-style app record widget element appearance
+                              interactive label)
+            (if label (setf (gethash node external) t)
+                (sync-semantic-state record widget element kind))
+            (unless (equal text (dom-widget-text record))
+              (if label (setf (jscl/ffi:oget element "textContent")
+                              (jscl/ffi:jsstring text))
+                  ((jscl/ffi:oget element "setAttribute") #j"aria-label"
+                   (jscl/ffi:jsstring text)))
+              (setf (dom-widget-text record) text))))
     external))
 
-(fn (queue-page-scroll t) ((app web-app) (delta real) &optional ((velocity real) 0))
+(fn (queue-page-scroll t) ((app web-app) (delta real) &optional ((velocity
+                                                                  real) 0))
+  "Accumulate page scrolling and bounded momentum, then request a redraw."
   (incf (web-app-scroll-delta app) delta)
   (setf (web-app-velocity app) (max -4 (min 4 velocity))
         (web-app-scroll-time app) (#j:performance:now))
   (refresh app))
 
 (fn (frame-scroll-delta real) ((app web-app))
+  "Consume queued scrolling and advance exponentially decaying page momentum."
   (let ((delta (shiftf (web-app-scroll-delta app) 0))
         (speed (web-app-velocity app)))
     (unless (zerop speed)
@@ -819,7 +1167,18 @@
               (if (< (* (abs speed) decay) 0.02f0) 0 (* speed decay)))))
     delta))
 
+(fn (resize-canvas-bitmap (values))
+    (canvas (width real) (height real) (scale real))
+  "Resize the physical canvas bitmap only when its scaled dimensions change."
+  (let ((w (round (* width scale))) (h (round (* height scale))))
+    (unless (= w (jscl/ffi:oget canvas "width"))
+      (setf (jscl/ffi:oget canvas "width") w))
+    (unless (= h (jscl/ffi:oget canvas "height"))
+      (setf (jscl/ffi:oget canvas "height") h)))
+  (values))
+
 (fn (draw-frame t) ((app web-app))
+  "Solve and paint APP's next frame, updating viewport geometry and native overlays."
   (let* ((canvas (web-app-canvas app)) (g (web-app-graphics app))
          (context (web-app-context app)) (*unit* 8)
          (width (jscl/ffi:oget canvas "clientWidth"))
@@ -831,11 +1190,7 @@
                      (jscl/ffi:oget canvas "clientHeight")))
          (scale #j:window:devicePixelRatio)
          (events (nreverse (shiftf (web-app-events app) nil))))
-    (let ((w (round (* width scale))) (h (round (* height scale))))
-      (unless (= w (jscl/ffi:oget canvas "width"))
-        (setf (jscl/ffi:oget canvas "width") w))
-      (unless (= h (jscl/ffi:oget canvas "height"))
-        (setf (jscl/ffi:oget canvas "height") h)))
+    (resize-canvas-bitmap canvas width height scale)
     (setf (lui.frame::context-page-height-p context) (not (null port))
           (lui.frame::context-page-top context)
           (max 0 (min (- (context-height context) height) (+ origin delta))))
@@ -849,8 +1204,10 @@
         (let ((offset (max 0 (min (- page-height height) (+ origin delta)))))
           (setf (web-app-viewport-offset app) offset
                 (jscl/ffi:oget canvas "luiViewportOffset") offset
-                (jscl/ffi:oget stage "style" "height") (css-pixels page-height)
-                (jscl/ffi:oget canvas "style" "height") (css-pixels height)))))
+                (jscl/ffi:oget stage "style" "height") (css-pixels
+                                                        page-height)
+                (jscl/ffi:oget canvas "style" "height") (css-pixels
+                                                         height)))))
     ((jscl/ffi:oget g "setTransform") scale 0 0 scale 0 0)
     (setf (jscl/ffi:oget g "fillStyle") #j"#202432")
     ((jscl/ffi:oget g "fillRect") 0 0 width height)
@@ -881,6 +1238,7 @@
   #-lui-ecl-web (schedule-refresh app))
 
 (fn (schedule-refresh t) ((app web-app))
+  "Arrange an animation callback while honoring the application's frame pacing."
   (when (and (web-app-alive-p app) (not (web-app-pending-p app)))
     (cancel-deadline app)
     (setf (web-app-pending-p app) t)
@@ -903,36 +1261,17 @@
                   (#j:setTimeout #'enqueue (ceiling (* wait 1000)))))))))
 
 (fn (default-scroll-mode symbol) ()
+  "Choose page scrolling for touch-first devices and a bounded viewport otherwise."
   (if (jscl/ffi:clbool
        (jscl/ffi:oget (#j:window:matchMedia #j"(pointer: coarse)") "matches"))
       :page :viewport))
 
-(fn (mount web-app) (host (callback function) &key (min-fps lui.frame::*min-fps*)
-           (max-fps lui.frame::*max-fps*)
-           ((scroll-mode (member :page :viewport)) (default-scroll-mode)))
-  "Mount a Canvas 2D app in HOST. SCROLL-MODE is :PAGE for content expansion or
-:VIEWPORT for a fixed embedded view; the default is :PAGE on coarse pointers."
-  (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
-  (let* (#+lui-ecl-web (lui.web.ffi:*owner* (list :web-app))
-         (page-scroll-p (eq scroll-mode :page))
-         (port (and page-scroll-p (page-scrollport host)))
-         (stage (#j:document:createElement #j"div"))
-         (labels (#j:document:createElement #j"div"))
-         (canvas (#j:document:createElement #j"canvas"))
-         (g ((jscl/ffi:oget canvas "getContext") #j"2d"))
-         (renderer (canvas-renderer canvas g))
-         (context (make-context
-                   :min-fps min-fps :max-fps max-fps
-                   :measure (lambda (widget width)
-                              (measure-widget renderer widget width))))
-         (app (make-web-app
-               #+lui-ecl-web :ffi-owner
-               #+lui-ecl-web lui.web.ffi:*owner*
-               :host host :stage stage :overlay labels
-               :canvas canvas :graphics g :renderer renderer
-               :context context :callback callback :scrollport port))
-         (resize (lambda (&rest ignored)
-                   (declare (ignore ignored)) (refresh app))))
+(fn (mount-app-elements (values))
+    ((app web-app) page-scroll-p)
+  "Style and attach the application's stage, canvas, and native-label layer."
+  (let ((host (web-app-host app)) (stage (web-app-stage app))
+        (canvas (web-app-canvas app)) (labels (web-app-overlay app))
+        (port (web-app-scrollport app)))
     (setf (jscl/ffi:oget canvas "style" "cssText")
           #j"display:block;width:100%;height:100%;touch-action:none"
           (jscl/ffi:oget canvas "luiApp") app
@@ -946,16 +1285,56 @@
             (jscl/ffi:oget stage "style" "overflow") #j"clip"
             (jscl/ffi:oget canvas "style" "position") #j"sticky"
             (jscl/ffi:oget canvas "style" "top") #j"0"
-            (jscl/ffi:oget canvas "style" "height") (css-pixels (page-viewport-height port))
-            (jscl/ffi:oget stage "style" "height") (css-pixels (page-viewport-height port))))
+            (jscl/ffi:oget canvas "style" "height") (css-pixels
+                                                     (page-viewport-height
+                                                      port))
+            (jscl/ffi:oget stage "style" "height") (css-pixels
+                                                    (page-viewport-height
+                                                     port))))
     ((jscl/ffi:oget stage "appendChild") canvas)
     ((jscl/ffi:oget stage "appendChild") labels)
-    ((jscl/ffi:oget host "appendChild") stage)
+    ((jscl/ffi:oget host "appendChild") stage))
+  (values))
+
+(fn (mount web-app) (host (callback function) &key (min-fps
+                                                    lui.frame::*min-fps*)
+                                                (max-fps lui.frame::*max-fps*)
+                                                ((scroll-mode
+                                                  (member :page
+                                                          :viewport))
+                                                 (default-scroll-mode)))
+  "Mount a Canvas 2D app in HOST. SCROLL-MODE is :PAGE for content expansion or
+:VIEWPORT for a fixed embedded view; the default is :PAGE on coarse pointers."
+  (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
+  (let* (#+lui-ecl-web (lui.web.ffi:*owner* (list :web-app))
+                       (page-scroll-p (eq scroll-mode :page))
+                       (port (and page-scroll-p (page-scrollport host)))
+                       (stage (#j:document:createElement #j"div"))
+                       (labels (#j:document:createElement #j"div"))
+                       (canvas (#j:document:createElement #j"canvas"))
+                       (g ((jscl/ffi:oget canvas "getContext") #j"2d"))
+                       (renderer (canvas-renderer canvas g))
+                       (context (make-context
+                                 :min-fps min-fps :max-fps max-fps
+                                 :measure (lambda (widget width)
+                                            (measure-widget renderer widget
+                                                            width))))
+                       (app (make-web-app
+                             #+lui-ecl-web :ffi-owner
+                             #+lui-ecl-web lui.web.ffi:*owner*
+                             :host host :stage stage :overlay labels
+                             :canvas canvas :graphics g :renderer renderer
+                             :context context :callback callback :scrollport
+                             port))
+                       (resize (lambda (&rest ignored)
+                                 (declare (ignore ignored)) (refresh app))))
+    (mount-app-elements app page-scroll-p)
     (setf (web-app-cleanup app)
           (lui.web.input:install-input
            stage canvas context (lambda (event) (queue-event app event))
            :page-scroll-p page-scroll-p
-           :scroll-page (lambda (delta &optional (speed 0)) (queue-page-scroll app delta speed)))
+           :scroll-page (lambda (delta &optional (speed 0))
+                          (queue-page-scroll app delta speed)))
           (web-app-resize app) resize
           (web-app-observer app) (jscl/ffi:new #j:ResizeObserver resize))
     ((jscl/ffi:oget (web-app-observer app) "observe") host)
@@ -984,6 +1363,7 @@
   #-lui-ecl-web (dispose-app app))
 
 (fn (dispose-app t) ((app web-app))
+  "Release APP's listeners, timers, rendering resources, and mounted DOM elements."
   (when (web-app-alive-p app)
     (setf (web-app-alive-p app) nil)
     (cancel-deadline app)
@@ -1006,9 +1386,12 @@
       (lui.web.ffi:release-owner (web-app-ffi-owner app)))))
 
 (fn (css-size t) (value fallback)
+  "Convert a numeric CSS size to pixels, preserving strings and using FALLBACK for NIL."
   (if value ((jscl/ffi:oget (#j:String value) "concat") #j"px") fallback))
 
-(fn (run-web web-app) ((draw function) &key title width height (interactive t))
+(fn (run-web web-app) ((draw function) &key title width height (interactive
+                                                                t))
+  "Create a browser host and mount DRAW with the requested title and dimensions."
   (declare (ignore interactive))
   (setf (jscl/ffi:oget #j:document "title") (jscl/ffi:jsstring title))
   (let ((scroll-mode (if height :viewport (default-scroll-mode)))

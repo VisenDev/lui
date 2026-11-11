@@ -117,6 +117,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
       "Dynamically bound layout parent receiving declarations in the current scope.")
 
 (fn (memoized t) ((key list) (compute function))
+  "Reuse a frame-local value for KEY, computing it with FUNCTION on a cache miss."
   ;; Compare call slots, not hashes. Reordering only causes cache misses.
   ;; Keys snapshot top-level strings; compound IDs follow the stable-ID contract.
   (if (and (boundp '*context*) (context-building-p *context*))
@@ -140,13 +141,13 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   "High-resolution elapsed-time clock in milliseconds."
   #+jscl (#j:performance:now)
   #-jscl (* 1000 (/ (get-internal-real-time)
-                   internal-time-units-per-second)))
+                    internal-time-units-per-second)))
 
 (fn (record-frame-statistics (values))
     ((stats frame-statistics) (ms real) (now real))
   "Average the last 30 layout solves; sample actual cadence every half second."
   (let ((samples (frame-statistics-samples stats))
-         (index (frame-statistics-index stats)))
+        (index (frame-statistics-index stats)))
     (incf (frame-statistics-total-ms stats) (- ms (aref samples index)))
     (setf (aref samples index) ms
           (frame-statistics-index stats) (mod (1+ index) (length samples))
@@ -173,9 +174,10 @@ The backend supplies measurement, clipboard, and optional input callbacks."
                 (frame-statistics-fps stats)
                 (/ (frame-statistics-total-ms stats) count)))))
 
-(fn (frame-wait real) ((context context) &optional urgent
-                (now (/ (get-internal-real-time)
-                        internal-time-units-per-second)))
+(fn (frame-wait real)
+    ((context context) &optional urgent
+     (now (/ (get-internal-real-time) internal-time-units-per-second)))
+  "Return seconds until the next allowed frame, honoring idle and active limits."
   (let* ((start (context-time context))
          (first (+ start (/ 1 (context-max-fps context))))
          (idle (+ start (/ 1 (context-min-fps context))))
@@ -202,10 +204,12 @@ The backend supplies measurement, clipboard, and optional input callbacks."
               deadline))))
 
 (fn (contains-p boolean) ((bounds box) (x real) (y real))
+  "Test whether X/Y lies inside BOUNDS, excluding its right and bottom edges."
   (and (<= (box-x bounds) x) (< x (+ (box-x bounds) (box-width bounds)))
        (<= (box-y bounds) y) (< y (+ (box-y bounds) (box-height bounds)))))
 
 (fn (hit t) ((context context) (x real) (y real))
+  "Find the deepest interactive element whose solved clip contains X/Y."
   (let ((found nil))
     (when (and (context-root context) (<= 0 x) (< x (context-width context))
                (<= 0 y) (< y (context-height context)))
@@ -217,6 +221,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
     found))
 
 (fn (focus-next t) ((context context) &optional backward)
+  "Advance keyboard focus through eligible elements in declaration order."
   (let ((ids nil))
     (when (context-root context)
       (walk-elements (context-root context)
@@ -244,18 +249,19 @@ Native key translators use this to interpret a key after a batched click or Tab.
       (let ((predicted (copy-context context)))
         (loop :for event-index :downfrom (1- (length events)) :to 0
               :for event := (elt events event-index) :do
-          (case (event-kind event)
-            (:tab (focus-next
-                   predicted (eq (event-key event) :backward)))
-            (:press
-             (let* ((id (hit predicted (event-x event) (event-y event)))
-                    (node (gethash id (context-ids predicted))))
-               (when (and node (element-pointer-focus-p node))
-                 (setf (context-focus predicted) id)))) (otherwise nil)))
+              (case (event-kind event)
+                (:tab (focus-next
+                       predicted (eq (event-key event) :backward)))
+                (:press
+                 (let* ((id (hit predicted (event-x event) (event-y event)))
+                        (node (gethash id (context-ids predicted))))
+                   (when (and node (element-pointer-focus-p node))
+                     (setf (context-focus predicted) id)))) (otherwise nil)))
         predicted)
       context))
 
 (fn (scroll-path (vector t)) ((context context) (x real) (y real))
+  "Collect scrollable ancestors under X/Y for nested wheel propagation."
   ;; Follow the painted hit path, deepest scroller first.
   (let ((scrollers nil))
     (labels ((visit (node parents)
@@ -266,24 +272,27 @@ Native key translators use this to interpret a key after a batched click or Tab.
                    (do-children (child node)
                      (visit child path))))))
       (when (context-root context) (visit (context-root context) nil)))
-    (make-array (length scrollers) :element-type t :initial-contents scrollers)))
+    (make-array (length scrollers) :element-type t :initial-contents
+                scrollers)))
 
 (fn (scroll-along real) ((context context) (path (vector t)) (amount real))
+  "Apply a scroll delta along PATH and return the amount actually consumed."
   ;; Bubble the unused portion outward, including during the animated tail.
   (let ((requested amount))
     (loop :for id :across path :do
-      (let ((node (gethash id (context-ids context))))
-        (when (and node (element-scroll-p node))
-          (let* ((old (element-scroll-y node))
-                 (new (min (element-scroll-limit-y node)
-                           (max 0 (+ old amount)))))
-            (decf amount (- new old))
-            (setf (element-scroll-y node) new
-                  (gethash id (context-scroll context))
-                  (cons (element-scroll-x node) new))))))
+          (let ((node (gethash id (context-ids context))))
+            (when (and node (element-scroll-p node))
+              (let* ((old (element-scroll-y node))
+                     (new (min (element-scroll-limit-y node)
+                               (max 0 (+ old amount)))))
+                (decf amount (- new old))
+                (setf (element-scroll-y node) new
+                      (gethash id (context-scroll context))
+                      (cons (element-scroll-x node) new))))))
     (- requested amount)))
 
 (fn (advance-scroll (values)) ((context context) (now real))
+  "Advance CONTEXT's smooth scrolling to NOW and discard completed motion."
   (let ((motion (context-scroll-motion context)))
     (when motion
       (let* ((remaining (scroll-motion-remaining motion))
@@ -300,7 +309,9 @@ Native key translators use this to interpret a key after a batched click or Tab.
           (setf (context-scroll-motion context) nil)))))
   (values))
 
-(fn (wheel-scroll (or null real scroll-motion)) ((context context) (event event))
+(fn (wheel-scroll (or null real scroll-motion)) ((context context) (event
+                                                                    event))
+  "Route wheel input to immediate scrolling or accumulate smooth scroll motion."
   (let ((path (scroll-path context (event-x event) (event-y event)))
         (amount (event-value event))
         (now (context-time context))
@@ -334,21 +345,148 @@ Native key translators use this to interpret a key after a batched click or Tab.
       (t (setf (context-scroll-motion context) nil)))))
 
 (fn (record-activation (eql t)) ((context context) id)
+  "Record an activated ID so the next frame can consume its action."
   (push id (context-activation-order context))
   (setf (gethash id (context-activated context)) t))
 
 (fn (activated-ids (vector t)) (&optional ((context context) *context*))
   "Return active widget IDs in input order, including repeated activations."
-  (let ((ids (remove-if-not (lambda (id) (gethash id (context-activated context)))
+  (let ((ids (remove-if-not (lambda (id) (gethash id (context-activated
+                                                      context)))
                             (context-activation-order context))))
-    (make-array (length ids) :element-type t :initial-contents (nreverse ids))))
+    (make-array (length ids) :element-type t :initial-contents (nreverse
+                                                                ids))))
 
 (fn (pointer-cancel-p boolean) ((event event))
+  "Recognize input that cancels an active pointer gesture or capture."
   (or (eq (event-kind event) :cancel)
       (and (eq (event-kind event) :move) (event-buttons event)
            (not (logbitp 0 (event-buttons event))))))
 
-(fn (begin-frame (eql t)) ((context context) (width real) (height real) (events sequence))
+(fn (route-pointer-press (values)) ((context context) (event event) target)
+  "Record pointer presses, detect double clicks, and update capture and focus."
+  (setf (context-pointer-press context) event)
+  (let ((previous (context-last-click context)))
+    (when (and previous (equal target (second previous))
+               (eq (event-button event) (third previous))
+               (<= (- (context-time context) (first previous)) 0.4f0)
+               (< (abs (- (event-x event) (fourth previous))) 4)
+               (< (abs (- (event-y event) (fifth previous))) 4))
+      (setf (event-clicks event) 2))
+    (setf (context-last-click context)
+          (unless (= (event-clicks event) 2)
+            (list (context-time context) target (event-button event)
+                  (event-x event) (event-y event)))))
+  (when (eq (event-button event) :primary)
+    (setf (context-active context) target
+          (context-focus-visible-p context) nil))
+  (let ((node (gethash target (context-ids context))))
+    (when (and node (element-pointer-focus-p node))
+      (setf (context-focus context) target)))
+  (values))
+
+(fn (update-pointer-capture t) ((context context) (event event) captured)
+  "Cancel stale capture and mark whether EVENT belongs to an active drag."
+  (when (and captured
+             (or (and (eq (event-kind event) :press)
+                      (eq (event-button event) :primary))
+                 (and (eq (event-kind event) :move)
+                      (pointer-cancel-p event))))
+    ;; A replacement press or a known unpressed motion ends the old drag.
+    (push (make-event :kind :cancel :id captured :buttons 0)
+          (gethash captured (context-events context)))
+    (setf (context-active context) nil
+          (context-last-click context) nil
+          (context-scroll-motion context) nil
+          captured nil))
+  (when (eq (event-kind event) :cancel)
+    (setf (context-active context) nil (context-hover context) nil
+          (context-last-click context) nil
+          (context-scroll-motion context) nil))
+  (setf (event-dragging-p event)
+        (and (not (null captured))
+             (not (eq (event-kind event) :cancel))
+             (or (null (event-buttons event))
+                 (logbitp 0 (event-buttons event)))))
+  captured)
+
+(fn (dispatch-frame-event (values)) ((context context) (event event) target
+                                     (resized boolean))
+  "Apply one event to scrolling, activation, focus, and pointer state."
+  (case (event-kind event)
+    (:scroll
+     (unless resized
+       (wheel-scroll context event)))
+    (:press
+     (route-pointer-press context event target))
+    (:release
+     (when (and (eq (event-button event) :primary)
+                target (equal target (context-active context)))
+       (record-activation context target))
+     (when (eq (event-button event) :primary)
+       (setf (context-active context) nil)))
+    (:tab
+     (setf (context-focus-visible-p context) t)
+     (focus-next context (eq (event-key event) :backward)))
+    (:key (setf (context-focus-visible-p context) t))
+    (:activate
+     (let ((id (or (event-id event) (context-focus context))))
+       (when id
+         (record-activation context id))))
+    (otherwise nil))  (values))
+
+(fn (route-frame-event (values)) ((context context) (event event) (resized
+                                                                   boolean))
+  "Route EVENT against completed geometry and enqueue it for its owning widget."
+  (let ((target (or (and (member (event-kind event) '(:press :release))
+                         (event-id event))
+                    (unless resized
+                      (hit context (event-x event) (event-y event)))))
+        (captured (context-active context)))
+    (when (member (event-kind event)
+                  '(:press :release :tab :key :text :activate :change))
+      (setf (context-scroll-motion context) nil))
+    (setf captured (update-pointer-capture context event captured))
+    (when (member (event-kind event) '(:move :press :release))
+      (setf (context-hover context) target))
+    (dispatch-frame-event context event target resized)
+    (let ((id (or (event-id event)
+                  (case (event-kind event)
+                    ((:press :move :release)
+                     (or (context-active context) captured target))
+                    (:cancel captured)
+                    (otherwise (context-focus context))))))
+      (when id (push event (gethash id (context-events context))))))
+  (values))
+
+(fn (reset-frame-declarations (eql t)) ((context context) (width real)
+                                        (height real))
+  "Preserve completed hit regions and initialize declarations for the next frame."
+  (clrhash (context-regions context))
+  (when (context-root context)
+    (walk-elements
+     (context-root context)
+     (lambda (node)
+       (when (element-id node)
+         (setf (gethash (element-id node) (context-regions context))
+               (element-box node))))))
+  (clrhash (context-ids context))
+  (setf (context-after-layout context) nil
+        (context-pending-memo context)
+        (make-array 0 :element-type 'memo-entry :adjustable t :fill-pointer 0)
+        (context-tabs-handled-p context) nil
+        (context-previous-root context) (context-root context)
+        (context-width context) width
+        (context-height context) (if (and (context-page-height-p context)
+                                          (context-root context))
+                                     (max height (context-height context))
+                                     height)
+        (context-viewport-height context) height
+        (context-root context) (make-element :width (grow) :height (grow))
+        (context-building-p context) t))
+
+(fn (begin-frame (eql t)) ((context context) (width real) (height real)
+                           (events sequence))
   "Begin rebuilding CONTEXT at WIDTH and HEIGHT after routing EVENTS.
 Input is resolved against the previous completed tree; this resets the frame
 clock, redraw deadline, declarations, and per-frame activation state."
@@ -380,82 +518,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
     (unless resized (advance-scroll context (context-time context)))
     (loop :for event-index :below (length events)
           :for event := (elt events event-index) :do
-      (let ((target (or (and (member (event-kind event) '(:press :release))
-                             (event-id event))
-                        (unless resized
-                          (hit context (event-x event) (event-y event)))))
-            (captured (context-active context)))
-        (when (member (event-kind event)
-                      '(:press :release :tab :key :text :activate :change))
-          (setf (context-scroll-motion context) nil))
-        (when (and captured
-                   (or (and (eq (event-kind event) :press)
-                            (eq (event-button event) :primary))
-                       (and (eq (event-kind event) :move)
-                            (pointer-cancel-p event))))
-          ;; A replacement press or a known unpressed motion ends the old drag.
-          (push (make-event :kind :cancel :id captured :buttons 0)
-                (gethash captured (context-events context)))
-          (setf (context-active context) nil
-                (context-last-click context) nil
-                (context-scroll-motion context) nil
-                captured nil))
-        (when (eq (event-kind event) :cancel)
-          (setf (context-active context) nil (context-hover context) nil
-                (context-last-click context) nil
-                (context-scroll-motion context) nil))
-        (setf (event-dragging-p event)
-              (and (not (null captured))
-                   (not (eq (event-kind event) :cancel))
-                   (or (null (event-buttons event))
-                       (logbitp 0 (event-buttons event)))))
-        (when (member (event-kind event) '(:move :press :release))
-          (setf (context-hover context) target))
-        (case (event-kind event)
-          (:scroll
-           (unless resized
-             (wheel-scroll context event)))
-          (:press
-           (setf (context-pointer-press context) event)
-           (let ((previous (context-last-click context)))
-             (when (and previous (equal target (second previous))
-                        (eq (event-button event) (third previous))
-                        (<= (- (context-time context) (first previous)) 0.4f0)
-                        (< (abs (- (event-x event) (fourth previous))) 4)
-                        (< (abs (- (event-y event) (fifth previous))) 4))
-               (setf (event-clicks event) 2))
-             (setf (context-last-click context)
-                   (unless (= (event-clicks event) 2)
-                     (list (context-time context) target (event-button event)
-                           (event-x event) (event-y event)))))
-           (when (eq (event-button event) :primary)
-             (setf (context-active context) target
-                   (context-focus-visible-p context) nil))
-           (let ((node (gethash target (context-ids context))))
-             (when (and node (element-pointer-focus-p node))
-               (setf (context-focus context) target))))
-          (:release
-           (when (and (eq (event-button event) :primary)
-                      target (equal target (context-active context)))
-             (record-activation context target))
-           (when (eq (event-button event) :primary)
-             (setf (context-active context) nil)))
-          (:tab
-           (setf (context-focus-visible-p context) t)
-           (focus-next context (eq (event-key event) :backward)))
-          (:key (setf (context-focus-visible-p context) t))
-          (:activate
-           (let ((id (or (event-id event) (context-focus context))))
-             (when id
-               (record-activation context id))))
-          (otherwise nil))
-        (let ((id (or (event-id event)
-                      (case (event-kind event)
-                        ((:press :move :release)
-                         (or (context-active context) captured target))
-                        (:cancel captured)
-                        (otherwise (context-focus context))))))
-          (when id (push event (gethash id (context-events context)))))))
+          (route-frame-event context event resized))
     (unless resized (advance-scroll context (context-time context))))
   ;; Native selection still needs the focused input after a composite editor
   ;; consumes its events. Share the immutable event list with the observer.
@@ -464,26 +527,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
           (let* ((id (context-focus context))
                  (input (gethash id (context-events context))))
             (when input (cons id input)))))
-  (clrhash (context-regions context))
-  (when (context-root context)
-    (walk-elements
-     (context-root context)
-     (lambda (node)
-       (when (element-id node)
-         (setf (gethash (element-id node) (context-regions context))
-               (element-box node))))))
-  (clrhash (context-ids context))
-  (setf (context-after-layout context) nil
-        (context-pending-memo context)
-        (make-array 0 :element-type 'memo-entry :adjustable t :fill-pointer 0)
-        (context-tabs-handled-p context) nil
-        (context-previous-root context) (context-root context)
-        (context-width context) width
-        (context-height context) (if (and (context-page-height-p context) (context-root context))
-                                     (max height (context-height context)) height)
-        (context-viewport-height context) height
-        (context-root context) (make-element :width (grow) :height (grow))
-        (context-building-p context) t))
+  (reset-frame-declarations context width height))
 
 (fn (emit element) ((node element))
   "Append NODE to the current parent, registering its ID and saved scroll state.
@@ -524,7 +568,8 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
 (fn (events-for (vector event)) (id)
   "Return a vector of ID's input events in chronological order for this frame."
   (let ((events (gethash id (context-events *context*))))
-    (make-array (length events) :element-type 'event :initial-contents (reverse events))))
+    (make-array (length events) :element-type 'event :initial-contents
+                (reverse events))))
 
 (fn (hovered-p boolean) (id)
   "Whether the pointer currently hovers over the non-NIL control ID."

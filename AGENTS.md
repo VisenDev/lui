@@ -29,9 +29,11 @@ APIs and platform support; historical measurements are not current guarantees.
 - Declare public API symbols in `lui`'s `defpackage`; implementation packages
   import them explicitly. Do not mutate exports through private macros.
 - Normally wrap Lisp code at 78 columns; use keyword LOOP clauses.
-- Lint with `mallet src --strict --disable no-package-use --disable
-  error-without-custom-condition` (one shell command). Those disabled rules
-  conflict with the internal-package `:use` and structure-based conventions.
+- Run `make lint` to normalize FN declarations and check strict Mallet rules,
+  complexity, function length, and missing docstrings. Only `no-package-use`
+  is disabled. Keep the defaults for all other rule thresholds.
+- Use documented custom conditions for explicit LUI failures. Conditions use
+  standard `define-condition`; ordinary application data still uses structures.
 - Do not add dependencies as part of simplification work without discussing
   the dependency tradeoff with the user.
 

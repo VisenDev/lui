@@ -21,8 +21,8 @@
       (or (uiop:getenv "ECL_WEB_APP") "scripts/start-demo.lisp")))
 (defparameter *sources*
   '("src/01-fn.lisp"
-    "src/backend-ecl-emscripten.lisp"
     "src/02-helpers.lisp"
+    "src/backend-ecl-emscripten.lisp"
     "src/03-layout.lisp"
     "src/04-frame.lisp"
     "src/05-widgets.lisp"
@@ -46,6 +46,7 @@
 (pushnew :lui-ecl-web (cdr (assoc '*features* *target-info*)))
 
 (load "src/01-fn.lisp")
+(load "src/02-helpers.lisp")
 (let ((*features* (cons :lui-ecl-host *features*)))
   (load "src/backend-ecl-emscripten.lisp"))
 (load "scripts/ecl-web-reader.lisp")

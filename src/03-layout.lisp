@@ -205,6 +205,17 @@ Measure single-column cells first, then spread spanning cells' deficits equally.
       (setf (element-tracks table) tracks)
       (+ (reduce #'+ tracks :initial-value 0) (* gap (max 0 (1- count)))))))
 
+(fn (measure-leaf-size real) ((node element) (axis symbol))
+  "Measure a leaf on AXIS, validating both dimensions returned by its callback."
+  (multiple-value-bind (width height)
+      (funcall (element-measure node)
+               (when (eq axis :y)
+                 (max 0 (- (element-size-on-axis node :x)
+                           (* 2 (element-padding node))))))
+    (assert (and (realp width) (>= width 0)
+                 (realp height) (>= height 0)))
+    (if (eq axis :x) width height)))
+
 (fn (measure-intrinsic-size real) ((node element) (axis symbol))
   "Measure descendants before NODE and store their initial sizes on AXIS.
 Use content for fit/grow policies, fixed values for fixed policies, and zero
@@ -229,14 +240,7 @@ already resolved content width."
       (t
        (let ((content 0) (count 0) (along (main-axis-p node axis)))
          (if (element-measure node)
-             (multiple-value-bind (width height)
-                 (funcall (element-measure node)
-                          (when (eq axis :y)
-                            (max 0 (- (element-size-on-axis node :x)
-                                      (* 2 (element-padding node))))))
-               (assert (and (realp width) (>= width 0)
-                            (realp height) (>= height 0)))
-               (setf content (if (eq axis :x) width height)))
+             (setf content (measure-leaf-size node axis))
              (do-children (child node)
                (unless (element-floating-p child)
                  (incf count)
@@ -300,6 +304,52 @@ case applies. Update solved dimensions on AXIS in place."
                      children))))
   (values))
 
+(fn (resolve-table-widths (values)) ((node element))
+  "Fit shared column tracks to NODE and resolve the widths of spanning cells."
+  (let* ((tracks (element-tracks node)) (count (length tracks))
+         (gap (element-column-gap node))
+         (width (max 0 (- (element-size-on-axis node :x)
+                          (* 2 (element-padding node))
+                          (scroll-gutter node))))
+         (space (max 0 (- width (* gap (max 0 (1- count))))))
+         (natural (reduce #'+ tracks :initial-value 0))
+         (scale (if (plusp natural) (min 1 (/ space natural)) 1))
+         (extra (/ (max 0 (- space natural)) (max 1 count))))
+    (do-children (row node)
+      (setf (element-size-on-axis row :x) width)
+      (loop :with start := 0 :for cell :across (element-children row)
+            :for span := (element-column-span cell)
+            :for end := (+ start span)
+            :do (setf (element-size-on-axis cell :x)
+                      (+ (* gap (1- span)) (* extra span)
+                         (* scale (reduce #'+ tracks
+                                          :start start :end end))))
+            (resolve-child-sizes cell :x)
+            (setf start end))))
+  (values))
+
+(fn (resolve-floating-size (values))
+    ((child element) (axis symbol) (available real))
+  "Size floating CHILD and constrain popup width to its anchor and available space."
+  (when (element-floating-p child)
+    (let ((rule (element-sizing-on-axis child axis)))
+      (case (sizing-kind rule)
+        (:percent
+         (setf (element-size-on-axis child axis)
+               (* available (sizing-value rule))))
+        (:grow
+         (setf (element-size-on-axis child axis)
+               (clamp-size-to-bounds rule available)))
+        (otherwise nil))))
+  (when (and (element-popup-anchor child) (eq axis :x))
+    (setf (element-size-on-axis child :x)
+          (min available
+               (if (eq :fixed (sizing-kind (element-width child)))
+                   (sizing-value (element-width child))
+                   (element-size-on-axis (element-popup-anchor child)
+                                         :x)))))
+  (values))
+
 (fn (resolve-child-sizes (values)) ((node element) (axis symbol))
   "Resolve descendant sizes on AXIS from NODE's already assigned size.
 Apply percentages, distribute remaining flow space, and size floating children.
@@ -307,26 +357,7 @@ Horizontal table layout uses the shared column widths measured earlier."
   (cond
     ((zerop (length (element-children node))) nil)
     ((and (element-table-p node) (eq axis :x))
-     (let* ((tracks (element-tracks node)) (count (length tracks))
-            (gap (element-column-gap node))
-            (width (max 0 (- (element-size-on-axis node :x)
-                             (* 2 (element-padding node))
-                             (scroll-gutter node))))
-            (space (max 0 (- width (* gap (max 0 (1- count))))))
-            (natural (reduce #'+ tracks :initial-value 0))
-            (scale (if (plusp natural) (min 1 (/ space natural)) 1))
-            (extra (/ (max 0 (- space natural)) (max 1 count))))
-       (do-children (row node)
-         (setf (element-size-on-axis row :x) width)
-         (loop :with start := 0 :for cell :across (element-children row)
-               :for span := (element-column-span cell)
-               :for end := (+ start span)
-               :do (setf (element-size-on-axis cell :x)
-                         (+ (* gap (1- span)) (* extra span)
-                            (* scale (reduce #'+ tracks
-                                             :start start :end end))))
-               (resolve-child-sizes cell :x)
-               (setf start end)))))
+     (resolve-table-widths node))
     (t
      (let* ((children (non-floating-children node))
             (along (main-axis-p node axis))
@@ -363,23 +394,7 @@ Horizontal table layout uses the shared column widths measured earlier."
              children)
             axis remaining growing)))
        (do-children (child node)
-         (when (element-floating-p child)
-           (let ((rule (element-sizing-on-axis child axis)))
-             (case (sizing-kind rule)
-               (:percent
-                (setf (element-size-on-axis child axis)
-                      (* available (sizing-value rule))))
-               (:grow
-                (setf (element-size-on-axis child axis)
-                      (clamp-size-to-bounds rule available)))
-               (otherwise nil))))
-         (when (and (element-popup-anchor child) (eq axis :x))
-           (setf (element-size-on-axis child :x)
-                 (min available
-                      (if (eq :fixed (sizing-kind (element-width child)))
-                          (sizing-value (element-width child))
-                          (element-size-on-axis (element-popup-anchor child)
-                                                :x)))))
+         (resolve-floating-size child axis available)
          (unless (zerop (length (element-children child)))
            (resolve-child-sizes child axis))))))
   (values))

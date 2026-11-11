@@ -1,21 +1,24 @@
 (defpackage #:lui.gl
   (:use #:cl #:lui.fn #:lui.layout #:lui.draw #:lui.font)
-  (:export #:gpu #:attach-gpu #:open-gpu #:close-gpu #:gpu-renderer #:gpu-width
+  (:export #:gpu #:attach-gpu #:open-gpu #:close-gpu #:gpu-renderer
+           #:gpu-width
            #:gpu-height #:gpu-logical-width #:gpu-logical-height
            #:begin-gpu-frame #:present-gpu))
 (in-package #:lui.gl)
 
 (cffi:define-foreign-library egl
-  (:unix (:or "libEGL.so.1" "libEGL.so")))
+    (:unix (:or "libEGL.so.1" "libEGL.so")))
 (cffi:define-foreign-library opengl
-  (:darwin (:framework "OpenGL"))
+    (:darwin (:framework "OpenGL"))
   (:unix (:or "libGL.so.1" "libGL.so")))
 (cffi:use-foreign-library opengl)
 
 (defmacro call-gl (name &rest args)
+  "Call a named OpenGL entry point through CFFI with explicit foreign argument types."
   `(cffi:foreign-funcall ,name ,@args))
 
 (defmacro call-egl (name &rest args)
+  "Call a named EGL entry point through CFFI with explicit foreign argument types."
   ;; Resolve EGL only when using an EGL context, including on early-binding
   ;; FFI implementations. GLX needs libGL but does not require libEGL.
   `(cffi:foreign-funcall-pointer
@@ -68,6 +71,7 @@ void main() {
 }")
 
 (fn (compile-shader integer) ((kind integer) (source string))
+  "Compile SOURCE as KIND and signal BACKEND-ERROR with the shader log on failure."
   (let ((shader (call-gl "glCreateShader" :uint kind :uint)))
     (cffi:with-foreign-string (text source)
       (cffi:with-foreign-object (strings :pointer)
@@ -83,10 +87,16 @@ void main() {
           (call-gl "glGetShaderInfoLog" :uint shader :int 4096
                    :pointer (cffi:null-pointer) :pointer log :void)
           (call-gl "glDeleteShader" :uint shader :void)
-          (error "GL shader: ~A" (cffi:foreign-string-to-lisp log)))))
+          (error 'lui.conditions:backend-error
+                 :backend :gl
+                 :operation :compile-shader
+                 :format-control "GL shader: ~A"
+                 :format-arguments (list (cffi:foreign-string-to-lisp
+                                          log))))))
     shader))
 
 (fn (make-program integer) ()
+  "Link the backdrop shader program and signal BACKEND-ERROR on link failure."
   (let ((vertex (compile-shader #x8b31 *vertex-source*))
         (fragment 0)
         (program (call-gl "glCreateProgram" :uint)))
@@ -101,13 +111,17 @@ void main() {
                       :pointer status :void)
              (when (zerop (cffi:mem-ref status :int))
                (call-gl "glDeleteProgram" :uint program :void)
-               (error "Cannot link the GL glass shader.")))
+               (error 'lui.conditions:backend-error
+                      :backend :gl
+                      :operation :make-program
+                      :format-control "Cannot link the GL glass shader.")))
            program)
       (call-gl "glDeleteShader" :uint vertex :void)
       (when (plusp fragment)
         (call-gl "glDeleteShader" :uint fragment :void)))))
 
 (fn (clear-geometry hash-table) ((gpu gpu))
+  "Delete cached OpenGL display lists and clear GPU's contour cache."
   (maphash (lambda (key display-list)
              (declare (ignore key))
              (call-gl "glDeleteLists" :uint display-list :int 1 :void))
@@ -115,19 +129,24 @@ void main() {
   (clrhash (gpu-geometry gpu)))
 
 (fn (gl-color (values)) ((color string) (alpha real))
+  "Set the current OpenGL color from a hexadecimal color and alpha."
   (let ((rgba (color-components color alpha)))
     (call-gl "glColor4f" :float (aref rgba 0) :float (aref rgba 1)
              :float (aref rgba 2) :float (aref rgba 3) :void))
   (values))
 
 (fn (gl-geometry (values)) ((gpu gpu) (contours contours))
+  "Draw filled contours, caching reusable geometry in GPU's display lists."
   (let ((display-list (gethash contours (gpu-geometry gpu))))
     (unless display-list
       ;; Keep resize/animation variants bounded; glyphs use font-unit contours.
       (when (>= (hash-table-count (gpu-geometry gpu)) 512)
         (clear-geometry gpu))
       (setf display-list (call-gl "glGenLists" :int 1 :uint))
-      (when (zerop display-list) (error "Cannot allocate GL geometry."))
+      (when (zerop display-list) (error 'lui.conditions:backend-error
+                                        :backend :gl
+                                        :operation :gl-geometry
+                                        :format-control "Cannot allocate GL geometry."))
       (call-gl "glNewList" :uint display-list :uint #x1300 :void)
       (unwind-protect
            (progn
@@ -150,27 +169,31 @@ void main() {
 
 (fn (gl-polygons (values))
     ((gpu gpu) (contours contours) (color string) (alpha real))
+  "Set fill color and draw contour geometry through GPU."
   (gl-color color alpha)
   (gl-geometry gpu contours)
   (values))
 
 (fn (gl-shape (values))
     ((gpu gpu) (contours contours) (color string) (alpha real))
+  "Paint a rounded surface or outline using cached contour geometry."
   ;; Stipples reuse large contour batches in screen coordinates.
   ;; Submit them directly instead of copying thousands of points per frame.
   (when (> (length contours) 8)
     (return-from gl-shape (gl-polygons gpu contours color alpha)))
   ;; Cache the shape, not every screen position of a cell or debugger row.
-  (let ((origin (let ((contour (find-if (lambda (points) (plusp (length points))) contours)))
+  (let ((origin (let ((contour (find-if (lambda (points) (plusp (length
+                                                                 points)))
+                                        contours)))
                   (when contour (aref contour 0)))))
     (when origin
       (let* ((x (car origin)) (y (cdr origin))
              (local (map 'contours (lambda (contour)
-                              (map 'contour (lambda (point)
-                                        (cons (- (car point) x)
-                                              (- (cdr point) y)))
-                                      contour))
-                            contours)))
+                                     (map 'contour (lambda (point)
+                                                     (cons (- (car point) x)
+                                                           (- (cdr point) y)))
+                                          contour))
+                         contours)))
         (call-gl "glPushMatrix" :void)
         (unwind-protect
              (progn
@@ -181,7 +204,8 @@ void main() {
   (values))
 
 (fn (gl-text (values)) ((gpu gpu) (font font) (text string)
-            (x real) (y real) (color string))
+                        (x real) (y real) (color string))
+  "Paint font glyph outlines at the requested baseline and color."
   (let* ((loader (font-loader font))
          (scale (float (/ (font-size font) (zpb-ttf:units/em loader)) 1.0f0))
          (advance 0) (previous nil))
@@ -199,14 +223,15 @@ void main() {
                                       previous char loader))
                        (call-gl "glTranslatef" :float (float advance 1.0f0)
                                 :float 0.0f0 :float 0.0f0 :void))
-                     (gl-geometry gpu (glyph-polygons font char))
-                     (setf advance (zpb-ttf:advance-width
-                                    (zpb-ttf:find-glyph char loader))
-                           previous char)))
+                 (gl-geometry gpu (glyph-polygons font char))
+                 (setf advance (zpb-ttf:advance-width
+                                (zpb-ttf:find-glyph char loader))
+                       previous char)))
       (call-gl "glPopMatrix" :void)))
   (values))
 
 (fn (pixel-box box) ((gpu gpu) (box box))
+  "Scale logical BOX coordinates to framebuffer pixels."
   (let ((sx (/ (gpu-width gpu) (gpu-logical-width gpu)))
         (sy (/ (gpu-height gpu) (gpu-logical-height gpu))))
     (make-box :x (* sx (box-x box)) :y (* sy (box-y box))
@@ -214,6 +239,7 @@ void main() {
               :height (* sy (box-height box)))))
 
 (fn (gl-clip (values)) ((gpu gpu) (box box))
+  "Set OpenGL scissoring from a logical clip rectangle."
   (let* ((pixels (pixel-box gpu box))
          (left (floor (box-x pixels)))
          (top (floor (box-y pixels)))
@@ -226,10 +252,12 @@ void main() {
   (values))
 
 (fn (uniform integer) ((gpu gpu) (name string))
+  "Look up a named uniform location in GPU's backdrop shader program."
   (call-gl "glGetUniformLocation" :uint (gpu-program gpu)
            :string name :int))
 
 (fn (gl-glass (values)) ((gpu gpu) (box box) (radius real) (frost real))
+  "Sample and blur the existing framebuffer behind a rounded glass surface."
   (call-gl "glBindTexture" :uint #x0de1 :uint (gpu-texture gpu) :void)
   (let* ((w (gpu-width gpu)) (h (gpu-height gpu))
          (area (pixel-box gpu box))
@@ -267,22 +295,30 @@ void main() {
          (let ((box (pixel-box gpu box)))
            (call-gl "glUniform4f" :int (uniform gpu "bounds")
                     :float (float (box-x box) 1.0f0)
-                  :float (float (- (gpu-height gpu) (box-y box)
-                                   (box-height box)) 1.0f0)
-                  :float (float (box-width box) 1.0f0)
-                  :float (float (box-height box) 1.0f0) :void))
-         (gl-polygons gpu (make-array 1 :element-type 'contour :initial-element (rounded-polygon box radius)) "#ffffff" 1))
+                    :float (float (- (gpu-height gpu) (box-y box)
+                                     (box-height box)) 1.0f0)
+                    :float (float (box-width box) 1.0f0)
+                    :float (float (box-height box) 1.0f0) :void))
+         (gl-polygons gpu (make-array 1 :element-type 'contour
+                                      :initial-element
+                                      (rounded-polygon box
+                                                       radius)) "#ffffff" 1))
     (call-gl "glUseProgram" :uint 0 :void))
   (values))
 
 (fn (egl-check t) (result (operation string))
+  "Return a successful EGL result or signal BACKEND-ERROR with the EGL status."
   (when (or (null result) (eql result 0)
             (and (cffi:pointerp result) (cffi:null-pointer-p result)))
-    (error "~A failed (EGL ~X)." operation
-           (call-egl "eglGetError" :int)))
+    (error 'lui.conditions:backend-error
+           :backend :gl
+           :operation :egl-check
+           :format-control "~A failed (EGL ~X)."
+           :format-arguments (list operation (call-egl "eglGetError" :int))))
   result)
 
 (fn (initialize-gpu gpu) ((gpu gpu) (font font))
+  "Initialize GPU's shared drawing state and renderer callbacks using FONT."
   (setf (gpu-program gpu) (make-program))
   (cffi:with-foreign-object (texture :uint)
     (call-gl "glGenTextures" :int 1 :pointer texture :void)
@@ -316,14 +352,73 @@ void main() {
          (prog1 (initialize-gpu gpu font) (setf done t))
       (unless done (close-gpu gpu)))))
 
+(fn (choose-egl-config (values))
+    (display native-window attributes config count)
+  "Choose a multisampled EGL configuration, falling back when unavailable."
+  (loop :for value :in
+        (list #x3024 8 #x3023 8 #x3022 8 #x3021 8
+              #x3033 (if native-window 4 1) #x3040 8
+              #x3032 1 #x3031 4 #x3038)
+        :for i :from 0
+        :do (setf (cffi:mem-aref attributes :int i) value))
+  (egl-check
+   (call-egl "eglChooseConfig" :pointer display
+             :pointer attributes :pointer config
+             :int 1 :pointer count :uint)
+   "eglChooseConfig")
+  (when (zerop (cffi:mem-ref count :int))
+    ;; Multisampling is optional; retain the same rendering API.
+    (setf (cffi:mem-aref attributes :int 12) #x3038)
+    (egl-check
+     (call-egl "eglChooseConfig" :pointer display
+               :pointer attributes :pointer config
+               :int 1 :pointer count :uint)
+     "eglChooseConfig without multisampling"))
+  (assert (plusp (cffi:mem-ref count :int)))
+  (values))
+
+(fn (create-egl-surface (values))
+    ((gpu gpu) display native-window (width integer) (height integer))
+  "Choose an EGL configuration and attach its context and surface to GPU."
+  (cffi:with-foreign-objects ((attributes :int 17)
+                              (config :pointer) (count :int))
+    (choose-egl-config display native-window attributes
+                       config count)
+    (setf (gpu-context gpu)
+          (egl-check
+           (call-egl "eglCreateContext" :pointer display
+                     :pointer (cffi:mem-ref config :pointer)
+                     :pointer (cffi:null-pointer)
+                     :pointer (cffi:null-pointer) :pointer)
+           "eglCreateContext"))
+    (setf (cffi:mem-aref attributes :int 0) #x3057
+          (cffi:mem-aref attributes :int 1) width
+          (cffi:mem-aref attributes :int 2) #x3056
+          (cffi:mem-aref attributes :int 3) height
+          (cffi:mem-aref attributes :int 4) #x3038)
+    (setf (gpu-surface gpu)
+          (egl-check
+           (if native-window
+               (call-egl "eglCreateWindowSurface"
+                         :pointer display
+                         :pointer (cffi:mem-ref config :pointer)
+                         :pointer native-window
+                         :pointer (cffi:null-pointer) :pointer)
+               (call-egl "eglCreatePbufferSurface"
+                         :pointer display
+                         :pointer (cffi:mem-ref config :pointer)
+                         :pointer attributes :pointer))
+           "eglCreateSurface")))
+  (values))
+
 (fn (open-gpu gpu) (native-display native-window font
-             (width integer) (height integer))
+                    (width integer) (height integer))
   "Use a Wayland EGL window, or NIL/NIL for a surfaceless test buffer."
   (cffi:use-foreign-library egl)
   (let* ((display
-           (if native-display
-               (call-egl "eglGetDisplay" :pointer native-display :pointer)
-               (call-egl "eglGetPlatformDisplay" :uint #x31dd
+          (if native-display
+              (call-egl "eglGetDisplay" :pointer native-display :pointer)
+              (call-egl "eglGetPlatformDisplay" :uint #x31dd
                         :pointer (cffi:null-pointer)
                         :pointer (cffi:null-pointer) :pointer)))
          (gpu (make-gpu :display display :width width :height height
@@ -334,62 +429,16 @@ void main() {
            (egl-check display "eglGetDisplay")
            (egl-check
             (call-egl "eglInitialize" :pointer display
-                     :pointer (cffi:null-pointer)
-                     :pointer (cffi:null-pointer) :uint)
+                      :pointer (cffi:null-pointer)
+                      :pointer (cffi:null-pointer) :uint)
             "eglInitialize")
            (egl-check (call-egl "eglBindAPI" :uint #x30a2 :uint)
                       "eglBindAPI")
-           (cffi:with-foreign-objects ((attributes :int 17)
-                                      (config :pointer) (count :int))
-             (loop :for value :in
-                   (list #x3024 8 #x3023 8 #x3022 8 #x3021 8
-                         #x3033 (if native-window 4 1) #x3040 8
-                         #x3032 1 #x3031 4 #x3038)
-                   :for i :from 0
-                   :do (setf (cffi:mem-aref attributes :int i) value))
-             (egl-check
-              (call-egl "eglChooseConfig" :pointer display
-                       :pointer attributes :pointer config
-                       :int 1 :pointer count :uint)
-              "eglChooseConfig")
-             (when (zerop (cffi:mem-ref count :int))
-               ;; Multisampling is optional; retain the same rendering API.
-               (setf (cffi:mem-aref attributes :int 12) #x3038)
-               (egl-check
-                (call-egl "eglChooseConfig" :pointer display
-                         :pointer attributes :pointer config
-                         :int 1 :pointer count :uint)
-                "eglChooseConfig without multisampling"))
-             (assert (plusp (cffi:mem-ref count :int)))
-             (setf (gpu-context gpu)
-                   (egl-check
-                    (call-egl "eglCreateContext" :pointer display
-                             :pointer (cffi:mem-ref config :pointer)
-                             :pointer (cffi:null-pointer)
-                             :pointer (cffi:null-pointer) :pointer)
-                    "eglCreateContext"))
-             (setf (cffi:mem-aref attributes :int 0) #x3057
-                   (cffi:mem-aref attributes :int 1) width
-                   (cffi:mem-aref attributes :int 2) #x3056
-                   (cffi:mem-aref attributes :int 3) height
-                   (cffi:mem-aref attributes :int 4) #x3038)
-             (setf (gpu-surface gpu)
-                   (egl-check
-                    (if native-window
-                        (call-egl "eglCreateWindowSurface"
-                                 :pointer display
-                                 :pointer (cffi:mem-ref config :pointer)
-                                 :pointer native-window
-                                 :pointer (cffi:null-pointer) :pointer)
-                        (call-egl "eglCreatePbufferSurface"
-                                 :pointer display
-                                 :pointer (cffi:mem-ref config :pointer)
-                                 :pointer attributes :pointer))
-                    "eglCreateSurface")))
+           (create-egl-surface gpu display native-window width height)
            (egl-check
             (call-egl "eglMakeCurrent" :pointer display
-                     :pointer (gpu-surface gpu) :pointer (gpu-surface gpu)
-                     :pointer (gpu-context gpu) :uint)
+                      :pointer (gpu-surface gpu) :pointer (gpu-surface gpu)
+                      :pointer (gpu-context gpu) :uint)
             "eglMakeCurrent")
            (initialize-gpu gpu font)
            (setf complete t)
@@ -423,7 +472,7 @@ void main() {
   "Swap the EGL surface created by OPEN-GPU. GLX presents its own drawable."
   (egl-check
    (call-egl "eglSwapBuffers" :pointer (gpu-display gpu)
-            :pointer (gpu-surface gpu) :uint)
+             :pointer (gpu-surface gpu) :uint)
    "eglSwapBuffers"))
 
 (fn (close-gpu (or null integer)) ((gpu gpu))
@@ -437,12 +486,12 @@ void main() {
       (call-gl "glDeleteTextures" :int 1 :pointer texture :void)))
   (when (gpu-display gpu)
     (call-egl "eglMakeCurrent" :pointer (gpu-display gpu)
-             :pointer (cffi:null-pointer) :pointer (cffi:null-pointer)
-             :pointer (cffi:null-pointer) :uint)
+              :pointer (cffi:null-pointer) :pointer (cffi:null-pointer)
+              :pointer (cffi:null-pointer) :uint)
     (when (gpu-surface gpu)
       (call-egl "eglDestroySurface" :pointer (gpu-display gpu)
-               :pointer (gpu-surface gpu) :uint))
+                :pointer (gpu-surface gpu) :uint))
     (when (gpu-context gpu)
       (call-egl "eglDestroyContext" :pointer (gpu-display gpu)
-               :pointer (gpu-context gpu) :uint))
+                :pointer (gpu-context gpu) :uint))
     (call-egl "eglTerminate" :pointer (gpu-display gpu) :uint)))

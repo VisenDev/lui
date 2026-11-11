@@ -78,7 +78,27 @@
       (assert (= 1 (lui.frame::frame-statistics-count stats)))))
   (values))
 
+(fn (test-conditions (values)) ()
+  (let ((failure
+          (handler-case
+              (lui:run (lambda () (values)) :backend :missing-test-backend)
+            (lui:configuration-error (condition) condition))))
+    (assert (typep failure 'lui:lui-error))
+    (assert (eq :backend (lui:error-setting failure)))
+    (assert (eq :missing-test-backend (lui:error-value failure)))
+    (assert (eq :run (lui:error-operation failure)))
+    (assert (search "not loaded" (princ-to-string failure))))
+  (let ((failure
+          (make-condition 'lui:backend-error :backend :x11
+                          :operation :open-window
+                          :format-control "Cannot open display ~A."
+                          :format-arguments '("test"))))
+    (assert (eq :x11 (lui:error-backend failure)))
+    (assert (string= "Cannot open display test." (princ-to-string failure))))
+  (values))
+
 (defun run-tests ()
+  (test-conditions)
   (test-side-effect-values)
   (test-frame-memo)
   (let ((checks 0))
