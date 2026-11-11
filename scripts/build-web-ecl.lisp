@@ -13,9 +13,12 @@
 (defparameter *target*
   (or (uiop:getenv "ECL_TARGET_INFO")
       (error "Set ECL_TARGET_INFO to the wasm ECL target-info.lsp file.")))
-(defparameter *output* #p"build/web-ecl/")
+(defparameter *docs-p* (equal (uiop:getenv "ECL_WEB_KIND") "docs"))
+(defparameter *output*
+  (if *docs-p* #p"build/docs-ecl/" #p"build/web-ecl/"))
 (defparameter *entry*
-  (or (uiop:getenv "ECL_WEB_APP") "scripts/start-demo.lisp"))
+  (if *docs-p* "scripts/start-docs-web.lisp"
+      (or (uiop:getenv "ECL_WEB_APP") "scripts/start-demo.lisp")))
 (defparameter *sources*
   '("src/fn.lisp" "src/ecl-web.lisp"
     "src/layout.lisp" "src/frame.lisp" "src/widgets.lisp"
@@ -25,9 +28,14 @@
     "src/text-selection.lisp" "src/paint-common.lisp"
     "src/paint-glass.lisp" "src/paint-motif.lisp"
     "src/paint-desktop.lisp" "src/paint-garnet.lisp"
-    "src/web-input.lisp" "src/debug.lisp" "src/web.lisp"
-    "examples/seven-model.lisp" "examples/seven-circles.lisp"
-    "examples/seven-cells.lisp" "examples/seven.lisp" "examples/demo.lisp"))
+    "src/web-input.lisp" "src/debug.lisp" "src/web.lisp"))
+(setf *sources*
+      (append *sources*
+              (if *docs-p*
+                  '("examples/docs.lisp" "build/docs-data.lisp")
+                  '("examples/seven-model.lisp" "examples/seven-circles.lisp"
+                    "examples/seven-cells.lisp" "examples/seven.lisp"
+                    "examples/demo.lisp"))))
 
 (ensure-directories-exist *output*)
 (pushnew :lui-ecl-web *features*)

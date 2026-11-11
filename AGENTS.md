@@ -157,8 +157,8 @@ installed SBCL themselves rather than honoring a custom `SBCL` command prefix.
 The docs reference is generated from signatures/docstrings and an explicit
 public-symbol allowlist in `scripts/docs-data.lisp`. Internal exports used
 between modules are not automatically public documentation. Reexports belong
-under their application-facing package. `build/docs.html` embeds the runtime
-and app for offline use; `docs/index.html` is its committed Pages copy.
+under their application-facing package. `build/docs.html` uses ECL/Emscripten
+and embeds the WebAssembly runtime and app for offline use; `docs/index.html` is its committed Pages copy.
 
 ### Dependencies and platform limits
 

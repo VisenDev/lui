@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+case ${1:-gallery} in
+    gallery) build_directory=build/web-ecl; html=build/web-ecl/index.html; title='LUI — ECL / WebAssembly' ;;
+    docs) build_directory=build/docs-ecl; html=build/docs.html; title='LUI documentation' ;;
+    *) echo 'Usage: build-web-ecl.sh [gallery|docs]' >&2; exit 2 ;;
+esac
+export ECL_WEB_KIND=${1:-gallery}
 : "${ECL:=ecl}"
 : "${EMCC:=emcc}"
 : "${ECL_WASM:=$PWD/build/deps/ecl-wasm}"
@@ -47,11 +53,12 @@ else
 fi
 "$ECL" -norc -shell scripts/build-web-ecl.lisp
 "$EMCC" -O0 -I"$include" src/ecl-web.c \
-    build/web-ecl/liblui-web.a "$libraries"/libecl.a \
+    "$build_directory/liblui-web.a" "$libraries"/libecl.a \
     "$libraries"/libeclgc.a "$libraries"/libeclgmp.a \
     -lm -sSTACK_SIZE=4194304 -sALLOW_MEMORY_GROWTH=1 \
     -sBINARYEN_EXTRA_PASSES=--spill-pointers -sEXIT_RUNTIME=0 -sSINGLE_FILE=1 \
     -sEXPORTED_FUNCTIONS='["_main","_lui_callback","_lui_release","_malloc","_free"]' \
-    --pre-js src/ecl-web.js -o build/web-ecl/lui.js
-rm -f build/web-ecl/lui.wasm
-"${PYTHON:-python3}" scripts/package-web-ecl.py
+    --pre-js src/ecl-web.js -o "$build_directory/lui.js"
+rm -f "$build_directory/lui.wasm"
+"${PYTHON:-python3}" scripts/package-web-ecl.py \
+    --javascript "$build_directory/lui.js" --output "$html" --title "$title"

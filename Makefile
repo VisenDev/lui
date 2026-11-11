@@ -40,7 +40,7 @@ DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform
 help:
 	@echo 'make docs                 Build and open the native documentation browser'
-	@echo 'make docs-html            Build standalone build/docs.html with JSCL'
+	@echo 'make docs-html            Build standalone build/docs.html with ECL/wasm'
 	@echo 'make docs-pages           Refresh docs/index.html from the standalone page'
 	@echo 'make demo                 Build and run the tabbed demo executable'
 	@echo 'make build                Save the demo executable in build/bin/'
@@ -116,9 +116,12 @@ build/jscl.js: $(JSCL)/dist/jscl.js
 	@mkdir -p build
 	cp "$<" "$@"
 
-build/docs.html: $(DOC_DATA) $(DOC_SOURCES) scripts/build-docs-web.lisp \
-		build/jscl.js $(JSCL)/dist/jscl-node.js
-	node "$(JSCL)/dist/jscl-node.js" scripts/build-docs-web.lisp
+build/docs.html: $(DOC_DATA) $(DOC_SOURCES) scripts/start-docs-web.lisp \
+		scripts/build-web-ecl.sh scripts/build-web-ecl.lisp \
+		scripts/ecl-web-reader.lisp scripts/package-web-ecl.py \
+		src/ecl-web.c src/ecl-web.js examples/web-ecl.html
+	ECL="$(ECL)" EMCC="$(EMCC)" ECL_WASM="$(ECL_WASM)" PYTHON="$(PYTHON)" \
+		bash scripts/build-web-ecl.sh docs
 
 $(DOC_BIN): $(DOC_DATA) $(DOC_SOURCES) scripts/build-docs.lisp
 	@mkdir -p build/bin

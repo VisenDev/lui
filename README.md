@@ -254,8 +254,10 @@ make benchmark               # Throughput/frame-time measurements and log
 The documentation browser contains a getting-started guide and a searchable
 reference generated from the library's exported symbols, signatures, and
 docstrings. `make docs` opens the native browser using SBCL. For an offline
-HTML copy, run `make docs-html`. It embeds the JSCL runtime and application
-in a single file. Run `make docs-pages` to build the HTML if needed and copy
+HTML copy, run `make docs-html`. It compiles the application with
+ECL/Emscripten and embeds WebAssembly and its loader in a single file. This
+requires the same toolchain as `make web-ecl-build` (see the ECL browser setup
+below). Run `make docs-pages` to build the HTML if needed and copy
 it to `docs/index.html` when the contents differ. Commit that file to update
 a GitHub Pages site configured to serve the repository’s `/docs` folder.
 
