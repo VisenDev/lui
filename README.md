@@ -73,6 +73,9 @@ For repeated controls, supply an instance key through `lui:opt :id`:
 
 Keys are combined with the call site, so the two controls can both use `i`.
 Use stable item keys rather than indices when items can move or be deleted.
+Repeating a control call site without distinct keys or scopes signals
+`lui:configuration-error` with instructions for adding them. This is checked
+when the second instance is declared, before it can reuse the first’s state.
 Wrap repeated groups or reusable drawing functions in `(lui:with-key key ...)`.
 IDs use `equal`; do not mutate compound keys after declaring them.
 

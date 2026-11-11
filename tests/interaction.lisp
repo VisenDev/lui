@@ -544,7 +544,23 @@
             nil)
           (error () t))))))
 
+(defun test-missing-widget-keys ()
+  (let ((context (make-test-context)))
+    (dolist (options (list nil (lui:opt :id 0) (lui:opt :id nil)))
+      (let ((failure
+              (handler-case
+                  (with-frame (context 80 20)
+                    (dotimes (i 2)
+                      (lui:text-field options)))
+                (lui:configuration-error (condition) condition))))
+        (assert (typep failure 'lui:configuration-error))
+        (assert (eq :declare-widget (lui:error-operation failure)))
+        (assert (eq :id (lui:error-setting failure)))
+        (assert (search (if options "Repeated control key" "call site")
+                        (princ-to-string failure)))))))
+
 (defun run-tests ()
+  (test-missing-widget-keys)
   (test-owned-widget-state)
   (test-keyed-widget-state)
   (test-controlled-widget-state)

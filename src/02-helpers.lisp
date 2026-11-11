@@ -25,7 +25,9 @@ operation. Catch a more specific subtype when recovery depends on the cause."))
     "An invalid or unavailable backend, toolkit, palette, control, rendering callback, or widget key.
 ERROR-SETTING identifies the setting and ERROR-VALUE contains its requested
 value. Configure or load the missing capability before retrying the operation.
-For ambiguous widget keys, use the resolved ID returned by the widget."))
+For ambiguous widget keys, use the resolved ID returned by the widget.
+Repeated control declarations signal this condition with operation :DECLARE-WIDGET
+and setting :ID. Supply distinct OPT :id keys or WITH-KEY scopes for instances."))
 
 (define-condition backend-error (lui-error)
   ((backend :initarg :backend :reader error-backend

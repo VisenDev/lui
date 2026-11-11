@@ -131,8 +131,18 @@ The backend supplies measurement, clipboard, and optional input callbacks."
       (resolved-widget-id-p (car id)))))
 
 (fn (call-site-id list) ((site symbol) (options list))
-  "Combine SITE, enclosing keys, and an optional explicit instance key."
-  (list :lui-widget-id site *key-scope* (getf options :id site)))
+  "Combine identity components, rejecting repeated declarations before state changes."
+  (let* ((key (getf options :id site))
+         (id (list :lui-widget-id site *key-scope* key)))
+    (when (gethash id (context-ids *context*))
+      (error 'lui.conditions:configuration-error
+             :operation :declare-widget :setting :id :value key
+             :format-control
+             (if (eq key site)
+                 "This control call site ran more than once in a frame. Supply a distinct (lui:opt :id key) for each instance, or wrap repeated groups in (lui:with-key key ...)."
+                 "Repeated control key ~S at the same call site and key scope. Use distinct :id keys or WITH-KEY scopes for each instance.")
+             :format-arguments (unless (eq key site) (list key))))
+    id))
 
 (fn (widget-key t) (id)
   "Return the declared key of an opaque widget ID, including derived child keys."
