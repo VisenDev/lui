@@ -4,7 +4,7 @@
            #:context-focus-input #:context-active #:context-measure
            #:*context* #:*parent*
     #:with-frame #:with-key #:widget-key #:widget-id #:focus-widget
-    #:call-site-id #:context-values
+    #:call-with-frame #:call-with-key #:call-site-id #:context-values
            #:row #:column #:event #:event-kind #:event-x #:event-y #:event-id
            #:event-value #:event-key #:event-button #:event-clicks
            #:event-dragging-p #:event-buttons #:event-scroll-mode
@@ -121,9 +121,13 @@ The backend supplies measurement, clipboard, and optional input callbacks."
 
 (defvar *key-scope* nil "Instance keys enclosing the current declaration.")
 
+(fn (call-with-key (values &rest t)) ((key object-id) (draw function))
+  "Call DRAW with KEY added to the identity scope; restore the scope on exit."
+  (let ((*key-scope* (cons key *key-scope*))) (funcall draw)))
+
 (defmacro with-key (key &body body)
   "Scope widget identity to KEY, evaluated once. Use stable item keys in loops."
-  `(let ((*key-scope* (cons ,key *key-scope*))) ,@body))
+  `(call-with-key ,key (lambda () ,@body)))
 
 (fn (resolved-widget-id-p boolean) ((id object-id))
   "Recognize opaque call-site IDs and internal child IDs derived from them."
@@ -735,28 +739,35 @@ Clear focus/hover for removed controls and return the completed root element."
         (context-previous-root context) nil)
   (context-root context))
 
+(fn (call-with-frame element)
+    ((context context) (width real) (height real) (draw function)
+     &key ((events sequence) nil))
+  "Dispatch EVENTS, call DRAW once, solve CONTEXT, and return its root.
+An aborted drawing or layout invalidates geometry and clears frame state."
+  (let ((*context* context) (*key-scope* nil))
+    (begin-frame context width height events)
+    (let ((*parent* (context-root context)) (complete nil))
+      (unwind-protect
+           (progn
+             (funcall draw)
+             (end-frame context)
+             (setf complete t)
+             (context-root context))
+        (unless complete
+          (setf (context-root context) nil
+                (context-memo context) #()
+                (context-pending-memo context) #()
+                (context-building-p context) nil
+                (context-previous-root context) nil
+                (context-hover context) nil
+                (context-focus-visible-p context) nil
+                (context-active context) nil
+                (context-focus context) nil))))))
+
 (defmacro with-frame ((context width height &key events) &body body)
   "Dispatch input, build and solve one frame, and return its root element."
-  `(let ((*context* ,context) (*key-scope* nil))
-     (begin-frame *context* ,width ,height ,events)
-     (let ((*parent* (context-root *context*))
-           (complete nil))
-       (unwind-protect
-            (progn
-              ,@body
-              (end-frame *context*)
-              (setf complete t)
-              (context-root *context*))
-         (unless complete
-           (setf (context-root *context*) nil
-                 (context-memo *context*) #()
-                 (context-pending-memo *context*) #()
-                 (context-building-p *context*) nil
-                 (context-previous-root *context*) nil
-                 (context-hover *context*) nil
-                 (context-focus-visible-p *context*) nil
-                 (context-active *context*) nil
-                 (context-focus *context*) nil))))))
+  `(call-with-frame ,context ,width ,height (lambda () ,@body)
+                    :events ,events))
 
 (defmacro row ((&rest options) &body body)
   "Lay out children declared by BODY horizontally, using element options."

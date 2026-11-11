@@ -97,9 +97,52 @@
     (assert (string= "Cannot open display test." (princ-to-string failure))))
   (values))
 
+(defun test-call-with-scopes ()
+  (let ((toolkit (lui:current-toolkit))
+        (palette lui::*palette*) (scope lui.frame::*key-scope*))
+    (assert
+     (equal '(1 2)
+            (multiple-value-list
+             (lui:call-with-toolkit :motif
+               (lambda ()
+                 (assert (eq :motif (lui:current-toolkit)))
+                 (lui:call-with-palette :dark
+                   (lambda ()
+                     (lui:call-with-key 42
+                       (lambda ()
+                         (assert (= 42 (first lui.frame::*key-scope*)))
+                         (values 1 2))))))))))
+    (assert
+     (eq :escaped
+         (catch 'scope-exit
+           (lui:with-toolkit (:qt)
+             (lui:with-palette (:light)
+               (lui:with-key :nested (throw 'scope-exit :escaped)))))))
+    (assert (eq toolkit (lui:current-toolkit)))
+    (assert (eq palette lui::*palette*))
+    (assert (eq scope lui.frame::*key-scope*)))
+  (let ((context (make-test-context)) (calls 0))
+    (assert (eq (lui:call-with-frame context 20 10
+                  (lambda () (incf calls)))
+                (context-root context)))
+    (assert (= calls 1))
+    (assert (eq :escaped
+                (catch 'frame-exit
+                  (lui:call-with-frame context 20 10
+                    (lambda () (throw 'frame-exit :escaped))))))
+    (assert (null (context-root context)))
+    (assert (not (lui.frame::context-building-p context)))
+    (assert (typep (with-frame (context 20 10)
+                     (let ((ignored 1))
+                       (declare (ignore ignored))
+                       (incf calls)))
+                   'element))
+    (assert (= calls 2))))
+
 (defun run-tests ()
   (test-conditions)
   (test-side-effect-values)
+  (test-call-with-scopes)
   (test-frame-memo)
   (let ((checks 0))
     (flet ((check (value)

@@ -45,17 +45,19 @@
                           (function object sb-alien:c-string))
    name))
 
+(fn (call-with-cocoa-float-mode (values &rest t)) ((draw function))
+  "Call DRAW with floating-point traps masked, restoring all caller modes."
+  (let ((modes (sb-int:get-floating-point-modes)))
+    (unwind-protect
+         (sb-int:with-float-traps-masked
+             (:invalid :divide-by-zero :overflow :underflow :inexact)
+           (funcall draw))
+      ;; Native code may change rounding or flags, even on nonlocal exits.
+      (apply #'sb-int:set-floating-point-modes modes))))
+
 (defmacro with-cocoa-float-mode (&body body)
   "Run Cocoa operations with floating-point traps masked and restore all caller modes."
-  (let ((modes (gensym "FLOAT-MODES")))
-    `(let ((,modes (sb-int:get-floating-point-modes)))
-       (unwind-protect
-            (sb-int:with-float-traps-masked
-                (:invalid :divide-by-zero :overflow :underflow :inexact)
-              ,@body)
-         ;; Native code may also alter rounding or exception flags. Restore
-         ;; the caller's complete mode on errors and nonlocal exits as well.
-         (apply #'sb-int:set-floating-point-modes ,modes)))))
+  `(call-with-cocoa-float-mode (lambda () ,@body)))
 
 (defmacro message (result receiver selector &rest arguments)
   "Send an Objective-C message using the declared return and argument ABI types."
@@ -75,18 +77,23 @@
                              (function ,result object object ,@types))
       ,receiver (selector ,selector) ,@values)))
 
+(fn (call-with-rect (values &rest t))
+    ((x real) (y real) (width real) (height real) (draw function))
+  "Call DRAW with a temporary native rectangle valid only during the call."
+  (sb-alien:with-alien ((rectangle rect))
+    (setf (sb-alien:slot (sb-alien:slot rectangle 'origin) 'x)
+          (float x 1.0d0)
+          (sb-alien:slot (sb-alien:slot rectangle 'origin) 'y)
+          (float y 1.0d0)
+          (sb-alien:slot (sb-alien:slot rectangle 'size) 'width)
+          (float width 1.0d0)
+          (sb-alien:slot (sb-alien:slot rectangle 'size) 'height)
+          (float height 1.0d0))
+    (funcall draw rectangle)))
+
 (defmacro with-rect ((name x y width height) &body body)
   "Allocate a temporary native rectangle for the dynamic extent of BODY."
-  `(sb-alien:with-alien ((,name rect))
-     (setf (sb-alien:slot (sb-alien:slot ,name 'origin) 'x)
-           (float ,x 1.0d0)
-           (sb-alien:slot (sb-alien:slot ,name 'origin) 'y)
-           (float ,y 1.0d0)
-           (sb-alien:slot (sb-alien:slot ,name 'size) 'width)
-           (float ,width 1.0d0)
-           (sb-alien:slot (sb-alien:slot ,name 'size) 'height)
-           (float ,height 1.0d0))
-     ,@body))
+  `(call-with-rect ,x ,y ,width ,height (lambda (,name) ,@body)))
 
 (defstruct cocoa-app
   window view renderer context error

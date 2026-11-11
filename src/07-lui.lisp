@@ -12,6 +12,7 @@
                 #:element-box
                 #:element-content)
   (:import-from #:lui.frame
+                #:call-with-frame #:call-with-key
                 #:row #:column #:with-frame #:frame-time #:request-frame
                 #:previous-box
                 #:scroll-position #:scroll-to #:activated-p #:activated-ids
@@ -56,6 +57,7 @@
    #:event-value #:event-key #:event-button #:event-buttons
    #:event-clicks #:event-dragging-p #:declare-widget #:widget-text
    #:run #:register-backend #:available-backends #:units #:*backend*
+   #:call-with-frame #:call-with-key #:call-with-toolkit #:call-with-palette
    #:*unit* #:with-toolkit #:with-palette #:toolkit-palette
    #:widget-color #:current-toolkit #:toolkit-defaults
    #:available-palettes #:palette #:palette-p #:make-palette
@@ -390,8 +392,9 @@ inherit only from an explicit PARENT."
         :for color := (funcall reader palette)
         :when color :append (list role color)))
 
-(fn (call-with-palette t) ((palette (or palette symbol)) (draw function))
-  "Call FUNCTION with a resolved palette dynamically bound for declarations."
+(fn (call-with-palette (values &rest t))
+    ((palette (or palette symbol)) (draw function))
+  "Call DRAW with a resolved palette dynamically bound for declarations."
   (let* ((value (etypecase palette
                   (symbol (or (cdr (assoc palette *named-palettes*))
                               (error 'lui.conditions:configuration-error
@@ -425,11 +428,16 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
                     :format-arguments (list kind *toolkit*)))
          arguments))
 
+(fn (call-with-toolkit (values &rest t))
+    ((designator symbol) (draw function))
+  "Call DRAW with the named toolkit; restore enclosing bindings on exit."
+  (let* ((*toolkit* designator)
+         (*toolkit-definition* (find-toolkit *toolkit*)))
+    (funcall draw)))
+
 (defmacro with-toolkit ((designator) &body body)
   "Draw BODY with the named toolkit; nested bindings restore on exit."
-  `(let* ((*toolkit* ,designator)
-          (*toolkit-definition* (find-toolkit *toolkit*)))
-     ,@body))
+  `(call-with-toolkit ,designator (lambda () ,@body)))
 
 (defmacro opt (&rest forms &key width height padding gap align cross-align
                              id direction column-gap column-span

@@ -81,6 +81,13 @@ IDs use `equal`; do not mutate compound keys after declaring them.
 The public `lui:object-id` type names this identity contract and currently
 expands to `t`, so arbitrary application objects remain valid IDs.
 
+The scope macros delegate to functions: `call-with-key`, `call-with-toolkit`,
+`call-with-palette`, and `call-with-frame`. The first three accept the scope
+value and a zero-argument function, preserving its return values. For frames,
+use `(lui:call-with-frame context width height draw :events events)`; it calls
+`draw` once and returns the solved root. Bindings and cleanup follow the same
+rules as the corresponding macros, including on errors and nonlocal exits.
+
 Owned state is local to a UI context and is discarded when its widget is
 absent from a completed frame. Recompiling a call site creates a new identity.
 `lui:widget-id` resolves a unique declared key in the current key scope;
