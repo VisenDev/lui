@@ -1,4 +1,4 @@
-// Run the portable source suite in MiriCL without ASDF or native dependencies.
+// Run the core suite against MiriCL sources or the built application bundle.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -14,4 +14,10 @@ for (const directory of ['src', 'tests', 'examples']) {
     }
   }
 }
+if (process.argv.includes('--bundle')) {
+  vm.mountFile('/lui.wasm', await fs.readFile('build/miricl/lui.wasm'));
+  vm.evaluate('(load "/lui.wasm") (pushnew :lui-test-bundle *features*)',
+    {eof: true});
+}
 console.log(vm.evaluate('(load "/tests/run.lisp")', {eof: true}).output);
+vm.close();

@@ -12,7 +12,8 @@ JSCL ?= $(HOME)/clone/jscl
 MIRICL ?= $(HOME)/clone/miricl
 MIRICL_RUNTIME ?= $(MIRICL)
 WEB_RUNTIME ?= jscl
-export MIRICL MIRICL_RUNTIME
+MIRICL_MODE ?= native
+export MIRICL MIRICL_RUNTIME MIRICL_MODE
 WEB_DIRECTORY := $(if $(filter miricl,$(WEB_RUNTIME)),build/miricl,build)
 PORT ?= 8000
 BENCH_FRAMES ?= 240
@@ -172,13 +173,14 @@ test-terminal-parity:
 test-platform: check-platform
 ifeq ($(PLATFORM),web)
 ifeq ($(WEB_RUNTIME),miricl)
-	node tests/miricl.mjs
+	$(MAKE) --no-print-directory web-build
+	node tests/miricl.mjs --bundle
 else
 	@echo '[JSCL core] RUN'
 	node "$(JSCL)/dist/jscl-node.js" tests/run.lisp
 	@echo '[JSCL core] PASS'
-endif
 	$(MAKE) --no-print-directory web-build
+endif
 	@echo '[browser] RUN'
 	LUI_WEB_PAGE=/$(WEB_DIRECTORY)/index.html $(PYTHON) -u tests/web.py
 	@echo '[browser] PASS'

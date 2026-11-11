@@ -437,9 +437,13 @@ Output goes to `build/miricl/`, with separate adapter, runtime, application
 FASL, and HTML files. Serve that directory over HTTP. The default JSCL build
 and standalone documentation remain unchanged.
 
-MiriCL support is experimental. Application FASLs currently execute through
-its Wasm interpreter; native application compilation is not enabled because
-fresh loading failed during package initialization in revision `6810609`.
+MiriCL support is experimental. Applications compile to native Wasm by
+default; use `MIRICL_MODE=interpreted` for the portable interpreted FASL.
+Native conversion runs in a fresh runtime with ordered initialization so
+later package reexports cannot alter earlier compilation units. The build
+checks fresh loading and native code generation; the test target runs the
+core suite against the emitted bundle before testing browser behavior.
+Validated with MiriCL revision `6810609`.
 The existing web benchmark harness currently supports JSCL only.
 Browser engines must support WasmGC and Wasm exception handling.
 Ordinary LUI rendering does not require green

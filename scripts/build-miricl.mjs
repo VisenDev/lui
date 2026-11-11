@@ -1,10 +1,14 @@
-// Build the same browser application with MiriCL's portable FASLs.
+// Build the same browser application with MiriCL's native Wasm application bundles.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 
 const runtime = path.resolve(process.env.MIRICL_RUNTIME ?? `${process.env.HOME}/clone/miricl`);
 const output = 'build/miricl';
+const mode = process.env.MIRICL_MODE ?? 'native';
+if (!['native', 'interpreted'].includes(mode)) {
+  throw new Error('MIRICL_MODE must be native or interpreted');
+}
 const sourceDirectory = path.resolve(process.env.MIRICL ?? runtime);
 const license = await fs.readFile(path.join(sourceDirectory, 'LICENSE'));
 const record = 'MiriCL runtime: https://github.com/ak-coram/miricl\n' +
@@ -38,11 +42,31 @@ for (const [index, file] of files.entries()) {
   units.push(Buffer.from(await vm.readFile(target)).subarray(8));
 }
 // MiriCL bundles consist of a Wasm header and ordered FASL custom sections.
-const bundle = Buffer.concat([Buffer.from([0,97,115,109,1,0,0,0]), ...units]);
+let bundle = Buffer.concat([Buffer.from([0,97,115,109,1,0,0,0]), ...units]);
+vm.close();
+if (mode === 'native') {
+  console.log('Compiling native Wasm in a fresh runtime');
+  // Later shadowing-imports change earlier symbols in the source-build VM.
+  // Reconstruct each unit in order, before subsequent package reexports.
+  const compiler = await Miricl.instantiate(bytes);
+  compiler.mountFile('/portable.wasm', bundle);
+  compiler.evaluate(`(miricl-compiler:compile-native-bundle
+    "/portable.wasm" "/native.wasm" :load t)`, {eof: true});
+  bundle = Buffer.from(await compiler.readFile('/native.wasm'));
+  compiler.close();
+}
 // Verify load-time package and initialization dependencies in a fresh runtime.
 const verifier = await Miricl.instantiate(bytes);
 verifier.mountFile("/lui.wasm", bundle);
 verifier.evaluate('(load "/lui.wasm") (values)', {eof: true});
+if (mode === 'native') {
+  verifier.evaluate(`(assert (eq miricl-compiler::*compiler-state* :cold))
+    (dolist (function (list #'lui.web::draw-frame #'lui.layout:solve
+                           #'lui.example:draw))
+      (assert (plusp (miricl-compiler::compiler-primitive 26 function))))`,
+    {eof: true});
+}
+verifier.close();
 await fs.writeFile(`${output}/lui.wasm`, bundle);
 await fs.copyFile(path.join(runtime, 'miricl.js'), `${output}/miricl.js`);
 await fs.writeFile(`${output}/miricl.wasm`, bytes);
