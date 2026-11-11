@@ -4,6 +4,28 @@ cd "$(dirname "$0")/.."
 : "${ECL:=ecl}"
 : "${EMCC:=emcc}"
 : "${ECL_WASM:=$PWD/build/deps/ecl-wasm}"
+if [[ -n ${EMSDK_ENV:-} ]]; then
+    if [[ ! -f $EMSDK_ENV ]]; then
+        echo "Emscripten environment script not found: $EMSDK_ENV" >&2
+        exit 2
+    fi
+    source "$EMSDK_ENV"
+elif [[ $EMCC == emcc ]] && ! command -v "$EMCC" >/dev/null 2>&1 \
+        && [[ -f build/deps/emsdk/emsdk_env.sh ]]; then
+    source build/deps/emsdk/emsdk_env.sh
+fi
+for compiler in "$ECL" "$EMCC"; do
+    if ! command -v "$compiler" >/dev/null 2>&1; then
+        echo "Required compiler not found: $compiler" >&2
+        echo 'Set ECL/EMCC explicitly, or set EMSDK_ENV to your SDK emsdk_env.sh.' >&2
+        exit 2
+    fi
+done
+if [[ ! -d $ECL_WASM ]]; then
+    echo "ECL WebAssembly runtime not found: $ECL_WASM" >&2
+    echo 'Run make web-ecl-toolchain or set ECL_WASM to an installed runtime.' >&2
+    exit 2
+fi
 ECL_WASM=$(cd "$ECL_WASM" && pwd)
 if [[ -z ${ECL_TARGET_INFO:-} ]]; then
     shopt -s nullglob
@@ -23,8 +45,6 @@ else
     include=$ECL_WASM/include
     libraries=$ECL_WASM/lib
 fi
-command -v "$ECL" >/dev/null
-command -v "$EMCC" >/dev/null
 "$ECL" -norc -shell scripts/build-web-ecl.lisp
 "$EMCC" -O0 -I"$include" src/ecl-web.c \
     build/web-ecl/liblui-web.a "$libraries"/libecl.a \

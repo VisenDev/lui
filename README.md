@@ -456,8 +456,11 @@ The toolchain target requires the usual ECL native build prerequisites and
 an already installed SDK; it does not download dependencies. `JOBS` controls
 build parallelism. `ECL_WASM` selects the installed wasm ECL prefix (default
 `build/deps/ecl-wasm`); `ECL_TARGET_INFO` can select its `target-info.lsp`
-explicitly. `EMCC` selects the Emscripten compiler. Keep the SDK environment
-active for compilation, including the compiler paths recorded in target info.
+explicitly. `EMCC` selects the Emscripten compiler. The launcher activates
+`build/deps/emsdk/emsdk_env.sh` automatically when `emcc` is missing from
+`PATH`. Set `EMSDK_ENV=/path/to/emsdk/emsdk_env.sh` to activate another SDK,
+or activate it in your shell. Explicit `EMCC` overrides are respected.
+Keep the compiler paths recorded in target info available as well.
 The build uses ECL's required pointer-spilling linker pass for garbage
 collection, a larger stack, and a persistent runtime for browser callbacks.
 
