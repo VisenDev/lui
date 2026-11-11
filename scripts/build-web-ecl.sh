@@ -52,13 +52,13 @@ else
     libraries=$ECL_WASM/lib
 fi
 "$ECL" -norc -shell scripts/build-web-ecl.lisp
-"$EMCC" -O0 -I"$include" src/ecl-web.c \
+"$EMCC" -O0 -I"$include" scripts/ecl-web.c \
     "$build_directory/liblui-web.a" "$libraries"/libecl.a \
     "$libraries"/libeclgc.a "$libraries"/libeclgmp.a \
     -lm -sSTACK_SIZE=4194304 -sALLOW_MEMORY_GROWTH=1 \
     -sBINARYEN_EXTRA_PASSES=--spill-pointers -sEXIT_RUNTIME=0 -sSINGLE_FILE=1 \
     -sEXPORTED_FUNCTIONS='["_main","_lui_callback","_lui_release","_malloc","_free"]' \
-    --pre-js src/ecl-web.js -o "$build_directory/lui.js"
+    --pre-js scripts/ecl-web.js -o "$build_directory/lui.js"
 rm -f "$build_directory/lui.wasm"
 "${PYTHON:-python3}" scripts/package-web-ecl.py \
     --javascript "$build_directory/lui.js" --output "$html" --title "$title"

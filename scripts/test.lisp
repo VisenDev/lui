@@ -8,7 +8,7 @@
   (cond
     ((string= test "core")
      (asdf:test-system "lui/core")
-     (load "src/host.lisp")
+     (load "src/backend-host.lisp")
      (load "tests/host.lisp"))
     ((string= test "native") (asdf:test-system "lui/native/tests"))
     ((string= test "terminal") (asdf:test-system "lui/terminal"))

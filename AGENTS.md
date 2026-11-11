@@ -38,6 +38,15 @@ changes to `docs/index.html` along with the update. Commit as work is completed
 and push finished updates, as requested by the user. Run checks appropriate to
 the change and report material limitations instead of claiming untested support.
 
+## Source organization
+
+- Keep portable source files numbered in dependency order (`01-fn.lisp`
+  through `09-debug.lisp`). The debugger remains an optional ASDF system.
+- Keep each platform in `backend-<platform>.lisp`; share rendering and font
+  support in `backend-common.lisp` and OpenGL in `backend-common-gl.lisp`.
+- ECL compiler interop support belongs in `scripts/ecl-web.*`. Update ASDF,
+  both browser build manifests, and the portable test runner when moving code.
+
 ## Architecture and contracts
 
 - LUI is an immediate-mode Common Lisp UI library. Applications own their model
@@ -118,7 +127,7 @@ the change and report material limitations instead of claiming untested support.
   Indexed `dotimes` loops and direct traversal are useful in measured hot paths.
   Fixed polygon vectors use `typed-vector` to avoid expensive generic
   `make-array :initial-contents` traversal while retaining element types.
-- The JSCL-only standard `defstruct` expansion override in `src/fn.lisp` omits
+- The JSCL-only standard `defstruct` expansion override in `src/01-fn.lisp` omits
   generated constructor/writer slot checks but retains slot metadata and
   initializer checks. Native Lisp builds use their standard `defstruct`.
 

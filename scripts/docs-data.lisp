@@ -176,10 +176,9 @@
             arguments)))
 
 (defun source-files ()
-  ;; The native font module documents the public API shared by both hosts.
   (remove-if (lambda (path)
                (let ((name (pathname-name path)))
-                 (or (char= #\. (char name 0)) (string= name "web-font"))))
+                 (char= #\. (char name 0))))
              (directory "src/*.lisp")))
 
 (defun collect-entries (&optional (paths (source-files))

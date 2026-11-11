@@ -877,6 +877,27 @@ Wayland text-input/IME protocols need work, and native text is not
 a complete shaping engine. Cocoa runtime behavior still needs macOS validation.
 Performance tuning and broader platform/implementation coverage remain open.
 
+## Source organization
+
+The portable sources are numbered in dependency order:
+
+- `01-fn.lisp`, `02-helpers.lisp`: typed function declarations and text wrapping.
+- `03-layout.lisp`, `04-frame.lisp`: layout solving and frame state.
+- `05-widgets.lisp`, `06-app.lisp`, `07-interaction.lisp`: controls, application
+  declarations, and input handling.
+- `08-toolkits.lisp`: built-in toolkit definitions.
+- `09-debug.lisp`: optional layout debugger, loaded by `lui/debug`.
+
+Each platform lives in `src/backend-<platform>.lisp`. The browser backend
+combines its input and window handling; Wayland includes its protocol bindings.
+`backend-common.lisp` supplies fonts, drawing, selection, and toolkit painting;
+`backend-common-gl.lisp` supplies shared OpenGL rendering. `backend-host.lisp`
+selects the native host backend. The dependency-free core does not load these
+backend files. ASDF systems retain their existing names.
+
+ECL's compiler bridge and C/JavaScript support live in `scripts/ecl-web.*`.
+The JSCL and ECL builders load the same numbered core and shared browser sources.
+
 ## Conventions
 
 One package per source file. Implementation packages may use `:use`. Demos and

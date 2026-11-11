@@ -30,17 +30,14 @@
   :serial t
   :components ((:module "src"
                 :serial t
-                :components ((:file "fn")
-                             (:file "text-wrap")
-                             (:file "layout")
-                             (:file "frame")
-                             (:file "widgets")
-                             (:file "app")
-                             (:file "interaction")
-                             (:file "glass")
-                             (:file "motif")
-                             (:file "desktop")
-                             (:file "garnet"))))
+                :components ((:file "01-fn")
+                             (:file "02-helpers")
+                             (:file "03-layout")
+                             (:file "04-frame")
+                             (:file "05-widgets")
+                             (:file "06-app")
+                             (:file "07-interaction")
+                             (:file "08-toolkits"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
 
 (defsystem "lui"
@@ -51,12 +48,12 @@
                #+lui-linux-host "lui/wayland"
                #+lui-windows-host "lui/win32"
                #+(and lui-darwin-host sbcl) "lui/cocoa")
-  :components ((:module "src" :components ((:file "host"))))
+  :components ((:module "src" :components ((:file "backend-host"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
 
 (defsystem "lui/debug"
   :depends-on ("lui/core")
-  :components ((:module "src" :components ((:file "debug")))))
+  :components ((:module "src" :components ((:file "09-debug")))))
 
 (defsystem "lui/demo"
   :depends-on ("lui/debug")
@@ -98,23 +95,14 @@
 
 (defsystem "lui/native"
   :depends-on ("lui/core" "cffi" "zpb-ttf")
-  :serial t
   :components ((:module "src"
-                :serial t
-                :components ((:file "font")
-                             (:file "draw")
-                             (:file "text-selection")
-                             (:file "paint-common")
-                             (:file "paint-glass")
-                             (:file "paint-motif")
-                             (:file "paint-desktop")
-                             (:file "paint-garnet")))))
+                :components ((:file "backend-common")))))
 
 (defsystem "lui/pdf"
   :description "Render a layout to a single vector PDF page"
   ;; The cl-pdf writer uses EXTENDED-ASCII-P from its parser system.
   :depends-on ("lui/native" "cl-pdf-parser")
-  :components ((:module "src" :components ((:file "pdf"))))
+  :components ((:module "src" :components ((:file "backend-pdf"))))
   :in-order-to ((test-op (test-op "lui/pdf/tests"))))
 
 (defsystem "lui/pdf/tests"
@@ -127,34 +115,31 @@
 (defsystem "lui/x11"
   :depends-on ("lui/gl")
   :components ((:module "src"
-                :components ((:file "x11")))))
+                :components ((:file "backend-x11")))))
 
 (defsystem "lui/gl"
   :depends-on ("lui/native")
   :components ((:module "src"
-                :components ((:file "gl")))))
+                :components ((:file "backend-common-gl")))))
 
 (defsystem "lui/wayland"
   :depends-on ("lui/gl")
-  :serial t
   :components ((:module "src"
-                :serial t
-                :components ((:file "wayland-protocol")
-                             (:file "wayland")))))
+                :components ((:file "backend-wayland")))))
 
 (defsystem "lui/win32"
   :depends-on ("lui/native")
   :components ((:module "src"
-                :components ((:file "win32")))))
+                :components ((:file "backend-win32")))))
 
 (defsystem "lui/cocoa"
   :depends-on ("lui/gl")
   :components ((:module "src"
-                :components ((:file "cocoa")))))
+                :components ((:file "backend-cocoa")))))
 
 (defsystem "lui/terminal"
   :depends-on ("lui/core" (:version "uncursed" "0.7.0"))
-  :components ((:module "src" :components ((:file "terminal"))))
+  :components ((:module "src" :components ((:file "backend-terminal"))))
   :in-order-to ((test-op (test-op "lui/terminal/tests"))))
 
 (defsystem "lui/terminal/tests"

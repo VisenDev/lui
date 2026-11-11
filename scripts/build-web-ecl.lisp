@@ -20,15 +20,18 @@
   (if *docs-p* "scripts/start-docs-web.lisp"
       (or (uiop:getenv "ECL_WEB_APP") "scripts/start-demo.lisp")))
 (defparameter *sources*
-  '("src/fn.lisp" "src/ecl-web.lisp"
-    "src/layout.lisp" "src/frame.lisp" "src/widgets.lisp"
-    "src/app.lisp" "src/interaction.lisp"
-    "src/glass.lisp" "src/motif.lisp" "src/desktop.lisp" "src/garnet.lisp"
-    "src/text-wrap.lisp" "src/web-font.lisp" "src/draw.lisp"
-    "src/text-selection.lisp" "src/paint-common.lisp"
-    "src/paint-glass.lisp" "src/paint-motif.lisp"
-    "src/paint-desktop.lisp" "src/paint-garnet.lisp"
-    "src/web-input.lisp" "src/debug.lisp" "src/web.lisp"))
+  '("src/01-fn.lisp"
+    "scripts/ecl-web.lisp"
+    "src/02-helpers.lisp"
+    "src/03-layout.lisp"
+    "src/04-frame.lisp"
+    "src/05-widgets.lisp"
+    "src/06-app.lisp"
+    "src/07-interaction.lisp"
+    "src/08-toolkits.lisp"
+    "src/09-debug.lisp"
+    "src/backend-common.lisp"
+    "src/backend-web.lisp"))
 (setf *sources*
       (append *sources*
               (if *docs-p*
@@ -42,14 +45,14 @@
 (defparameter *target-info* (c::read-target-info *target*))
 (pushnew :lui-ecl-web (cdr (assoc '*features* *target-info*)))
 
-(load "src/fn.lisp")
+(load "src/01-fn.lisp")
 (let ((*features* (cons :lui-ecl-host *features*)))
-  (load "src/ecl-web.lisp"))
+  (load "scripts/ecl-web.lisp"))
 (load "scripts/ecl-web-reader.lisp")
 
 (defun prepare-source (source)
-  (if (member source '("src/web-font.lisp" "src/web-input.lisp"
-                      "src/web.lisp") :test #'equal)
+  (if (member source '("src/backend-common.lisp"
+                      "src/backend-web.lisp") :test #'equal)
       (let ((output (merge-pathnames (file-namestring source) *output*)))
         (with-open-file (in source)
           (with-open-file (out output :direction :output

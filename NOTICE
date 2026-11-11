@@ -1,4 +1,4 @@
-The protocol metadata in src/wayland-protocol.lisp is derived from the
+The protocol metadata in src/backend-wayland.lisp is derived from the
 system wayland-protocols xdg-shell.xml, xdg-decoration-unstable-v1.xml,
 viewporter.xml, fractional-scale-v1.xml, and cursor-shape-v1.xml:
 
