@@ -114,12 +114,13 @@ void main() {
            (gpu-geometry gpu))
   (clrhash (gpu-geometry gpu)))
 
-(fn (gl-color null) ((color string) (alpha real))
+(fn (gl-color (values)) ((color string) (alpha real))
   (let ((rgba (color-components color alpha)))
     (call-gl "glColor4f" :float (aref rgba 0) :float (aref rgba 1)
-             :float (aref rgba 2) :float (aref rgba 3) :void)))
+             :float (aref rgba 2) :float (aref rgba 3) :void))
+  (values))
 
-(fn (gl-geometry null) ((gpu gpu) (contours contours))
+(fn (gl-geometry (values)) ((gpu gpu) (contours contours))
   (let ((display-list (gethash contours (gpu-geometry gpu))))
     (unless display-list
       ;; Keep resize/animation variants bounded; glyphs use font-unit contours.
@@ -144,13 +145,17 @@ void main() {
         (call-gl "glEndList" :void))
       (incf (gpu-geometry-builds gpu))
       (setf (gethash contours (gpu-geometry gpu)) display-list))
-    (call-gl "glCallList" :uint display-list :void)))
+    (call-gl "glCallList" :uint display-list :void))
+  (values))
 
-(fn (gl-polygons null) ((gpu gpu) (contours contours) (color string) (alpha real))
+(fn (gl-polygons (values))
+    ((gpu gpu) (contours contours) (color string) (alpha real))
   (gl-color color alpha)
-  (gl-geometry gpu contours))
+  (gl-geometry gpu contours)
+  (values))
 
-(fn (gl-shape null) ((gpu gpu) (contours contours) (color string) (alpha real))
+(fn (gl-shape (values))
+    ((gpu gpu) (contours contours) (color string) (alpha real))
   ;; Stipples reuse large contour batches in screen coordinates.
   ;; Submit them directly instead of copying thousands of points per frame.
   (when (> (length contours) 8)
@@ -172,9 +177,10 @@ void main() {
                (call-gl "glTranslatef" :float (float x 1.0f0)
                         :float (float y 1.0f0) :float 0.0f0 :void)
                (gl-polygons gpu local color alpha))
-          (call-gl "glPopMatrix" :void))))))
+          (call-gl "glPopMatrix" :void)))))
+  (values))
 
-(fn (gl-text null) ((gpu gpu) (font font) (text string)
+(fn (gl-text (values)) ((gpu gpu) (font font) (text string)
             (x real) (y real) (color string))
   (let* ((loader (font-loader font))
          (scale (float (/ (font-size font) (zpb-ttf:units/em loader)) 1.0f0))
@@ -197,7 +203,8 @@ void main() {
                      (setf advance (zpb-ttf:advance-width
                                     (zpb-ttf:find-glyph char loader))
                            previous char)))
-      (call-gl "glPopMatrix" :void))))
+      (call-gl "glPopMatrix" :void)))
+  (values))
 
 (fn (pixel-box box) ((gpu gpu) (box box))
   (let ((sx (/ (gpu-width gpu) (gpu-logical-width gpu)))
@@ -206,7 +213,7 @@ void main() {
               :width (* sx (box-width box))
               :height (* sy (box-height box)))))
 
-(fn (gl-clip null) ((gpu gpu) (box box))
+(fn (gl-clip (values)) ((gpu gpu) (box box))
   (let* ((pixels (pixel-box gpu box))
          (left (floor (box-x pixels)))
          (top (floor (box-y pixels)))
@@ -215,13 +222,14 @@ void main() {
     (call-gl "glScissor" :int left
              :int (max 0 (- (gpu-height gpu) bottom))
              :int (max 0 (- right left))
-             :int (max 0 (- bottom top)) :void)))
+             :int (max 0 (- bottom top)) :void))
+  (values))
 
 (fn (uniform integer) ((gpu gpu) (name string))
   (call-gl "glGetUniformLocation" :uint (gpu-program gpu)
            :string name :int))
 
-(fn (gl-glass null) ((gpu gpu) (box box) (radius real) (frost real))
+(fn (gl-glass (values)) ((gpu gpu) (box box) (radius real) (frost real))
   (call-gl "glBindTexture" :uint #x0de1 :uint (gpu-texture gpu) :void)
   (let* ((w (gpu-width gpu)) (h (gpu-height gpu))
          (area (pixel-box gpu box))
@@ -235,7 +243,7 @@ void main() {
          (bottom (min h (+ (ceiling (+ (box-y area) (box-height area)))
                            margin)))
          (y (- h bottom)))
-    (unless (and (< x right) (< top bottom)) (return-from gl-glass nil))
+    (unless (and (< x right) (< top bottom)) (return-from gl-glass (values)))
     (unless (and (= w (gpu-texture-width gpu)) (= h (gpu-texture-height gpu)))
       (call-gl "glTexImage2D" :uint #x0de1 :int 0 :int #x1908
                :int w :int h :int 0 :uint #x1908 :uint #x1401
@@ -264,7 +272,8 @@ void main() {
                   :float (float (box-width box) 1.0f0)
                   :float (float (box-height box) 1.0f0) :void))
          (gl-polygons gpu (make-array 1 :element-type 'contour :initial-element (rounded-polygon box radius)) "#ffffff" 1))
-    (call-gl "glUseProgram" :uint 0 :void)))
+    (call-gl "glUseProgram" :uint 0 :void))
+  (values))
 
 (fn (egl-check t) (result (operation string))
   (when (or (null result) (eql result 0)
@@ -387,7 +396,7 @@ void main() {
            gpu)
       (unless complete (close-gpu gpu)))))
 
-(fn (begin-gpu-frame null) ((gpu gpu))
+(fn (begin-gpu-frame (values)) ((gpu gpu))
   "Clear the back buffer and set the viewport, projection, clipping, and blending."
   (call-gl "glViewport" :int 0 :int 0 :int (gpu-width gpu)
            :int (gpu-height gpu) :void)
@@ -407,7 +416,8 @@ void main() {
            :double (float (gpu-logical-height gpu) 1.0d0)
            :double 0.0d0 :double -1.0d0 :double 1.0d0 :void)
   (call-gl "glMatrixMode" :uint #x1700 :void)
-  (call-gl "glLoadIdentity" :void))
+  (call-gl "glLoadIdentity" :void)
+  (values))
 
 (fn (present-gpu integer) ((gpu gpu))
   "Swap the EGL surface created by OPEN-GPU. GLX presents its own drawable."

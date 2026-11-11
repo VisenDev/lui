@@ -1,13 +1,13 @@
 (defpackage #:lui.terminal
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui)
   (:import-from #:uncursed #:character-width)
+  (:import-from #:lui
+    #:make-terminal-context #:render-terminal #:terminal-text-width
+    #:text-lines #:cell-edge)
   (:export #:make-terminal-context #:render-terminal #:text-lines
            #:run-terminal #:character-width #:terminal-text-width #:cell-edge))
 
 (in-package #:lui.terminal)
-
-(lui::expose-api make-terminal-context render-terminal terminal-text-width
-  text-lines cell-edge)
 
 (fn (terminal-text-width integer) ((text string))
   "Return the terminal cell width of TEXT, including wide characters."
@@ -120,7 +120,7 @@
         (put left bottom (char border 2))
         (put right bottom (char border 3))))))
 
-(fn (paint-canvas null) ((cells array) (borders array)
+(fn (paint-canvas (values)) ((cells array) (borders array)
                   (node element) (widget widget))
   (let ((box (element-box node)) (clip (element-clip node)))
     (dolist (command (widget-value widget))
@@ -161,7 +161,8 @@
                                           (if edge "o" ".")
                                           (uncursed::cell-style (aref cells row column))
                                           (if edge outline-style
-                                              fill-style)))))))))))
+                                              fill-style))))))))))
+  (values))
 
 (fn (terminal-style uncursed:style) ((widget widget) (node element) (context context)
                    &optional background)
@@ -385,11 +386,12 @@
   (events nil :type list)
   (quit-p nil :type boolean))
 
-(fn (show-cursor null) ()
+(fn (show-cursor (values)) ()
   ;; Uncursed has no visibility-only API; its shape API and terminfo
   ;; cnorm/cvvis also change blinking.
   ;; Visibility alone preserves the user's inherited shape and blink mode.
-  (format *terminal-io* "~C[?25h" #\Escape))
+  (format *terminal-io* "~C[?25h" #\Escape)
+  (values))
 
 (fn (terminal-size (values integer integer)) ()
   (let ((size (uncursed:terminal-dimensions)))
@@ -404,11 +406,11 @@
 (fn (editing-input-p boolean) ((input input) (context context))
   (text-field-focused-p (pending-input-context context (input-events input))))
 
-(fn (key-event null) ((input input) (key symbol))
+(fn (key-event (values)) ((input input) (key symbol))
   (push (make-event :kind :key :key key) (input-events input))
-  nil)
+  (values))
 
-(fn (slider-change null) ((input input) (context context) (event event))
+(fn (slider-change (values)) ((input input) (context context) (event event))
   (let ((capture (context-active context)))
     (dolist (pending (reverse (rest (input-events input))))
       (case (event-kind pending)
@@ -447,9 +449,10 @@
                                   (/ (- (floor (event-x event)) left offset)
                                      (max 1 (1- length))))))))
                   (input-events input)))))))
-  nil)
+  (values))
 
-(fn (mouse-event null) ((input input) (data uncursed:mouse-data) &optional context)
+(fn (mouse-event (values))
+    ((input input) (data uncursed:mouse-data) &optional context)
   (let* ((button (uncursed:mouse-data-button data))
          (state (uncursed:mouse-data-state data))
          (wheel (member button '(:wheel-up :wheel-down)))
@@ -470,9 +473,9 @@
           (input-events input))
     (when (and context (eq button :left) (not release))
       (slider-change input context (first (input-events input)))))
-  nil)
+  (values))
 
-(fn (decode-event null) ((input input) event (context context))
+(fn (decode-event (values)) ((input input) event (context context))
   (let* ((kind (uncursed:event-kind event))
          (control (uncursed:event-controlp event))
          (alt (uncursed:event-altp event))
@@ -513,7 +516,7 @@
                    (make-event :kind :activate)
                    (make-event :kind :text :value (string kind)))
                (input-events input))))))
-  nil)
+  (values))
 
 (fn (input-sequence-length (or null integer)) ((text string))
   ;; Frame complete character sequences; uncursed owns their interpretation.
@@ -527,7 +530,7 @@
            (and end (1+ end))))
         (t 2)))
 
-(fn (read-input null) ((input input) (context context) (timeout real))
+(fn (read-input (values)) ((input input) (context context) (timeout real))
   (let ((end (+ (get-internal-real-time)
                 (* timeout internal-time-units-per-second))))
     (loop
@@ -565,7 +568,8 @@
         (when (or (input-events input) (input-quit-p input)
                   (>= (get-internal-real-time) end))
           (return))
-        (sleep 0.005f0)))))
+        (sleep 0.005f0))))
+  (values))
 
 (fn (slice-cells string) ((text string) (start integer) (width integer))
   (with-output-to-string (stream)
@@ -577,7 +581,7 @@
                     ((> (+ column size) start) (write-char #\Space stream)))
               (incf column size))))
 
-(fn (draw-focus null) ((context context) screen)
+(fn (draw-focus (values)) ((context context) screen)
   (let* ((node (focused-node context))
          (widget (and node (element-content node))))
     (when (and (widget-p widget)
@@ -627,7 +631,7 @@
             (let ((column (+ origin cursor (- offset))))
               (when (and (<= x column) (< column right))
                 (setf (screen-cursor screen) (list y column)))))))))
-  nil)
+  (values))
 
 (defclass terminal-screen (uncursed:tui)
   ((context :accessor screen-context) (cursor :initform nil :accessor screen-cursor)))
@@ -637,7 +641,7 @@
   (setf (screen-cursor screen) nil)
   (draw-focus (screen-context screen) screen))
 
-(fn (display-frame null) ((context context) screen)
+(fn (display-frame (values)) ((context context) screen)
   (let ((width (cell-edge (context-width context)))
         (height (cell-edge (context-height context))))
     (unless (and (slot-boundp screen 'uncursed::%canvas)
@@ -651,9 +655,10 @@
     (when (screen-cursor screen)
       (apply #'uncursed-sys:set-cursor-position (screen-cursor screen))
       (show-cursor))
-    (finish-output *terminal-io*)))
+    (finish-output *terminal-io*))
+  (values))
 
-(fn (wait-frame null) ((input input) (context context) width height)
+(fn (wait-frame (values)) ((input input) (context context) width height)
   (loop
     (let ((remaining (lui.frame::frame-wait context)))
       (read-input input context (max 0.001f0 (min 0.1f0 remaining)))
@@ -662,7 +667,8 @@
     (multiple-value-bind (columns rows) (terminal-size)
       (when (or (/= (or width columns) (context-width context))
                 (/= (or height rows) (context-height context)))
-        (return)))))
+        (return))))
+  (values))
 
 (fn (run-terminal context)
     ((draw function) &key title width height (interactive t))

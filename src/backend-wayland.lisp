@@ -101,7 +101,7 @@ Return bytes written, or -1 when the connection is not writable or has failed."
              type-array)))
     messages))
 
-(fn (define-interfaces null) ((descriptions list))
+(fn (define-interfaces (values)) ((descriptions list))
   ;; Metadata belongs to the active connection, never to a saved Lisp image.
   (dolist (description descriptions)
     (setf (gethash (first description) *interfaces*)
@@ -123,7 +123,8 @@ Return bytes written, or -1 when the connection is not writable or has failed."
                                   'event-count)
          (length events)
          (cffi:foreign-slot-value pointer '(:struct wl-interface) 'events)
-         (make-messages events))))))
+         (make-messages events)))))
+  (values))
 
 (fn (request cffi:foreign-pointer) (proxy (opcode integer) result-interface (args list)
              &optional version (destroy-p nil))
@@ -160,7 +161,7 @@ proxy version; DESTROY-P tells libwayland to destroy the sending proxy."
       (error "Cannot install Wayland listener."))
     listeners))
 
-(fn (pump-display null) (display &optional (timeout 16))
+(fn (pump-display (values)) (display &optional (timeout 16))
   "Flush requests, wait briefly for readable input, and dispatch pending callbacks.
 Signal an error when the display disconnects or its read/dispatch operation fails."
   (loop :while
@@ -189,7 +190,8 @@ Signal an error when the display disconnects or its read/dispatch operation fail
                                   :pointer display :void))))
     (when (minusp (cffi:foreign-funcall "wl_display_dispatch_pending"
                                       :pointer display :int))
-      (error "Wayland dispatch failed."))))
+      (error "Wayland dispatch failed.")))
+  (values))
 
 ;; XDG shell and optional desktop extensions. See NOTICE for licenses.
 (defparameter *xdg-interfaces*
@@ -329,9 +331,9 @@ Free all interface allocations on return or error; proxies must not outlive it."
   (events nil :type list) (listeners nil :type list))
 (defvar *window*)
 
-(fn (attach-listener null) (proxy (callbacks list))
+(fn (attach-listener (values)) (proxy (callbacks list))
   (push (listen-proxy proxy callbacks) (wl-window-listeners *window*))
-  nil)
+  (values))
 
 (defmacro callback (name arguments &body body)
   `(cffi:defcallback ,name :void
@@ -339,21 +341,22 @@ Free all interface allocations on return or error; proxies must not outlive it."
      (declare (ignore data) (ignorable proxy))
      ,@body))
 
-(fn (queue-input null) ((kind symbol) &rest options)
+(fn (queue-input (values)) ((kind symbol) &rest options)
   (push (apply #'make-event :kind kind options)
         (wl-window-events *window*))
-  nil)
+  (values))
 
-(fn (release-clipboard-source null) ((window wl-window))
+(fn (release-clipboard-source (values)) ((window wl-window))
   (when (wl-window-clipboard-source window)
     (request (wl-window-clipboard-source window) 1 nil nil nil t)
     (setf (wl-window-clipboard-source window) nil
           (wl-window-clipboard-text window) nil))
   (when (wl-window-clipboard-listener window)
     (cffi:foreign-free (wl-window-clipboard-listener window))
-    (setf (wl-window-clipboard-listener window) nil)))
+    (setf (wl-window-clipboard-listener window) nil))
+  (values))
 
-(fn (write-clipboard-fd null) ((text string) (fd integer))
+(fn (write-clipboard-fd (values)) ((text string) (fd integer))
   (unwind-protect
        (cffi:with-foreign-string ((bytes byte-size) text :encoding :utf-8)
          (let ((size (1- byte-size))
@@ -369,7 +372,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
                                        (cffi:foreign-funcall
                                         "__errno_location" :pointer) :int))))
                            (t (return nil))))))
-    (cffi:foreign-funcall "close" :int fd :int)))
+    (cffi:foreign-funcall "close" :int fd :int))
+  (values))
 
 (callback clipboard-target ((mime :pointer))
   (declare (ignore mime)))
@@ -403,7 +407,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
 (callback clipboard-selection ((offer :pointer))
   (declare (ignore offer)))
 
-(fn (create-clipboard-device null) ((window wl-window))
+(fn (create-clipboard-device (values)) ((window wl-window))
   ;; Core protocol v1 is enough for clipboard ownership on older compositors.
   (when (and (wl-window-clipboard-manager window) (wl-window-seat window))
     (let ((device
@@ -418,7 +422,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
                              (cffi:callback clipboard-motion)
                              (cffi:callback clipboard-drop)
                              (cffi:callback clipboard-selection)))))
-  nil)
+  (values))
 
 (fn (copy-clipboard (or null integer)) ((window wl-window) (text string))
   (when (and (wl-window-clipboard-device window)
@@ -536,10 +540,10 @@ Free all interface allocations on return or error; proxies must not outlive it."
           (wl-window-cursor-kind *window*) nil)
     (update-cursor)))
 
-(fn (cancel-pointer null) ((window wl-window))
+(fn (cancel-pointer (values)) ((window wl-window))
   (setf (wl-window-buttons window) 0)
   (push (make-event :kind :cancel :buttons 0) (wl-window-events window))
-  nil)
+  (values))
 
 (callback pointer-enter
     ((serial :uint32) (surface :pointer) (x :int32) (y :int32))
@@ -589,9 +593,10 @@ Free all interface allocations on return or error; proxies must not outlive it."
     (queue-input :scroll :x (wl-window-x *window*)
                  :y (wl-window-y *window*) :value (/ value 256.0f0))))
 
-(fn (stop-key-repeat null) ((window wl-window))
+(fn (stop-key-repeat (values)) ((window wl-window))
   (setf (wl-window-repeat-code window) nil
-        (wl-window-repeat-at window) nil))
+        (wl-window-repeat-at window) nil)
+  (values))
 
 (fn (start-key-repeat (or null real)) ((code integer)
                       &optional ((now real) (get-internal-real-time)))
@@ -606,7 +611,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
           (+ now (* (/ internal-time-units-per-second 1000)
                     (wl-window-repeat-delay *window*))))))
 
-(fn (release-keymap null) ((window wl-window))
+(fn (release-keymap (values)) ((window wl-window))
   (stop-key-repeat window)
   (when (wl-window-key-state window)
     (cffi:foreign-funcall "xkb_state_unref"
@@ -615,7 +620,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
   (when (wl-window-keymap window)
     (cffi:foreign-funcall "xkb_keymap_unref"
                           :pointer (wl-window-keymap window) :void)
-    (setf (wl-window-keymap window) nil)))
+    (setf (wl-window-keymap window) nil))
+  (values))
 
 (callback keyboard-map ((format :uint32) (fd :int32) (size :uint32))
   (unwind-protect
@@ -674,7 +680,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
            :alt (modifier-active-p state "Mod1")
            :shift (modifier-active-p state "Shift")))))))
 
-(fn (emit-key-input null) ((code integer))
+(fn (emit-key-input (values)) ((code integer))
   (when (wl-window-key-state *window*)
     (let* ((context
              (when (and (boundp '*context*) *context*)
@@ -719,7 +725,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
                     :text :value
                     (cffi:foreign-string-to-lisp text :count length
                                                     :encoding :utf-8)))))))))
-  nil)
+  (values))
 
 (callback keyboard-key
     ((serial :uint32) (time :uint32) (code :uint32) (pressed :uint32))
@@ -767,14 +773,15 @@ Free all interface allocations on return or error; proxies must not outlive it."
 (callback seat-name ((name :string))
   (declare (ignore name)))
 
-(fn (release-keyboard null) ((window wl-window))
+(fn (release-keyboard (values)) ((window wl-window))
   (release-keymap window)
   (when (wl-window-keyboard window)
     (cancel-pointer window)
     (if (>= (wl-window-seat-version window) 3)
         (request (wl-window-keyboard window) 0 nil nil nil t)
         (destroy-proxy (wl-window-keyboard window)))
-    (setf (wl-window-keyboard window) nil)))
+    (setf (wl-window-keyboard window) nil))
+  (values))
 
 (callback seat-capabilities ((capabilities :uint32))
   (when (and (not (logtest capabilities 1))
@@ -892,7 +899,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
 (callback fractional-preferred-scale ((scale :uint32))
   (when (plusp scale) (setf (wl-window-scale120 *window*) scale)))
 
-(fn (create-scaling null) ((window wl-window))
+(fn (create-scaling (values)) ((window wl-window))
   (attach-listener
    (wl-window-surface window)
    (list (cffi:callback surface-enter) (cffi:callback surface-leave)
@@ -911,7 +918,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
                          (cons :pointer (wl-window-surface window)))))
     (attach-listener (wl-window-fractional-object window)
                      (list (cffi:callback fractional-preferred-scale))))
-  nil)
+  (values))
 
 (fn (surface-scale real) ((window wl-window))
   (if (wl-window-fractional-object window)
@@ -923,7 +930,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
     (values (max 1 (ceiling (* (wl-window-width window) scale)))
             (max 1 (ceiling (* (wl-window-height window) scale))))))
 
-(fn (sync-window-size null) ((window wl-window))
+(fn (sync-window-size (values)) ((window wl-window))
   (let ((gpu (wl-window-gpu window))
         (width (wl-window-width window))
         (height (wl-window-height window))
@@ -949,7 +956,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
         (setf (gpu-width gpu) pixel-width (gpu-height gpu) pixel-height)
         (cffi:foreign-funcall
          "wl_egl_window_resize" :pointer (wl-window-native window)
-         :int pixel-width :int pixel-height :int 0 :int 0 :void)))))
+         :int pixel-width :int pixel-height :int 0 :int 0 :void))))
+  (values))
 
 (callback decoration-configure ((mode :uint32))
   ;; This pending state belongs to the next xdg_surface.configure sequence.
@@ -981,7 +989,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
 (fn (destroy-extension (or null cffi:foreign-pointer)) (proxy)
   (when proxy (request proxy 0 nil nil nil t)))
 
-(fn (release-extensions null) ((window wl-window))
+(fn (release-extensions (values)) ((window wl-window))
   (release-clipboard-source window)
   (dolist (proxy (list (wl-window-clipboard-device window)
                       (wl-window-clipboard-manager window)))
@@ -1013,7 +1021,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
   (setf (wl-window-cursor-manager window) nil
         (wl-window-decoration-manager window) nil
         (wl-window-viewporter window) nil
-        (wl-window-fractional-manager window) nil))
+        (wl-window-fractional-manager window) nil)
+  (values))
 
 (callback toplevel-configure
     ((width :int32) (height :int32) (states :pointer))
@@ -1025,7 +1034,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
 (callback toplevel-close ()
   (setf (wl-window-quit-p *window*) t))
 
-(fn (wait-wayland null) (display (context context) events)
+(fn (wait-wayland (values)) (display (context context) events)
   (loop :for delay := (lui.frame::frame-wait context events)
         :for repeat := (wl-window-repeat-at *window*)
         :when repeat
@@ -1038,7 +1047,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
                    (wl-window-quit-p *window*)
                    (/= (wl-window-width *window*) (context-width context))
                    (/= (wl-window-height *window*) (context-height context))))
-  (lui.frame::limit-frame-rate context))
+  (lui.frame::limit-frame-rate context)
+  (values))
 
 (fn (run-window (or null context)) ((draw function) &key title width height (interactive t))
   (let* ((display (connect-display (cffi:null-pointer)))

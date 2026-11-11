@@ -128,11 +128,12 @@ Floating children use offsets; interactive nodes participate in input routing."
        (dotimes (,index (length ,children) ,result)
          (let ((,child (aref ,children ,index))) ,@body)))))
 
-(fn (walk-elements null) ((root element) (function function))
+(fn (walk-elements (values)) ((root element) (function function))
   "Call FUNCTION on ROOT and every descendant in declaration order."
   (funcall function root)
   (do-children (child root)
-    (walk-elements child function)))
+    (walk-elements child function))
+  (values))
 
 (fn (element-size-on-axis real) ((node element) (axis symbol))
   "Return NODE's calculated box width for :X or height for :Y."
@@ -251,7 +252,7 @@ already resolved content width."
                             (element-scrollbar-p node))
                        (max 0 (element-scrollbar-width node)) 0)))))))))
 
-(fn (distribute-space null)
+(fn (distribute-space (values))
     ((children (vector element)) (axis symbol)
      (amount real) (growing boolean))
   "Add positive AMOUNT to the smallest children or remove a negative AMOUNT
@@ -296,9 +297,10 @@ case applies. Update solved dimensions on AXIS in place."
                                       (sizing-maximum rule)))
                              (<= (element-size-on-axis child axis)
                                  (sizing-minimum rule)))))
-                     children)))))
+                     children))))
+  (values))
 
-(fn (resolve-child-sizes null) ((node element) (axis symbol))
+(fn (resolve-child-sizes (values)) ((node element) (axis symbol))
   "Resolve descendant sizes on AXIS from NODE's already assigned size.
 Apply percentages, distribute remaining flow space, and size floating children.
 Horizontal table layout uses the shared column widths measured earlier."
@@ -379,13 +381,14 @@ Horizontal table layout uses the shared column widths measured earlier."
                           (element-size-on-axis (element-popup-anchor child)
                                                 :x)))))
          (unless (zerop (length (element-children child)))
-           (resolve-child-sizes child axis)))))))
+           (resolve-child-sizes child axis))))))
+  (values))
 
 (fn (alignment-offset real) ((alignment symbol) (space real))
   "Return the start, center, or end offset within nonnegative spare SPACE."
   (* (max 0 space) (ecase alignment (:start 0) (:center 0.5f0) (:end 1))))
 
-(fn (position-elements null) ((node element))
+(fn (position-elements (values)) ((node element))
   "Position NODE's descendants using their solved sizes, padding, and alignment.
 Floating children use their explicit offsets and do not advance the flow cursor."
   (unless (zerop (length (element-children node)))
@@ -428,7 +431,8 @@ Floating children use their explicit offsets and do not advance the flow cursor.
                 (incf cursor (+ (element-size-on-axis child axis)
                                 (element-gap node)))))
           (unless (zerop (length (element-children child)))
-            (position-elements child)))))))
+            (position-elements child))))))
+  (values))
 
 (defvar *popup-viewport* nil
   "Visible page bounds used to constrain popups during SOLVE; NIL otherwise.")
@@ -498,7 +502,7 @@ by adjusting the popup scroll offset when necessary."
               (max 0 (min top (max (element-scroll-y popup)
                                    (- (+ top (box-height row)) page)))))))))
 
-(fn (clip-elements null) ((node element) (clip box) (dx real) (dy real))
+(fn (clip-elements (values)) ((node element) (clip box) (dx real) (dy real))
   "Apply ancestor scroll offsets DX/DY and intersect NODE's box with CLIP.
 Position anchored popups, clamp scroll offsets to content extents, and recurse
 with the appropriate child clip and accumulated scroll offsets."
@@ -553,12 +557,14 @@ with the appropriate child clip and accumulated scroll offsets."
         (do-children (child node)
           (clip-elements child child-clip
                          (+ dx (element-scroll-x node))
-                         (+ dy (element-scroll-y node))))))))
+                         (+ dy (element-scroll-y node)))))))
+  (values))
 
-(fn (visible-elements null) ((root element) (function function))
+(fn (visible-elements (values)) ((root element) (function function))
   "Call FUNCTION in tree order for every node with a nonempty solved clip."
   (walk-elements root
                  (lambda (node)
                    (when (and (plusp (box-width (element-clip node)))
                               (plusp (box-height (element-clip node))))
-                     (funcall function node)))))
+                     (funcall function node))))
+  (values))

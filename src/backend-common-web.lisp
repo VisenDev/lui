@@ -396,10 +396,10 @@
 
 (defpackage #:lui.web
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.draw)
+  (:import-from #:lui
+    #:mount #:unmount #:refresh)
   (:export #:mount #:unmount #:refresh))
 (in-package #:lui.web)
-
-(lui::expose-api mount unmount refresh)
 
 (defstruct web-app
   #+lui-ecl-web (ffi-owner nil :type list)
@@ -561,10 +561,11 @@
         (push event (web-app-events app)))
     (refresh app)))
 
-(fn (cancel-deadline null) ((app web-app))
+(fn (cancel-deadline (values)) ((app web-app))
   (when (web-app-deadline-timer app)
     (#j:clearTimeout (web-app-deadline-timer app))
-    (setf (web-app-deadline-timer app) nil)))
+    (setf (web-app-deadline-timer app) nil))
+  (values))
 
 (fn (schedule-deadline t) ((app web-app))
   (unless (web-app-pending-p app)
@@ -658,7 +659,7 @@
 (fn (css-pixels t) ((n real))
   ((jscl/ffi:oget (#j:String n) "concat") #j"px"))
 
-(fn (position-dom-widget null) ((record dom-widget) (box box) (clip box))
+(fn (position-dom-widget (values)) ((record dom-widget) (box box) (clip box))
   (let* ((x (box-x box)) (y (box-y box)) (w (box-width box)) (h (box-height box))
          (left (- (box-x clip) x)) (top (- (box-y clip) y))
          (right (- w left (box-width clip))) (bottom (- h top (box-height clip)))
@@ -677,7 +678,7 @@
                       ((jscl/ffi:oget #j"inset(" "concat")
                        top #j"px " right #j"px " bottom #j"px " left #j"px)"))))
           (setf (dom-widget-geometry record) (list x y w h top right bottom left))))))
-  nil)
+  (values))
 
 (fn (make-semantic-button t) ((app web-app) (node element) (kind symbol))
   ;; The canvas keeps pointer capture and toolkit keyboard navigation. Native

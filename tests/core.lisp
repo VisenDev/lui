@@ -62,7 +62,24 @@
       (value '(3)) (value '(3))
       (assert (= calls 9)))))
 
+(fn (test-side-effect-values (values)) ()
+  (let ((context (make-test-context)) (root (make-element)) (visits 0))
+    (append-child root (make-element))
+    (assert (null (multiple-value-list
+                   (walk-elements root (lambda (node)
+                                         (declare (ignore node))
+                                         (incf visits))))))
+    (assert (= visits 2))
+    (assert (null (multiple-value-list
+                   (lui.frame::advance-scroll context 0))))
+    (let ((stats (lui.frame::context-statistics context)))
+      (assert (null (multiple-value-list
+                     (lui.frame::record-frame-statistics stats 2 0))))
+      (assert (= 1 (lui.frame::frame-statistics-count stats)))))
+  (values))
+
 (defun run-tests ()
+  (test-side-effect-values)
   (test-frame-memo)
   (let ((checks 0))
     (flet ((check (value)

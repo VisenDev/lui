@@ -1,12 +1,12 @@
 (defpackage #:lui.interaction
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame)
+  (:import-from #:lui
+    #:key-pressed-p #:text-input-event #:visible-span #:list-index
+    #:reveal-rect #:take-events #:event-targets #:reset-editor #:edit-value)
   (:export #:key-pressed-p #:text-input-event #:visible-span #:list-index
            #:reveal-rect #:take-events #:event-targets #:reset-editor
            #:edit-value))
 (in-package #:lui.interaction)
-
-(lui::expose-api key-pressed-p text-input-event visible-span list-index
-  reveal-rect take-events event-targets reset-editor edit-value)
 
 (fn (key-pressed-p boolean) (key &optional ((context context) *context*))
   "Whether this frame contains a press of the semantic KEY."

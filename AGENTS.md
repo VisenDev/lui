@@ -24,6 +24,10 @@ APIs and platform support; historical measurements are not current guarantees.
   Demos and examples must use only Common Lisp in `:use`; qualify their LUI API
   references. Keep local variables and structure slot names ordinary local
   symbols. Qualify or explicitly import other external API symbols.
+- Side-effect-only functions declare `(values)` and end with `(values)`,
+  including early function exits; reserve `null` for an actual NIL result.
+- Declare public API symbols in `lui`'s `defpackage`; implementation packages
+  import them explicitly. Do not mutate exports through private macros.
 - Normally wrap Lisp code at 78 columns; use keyword LOOP clauses.
 - Lint with `mallet src --strict --disable no-package-use --disable
   error-without-custom-condition` (one shell command). Those disabled rules
@@ -46,9 +50,12 @@ the change and report material limitations instead of claiming untested support.
 - Keep portable source files numbered in dependency order (`01-fn.lisp`
   through `09-debug.lisp`). The debugger remains an optional ASDF system.
 - Keep each platform in `backend-<platform>.lisp`; share rendering and font
-  support in `backend-common.lisp` and OpenGL in `backend-common-gl.lisp`.
-- ECL compiler interop support belongs in `scripts/ecl-web.*`. Update ASDF,
-  both browser build manifests, and the portable test runner when moving code.
+  support in `backend-common.lisp`, OpenGL in `backend-common-gl.lisp`, and
+  browser rendering/input in `backend-common-web.lisp`.
+- ECL Lisp interop belongs in `backend-ecl-emscripten.lisp`; C/JavaScript
+  build support belongs in `scripts/ecl-web.c` and `scripts/ecl-web.js`.
+  Update ASDF, both browser build manifests, and the portable test runner
+  when moving code.
 
 ## Architecture and contracts
 

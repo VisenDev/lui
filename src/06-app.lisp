@@ -12,7 +12,28 @@
            #:event-dragging-p)
   (:import-from #:lui.widgets
     #:declare-widget #:widget-text)
+  ;; Public symbols are owned here; optional implementations import them.
+  ;; Loading a backend supplies its functions without mutating this package.
   (:export
+    #:key-pressed-p #:text-input-event #:visible-span #:list-index
+    #:reveal-rect #:take-events #:event-targets #:reset-editor #:edit-value
+    #:*glass-defaults* #:*motif-defaults* #:*macos-defaults* #:*qt-defaults*
+    #:*garnet-defaults* #:set-debugger-enabled #:debugger-enabled-p
+    #:debugger-state #:make-debugger-state #:debugger-state-open-p
+    #:debugger-state-selected #:debugger-state-width #:font #:open-font
+    #:close-font #:font-size #:text-width #:line-height #:baseline
+    #:wrap-text #:glyph-polygons #:*font-path* #:*font-paths*
+    #:*font-directories* #:*font-names* #:font-face #:renderer
+    #:renderer-font #:renderer-polygons #:renderer-clip #:renderer-glass
+    #:renderer-text #:geometry #:make-geometry #:geometry-left
+    #:geometry-top #:geometry-right #:geometry-bottom #:geometry-min-width
+    #:geometry-min-height #:geometry-center-x #:geometry-center-y
+    #:geometry-offset-x #:geometry-offset-y #:geometry-text-p
+    #:geometry-value-p #:widget-geometry #:text-box #:rounded-polygon
+    #:color-components #:paint-text #:shape #:outline #:inset-box
+    #:focused-p #:widget-font #:render-pdf #:*pdf-output*
+    #:make-terminal-context #:render-terminal #:terminal-text-width
+    #:text-lines #:cell-edge #:mount #:unmount #:refresh
     #:point #:contour #:contours #:sizing #:fit #:grow #:fixed #:percent #:box
     #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
     #:element-content #:row #:column #:with-frame #:frame-time #:request-frame
@@ -50,13 +71,6 @@
            #:*default-backend-function*
            #:*toolkit-revision*))
 (in-package #:lui)
-
-;; Optional modules expose their public symbols when loaded, preserving symbol
-;; identity for functions, types, variables, macros, and SETF accessors.
-(defmacro expose-api (&rest symbols)
-  `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (shadowing-import ',symbols :lui)
-     (export ',symbols :lui)))
 
 (defvar *backends* (make-hash-table :test 'eq))
 (defvar *default-backend-function* nil
@@ -545,7 +559,9 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
       (push pane (lui.frame::context-popups *context*))
       pane)))
 
-(fn (combobox-popup null) (id (matches (vector (cons integer string))) index (anchor lui.layout:element) reveal)
+(fn (combobox-popup (values))
+    (id (matches (vector (cons integer string))) index (anchor
+     lui.layout:element) reveal)
   (let* ((pane (anchored-popup (list id :popup) anchor nil))
          (*parent* pane))
     (loop :for match :across matches :for i :from 0
@@ -555,7 +571,8 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
              (let ((row (gethash row-id (lui.frame::context-ids *context*))))
                (setf (lui.layout:element-keyboard-focus-p row) nil)
                (when (and reveal (eql index i))
-                 (setf (lui.layout:element-popup-reveal pane) row))))))
+                 (setf (lui.layout:element-popup-reveal pane) row)))))
+  (values))
 
 (fn (combobox-completion (or null string)) (id (state combobox-state) (text string)
                          (choices sequence) (limit (integer 1 *))
@@ -705,7 +722,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                     (-1 (+ day (month-days y m)))
                     (1 (- day count)) (otherwise day))))))
 
-(fn (calendar-arrow-focus null) (id (state picker-state))
+(fn (calendar-arrow-focus (values)) (id (state picker-state))
   (let ((focus (context-focus *context*)))
     (when (and (consp focus) (equal (first focus) id)
                (eq (second focus) :day))
@@ -723,7 +740,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                   (setf day next
                         (picker-state-year state) y
                         (picker-state-month state) m
-                        (context-focus *context*) (list id :day day)))))))))))
+                        (context-focus *context*) (list id :day day))))))))))
+  (values))
 
 (fn (picker-calendar (values (or null date-parts) boolean))
     (id (state picker-state) (selected (or null date-parts)))

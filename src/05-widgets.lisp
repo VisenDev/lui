@@ -129,7 +129,7 @@ An optional terminal-label callback overrides the standard kind-based label."
   (and (eq (event-kind event) :key)
        (not (null (member (event-key event) '(:left :right :home :end))))))
 
-(fn (navigate-tabs null) ()
+(fn (navigate-tabs (values)) ()
   (when (and (not (context-tabs-handled-p *context*))
              (context-previous-root *context*)
              (loop :for events :being :the :hash-values
@@ -166,7 +166,8 @@ An optional terminal-label callback overrides the standard kind-based label."
              (when arrows
                (setf (gethash id (context-events *context*))
                      (remove-if (lambda (event) (member event arrows))
-                                events))))))))))
+                                events)))))))))
+  (values))
 
 (fn (declare-widget boolean)
     ((kind symbol) (style symbol) id (text string) &key ((width sizing) (fit))

@@ -444,7 +444,7 @@
 
 (cffi:defcstruct poll-fd (fd :int) (events :short) (revents :short))
 
-(fn (wait-x11 null) (display (context context) events)
+(fn (wait-x11 (values)) (display (context context) events)
   (when (zerop (pending display))
     (cffi:with-foreign-object (p '(:struct poll-fd))
       (cffi:with-foreign-slots ((fd events) p (:struct poll-fd))
@@ -455,7 +455,8 @@
                             :int (ceiling (* 1000
                                              (lui.frame::frame-wait
                                               context (plusp (length events))))) :int)))
-  (lui.frame::limit-frame-rate context))
+  (lui.frame::limit-frame-rate context)
+  (values))
 
 (fn (draw-window context) ((window x-window) (gpu gpu) (context context)
                  (draw function) interactive delete)

@@ -1,13 +1,13 @@
 (defpackage #:lui.glass
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
+  (:import-from #:lui
+    #:*glass-defaults*)
   (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel #:tab
            #:canvas #:gauge #:list-item #:cell
            #:*glass-defaults*))
 
 (in-package #:lui.glass)
-
-(lui::expose-api *glass-defaults*)
 
 (defvar *glass-defaults*
   '(:palette (:window-background "#202430" :background "#303040" :foreground
@@ -22,13 +22,13 @@ tint, corner radius, opacity, or frost for a group of controls.")
 (defpackage #:lui.motif
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
+  (:import-from #:lui
+    #:*motif-defaults*)
   (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel #:tab
            #:canvas #:gauge #:list-item #:cell
            #:*motif-defaults*))
 
 (in-package #:lui.motif)
-
-(lui::expose-api *motif-defaults*)
 
 (defvar *motif-defaults*
   '(:palette (:background "#b8b8b8" :foreground "#101010" :accent "#4050a0") :terminal-border "++++-|" :opacity 1
@@ -42,12 +42,12 @@ Bind this plist to adjust the surface, text, or selection accent colors.")
 (defpackage #:lui.macos
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
+  (:import-from #:lui
+    #:*macos-defaults*)
   (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel #:tab
            #:canvas #:gauge #:list-item #:cell #:*macos-defaults*))
 
 (in-package #:lui.macos)
-
-(lui::expose-api *macos-defaults*)
 
 (defvar *macos-defaults*
   '(:palette (:window-background "#f5f2ef" :background "#f0edeb"
@@ -64,12 +64,12 @@ Bind this plist to customize the surface, ink, and selection colors.")
 (defpackage #:lui.qt
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
+  (:import-from #:lui
+    #:*qt-defaults*)
   (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel #:tab
            #:canvas #:gauge #:list-item #:cell #:*qt-defaults*))
 
 (in-package #:lui.qt)
-
-(lui::expose-api *qt-defaults*)
 
 (defvar *qt-defaults*
   '(:palette (:background "#efefef" :foreground "#202020" :accent "#308cc6")
@@ -83,13 +83,13 @@ Bind this plist to customize the surface, ink, and selection colors.")
 (defpackage #:lui.garnet
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
+  (:import-from #:lui
+    #:*garnet-defaults*)
   (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel #:tab
            #:canvas #:gauge #:list-item #:cell
            #:*garnet-defaults*))
 
 (in-package #:lui.garnet)
-
-(lui::expose-api *garnet-defaults*)
 
 (defvar *garnet-defaults*
   '(:palette (:background "#ffffff" :foreground "#000000" :accent "#000000") :terminal-border "++++-|" :opacity 1

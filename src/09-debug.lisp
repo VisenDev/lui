@@ -1,14 +1,14 @@
 (defpackage #:lui.debug
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets)
+  (:import-from #:lui
+    #:set-debugger-enabled #:debugger-enabled-p #:debugger-state
+    #:make-debugger-state #:debugger-state-open-p #:debugger-state-selected
+    #:debugger-state-width)
   (:export #:set-debugger-enabled #:debugger-enabled-p #:debugger-state
            #:make-debugger-state
            #:debugger-state-open-p
            #:debugger-state-selected #:debugger-state-width))
 (in-package #:lui.debug)
-
-(lui::expose-api set-debugger-enabled debugger-enabled-p debugger-state
-  make-debugger-state debugger-state-open-p debugger-state-selected
-  debugger-state-width)
 
 (defstruct entry node key (depth 0 :type integer))
 (defstruct debugger-state
@@ -27,7 +27,7 @@
   (let ((id (element-id node)))
     (and (consp id) (eq (first id) :lui.debug))))
 
-(fn (snapshot null) ((state debugger-state) (root element))
+(fn (snapshot (values)) ((state debugger-state) (root element))
   ;; IDs survive redraws. Anonymous nodes use positions below the closest ID;
   ;; identical anonymous siblings cannot be distinguished after a reorder.
   ;; Duplicate IDs remain core errors rather than recoverable debugger warnings.
@@ -54,7 +54,8 @@
                                                       state))))))))))
     (visit root nil nil 0 t))
   (unless (gethash (debugger-state-selected state) (debugger-state-nodes state))
-    (setf (debugger-state-selected state) nil)))
+    (setf (debugger-state-selected state) nil))
+  (values))
 
 (fn (box-label string) ((box box))
   (format nil "(~,2F, ~,2F) ~,2F x ~,2F"
@@ -127,7 +128,7 @@
                     :when enabled :collect name)))
     (if names (format nil "~{~A~^, ~}" names) empty)))
 
-(fn (properties null) ((title string) (width real) &rest pairs)
+(fn (properties (values)) ((title string) (width real) &rest pairs)
   (let ((accent (getf (toolkit-defaults) :accent "#258bff")))
     (row (:width (grow) :gap (units 0.5f0))
       (lui:label "—" (lui:opt :width (fixed (units 2)) :font-size 14
@@ -145,9 +146,10 @@
                             :font-size 14 :font-weight :bold))
         (lui:label (property-text (second pair))
                    (lui:opt :width (grow) :font-size 14
-                            :font-weight :normal))))))
+                            :font-weight :normal)))))
+  (values))
 
-(fn (details null) ((node element) (width real))
+(fn (details (values)) ((node element) (width real))
   (let* ((widget (element-content node)) (node-id (element-id node))
          (container (plusp (length (element-children node))))
          (focused (and node-id (equal node-id (context-focus *context*)))))
@@ -234,7 +236,8 @@
                   (cons "Pressed" (and node-id
                                        (equal node-id
                                               (context-active *context*)))))
-            "Idle")))))
+            "Idle"))))
+  (values))
 
 (fn (highlight (or null element)) ((box box) (name symbol) (opacity real) (accent string))
   (when (and (plusp (box-width box)) (plusp (box-height box)))
@@ -265,7 +268,7 @@
           (scroll-to (id :tree) 0 offset)))))
   offset)
 
-(fn (tree null) ((state debugger-state) (width real))
+(fn (tree (values)) ((state debugger-state) (width real))
   (lui:panel (lui:opt :id (id :tree) :width (grow) :height (grow)
                       :scroll-p t :padding (units 1) :opacity 1
                       :radius 0 :frost 0)
@@ -314,7 +317,8 @@
                           (close-details state)
                           (setf (debugger-state-selected state) key
                                 (debugger-state-reveal-selection-p state) t))
-                      (request-frame))))))))
+                      (request-frame)))))))
+  (values))
 
 (fn (debugger-width real) ((state debugger-state))
   (let* ((window (context-width *context*))

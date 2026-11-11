@@ -1,10 +1,10 @@
 (defpackage #:lui.pdf
   (:use #:cl #:lui.fn #:lui.frame #:lui.layout #:lui.draw)
+  (:import-from #:lui
+    #:render-pdf #:*pdf-output*)
   (:export #:render-pdf #:*pdf-output*))
 
 (in-package #:lui.pdf)
-
-(lui::expose-api render-pdf *pdf-output*)
 
 (defvar *pdf-output* #p"lui.pdf" "Destination used by the :PDF backend of LUI:RUN.")
 

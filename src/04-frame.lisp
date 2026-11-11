@@ -142,7 +142,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   #-jscl (* 1000 (/ (get-internal-real-time)
                    internal-time-units-per-second)))
 
-(fn (record-frame-statistics null)
+(fn (record-frame-statistics (values))
     ((stats frame-statistics) (ms real) (now real))
   "Average the last 30 layout solves; sample actual cadence every half second."
   (let ((samples (frame-statistics-samples stats))
@@ -161,7 +161,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
                 (/ (frame-statistics-frames stats) elapsed)
                 (frame-statistics-frames stats) 0
                 (frame-statistics-start stats) now))))
-  nil)
+  (values))
 
 (fn (frame-rate-label string) ()
   "Report actual FPS and mean layout processing time, excluding painting."
@@ -183,9 +183,10 @@ The backend supplies measurement, clipboard, and optional input callbacks."
     (max 0 (- (if urgent first (max first due)) now))))
 
 #-jscl
-(fn (limit-frame-rate null) ((context context))
+(fn (limit-frame-rate (values)) ((context context))
   (let ((remaining (frame-wait context t)))
-    (when (plusp remaining) (sleep remaining))))
+    (when (plusp remaining) (sleep remaining)))
+  (values))
 
 (fn (request-frame real) (&optional ((delay real) 0))
   "Request another frame after DELAY seconds; earliest request wins."
@@ -282,7 +283,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
                   (cons (element-scroll-x node) new))))))
     (- requested amount)))
 
-(fn (advance-scroll null) ((context context) (now real))
+(fn (advance-scroll (values)) ((context context) (now real))
   (let ((motion (context-scroll-motion context)))
     (when motion
       (let* ((remaining (scroll-motion-remaining motion))
@@ -296,7 +297,8 @@ Native key translators use this to interpret a key after a batched click or Tab.
         (setf (scroll-motion-time motion) now)
         (when (or (< (abs (scroll-motion-remaining motion)) 1d-7)
                   (> (abs (- step used)) 1d-7))
-          (setf (context-scroll-motion context) nil))))))
+          (setf (context-scroll-motion context) nil)))))
+  (values))
 
 (fn (wheel-scroll (or null real scroll-motion)) ((context context) (event event))
   (let ((path (scroll-path context (event-x event) (event-y event)))

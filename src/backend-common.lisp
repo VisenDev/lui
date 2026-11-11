@@ -1,5 +1,9 @@
 (defpackage #:lui.font
   (:use #:cl #:lui.fn #:lui.layout)
+  (:import-from #:lui
+    #:font #:open-font #:close-font #:font-size #:text-width #:line-height
+    #:baseline #:wrap-text #:glyph-polygons #:*font-path* #:*font-paths*
+    #:*font-directories* #:*font-names* #:font-face)
   (:export #:font #:open-font #:close-font #:font-size #:font-loader
            #:text-width #:line-height #:baseline #:wrap-text #:glyph-polygons
            #:*font-path* #:*font-paths* #:*font-directories*
@@ -10,10 +14,6 @@
 ;;; Browser fonts measure text through Canvas.
 #+(or jscl lui-ecl-web)
 (progn
-(lui::expose-api font open-font close-font font-size text-width line-height
-  baseline wrap-text glyph-polygons *font-path* *font-paths*
-  *font-directories* *font-names* font-face)
-
 (defvar *font-path* nil)
 (defvar *font-paths* nil)
 (defvar *font-directories* nil)
@@ -38,12 +38,13 @@
     (make-font :loader ((jscl/ffi:oget canvas "getContext") #j"2d")
                :size size)))
 
-(fn (close-font null) ((font font))
+(fn (close-font (values)) ((font font))
   (dotimes (index (length (font-faces font)))
     (setf (aref (font-faces font) index) nil))
   (clrhash (font-metrics font))
   (clrhash (font-wrapped font))
-  (setf (font-loader font) nil))
+  (setf (font-loader font) nil)
+  (values))
 
 (fn (font-face font) ((font font) (family symbol) (weight symbol))
   (let ((owner (or (font-owner font) font))
@@ -121,10 +122,6 @@
 ;;; Native fonts measure and outline text through zpb-ttf.
 #-(or jscl lui-ecl-web)
 (progn
-(lui::expose-api font open-font close-font font-size text-width line-height
-  baseline wrap-text glyph-polygons *font-path* *font-paths*
-  *font-directories* *font-names* font-face)
-
 (defvar *font-path* nil "Override the default TrueType font pathname.")
 
 (defvar *font-paths* nil
@@ -183,7 +180,7 @@
   (make-font :loader (zpb-ttf:open-font-loader (or path (default-font)))
              :size size))
 
-(fn (close-font hash-table) ((font font))
+(fn (close-font (values)) ((font font))
   "Release the loader, cached faces, and glyph outlines owned by FONT."
   (dotimes (index 4)
     (let ((face (aref (font-faces font) index)))
@@ -192,7 +189,8 @@
   (when (font-loader font)
     (zpb-ttf:close-font-loader (font-loader font))
     (setf (font-loader font) nil))
-  (clrhash (font-cache font)))
+  (clrhash (font-cache font))
+  (values))
 
 (fn (font-face font) ((font font) (family symbol) (weight symbol))
   "Resolve a sans-serif or monospace face at normal or bold weight; reuse it until the owner is closed."
@@ -270,6 +268,15 @@
 
 (defpackage #:lui.draw
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui.font)
+  (:import-from #:lui
+    #:renderer #:renderer-font #:renderer-polygons #:renderer-clip
+    #:renderer-glass #:renderer-text #:geometry #:make-geometry
+    #:geometry-left #:geometry-top #:geometry-right #:geometry-bottom
+    #:geometry-min-width #:geometry-min-height #:geometry-center-x
+    #:geometry-center-y #:geometry-offset-x #:geometry-offset-y
+    #:geometry-text-p #:geometry-value-p #:widget-geometry #:text-box
+    #:rounded-polygon #:color-components #:paint-text #:shape #:outline
+    #:inset-box #:focused-p #:widget-font)
   (:export #:renderer #:make-renderer #:renderer-font #:renderer-polygons
            #:renderer-clip #:renderer-glass #:renderer-text
            #:renderer-surface #:renderer-stipple
@@ -285,14 +292,6 @@
            #:trapezoids #:paint-text))
 
 (in-package #:lui.draw)
-
-(lui::expose-api renderer renderer-font renderer-polygons renderer-clip
-  renderer-glass renderer-text geometry make-geometry geometry-left
-  geometry-top geometry-right geometry-bottom geometry-min-width
-  geometry-min-height geometry-center-x geometry-center-y geometry-offset-x
-  geometry-offset-y geometry-text-p geometry-value-p widget-geometry text-box
-  rounded-polygon color-components paint-text shape outline inset-box
-  focused-p widget-font)
 
 (defmacro typed-vector (type &rest elements)
   "Construct a typed vector without an intermediate list of its elements."
@@ -355,7 +354,7 @@
                               (+ cy (* r #-jscl (sin angle)
                                          #+jscl (#j:Math:sin angle)))))))))
 
-(fn (trapezoids null) ((contours contours) (emit function))
+(fn (trapezoids (values)) ((contours contours) (emit function))
   "Convert contours into nonzero-winding trapezoids for native triangle APIs."
   (let ((edges nil)
         (ys nil))
@@ -394,7 +393,8 @@
                                (typed-vector point (cons (at-y left top) top)
                                      (cons (at-y edge top) top)
                                      (cons (at-y edge bottom) bottom)
-                                     (cons (at-y left bottom) bottom))))))))))
+                                     (cons (at-y left bottom) bottom)))))))))
+  (values))
 
 (fn (widget-font font) ((renderer renderer) (widget widget))
   "Select the widget’s font face and size for this renderer."
@@ -677,7 +677,8 @@
     (when (and text (plusp (length text)) (context-copy context))
       (funcall (context-copy context) text))))
 
-(fn (selection-input null) ((renderer renderer) (context context) (events sequence))
+(fn (selection-input (values))
+    ((renderer renderer) (context context) (events sequence))
   (unless (and (plusp (length events))
                (or (and (context-selection context)
                         (text-selection-dragging-p
@@ -688,7 +689,7 @@
                                (and (eq (event-kind event) :key)
                                     (eq (event-key event) :copy))))
                          events)))
-    (return-from selection-input nil))
+    (return-from selection-input (values)))
   (let ((nodes (selectable-nodes context))
         (selection (or (context-selection context)
                        (setf (context-selection context)
@@ -777,15 +778,16 @@
                            (text-selection-focus-text selection)
                            (copy-seq (selection-text target)))))
                (when (eq kind :release)
-                 (setf (text-selection-dragging-p selection) nil))))))))
+                 (setf (text-selection-dragging-p selection) nil)))))))
+  (values))
 
-(fn (paint-selection null) ((renderer renderer) (context context))
+(fn (paint-selection (values)) ((renderer renderer) (context context))
   (let ((selection (context-selection context)))
     (when (and selection (text-selection-anchor selection))
       (multiple-value-bind (nodes keys) (selectable-nodes context t)
         (unless (= (length nodes) (text-selection-node-count selection))
           (setf (context-selection context) nil)
-          (return-from paint-selection nil))
+          (return-from paint-selection (values)))
         (dolist (endpoint (list (list (text-selection-anchor selection)
                                      (text-selection-anchor-key selection)
                                      (text-selection-anchor-text selection))
@@ -796,7 +798,7 @@
             (unless (and node (equal (gethash node keys) (second endpoint))
                          (equal (selection-text node) (third endpoint)))
               (setf (context-selection context) nil)
-              (return-from paint-selection nil))))
+              (return-from paint-selection (values)))))
         (loop :for node :across nodes :for i :from 0
               :for text := (selection-text node)
               :do (multiple-value-bind (start end)
@@ -830,7 +832,8 @@
                                            0 (widget-color (element-content
                                                             node) :accent)
                                            0.4f0)))
-                                (incf offset (1+ (length line)))))))))))))
+                                (incf offset (1+ (length line))))))))))))
+  (values))
 
 (fn (finish-selection t) ((renderer renderer) (context context))
   (let* ((selection (context-selection context))
@@ -882,7 +885,8 @@
                      (when (geometry-center-x g) (box-width area))
                      (when (geometry-center-y g) (box-height area)))))
 
-(fn (paint-paragraph null) ((renderer renderer) (text string) (x real) (y real)
+(fn (paint-paragraph (values))
+    ((renderer renderer) (text string) (x real) (y real)
                     (wrap-width real) (color string)
                     &optional ((center-width (or null real)) nil)
                               ((center-height (or null real)) nil))
@@ -899,7 +903,8 @@
                          (+ x (if center-width
                                   (max 0 (/ (- center-width (text-width font line)) 2))
                                   0))
-                         baseline color))))
+                         baseline color)))
+  (values))
 
 (fn (paint-calendar-icon t) ((renderer renderer) (box box) (color string))
   (let ((x (+ (box-x box) (/ (- (box-width box) 14) 2)))
@@ -911,7 +916,7 @@
                color 1 1.5f0)
       (bar 1 5 12 1.5f0) (bar 3 0 2 4) (bar 9 0 2 4))))
 
-(fn (paint-text-field null)     ((renderer renderer) (node element))
+(fn (paint-text-field (values))     ((renderer renderer) (node element))
   (let* ((widget (element-content node))
          (font (renderer-font renderer))
          (area (text-box widget (element-box node)))
@@ -955,9 +960,10 @@
                                  :y top :width 1 :height (line-height font))
                        0 (widget-foreground widget) 1))
               ;; Wrapping and explicit newlines each consume one separator.
-              (setf start (min (length text) (1+ end))))))
+              (setf start (min (length text) (1+ end)))))
+  (values))
 
-(fn (paint-canvas null) ((renderer renderer) (node element))
+(fn (paint-canvas (values)) ((renderer renderer) (node element))
   (let ((widget (element-content node)) (box (element-box node)))
     (shape renderer box 0 (widget-background widget) 1)
     (dolist (command (widget-value widget))
@@ -967,7 +973,8 @@
                                 :y (+ (box-y box) cy (- radius))
                                 :width (* 2 radius) :height (* 2 radius))))
           (when fill (shape renderer circle radius fill 1))
-          (when stroke (outline renderer circle radius stroke 1 1)))))))
+          (when stroke (outline renderer circle radius stroke 1 1))))))
+  (values))
 
 (fn (paint-cell t) ((renderer renderer) (node element))
   "Paint a spreadsheet cell with the renderer’s selected widget font."

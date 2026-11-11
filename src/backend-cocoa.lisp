@@ -121,7 +121,7 @@
       (message sb-alien:void path "closePath"))
     path))
 
-(fn (cocoa-color null) ((color string) (alpha real))
+(fn (cocoa-color (values)) ((color string) (alpha real))
   (let ((rgba (color-components color alpha)))
     (let ((native-color
            (message object (objc-class "NSColor")
@@ -130,7 +130,8 @@
                     sb-alien:double (float (aref rgba 1) 1.0d0)
                     sb-alien:double (float (aref rgba 2) 1.0d0)
                     sb-alien:double (float (aref rgba 3) 1.0d0))))
-      (message sb-alien:void native-color "setFill"))))
+      (message sb-alien:void native-color "setFill")))
+  (values))
 
 (fn (cached-shape sb-sys:system-area-pointer) ((contours contours))
   (let* ((cache (cocoa-app-shape-paths *app*))
@@ -148,11 +149,14 @@
         :do (message sb-alien:void path "release"))
   (clrhash cache))
 
-(fn (cocoa-polygons null) ((contours contours) (color string) (alpha real))
+(fn (cocoa-polygons (values))
+    ((contours contours) (color string) (alpha real))
   (cocoa-color color alpha)
-  (message sb-alien:void (cached-shape contours) "fill"))
+  (message sb-alien:void (cached-shape contours) "fill")
+  (values))
 
-(fn (cocoa-text null) ((font font) (text string) (x real) (y real) (color string))
+(fn (cocoa-text (values))
+    ((font font) (text string) (x real) (y real) (color string))
   (let* ((cache (cocoa-app-text-paths *app*))
          (key (list font (font-size font) text))
          (path (gethash key cache))
@@ -181,14 +185,16 @@
            (message sb-alien:void transform "concat")
            (cocoa-color color 1)
            (message sb-alien:void path "fill"))
-      (message sb-alien:void graphics "restoreGraphicsState"))))
+      (message sb-alien:void graphics "restoreGraphicsState")))
+  (values))
 
-(fn (cocoa-clip null) ((box box))
+(fn (cocoa-clip (values)) ((box box))
   (let ((graphics (objc-class "NSGraphicsContext")))
     (message sb-alien:void graphics "restoreGraphicsState")
     (message sb-alien:void graphics "saveGraphicsState")
     (message sb-alien:void
-             (cached-shape (make-array 1 :element-type 'contour :initial-element (rounded-polygon box 0))) "addClip")))
+             (cached-shape (make-array 1 :element-type 'contour :initial-element (rounded-polygon box 0))) "addClip"))
+  (values))
 
 (fn (callback-true (eql 1)) (view selector)
   (declare (ignore view selector))
@@ -233,7 +239,8 @@
   (with-cocoa-float-mode
     (draw-cocoa-view view selector dirty)))
 
-(fn (install-method null) (class (name string) (function symbol) (signature string))
+(fn (install-method (values))
+    (class (name string) (function symbol) (signature string))
   (when (zerop
          (sb-alien:alien-funcall
           (sb-alien:extern-alien "class_addMethod"
@@ -241,7 +248,8 @@
           class (selector name)
           (sb-alien:alien-sap (sb-alien:alien-callable-function function))
           signature))
-    (error "Cannot install Cocoa method ~A." name)))
+    (error "Cannot install Cocoa method ~A." name))
+  (values))
 
 (fn (view-class sb-sys:system-area-pointer) (&optional accelerated)
   (let* ((name (if accelerated "LuiOpenGLView" "LuiDrawingView"))
@@ -334,7 +342,7 @@
         (:resize-vertical "resizeUpDownCursor")
         (otherwise "arrowCursor")))
 
-(fn (update-cursor null) ((x real) (y real))
+(fn (update-cursor (values)) ((x real) (y real))
   (when *app*
     (setf (cocoa-app-pointer-x *app*) x (cocoa-app-pointer-y *app*) y))
   (when (and *app* (cocoa-app-context *app*)
@@ -345,7 +353,8 @@
                      (cursor-selector
                       (lui.widgets:cursor-at
                        (cocoa-app-context *app*) x y)))))
-      (message sb-alien:void cursor "set"))))
+      (message sb-alien:void cursor "set")))
+  (values))
 
 (fn (input-for-window-p boolean) ((type integer) window target)
   (and (member type '(1 2 3 4 5 6 7 8 9 10 22))
@@ -451,7 +460,7 @@
       (when cancel (push cancel events)))
     (coerce (nreverse events) '(vector event))))
 
-(fn (install-pointer-tracking null) (view frame)
+(fn (install-pointer-tracking (values)) (view frame)
   (let ((tracking
          (require-object
           (message object
@@ -463,7 +472,8 @@
     ;; Enter/exit + active-in-key-window + visible-rect tracks resizes natively.
     (unwind-protect
          (message sb-alien:void view "addTrackingArea:" object tracking)
-      (message sb-alien:void tracking "release"))))
+      (message sb-alien:void tracking "release")))
+  (values))
 
 (defvar *stacktrace-method* nil)
 (defvar *stacktrace-placeholder* nil)
@@ -542,7 +552,7 @@
              (message object (objc-class "NSOpenGLPixelFormat") "alloc")
              "initWithAttributes:" object attrs)))
 
-(fn (paint-gl-view null) (view gl gpu context)
+(fn (paint-gl-view (values)) (view gl gpu context)
   (let* ((bounds (message rect view "bounds"))
          (points (sb-alien:slot bounds 'size))
          (backing (message rect view "convertRectToBacking:" rect bounds))
@@ -556,9 +566,10 @@
       (message sb-alien:void gl "makeCurrentContext")
       (lui.gl:begin-gpu-frame gpu)
       (paint-frame (lui.gl:gpu-renderer gpu) context)
-      (message sb-alien:void gl "flushBuffer"))))
+      (message sb-alien:void gl "flushBuffer")))
+  (values))
 
-(fn (wait-cocoa null) (application (context context) events)
+(fn (wait-cocoa (values)) (application (context context) events)
   (let ((delay (lui.frame::frame-wait context (plusp (length events)))))
     (when (plusp delay)
       ;; Peek so the ordinary event loop still translates and dispatches input.
@@ -570,7 +581,8 @@
                                sb-alien:double (float delay 1d0))
                object (sb-alien:extern-alien "NSDefaultRunLoopMode" object)
                objc-bool 0)))
-  (lui.frame::limit-frame-rate context))
+  (lui.frame::limit-frame-rate context)
+  (values))
 
 (fn (run-cocoa-window context) ((draw function) &key title width height (interactive t))
   (with-cocoa-float-mode

@@ -192,14 +192,32 @@ are read for resolution; only explicitly selected exports enter the reference."
         (current "cl-user") (source ""))
     (labels
         ((key (package name) (list package (local-name name)))
+         (definition-package (package name &optional seen)
+           ;; An implementation can define a public symbol imported from an
+           ;; interface package. Record it under the symbol's declared owner.
+           (let ((import
+                   (find-if
+                    (lambda (option)
+                      (and (eq (car option) :import-from)
+                           (find (local-name name) (cddr option)
+                                 :key #'local-name :test #'string=)))
+                    (gethash package packages))))
+             (if (and import (not (member package seen :test #'equal)))
+                 (definition-package
+                  (string-downcase (string (second import))) name
+                  (cons package seen))
+                 package)))
+         (definition-key (name)
+           (key (definition-package current name) name))
          (record (name kind args documentation)
            (when (consp name)
-             (setf (gethash (key current (second name)) setters)
+             (setf (gethash (definition-key (second name)) setters)
                    (signature name args))
              (return-from record nil))
            (let ((base name))
-             (setf (gethash (key current base) definitions)
-                   (list :package current :name (local-name base) :kind kind
+             (setf (gethash (definition-key base) definitions)
+                   (list :package (definition-package current base)
+                         :name (local-name base) :kind kind
                          :signature (if (member kind '(:variable :constant
                                                        :structure :type))
                                         (string-downcase (local-name base))
@@ -262,10 +280,6 @@ are read for resolution; only explicitly selected exports enter the reference."
                  ((string= head "DEFPACKAGE")
                   (let ((package (string-downcase (string (second form)))))
                     (setf (gethash package packages) (cddr form))))
-                 ((string= head "EXPOSE-API")
-                  (push (list* :import-from current (cdr form))
-                        (gethash "lui" packages))
-                  (push (cons :export (cdr form)) (gethash "lui" packages)))
                  ((string= head "IN-PACKAGE")
                   (setf current (string-downcase (string (second form)))))
                  ((member head '("PROGN" "EVAL-WHEN") :test #'string=)
@@ -309,8 +323,8 @@ are read for resolution; only explicitly selected exports enter the reference."
                                    (named-p (car (second place)) "QUOTE")
                                    (stringp value))
                           :do (let ((entry (gethash
-                                            (key current
-                                                 (second (second place)))
+                                            (definition-key
+                                             (second (second place)))
                                             definitions)))
                                 (when entry
                                   (setf (getf entry :documentation)

@@ -39,15 +39,28 @@
 (defpackage #:docs-reexport
   (:use #:docs-fixture) (:import-from #:docs-internal #:shared)
   (:export #:typed #:shared))
+(defpackage #:docs-interface (:use #:cl) (:export #:implemented))
+(defpackage #:docs-implementation
+  (:use #:cl) (:import-from #:docs-interface #:implemented))
+(in-package #:docs-implementation)
+(defun implemented (value) \"Implementation of an imported public symbol.\" value)
+(defun (setf implemented) (new-value object) new-value)
 " stream))
            (let* ((paths (list (pathname fixture)))
                   (policy '(("docs-fixture" . :all)
-                            ("docs-reexport" . :all)))
+                            ("docs-reexport" . :all)
+                            ("docs-interface" . :all)))
                   (entries (lui.docs.generator:collect-entries
                             paths policy))
                   (typed (entry entries "docs-fixture" "TYPED"))
                   (access (entry entries "docs-fixture" "ACCESS")))
-             (assert (= 11 (length entries)))
+             (assert (= 12 (length entries)))
+             (assert (string= "Implementation of an imported public symbol."
+                              (getf (entry entries "docs-interface"
+                                           "IMPLEMENTED") :documentation)))
+             (assert (search "((setf implemented) new-value object)"
+                             (getf (entry entries "docs-interface"
+                                          "IMPLEMENTED") :signature)))
              (assert (notany (lambda (item)
                                (string= "docs-internal"
                                         (getf item :package))) entries))

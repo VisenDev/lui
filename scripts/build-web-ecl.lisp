@@ -21,7 +21,7 @@
       (or (uiop:getenv "ECL_WEB_APP") "scripts/start-demo.lisp")))
 (defparameter *sources*
   '("src/01-fn.lisp"
-    "scripts/ecl-web.lisp"
+    "src/backend-ecl-emscripten.lisp"
     "src/02-helpers.lisp"
     "src/03-layout.lisp"
     "src/04-frame.lisp"
@@ -31,7 +31,7 @@
     "src/08-toolkits.lisp"
     "src/09-debug.lisp"
     "src/backend-common.lisp"
-    "src/backend-web.lisp"))
+    "src/backend-common-web.lisp"))
 (setf *sources*
       (append *sources*
               (if *docs-p*
@@ -47,12 +47,12 @@
 
 (load "src/01-fn.lisp")
 (let ((*features* (cons :lui-ecl-host *features*)))
-  (load "scripts/ecl-web.lisp"))
+  (load "src/backend-ecl-emscripten.lisp"))
 (load "scripts/ecl-web-reader.lisp")
 
 (defun prepare-source (source)
   (if (member source '("src/backend-common.lisp"
-                      "src/backend-web.lisp") :test #'equal)
+                      "src/backend-common-web.lisp") :test #'equal)
       (let ((output (merge-pathnames (file-namestring source) *output*)))
         (with-open-file (in source)
           (with-open-file (out output :direction :output

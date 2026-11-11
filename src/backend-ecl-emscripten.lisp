@@ -75,13 +75,13 @@
            (and (numberp value) (zerop value))
            (and (stringp value) (zerop (length value))))))
 
-(fn (release-owner null) (owner)
+(fn (release-owner (values)) (owner)
   (loop :for id :being :the :hash-keys :of *roots*
         :using (:hash-value entry)
         :when (eq owner (cdr entry))
           :do (operation 6 (list id))
               (remhash id *roots*))
-  nil)
+  (values))
 
 (fn (release-root boolean) ((id integer))
   (remhash id *roots*))

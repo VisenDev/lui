@@ -119,7 +119,7 @@ build/jscl.js: $(JSCL)/dist/jscl.js
 build/docs.html: $(DOC_DATA) $(DOC_SOURCES) scripts/start-docs-web.lisp \
 		scripts/build-web-ecl.sh scripts/build-web-ecl.lisp \
 		scripts/ecl-web-reader.lisp scripts/package-web-ecl.py \
-		scripts/ecl-web.lisp scripts/ecl-web.c scripts/ecl-web.js \
+		src/backend-ecl-emscripten.lisp scripts/ecl-web.c scripts/ecl-web.js \
 		examples/web-ecl.html
 	ECL="$(ECL)" EMCC="$(EMCC)" ECL_WASM="$(ECL_WASM)" PYTHON="$(PYTHON)" \
 		bash scripts/build-web-ecl.sh docs

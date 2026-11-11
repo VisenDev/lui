@@ -14,7 +14,7 @@
    "src/08-toolkits.lisp"
    "src/09-debug.lisp"
    "src/backend-common.lisp"
-   "src/backend-web.lisp"
+   "src/backend-common-web.lisp"
    "examples/seven-model.lisp" "examples/seven-circles.lisp"
    "examples/seven-cells.lisp" "examples/seven.lisp"
    "examples/demo.lisp" "scripts/start-demo.lisp")

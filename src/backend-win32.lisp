@@ -175,8 +175,9 @@
 (defvar *class-counter* 0)
 (defvar *window-hook* nil "Test hook called once after creating a window.")
 
-(fn (checked null) ((status integer))
-  (unless (zerop status) (error "GDI+ status ~D." status)))
+(fn (checked (values)) ((status integer))
+  (unless (zerop status) (error "GDI+ status ~D." status))
+  (values))
 
 (fn (nonnull cffi:foreign-pointer) (pointer)
   (when (cffi:null-pointer-p pointer) (error "Win32 allocation failed."))
@@ -186,11 +187,11 @@
   (let ((word (logand value #xffff)))
     (if (logbitp 15 word) (- word #x10000) word)))
 
-(fn (queue-input null) ((window win-window) (event event))
+(fn (queue-input (values)) ((window win-window) (event event))
   (push event (win-window-events window))
-  nil)
+  (values))
 
-(fn (character-input null) ((window win-window) (code integer))
+(fn (character-input (values)) ((window win-window) (code integer))
   (cond
     ((<= #xd800 code #xdbff) (setf (win-window-surrogate window) code))
     ((<= #xdc00 code #xdfff)
@@ -205,7 +206,7 @@
           (when char
             (queue-input window
               (make-event :kind :text :value (string char))))))))
-  nil)
+  (values))
 
 (fn (key-input (or null event)) ((code integer) control alt shift text-p
                &optional activation-p)
@@ -390,7 +391,8 @@
     (win-window-bitmap window) (cffi:null-pointer)
     (win-window-old-bitmap window) (cffi:null-pointer)))
 
-(fn (resize-buffer null) ((window win-window) (width integer) (height integer))
+(fn (resize-buffer (values))
+    ((window win-window) (width integer) (height integer))
   (free-buffer window)
   (let ((dc (nonnull (get-dc (win-window-handle window)))))
     (unwind-protect
@@ -406,13 +408,14 @@
           (checked (create-graphics (win-window-dc window) out))
           (setf (win-window-graphics window) (cffi:mem-ref out :pointer)))
         (checked (smoothing-mode (win-window-graphics window) 4)))
-      (release-dc (win-window-handle window) dc))))
+      (release-dc (win-window-handle window) dc)))
+  (values))
 
 (fn (argb integer) ((color string) (alpha real))
   (logior (ash (round (* 255 (max 0 (min 1 alpha)))) 24)
     (parse-integer color :start 1 :radix 16)))
 
-(fn (draw-polygons null)
+(fn (draw-polygons (values))
   ((window win-window) (contours contours) (color string) (alpha real))
   (cffi:with-foreign-objects ((path-out :pointer) (brush-out :pointer))
     (checked (create-path 1 path-out))
@@ -432,22 +435,25 @@
           (setf brush (cffi:mem-ref brush-out :pointer))
           (checked (fill-path (win-window-graphics window) brush path)))
         (when brush (delete-brush brush))
-        (delete-path path)))))
+        (delete-path path))))
+  (values))
 
-(fn (clip-window null) ((window win-window) (box box))
+(fn (clip-window (values)) ((window win-window) (box box))
   (checked (reset-clip (win-window-graphics window)))
   (checked
     (set-clip (win-window-graphics window)
       (float (box-x box) 1.0f0) (float (box-y box) 1.0f0)
       (float (max 0 (box-width box)) 1.0f0)
-      (float (max 0 (box-height box)) 1.0f0) 0)))
+      (float (max 0 (box-height box)) 1.0f0) 0))
+  (values))
 
-(fn (blit-image null)
+(fn (blit-image (values))
   (graphics image (x integer) (y integer) (width integer) (height integer)
     (sx integer) (sy integer) (sw integer) (sh integer))
   (checked
     (draw-image graphics image x y width height sx sy sw sh 2
-      (cffi:null-pointer) (cffi:null-pointer) (cffi:null-pointer))))
+      (cffi:null-pointer) (cffi:null-pointer) (cffi:null-pointer)))
+  (values))
 
 (fn (capture-backdrop cffi:foreign-pointer)
   ((window win-window) (x integer) (y integer)
@@ -478,12 +484,12 @@
         (when target (delete-graphics target))
         (when (and image (not complete)) (dispose-image image))))))
 
-(fn (blur-backdrop null)
+(fn (blur-backdrop (values))
   ((window win-window) (box box) (radius real) (blur real))
   "Approximate backdrop blur with native filtered downsampling and upsampling.
 GDI+ owns all image storage, filtering, clipping, and rasterization. This is a
 compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
-  (when (<= blur 0) (return-from blur-backdrop nil))
+  (when (<= blur 0) (return-from blur-backdrop (values)))
   (let* ((graphics (win-window-graphics window))
          (left (max 0 (floor (- (box-x box) (* 2 blur)))))
          (top (max 0 (floor (- (box-y box) (* 2 blur)))))
@@ -498,7 +504,7 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
          (snapshot nil) (small nil) (small-graphics nil) (path nil)
          (saved nil))
     (unless (and (plusp width) (plusp height))
-      (return-from blur-backdrop nil))
+      (return-from blur-backdrop (values)))
     (cffi:with-foreign-objects ((out :pointer) (state :uint32))
       (unwind-protect
         (progn
@@ -537,17 +543,19 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
         (when path (delete-path path))
         (when small-graphics (delete-graphics small-graphics))
         (when small (dispose-image small))
-        (when snapshot (dispose-image snapshot))))))
+        (when snapshot (dispose-image snapshot)))))
+  (values))
 
-(fn (pump-messages null) ((window win-window))
+(fn (pump-messages (values)) ((window win-window))
   (cffi:with-foreign-object (message '(:struct message))
     (loop :while
       (plusp (peek-message message (win-window-handle window) 0 0 1)) :do
       (translate-message message)
       (dispatch-message message)))
-  (when (win-window-error window) (error (win-window-error window))))
+  (when (win-window-error window) (error (win-window-error window)))
+  (values))
 
-(fn (wait-win32 null) ((window win-window) (context context) input)
+(fn (wait-win32 (values)) ((window win-window) (context context) input)
   (loop
     (pump-messages window)
     (let ((delay (lui.frame::frame-wait context input)))
@@ -556,7 +564,8 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
         (return))
       (wait-messages 0 (cffi:null-pointer) (ceiling (* 1000 delay))
                      #x4ff 0)))
-  (unless (win-window-quit window) (lui.frame::limit-frame-rate context)))
+  (unless (win-window-quit window) (lui.frame::limit-frame-rate context))
+  (values))
 
 (fn (render-frame context)
   ((window win-window) (renderer renderer) (context context)

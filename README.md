@@ -888,14 +888,16 @@ The portable sources are numbered in dependency order:
 - `08-toolkits.lisp`: built-in toolkit definitions.
 - `09-debug.lisp`: optional layout debugger, loaded by `lui/debug`.
 
-Each platform lives in `src/backend-<platform>.lisp`. The browser backend
-combines its input and window handling; Wayland includes its protocol bindings.
+Each platform lives in `src/backend-<platform>.lisp`.
+`backend-common-web.lisp` shares browser input and window handling between
+JSCL and ECL/Emscripten; Wayland includes its protocol bindings.
 `backend-common.lisp` supplies fonts, drawing, selection, and toolkit painting;
 `backend-common-gl.lisp` supplies shared OpenGL rendering. `backend-host.lisp`
 selects the native host backend. The dependency-free core does not load these
 backend files. ASDF systems retain their existing names.
 
-ECL's compiler bridge and C/JavaScript support live in `scripts/ecl-web.*`.
+ECL's Lisp bridge lives in `src/backend-ecl-emscripten.lisp`; its C/JavaScript
+build support lives in `scripts/ecl-web.c` and `scripts/ecl-web.js`.
 The JSCL and ECL builders load the same numbered core and shared browser sources.
 
 ## Conventions
