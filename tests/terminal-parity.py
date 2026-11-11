@@ -25,11 +25,11 @@ def program(backend, toolkit, page):
 (asdf:load-system "lui/demo")
 (setf (symbol-function 'lui.frame::frame-rate-label)
       (lambda (&rest state) (declare (ignore state)) "Frame rate: parity"))
-(let ((gallery (lui.example:make-gallery :toolkit :{toolkit} :page :{page}
+(let ((gallery (lui.example.demo:make-gallery :toolkit :{toolkit} :page :{page}
                                        :name "A界é 🦊" :editor "Unicode 界é 🦊 clipped text"))
       (first t))
   (lui:run (lambda ()
-             (lui.example:draw gallery)
+             (lui.example.demo:draw gallery)
              (when first
                (setf first nil
                      (lui.frame:context-focus lui.frame:*context*) :{focus}

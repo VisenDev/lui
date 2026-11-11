@@ -1,7 +1,7 @@
-(defpackage #:lui.docs.generator
+(defpackage #:lui.docs.data
   (:use #:cl)
   (:export #:collect-entries #:write-data #:main))
-(in-package #:lui.docs.generator)
+(in-package #:lui.docs.data)
 
 ;; DEFPACKAGE exports also connect implementation modules. The reference is
 ;; deliberately an application/extension API, not an inventory of those links.
@@ -371,7 +371,7 @@ are read for resolution; only explicitly selected exports enter the reference."
                                   :thereis
                                   (resolve (string-downcase (string parent))
                                            name (cons package seen)))))))))
-      (let ((*package* (find-package :lui.docs.generator))
+      (let ((*package* (find-package :lui.docs.data))
             (*readtable* (source-readtable)) (*read-eval* nil))
         (dolist (path (sort (copy-list paths) #'string< :key #'namestring))
           (setf current "cl-user"

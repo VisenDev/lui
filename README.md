@@ -559,7 +559,7 @@ Start a Common Lisp implementation in the repository directory:
 (asdf:load-system "lui/demo")
 (asdf:load-system "lui/terminal")
 (asdf:test-system "lui")
-(lui:run (lui.example:make-demo) :backend :terminal :interactive nil)
+(lui:run (lui.example.demo:make-demo) :backend :terminal :interactive nil)
 ```
 
 To make LUI discoverable from other directories, put the following in
@@ -635,7 +635,7 @@ To load a single graphical backend for the gallery:
 (asdf:load-system "lui/x11")
 (asdf:load-system "lui/demo")
 (let ((lui:*backend* :x11))
-  (lui.example:main))
+  (lui.example.demo:main))
 ```
 
 Use `lui/wayland` with `:wayland`, `lui/win32` with `:win32`, or `lui/cocoa` with
@@ -919,30 +919,41 @@ Performance tuning and broader platform/implementation coverage remain open.
 
 ## Source organization
 
+Each core source file owns one package. Filenames match the package after removing
+its `lui.` namespace and converting dots to hyphens; numeric, `backend-`, and
+`backend-common-` prefixes describe load order or source organization.
+The public `lui` package lives in `07-lui.lisp`.
+
 The portable sources are numbered in dependency order:
 
-- `01-fn.lisp`, `02-helpers.lisp`: typed function declarations and text wrapping.
-- `03-layout.lisp`, `04-frame.lisp`: layout solving and frame state.
-- `05-widgets.lisp`, `06-app.lisp`, `07-interaction.lisp`: controls, application
+- `01-fn.lisp`, `02-conditions.lisp`, `03-text.lisp`: typed declarations,
+  documented conditions, and text wrapping.
+- `04-layout.lisp`, `05-frame.lisp`: layout solving and frame state.
+- `06-widgets.lisp`, `07-lui.lisp`, `08-interaction.lisp`: controls, application
   declarations, and input handling.
-- `08-toolkits.lisp`: built-in toolkit definitions.
-- `09-debug.lisp`: optional layout debugger, loaded by `lui/debug`.
+- `09-glass.lisp` through `13-garnet.lisp`: one file per toolkit package.
+- `14-debug.lisp`: optional layout debugger, loaded by `lui/debug`.
 
-Each platform lives in `src/backend-<platform>.lisp`.
-`backend-common-web.lisp` shares browser input and window handling between
-JSCL and ECL/Emscripten; Wayland includes its protocol bindings.
-`backend-common.lisp` supplies fonts, drawing, selection, and toolkit painting;
-`backend-common-gl.lisp` supplies shared OpenGL rendering. `backend-host.lisp`
-selects the native host backend. The dependency-free core does not load these
-backend files. ASDF systems retain their existing names.
+Platform backends live in `src/backend-<platform>.lisp` and may group related
+packages in one file. Wayland includes its protocol package.
+`backend-common.lisp` contains the font and drawing packages;
+`backend-common-gl.lisp` provides shared OpenGL rendering.
+`backend-common-web.lisp` groups browser input and window handling.
+`backend-host.lisp` selects the native host backend. ASDF system names are
+unchanged, and the dependency-free core does not load backend files.
 
-ECL's Lisp bridge lives in `src/backend-ecl-emscripten.lisp`; its C/JavaScript
-build support lives in `scripts/ecl-web.c` and `scripts/ecl-web.js`.
-The JSCL and ECL builders load the same numbered core and shared browser sources.
+`backend-ecl-emscripten.lisp` owns the `lui.ecl-emscripten` bridge package;
+its C/JavaScript support lives in `scripts/ecl-web.c` and `scripts/ecl-web.js`.
+Both web builders load the same numbered core and shared browser sources.
+
+Tests use the `lui.tests.` namespace, and gallery examples use `lui.example.`.
+For example, `tests/core.lisp` owns `lui.tests.core`, and `examples/demo.lisp`
+owns `lui.example.demo`. Script packages likewise follow their filenames.
 
 ## Conventions
 
-One package per source file. Implementation packages may use `:use`. Demos and
+One package per core source file; backend files may group related packages.
+Implementation packages may use `:use`. Demos and
 examples use only Common Lisp and qualify their LUI API references. Other external
 symbols are qualified or explicitly imported. Data uses `defstruct`, with typed
 slots and functions through `lui.fn`, adapted from `open-orders`. Normal Lisp code wraps at

@@ -1,5 +1,5 @@
-(defpackage #:lui.tests.win32-runner (:use #:cl))
-(in-package #:lui.tests.win32-runner)
+(defpackage #:lui.test.win32 (:use #:cl))
+(in-package #:lui.test.win32)
 
 (require :asdf)
 

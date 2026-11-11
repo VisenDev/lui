@@ -1,9 +1,9 @@
-(defpackage #:lui.web.ffi
+(defpackage #:lui.ecl-emscripten
   (:use #:cl #:lui.fn)
   (:nicknames #:jscl/ffi)
   (:export #:global #:oget #:invoke #:new #:jsstring #:clstring #:clbool
            #:*owner* #:release-owner #:release-root #:dispatch))
-(in-package #:lui.web.ffi)
+(in-package #:lui.ecl-emscripten)
 
 ;; JS objects have stable identities. Weak wrappers and deferred finalizers
 ;; release temporary DOM/measurement results without running JS inside GC.

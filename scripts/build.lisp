@@ -15,8 +15,8 @@
 (defun main ()
   (let ((lui:*backend* (intern (string-upcase *backend*) :keyword)))
     (if (member "--smoke-test" (uiop:command-line-arguments) :test #'string=)
-        (lui:run (lui.example:make-demo) :interactive nil)
-        (lui.example:main))))
+        (lui:run (lui.example.demo:make-demo) :interactive nil)
+        (lui.example.demo:main))))
 
 (sb-ext:save-lisp-and-die (uiop:getenv "LUI_OUTPUT")
                         :toplevel #'main :executable t

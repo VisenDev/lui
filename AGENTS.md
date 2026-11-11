@@ -20,7 +20,8 @@ APIs and platform support; historical measurements are not current guarantees.
 - Collection APIs use vectors with declared element types: wrapped strings,
   events, layout children, contours, and colors. Configuration plists, control
   alists, Lisp forms, and internal pending-event queues can remain lists.
-- Prefer one package per source file. Implementation packages may use `:use`.
+- Use one package per core source file; backend files may group related
+  packages. Implementation packages may use `:use`.
   Demos and examples must use only Common Lisp in `:use`; qualify their LUI API
   references. Keep local variables and structure slot names ordinary local
   symbols. Qualify or explicitly import other external API symbols.
@@ -50,10 +51,14 @@ the change and report material limitations instead of claiming untested support.
 ## Source organization
 
 - Keep portable source files numbered in dependency order (`01-fn.lisp`
-  through `09-debug.lisp`). The debugger remains an optional ASDF system.
-- Keep each platform in `backend-<platform>.lisp`; share rendering and font
-  support in `backend-common.lisp`, OpenGL in `backend-common-gl.lisp`, and
-  browser rendering/input in `backend-common-web.lisp`.
+  through `14-debug.lisp`). The debugger remains an optional ASDF system.
+- Each core file owns one matching package. Ignore numeric prefixes and map
+  package dots to filename hyphens. Tests use `lui.tests.` and gallery packages
+  use `lui.example.`; script packages also follow their filenames.
+- Backend files may group related packages. Keep each platform in
+  `backend-<platform>.lisp`; share font/drawing support in `backend-common.lisp`,
+  OpenGL in `backend-common-gl.lisp`, and browser rendering/input in
+  `backend-common-web.lisp`.
 - ECL Lisp interop belongs in `backend-ecl-emscripten.lisp`; C/JavaScript
   build support belongs in `scripts/ecl-web.c` and `scripts/ecl-web.js`.
   Update ASDF, both browser build manifests, and the portable test runner

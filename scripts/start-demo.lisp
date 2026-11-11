@@ -2,4 +2,4 @@
   (:use #:cl))
 (in-package #:lui.start.demo)
 
-(lui.example:main)
+(lui.example.demo:main)

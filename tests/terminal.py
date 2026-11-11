@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def script(error=False, debug=False):
     # These assertions inspect Glass colors and Unicode borders explicitly.
-    draw = """(let ((frames 0) (draw (lui.example:make-demo)))
+    draw = """(let ((frames 0) (draw (lui.example.demo:make-demo)))
   (handler-case
       (lui:run (lambda ()
                  (funcall draw)
@@ -34,25 +34,25 @@ def script(error=False, debug=False):
                  (when (> (incf frames) 1) (error "test draw failure")))
                :backend :terminal)
     (error () (format t "~&@@DRAW-ERROR~%"))))""" if error else """
-(let* ((gallery (lui.example:make-gallery :toolkit :glass))
-       (context (lui:run (lambda () (lui.example:draw gallery))
+(let* ((gallery (lui.example.demo:make-gallery :toolkit :glass))
+       (context (lui:run (lambda () (lui.example.demo:draw gallery))
                          :backend :terminal)))
   (format t "~&@@RESULT name=~S volume=~,2F enabled=~S count=~D size=~Dx~D~%"
-          (lui.example::gallery-name gallery)
-          (lui.example::gallery-volume gallery)
-          (lui.example::gallery-enabled gallery)
-          (lui.example::gallery-count gallery) (lui.frame:context-width context)
+          (lui.example.demo::gallery-name gallery)
+          (lui.example.demo::gallery-volume gallery)
+          (lui.example.demo::gallery-enabled gallery)
+          (lui.example.demo::gallery-count gallery) (lui.frame:context-width context)
           (lui.frame:context-height context)))"""
     if debug:
         draw = """
-(let* ((gallery (lui.example:make-gallery :toolkit :glass))
+(let* ((gallery (lui.example.demo:make-gallery :toolkit :glass))
        (state (lui.debug:make-debugger-state :open-p t :width 30))
        (first t)
        (context (lui:run (lambda ()
                            (when first
                              (setf first nil)
                              (lui.debug:set-debugger-enabled t :state state))
-                           (lui.example:draw gallery))
+                           (lui.example.demo:draw gallery))
                          :backend :terminal)))
   (format t "~&@@DEBUG width=~,1F size=~Dx~D~%"
           (lui.debug:debugger-state-width state)
@@ -119,8 +119,8 @@ def script(error=False, debug=False):
 (test-panel-border :terminal-border-test 0 "++++-|" :terminal-border nil)
 (test-panel-border :terminal-border-test 14 "╭╮╰╯─│" :terminal-border nil)
 (let ((context (lui.terminal:make-terminal-context))
-      (gallery (lui.example:make-gallery :toolkit :glass)))
-  (lui.frame:with-frame (context 90 35) (lui.example:draw gallery))
+      (gallery (lui.example.demo:make-gallery :toolkit :glass)))
+  (lui.frame:with-frame (context 90 35) (lui.example.demo:draw gallery))
   (let ((lines (lui.terminal:text-lines (lui.terminal:render-terminal context) nil)))
     (assert (string= (aref lines 0) (format nil "╭~A╮" (make-string 88 :initial-element #\\─))))
     (assert (string= (aref lines 34) (format nil "╰~A╯" (make-string 88 :initial-element #\\─))))))
@@ -309,7 +309,7 @@ def script(error=False, debug=False):
     (assert (string= plain (format nil "+---+~%|   |~%+---+~%")))
     (assert (not (find #\\Escape plain)))
     (format t "~&@@ANSI-GARNET-BEGIN~%~A@@ANSI-GARNET-END~%" colored)))
-(let ((context (lui:run (lui.example:make-demo) :backend :terminal
+(let ((context (lui:run (lui.example.demo:make-demo) :backend :terminal
                         :width 90 :height 35 :interactive nil)))
   (lui.layout:walk-elements
    (lui.frame:context-root context)

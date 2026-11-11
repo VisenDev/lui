@@ -54,7 +54,7 @@ RAW_PROFILE = r"""({count, warmup}) => new Promise(resolve => {
 PROFILE = r"""({count, warmup}) => new Promise(resolve => {
     const phases = {
         'lui.frame::begin-frame': 'begin_ms',
-        'lui.example:draw': 'declare_ms',
+        'lui.example.demo:draw': 'declare_ms',
         'lui.frame::end-frame': 'end_ms',
         'lui.layout:solve': 'layout_ms',
         'lui.draw::measure-widget': 'measure_ms',

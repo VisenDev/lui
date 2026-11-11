@@ -13,11 +13,11 @@
                      (concatenate 'string "lui/" *platform*)))
 (asdf:load-system "lui/demo")
 
-(defparameter *gallery* (lui.example:make-gallery))
+(defparameter *gallery* (lui.example.demo:make-gallery))
 
 (defparameter *cases*
-  (loop :for toolkit :in lui.example::*toolkits*
-        :append (loop :for (page title) :in lui.example::*pages*
+  (loop :for toolkit :in lui.example.demo::*toolkits*
+        :append (loop :for (page title) :in lui.example.demo::*pages*
                       :append
                       (if (eq page :seven)
                           (loop :for (task label)
@@ -82,11 +82,11 @@
                        (floor (* (- index *warmup*) (length *cases*))
                               *frames*))
                    *cases*)))
-    (setf (lui.example::gallery-toolkit *gallery*) (first case)
-          (lui.example::gallery-page *gallery*) (second case))
+    (setf (lui.example.demo::gallery-toolkit *gallery*) (first case)
+          (lui.example.demo::gallery-page *gallery*) (second case))
     (when (third case)
       (setf (lui.example.seven:state-task
-             (lui.example::gallery-seven *gallery*))
+             (lui.example.demo::gallery-seven *gallery*))
             (third case)))
     case))
 
@@ -115,7 +115,7 @@
            (incf index)
            ;; Case selection and previous-sample storage are excluded.
            (multiple-value-setq (bytes gc-time) (counters))
-           (lui.example:draw *gallery*)))
+           (lui.example.demo:draw *gallery*)))
        :backend (intern (string-upcase *platform*) :keyword)
        :min-fps 240 :max-fps 240
        :title "LUI benchmark" :width *width* :height *height*))))
@@ -139,21 +139,23 @@
                            (lui.widgets:widget-terminal-text widget) width
                            (lambda (text start end)
                              (declare (ignore text)) (- end start)))))
-               (values (max (if (eq (lui.widgets:widget-kind widget) :slider) 12 0)
-                            (loop for line across lines maximize (length line)))
+               (values (max (if (eq (lui.widgets:widget-kind widget) :slider)
+                      12 0)
+                            (loop for line across lines maximize (length
+                        line)))
                        (length lines))))))
         (lui:*unit* 1))
     (benchmark-loop
      (lambda ()
        (lui.frame:with-frame (context *width* *height*)
-         (lui.example:draw *gallery*))))))
+         (lui.example.demo:draw *gallery*))))))
 
 (defun benchmark-terminal ()
   (let ((context (call :lui.terminal :make-terminal-context)) (lui:*unit* 1))
     (benchmark-loop
      (lambda ()
        (lui.frame:with-frame (context *width* *height*)
-         (lui.example:draw *gallery*))
+         (lui.example.demo:draw *gallery*))
        (call :lui.terminal :render-terminal context)))))
 
 (defun benchmark-gl ()
@@ -176,7 +178,7 @@
              (benchmark-loop
               (lambda ()
                 (lui.frame:with-frame (context *width* *height*)
-                  (lui.example:draw *gallery*))
+                  (lui.example.demo:draw *gallery*))
                 (call :lui.gl :begin-gpu-frame gpu)
                 (call :lui.draw :paint-frame renderer context)
                 (call :lui.gl :present-gpu gpu)

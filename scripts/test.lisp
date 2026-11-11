@@ -1,6 +1,6 @@
-(defpackage #:lui.test-runner
+(defpackage #:lui.test
   (:use #:cl))
-(in-package #:lui.test-runner)
+(in-package #:lui.test)
 
 (load "scripts/setup.lisp")
 

@@ -31,13 +31,18 @@
   :components ((:module "src"
                 :serial t
                 :components ((:file "01-fn")
-                             (:file "02-helpers")
-                             (:file "03-layout")
-                             (:file "04-frame")
-                             (:file "05-widgets")
-                             (:file "06-app")
-                             (:file "07-interaction")
-                             (:file "08-toolkits"))))
+                             (:file "02-conditions")
+                             (:file "03-text")
+                             (:file "04-layout")
+                             (:file "05-frame")
+                             (:file "06-widgets")
+                             (:file "07-lui")
+                             (:file "08-interaction")
+                             (:file "09-glass")
+                             (:file "10-motif")
+                             (:file "11-macos")
+                             (:file "12-qt")
+                             (:file "13-garnet"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
 
 (defsystem "lui"
@@ -53,7 +58,7 @@
 
 (defsystem "lui/debug"
   :depends-on ("lui/core")
-  :components ((:module "src" :components ((:file "09-debug")))))
+  :components ((:module "src" :components ((:file "14-debug")))))
 
 (defsystem "lui/demo"
   :depends-on ("lui/debug")
@@ -84,7 +89,7 @@
   :perform (test-op (operation component)
              (declare (ignore operation component))
              (uiop:symbol-call :lui.tests.debug :run-tests)
-             (uiop:symbol-call :lui.tests :run-tests)
+             (uiop:symbol-call :lui.tests.core :run-tests)
              (uiop:symbol-call :lui.tests.widgets :run-tests)
              (uiop:symbol-call :lui.tests.interaction :run-tests)
              (uiop:symbol-call :lui.tests.gallery :run-tests)

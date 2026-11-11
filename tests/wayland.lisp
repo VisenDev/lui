@@ -501,7 +501,7 @@
 
 (test-key-repeat)
 
-(let ((frames 0) (native nil) (gallery (lui.example:make-gallery)))
+(let ((frames 0) (native nil) (gallery (lui.example.demo:make-gallery)))
   (catch 'done
     (run
      (lambda ()
@@ -540,7 +540,7 @@
                                  native))
                            "server-side" "client-side")))
              (assert (null (lui.wayland::wl-window-decoration native)))))
-       (lui.example:draw gallery)
+       (lui.example.demo:draw gallery)
        (when (= frames 2)
           (setf (context-focus *context*) (lui:widget-id :name *context*))
          ;; Exercise the actual C callback ABI without moving the user's mouse.
@@ -558,7 +558,7 @@
               :pointer null :pointer null :uint32 0 :uint32 0
               :uint32 #x110 :uint32 state :void))))
        (when (= frames 3)
-         (assert (= (lui.example::gallery-count gallery) 1))
+         (assert (= (lui.example.demo::gallery-count gallery) 1))
           (assert (eq :name (lui:widget-key (context-focus *context*))))
          (assert (not (context-focus-visible-p *context*)))
          (install-us-keymap lui.wayland::*window*)

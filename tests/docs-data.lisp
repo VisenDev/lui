@@ -50,7 +50,7 @@
                   (policy '(("docs-fixture" . :all)
                             ("docs-reexport" . :all)
                             ("docs-interface" . :all)))
-                  (entries (lui.docs.generator:collect-entries
+                  (entries (lui.docs.data:collect-entries
                             paths policy))
                   (typed (entry entries "docs-fixture" "TYPED"))
                   (access (entry entries "docs-fixture" "ACCESS")))
@@ -69,7 +69,7 @@
                                     :documentation)))
              (assert (null (find-package :docs-fixture)))
              (assert (equal entries
-                            (lui.docs.generator:collect-entries
+                            (lui.docs.data:collect-entries
                              paths policy)))
              (assert (string= "(typed value &key (limit 10))"
                               (getf typed :signature)))
@@ -92,27 +92,27 @@
              (assert (string= "Typed documentation."
                               (getf (entry entries "docs-reexport" "TYPED")
                                     :documentation)))
-             (lui.docs.generator:write-data entries output)
+             (lui.docs.data:write-data entries output)
              (let ((first (uiop:read-file-string output)))
-               (lui.docs.generator:write-data entries output)
+               (lui.docs.data:write-data entries output)
                (assert (string= first (uiop:read-file-string output)))))
            ;; Read-time evaluation is rejected, rather than executed.
            (with-open-file (stream fixture :direction :output
                                           :if-exists :supersede)
              (write-string "#.(error \"Do not evaluate.\")" stream))
            (assert (handler-case
-                       (progn (lui.docs.generator:collect-entries
+                       (progn (lui.docs.data:collect-entries
                                (list (pathname fixture))) nil)
                      (reader-error () t))))
       (when (probe-file fixture) (delete-file fixture))
       (when (probe-file output) (delete-file output))))
-  (let* ((entries (lui.docs.generator:collect-entries))
+  (let* ((entries (lui.docs.data:collect-entries))
          (button (entry entries "lui" "BUTTON")))
     (dolist (item entries)
       (assert (plusp (length (getf item :documentation))) ()
               "Missing docstring for ~A:~A."
               (getf item :package) (getf item :name)))
-    (dolist (scope lui.docs.generator::*public-api*)
+    (dolist (scope lui.docs.data::*public-api*)
       (when (listp (cdr scope))
         (dolist (name (cdr scope))
           (assert (entry entries (car scope) name) ()

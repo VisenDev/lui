@@ -1,23 +1,28 @@
-(defpackage #:lui.tests.runner
+(defpackage #:lui.tests.run
   (:use #:cl))
 
-(in-package #:lui.tests.runner)
+(in-package #:lui.tests.run)
 
 ;; Source-loading runner for implementations without a configured ASDF registry.
 
 (dolist (file '("src/01-fn.lisp"
-                "src/02-helpers.lisp"
-                "src/03-layout.lisp"
-                "src/04-frame.lisp"
-                "src/05-widgets.lisp"
-                "src/06-app.lisp"
-                "src/07-interaction.lisp"
-                "src/08-toolkits.lisp"
+                "src/02-conditions.lisp"
+                "src/03-text.lisp"
+                "src/04-layout.lisp"
+                "src/05-frame.lisp"
+                "src/06-widgets.lisp"
+                "src/07-lui.lisp"
+                "src/08-interaction.lisp"
+                "src/09-glass.lisp"
+                "src/10-motif.lisp"
+                "src/11-macos.lisp"
+                "src/12-qt.lisp"
+                "src/13-garnet.lisp"
                 "tests/support.lisp"
                 "tests/core.lisp"))
   (load file))
 
-(lui.tests:run-tests)
+(lui.tests.core:run-tests)
 
 (load "tests/widgets.lisp")
 
@@ -27,7 +32,7 @@
 (lui.tests.interaction:run-tests)
 
 (load "examples/seven-model.lisp")
-(load "src/09-debug.lisp")
+(load "src/14-debug.lisp")
 (load "tests/debug.lisp")
 (lui.tests.debug:run-tests)
 

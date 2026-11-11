@@ -1,7 +1,7 @@
-(defpackage #:lui.example
+(defpackage #:lui.example.demo
   (:use #:cl)
   (:export #:main #:draw #:make-gallery #:make-demo))
-(in-package #:lui.example)
+(in-package #:lui.example.demo)
 
 (defstruct gallery
   (seven (lui.example.seven:make-state))

@@ -1236,7 +1236,7 @@
 (fn (refresh t) ((app web-app))
   "Request one redraw of a mounted application, coalescing pending requests."
   #+lui-ecl-web
-  (let ((lui.web.ffi:*owner* (web-app-ffi-owner app)))
+  (let ((lui.ecl-emscripten:*owner* (web-app-ffi-owner app)))
     (schedule-refresh app))
   #-lui-ecl-web (schedule-refresh app))
 
@@ -1309,7 +1309,7 @@
   "Mount a Canvas 2D app in HOST. SCROLL-MODE is :PAGE for content expansion or
 :VIEWPORT for a fixed embedded view; the default is :PAGE on coarse pointers."
   (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
-  (let* (#+lui-ecl-web (lui.web.ffi:*owner* (list :web-app))
+  (let* (#+lui-ecl-web (lui.ecl-emscripten:*owner* (list :web-app))
                        (page-scroll-p (eq scroll-mode :page))
                        (port (and page-scroll-p (page-scrollport host)))
                        (stage (#j:document:createElement #j"div"))
@@ -1323,7 +1323,7 @@
                                              max-fps))
                        (app (make-web-app
                              #+lui-ecl-web :ffi-owner
-                             #+lui-ecl-web lui.web.ffi:*owner*
+                             #+lui-ecl-web lui.ecl-emscripten:*owner*
                              :host host :stage stage :overlay labels
                              :canvas canvas :graphics g :renderer renderer
                              :context context :callback callback :scrollport
@@ -1360,7 +1360,7 @@
 (fn (unmount t) ((app web-app))
   "Cancel scheduled work and release the mounted canvas and input listeners."
   #+lui-ecl-web
-  (let ((lui.web.ffi:*owner* (web-app-ffi-owner app)))
+  (let ((lui.ecl-emscripten:*owner* (web-app-ffi-owner app)))
     (dispose-app app))
   #-lui-ecl-web (dispose-app app))
 
@@ -1385,7 +1385,7 @@
     #+lui-ecl-web
     (progn
       (setf (oget (web-app-canvas app) "luiApp") #j:null)
-      (lui.web.ffi:release-owner (web-app-ffi-owner app)))))
+      (lui.ecl-emscripten:release-owner (web-app-ffi-owner app)))))
 
 (fn (css-size t) (value fallback)
   "Convert a numeric CSS size to pixels, preserving strings and using FALLBACK for NIL."

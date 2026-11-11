@@ -469,17 +469,17 @@ class X11Tests(unittest.TestCase):
     def test_shared_demo_pixels_interaction_and_resize(self):
         source = r'''
 (asdf:load-system "lui/demo")
-(let ((gallery (lui.example:make-gallery)))
+(let ((gallery (lui.example.demo:make-gallery)))
 (lui.x11:run-x11
  (lambda ()
-   (lui.example:draw gallery)
+   (lui.example.demo:draw gallery)
    (when (lui.frame:previous-box :hello)
      (with-open-file (stream STATE_PATH :direction :output
                              :if-exists :supersede)
        (format stream "{~S:~S,~S:~D,~S:~A,~S:~F,~S:~D,~S:~A,~S:{"
-               "name" (lui.example::gallery-name gallery) "count" (lui.example::gallery-count gallery)
-               "enabled" (if (lui.example::gallery-enabled gallery) "true" "false")
-               "volume" (lui.example::gallery-volume gallery)
+               "name" (lui.example.demo::gallery-name gallery) "count" (lui.example.demo::gallery-count gallery)
+               "enabled" (if (lui.example.demo::gallery-enabled gallery) "true" "false")
+               "volume" (lui.example.demo::gallery-volume gallery)
                "width" (round (lui.frame:context-width lui.frame:*context*))
                "hover" (if (lui:widget-key (lui.frame:context-hover lui.frame:*context*))
                            "true" "false")

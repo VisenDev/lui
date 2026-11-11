@@ -1,9 +1,9 @@
 (require :cmp)
 (require :asdf)
 
-(defpackage #:lui.build.ecl
+(defpackage #:lui.build.web.ecl
   (:use #:cl))
-(in-package #:lui.build.ecl)
+(in-package #:lui.build.web.ecl)
 
 (unless (fboundp 'c::read-target-info)
   (error "ECL needs cross-compilation support; build a matching host ECL."))
@@ -21,15 +21,20 @@
       (or (uiop:getenv "ECL_WEB_APP") "scripts/start-demo.lisp")))
 (defparameter *sources*
   '("src/01-fn.lisp"
-    "src/02-helpers.lisp"
+    "src/02-conditions.lisp"
+    "src/03-text.lisp"
     "src/backend-ecl-emscripten.lisp"
-    "src/03-layout.lisp"
-    "src/04-frame.lisp"
-    "src/05-widgets.lisp"
-    "src/06-app.lisp"
-    "src/07-interaction.lisp"
-    "src/08-toolkits.lisp"
-    "src/09-debug.lisp"
+    "src/04-layout.lisp"
+    "src/05-frame.lisp"
+    "src/06-widgets.lisp"
+    "src/07-lui.lisp"
+    "src/08-interaction.lisp"
+    "src/09-glass.lisp"
+    "src/10-motif.lisp"
+    "src/11-macos.lisp"
+    "src/12-qt.lisp"
+    "src/13-garnet.lisp"
+    "src/14-debug.lisp"
     "src/backend-common.lisp"
     "src/backend-common-web.lisp"))
 (setf *sources*
@@ -53,7 +58,8 @@
 (proclaim '(optimize (speed 3) (debug 0) (space 0) (safety 2)))
 
 (load "src/01-fn.lisp")
-(load "src/02-helpers.lisp")
+(load "src/02-conditions.lisp")
+(load "src/03-text.lisp")
 (let ((*features* (cons :lui-ecl-host *features*)))
   (load "src/backend-ecl-emscripten.lisp"))
 (load "scripts/ecl-web-reader.lisp")
@@ -67,7 +73,7 @@
                                :if-exists :supersede)
             (let ((*package* (find-package :cl-user)) (*print-case* :upcase)
                   (*print-pretty* nil) (*print-readably* t))
-              (loop :for form := (lui.build.ecl-reader:read-web-form in in)
+              (loop :for form := (lui.ecl.web.reader:read-web-form in in)
                     :until (eq form in)
                     :do (write form :stream out) (terpri out)
                         (when (and (consp form)

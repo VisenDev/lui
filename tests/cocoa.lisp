@@ -203,7 +203,8 @@
   (assert (= 0 (lui.cocoa::cocoa-pointer-buttons 5 1)))
   (assert (= 0 (lui.cocoa::cocoa-pointer-buttons 2 1)))
   (assert (= 1 (lui.cocoa::cocoa-pointer-buttons 9 1)))
-  (let ((lui.cocoa::*app* (lui.cocoa::make-cocoa-app :focused-p t :buttons 1)))
+  (let ((lui.cocoa::*app* (lui.cocoa::make-cocoa-app :focused-p t :buttons
+            1)))
     (let ((event (lui.cocoa::cocoa-focus-event nil)))
       (assert (eq :cancel (event-kind event)))
       (assert (zerop (event-buttons event)))
@@ -283,7 +284,7 @@
                                 '(1.25d0 2.5d0 30d0 40d0))))))
         (lui.cocoa::message sb-alien:void pool "drain"))))
   (asdf:load-system "lui/demo")
-  (let ((frames 0) (draw (uiop:symbol-call :lui.example :make-demo)))
+  (let ((frames 0) (draw (uiop:symbol-call :lui.example.demo :make-demo)))
     (let ((context
            (run (lambda ()
                   (incf frames)

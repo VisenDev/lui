@@ -9,34 +9,38 @@
 (defvar *count* 0)
 
 (defun check-bridge ()
-  (let* ((lui.web.ffi:*owner* (list :bridge-check))
-         (object (lui.web.ffi:new (lui.web.ffi:global "Object")))
-         (nested (lui.web.ffi:new (lui.web.ffi:global "Object")))
+  (let* ((lui.ecl-emscripten:*owner* (list :bridge-check))
+         (object (lui.ecl-emscripten:new (lui.ecl-emscripten:global
+              "Object")))
+         (nested (lui.ecl-emscripten:new (lui.ecl-emscripten:global
+              "Object")))
          (opaque (list :lisp-object)))
     (unwind-protect
          (progn
-           (assert (eq (lui.web.ffi:global "window")
-                       (lui.web.ffi:global "window")))
-           (assert (eq :undefined (lui.web.ffi:oget object "missing")))
-           (setf (lui.web.ffi:oget object "nested") nested
-                 (lui.web.ffi:oget object "opaque") opaque)
-           (assert (eq opaque (lui.web.ffi:oget object "opaque")))
+           (assert (eq (lui.ecl-emscripten:global "window")
+                       (lui.ecl-emscripten:global "window")))
+           (assert (eq :undefined (lui.ecl-emscripten:oget object "missing")))
+           (setf (lui.ecl-emscripten:oget object "nested") nested
+                 (lui.ecl-emscripten:oget object "opaque") opaque)
+           (assert (eq opaque (lui.ecl-emscripten:oget object "opaque")))
            (dolist (value (list 0 -42 1.25d0 :null :true :false :undefined
                                "café 漢字 😀" (string (code-char 0))))
-             (setf (lui.web.ffi:oget object "nested" "value") value)
+             (setf (lui.ecl-emscripten:oget object "nested" "value") value)
              (assert (equalp value
-                             (lui.web.ffi:oget object "nested" "value"))))
+                             (lui.ecl-emscripten:oget object "nested"
+                  "value"))))
            ;; A synchronous browser call reenters Lisp, which calls JS again.
-           (setf (lui.web.ffi:oget object "callback")
+           (setf (lui.ecl-emscripten:oget object "callback")
                  (lambda (value)
-                   (setf (lui.web.ffi:oget object "nested" "value") value)))
-           (lui.web.ffi:invoke (lui.web.ffi:oget object "callback") "nested")
+                   (setf (lui.ecl-emscripten:oget object "nested" "value")
+                value)))
+           (lui.ecl-emscripten:invoke (lui.ecl-emscripten:oget object "callback") "nested")
            (assert (equal "nested"
-                          (lui.web.ffi:oget object "nested" "value")))
+                          (lui.ecl-emscripten:oget object "nested" "value")))
            (assert (handler-case
-                       (progn (lui.web.ffi:invoke 123) nil)
+                       (progn (lui.ecl-emscripten:invoke 123) nil)
                      (error () t))))
-      (lui.web.ffi:release-owner lui.web.ffi:*owner*))))
+      (lui.ecl-emscripten:release-owner lui.ecl-emscripten:*owner*))))
 
 (check-bridge)
 
@@ -55,19 +59,19 @@
       (lui:label (format nil "Count: ~D" *count*))
       (when (lui:button "Collect garbage" (lui:opt :id :gc))
         (ext:gc t)
-        (setf (lui.web.ffi:oget (lui.web.ffi:global "window") "eclLiveRoots")
-              (hash-table-count lui.web.ffi::*roots*))))))
+        (setf (lui.ecl-emscripten:oget (lui.ecl-emscripten:global "window") "eclLiveRoots")
+              (hash-table-count lui.ecl-emscripten::*roots*))))))
 
-(if (equal (lui.web.ffi:oget (lui.web.ffi:global "location") "search")
+(if (equal (lui.ecl-emscripten:oget (lui.ecl-emscripten:global "location") "search")
            "?fixture")
     (progn
       (setf *app* (lui:run #'draw-fixture :width 500 :height 300))
-      (setf (lui.web.ffi:oget (lui.web.ffi:global "window") "eclUnmount")
+      (setf (lui.ecl-emscripten:oget (lui.ecl-emscripten:global "window") "eclUnmount")
             (lambda ()
               (lui:unmount *app*)
               (setf *app* nil)
               (ext:gc t)
-              (setf (lui.web.ffi:oget (lui.web.ffi:global "window")
+              (setf (lui.ecl-emscripten:oget (lui.ecl-emscripten:global "window")
                                      "eclRemainingRoots")
-                    (hash-table-count lui.web.ffi::*roots*)))))
-    (lui.example:main))
+                    (hash-table-count lui.ecl-emscripten::*roots*)))))
+    (lui.example.demo:main))

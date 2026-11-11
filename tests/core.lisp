@@ -1,8 +1,8 @@
-(defpackage #:lui.tests
+(defpackage #:lui.tests.core
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.tests.support)
   (:export #:run-tests))
 
-(in-package #:lui.tests)
+(in-package #:lui.tests.core)
 
 (fn (typed-example integer) ((value integer))
   "Exercise docstrings and caller declarations."
