@@ -631,7 +631,7 @@
 
 (fn (wait-cocoa (values)) (application (context context) events)
   "Wait for native input or the context's next frame deadline."
-  (let ((delay (lui.frame::frame-wait context (plusp (length events)))))
+  (let ((delay (lui.frame:frame-wait context (plusp (length events)))))
     (when (plusp delay)
       ;; Peek so the ordinary event loop still translates and dispatches input.
       (message object application
@@ -642,7 +642,7 @@
                                sb-alien:double (float delay 1d0))
                object (sb-alien:extern-alien "NSDefaultRunLoopMode" object)
                objc-bool 0)))
-  (lui.frame::limit-frame-rate context)
+  (lui.frame:limit-frame-rate context)
   (values))
 
 (fn (create-cocoa-window-view (values))

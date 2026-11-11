@@ -99,7 +99,7 @@
          (status (cond ((offscreen-p node) " [offscreen]")
                        ((clipped-p node) " [clipped]") (t "")))
          (*print-level* 2) (*print-length* 4))
-    (lui.frame::memoized
+    (lui.frame:memoized
      (list :caption kind name status *package* #-jscl *print-case*
            *print-base*
            *print-radix* #-jscl *print-pretty* *print-circle* *readtable*)
@@ -107,9 +107,9 @@
 
 (fn (sizing-label string) ((rule sizing))
   "Format a sizing policy's kind, value, and bounds for inspection."
-  (format nil "~A ~A [~A, ~A]" (lui.layout::sizing-kind rule)
-          (lui.layout::sizing-value rule) (lui.layout::sizing-minimum rule)
-          (or (lui.layout::sizing-maximum rule) "none")))
+  (format nil "~A ~A [~A, ~A]" (lui.layout:sizing-kind rule)
+          (lui.layout:sizing-value rule) (lui.layout:sizing-minimum rule)
+          (or (lui.layout:sizing-maximum rule) "none")))
 
 (fn (property-text string) ((value t))
   "Convert a property value into text suitable for the debugger panel."
@@ -367,7 +367,7 @@
            (step (units (if (context-text-mode-p *context*) 1 3)))
            (viewport (previous-box (id :tree)))
            (height (if viewport (box-height viewport)
-                       (/ (lui.frame::context-viewport-height
+                       (/ (lui.frame:context-viewport-height
                            *context*) 2)))
            (offset (reveal-selection
                     state rows step height
@@ -435,10 +435,10 @@
     (emit (make-element
            :id (id :resize) :interactive-p t :pointer-focus-p t
            :floating-p t
-           :offset-y (lui.frame::context-page-top *context*)
+           :offset-y (lui.frame:context-page-top *context*)
            :offset-x (max 0 (- (context-width *context*) width (/ size 2)))
            :width (fixed size) :height (fixed
-                                        (lui.frame::context-viewport-height
+                                        (lui.frame:context-viewport-height
                                          *context*))
            :content (apply #'make-widget :kind :splitter
                            :style (lui:current-toolkit)
@@ -505,7 +505,7 @@
                          :value
                          (/ height
                             (max 1
-                              (lui.frame::context-viewport-height *context*)))
+                              (lui.frame:context-viewport-height *context*)))
                          (toolkit-defaults)))))
 
 (fn (debugger-header-height real) ((header element) (width real))
@@ -556,10 +556,10 @@
   (when (activated-p (id :close-details)) (close-details state))
   (lui:panel (lui:opt :id (id :debugger) :interactive-p t
                       :keyboard-focus-p nil :floating-p t
-                      :offset-y (lui.frame::context-page-top *context*)
+                      :offset-y (lui.frame:context-page-top *context*)
                       :offset-x (- (context-width *context*) width)
                       :width (fixed width)
-                      :height (fixed (lui.frame::context-viewport-height
+                      :height (fixed (lui.frame:context-viewport-height
                                       *context*))
                       :padding (units 1) :gap (units 0.5f0) :opacity 1
                       :radius 0 :frost 0)
@@ -573,7 +573,7 @@
       (let* ((header-height
               (debugger-header-height header (- width (units 2))))
              ;; Root/tree padding, three gaps and the divider also need room.
-             (maximum (max 0 (- (lui.frame::context-viewport-height
+             (maximum (max 0 (- (lui.frame:context-viewport-height
                                  *context*) header-height
                                  (units 6.5f0))))
              (height (details-height state maximum)))

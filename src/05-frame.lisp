@@ -1,6 +1,12 @@
 (defpackage #:lui.frame
   (:use #:cl #:lui.fn #:lui.layout)
-  (:export #:context #:make-context #:context-root #:context-focus
+  (:export #:*min-fps* #:*max-fps* #:contains-p #:context-after-layout
+           #:context-ids #:context-page-height-p #:context-page-top
+           #:context-pointer-press #:context-popups
+           #:context-requested-page-top #:context-viewport-height
+           #:frame-wait #:hit #:limit-frame-rate #:memoized
+           #:pointer-cancel-p
+           #:context #:make-context #:context-root #:context-focus
            #:context-focus-input #:context-active #:context-measure
            #:*context* #:*parent*
     #:with-frame #:with-key #:widget-key #:widget-id #:focus-widget

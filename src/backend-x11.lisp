@@ -483,12 +483,12 @@
       (cffi:foreign-funcall "poll" :pointer p :ulong 1
                             :int
         (ceiling (* 1000
-                                             (lui.frame::frame-wait
+                                             (lui.frame:frame-wait
                                               context
                                                (plusp
                                                  (length
                                                    events))))) :int)))
-  (lui.frame::limit-frame-rate context)
+  (lui.frame:limit-frame-rate context)
   (values))
 
 (fn (draw-window context) ((window x-window) (gpu gpu) (context context)

@@ -359,7 +359,7 @@
         (input-focus-without-scroll (if
                                      (and (text-field-focused-p input)
                                           (equal (context-focus input)
-                                                 (lui.frame::hit input
+                                                 (lui.frame:hit input
                                                                  (event-x
                                                                   position)
                                                                  (event-y
@@ -524,7 +524,7 @@
   "Handle browser copy and cut using the shared LUI selection."
   (input-stop event)
   ;; Shared selection handling owns both editor and label text.
-  (let ((nodes (lui.draw::selectable-nodes (input-session-context session)))
+  (let ((nodes (lui.draw:selectable-nodes (input-session-context session)))
         (copied nil))
     (let ((original (context-copy (input-session-context session))))
       (unwind-protect
@@ -536,10 +536,10 @@
                        event "clipboardData" "setData")
                       #j"text/plain"
                       (jsstring value))))
-             (lui.draw::copy-selection
+             (lui.draw:copy-selection
               (input-session-context session) nodes
               (or (context-selection (input-session-context session))
-                  (lui.draw::make-text-selection))))
+                  (lui.draw:make-text-selection))))
         (setf (context-copy (input-session-context session)) original)))
     (when (and copied (text-field-focused-p (input-session-context session))
                (string= "cut"
@@ -593,7 +593,7 @@
   (let* ((host (oget canvas "parentNode"))
          (sink ((oget host "querySelector") #j"textarea"))
          (node (gethash (context-focus context)
-                        (lui.frame::context-ids context)))
+                        (lui.frame:context-ids context)))
          (widget (when node (lui.layout:element-content node))))
     (unless (eq sink #j:null)
       (let ((label (if (and widget (widget-p widget))
@@ -830,7 +830,7 @@
   "Schedule a redraw for the context's next animation or idle deadline."
   (unless (web-app-pending-p app)
     (cancel-deadline app)
-    (let ((delay (lui.frame::frame-wait (web-app-context app))))
+    (let ((delay (lui.frame:frame-wait (web-app-context app))))
       (if (zerop delay)
           (refresh app)
           (setf (web-app-deadline-timer app)
@@ -1085,7 +1085,7 @@
      label)
   "Update label font, color, alignment, and pointer policy only when appearance changes."
   (unless (equal appearance (dom-widget-style record))
-    (let ((font (lui.draw::widget-font (web-app-renderer app)
+    (let ((font (lui.draw:widget-font (web-app-renderer app)
                                        widget))
           (style (oget element "style")))
       (setf (oget style "pointerEvents") (if interactive
@@ -1135,7 +1135,7 @@
                         #j"position:absolute;display:block;margin:0;padding:0;border:0;white-space:pre-wrap;overflow:hidden;user-select:text;-webkit-user-select:text;cursor:text"
                         #j"position:absolute;display:block;margin:0;padding:0;border:0;opacity:0;pointer-events:none;user-select:none")))
             (position-dom-widget record
-                                 (if label (lui.draw::selection-area
+                                 (if label (lui.draw:selection-area
                                             (web-app-renderer app) node)
                                      (element-box node)) (element-clip node))
             (sync-label-style app record widget element appearance
@@ -1196,14 +1196,14 @@
          (scale #j:window:devicePixelRatio)
          (events (nreverse (shiftf (web-app-events app) nil))))
     (resize-canvas-bitmap canvas width height scale)
-    (setf (lui.frame::context-page-height-p context) (not (null port))
-          (lui.frame::context-page-top context)
+    (setf (lui.frame:context-page-height-p context) (not (null port))
+          (lui.frame:context-page-top context)
           (max 0 (min (- (context-height context) height) (+ origin delta))))
     (with-frame (context width height :events events)
       (funcall (web-app-callback app)))
     (when port
       (let ((page-height (context-height context))
-            (requested (shiftf (lui.frame::context-requested-page-top context)
+            (requested (shiftf (lui.frame:context-requested-page-top context)
                                nil)))
         (when requested (setf delta (- requested origin)))
         (let ((offset (max 0 (min (- page-height height) (+ origin delta)))))
@@ -1259,7 +1259,7 @@
                         (draw-frame app)))))))
       (let* ((context (web-app-context app))
              (wait (if (context-root context)
-                       (lui.frame::frame-wait context t) 0)))
+                       (lui.frame:frame-wait context t) 0)))
         (if (zerop wait)
             (enqueue)
             (setf (web-app-deadline-timer app)
@@ -1302,8 +1302,8 @@
   (values))
 
 (fn (mount web-app) (host (callback function) &key (min-fps
-                                                    lui.frame::*min-fps*)
-                                                (max-fps lui.frame::*max-fps*)
+                                                    lui.frame:*min-fps*)
+                                                (max-fps lui.frame:*max-fps*)
                                                 ((scroll-mode
                                                   (member :page
                                                           :viewport))

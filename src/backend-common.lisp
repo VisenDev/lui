@@ -313,7 +313,9 @@
                 #:rounded-polygon #:color-components #:paint-text #:shape
                 #:outline
                 #:inset-box #:focused-p #:widget-font)
-  (:export #:renderer #:make-renderer #:renderer-font #:renderer-polygons
+  (:export #:copy-selection #:make-text-selection #:selectable-nodes
+           #:selection-area
+           #:renderer #:make-renderer #:renderer-font #:renderer-polygons
            #:renderer-clip #:renderer-glass #:renderer-text
            #:renderer-surface #:renderer-stipple
            #:make-render-context #:paint-frame #:measure-widget #:widget-font
@@ -481,7 +483,7 @@
                  (if (geometry-value-p g)
                      (widget-display-value widget)
                      (widget-text widget))))
-         (size (lui.frame::memoized
+         (size (lui.frame:memoized
                 (list :measure font (font-loader font) (font-size font)
                       text width horizontal vertical
                       (geometry-min-width g) (geometry-min-height g))
@@ -671,7 +673,7 @@
      (context-root context)
      (lambda (node)
        (when (and (widget-p (element-content node))
-                  (lui.frame::contains-p (element-clip node) x y))
+                  (lui.frame:contains-p (element-clip node) x y))
          (setf target node))))
     target))
 
@@ -896,13 +898,13 @@
                              (make-text-selection)))))
     (loop :for event-index :below (length events)
           :for event := (elt events event-index) :do
-          (when (lui.frame::pointer-cancel-p event)
+          (when (lui.frame:pointer-cancel-p event)
             (setf (text-selection-dragging-p selection) nil))
           (let* ((kind (event-kind event))
                  (x (event-x event)) (y (event-y event))
                  (target
                   (find-if (lambda (node)
-                             (lui.frame::contains-p (element-clip node) x y))
+                             (lui.frame:contains-p (element-clip node) x y))
                            nodes :from-end t)))
             (when (and (null target) (text-selection-dragging-p selection)
                        (member kind '(:move :release)))
@@ -1029,7 +1031,7 @@
      :min-width (if (member kind '(:slider :text-field)) 160 0)
      :center-x (or (member kind '(:button :tab))
                    (and (eq kind :list-item)
-                        (lui.widgets::widget-center-text-p widget)))
+                        (lui.widgets:widget-center-text-p widget)))
      :center-y (member kind '(:button :tab)))))
 
 (fn (paint-widget-text t) ((renderer renderer) (node element) (color string))
@@ -1098,7 +1100,7 @@
          (start 0))
     (when (zerop (length text))
       (paint-text renderer (widget-text widget) x (+ y (baseline font))
-                  (lui.widgets::muted-ink (widget-foreground widget)
+                  (lui.widgets:muted-ink (widget-foreground widget)
                                           (widget-background widget))))
     (loop :for line :across (wrap-text font text width)
           :for top :from y :by (line-height font)
@@ -1196,7 +1198,7 @@
   (when (and (not (widget-value widget))
              (hovered-p (element-id node)))
     (shape renderer box 0 foreground 0.12f0))
-  (when (and (lui.widgets::widget-center-text-p widget) (focused-p node)
+  (when (and (lui.widgets:widget-center-text-p widget) (focused-p node)
              (context-focus-visible-p *context*))
     (outline renderer box 1 (if (widget-value widget)
                                 (widget-color widget
@@ -1236,7 +1238,7 @@
        (shape renderer box 0 (widget-accent widget)
               (widget-opacity widget))
        (outline renderer box 0 (widget-accent widget) 1 1))
-      ((eq (lui.widgets::widget-icon widget) :calendar)
+      ((eq (lui.widgets:widget-icon widget) :calendar)
        ;; The field owns the surface and its rounded border.
        (paint-calendar-button renderer node box shadow foreground))
       ((eq kind :list-item)

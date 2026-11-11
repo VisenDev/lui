@@ -1,6 +1,8 @@
 (defpackage #:lui.widgets
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame)
-  (:export #:widget #:widget-p #:widget-kind #:widget-style #:widget-text
+  (:export #:*base-palette* #:muted-ink #:palette-color
+           #:widget-center-text-p #:widget-icon
+           #:widget #:widget-p #:widget-kind #:widget-style #:widget-text
            #:widget-color #:widget-palette #:widget-foreground
            #:widget-background #:widget-radius
            #:widget-frost #:widget-terminal-border
@@ -243,7 +245,7 @@ Most applications should use the public LUI controls with LUI:OPT instead."
   "Find the focused widget in the previous completed layout, or return NIL."
   (when (context-root context)
     (let ((node (gethash (context-focus context)
-                         (lui.frame::context-ids context))))
+                         (lui.frame:context-ids context))))
       (when node (element-content node)))))
 
 (fn (text-field-focused-p boolean) ((context context))
@@ -270,7 +272,7 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
         (lambda (node)
           (let ((widget (element-content node)))
             (when (and (widget-p widget)
-                       (lui.frame::contains-p (element-clip node) x y))
+                       (lui.frame:contains-p (element-clip node) x y))
               (setf cursor
                 (if (widget-disabled-p widget)
                     (if (eq (widget-kind widget) :cell)
@@ -703,5 +705,5 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
         (let ((id (list :lui.scrollbar (element-id node))))
           (scrollbar-input id (element-id node))
           (push (lambda () (decorate-scrollbar node id))
-                (lui.frame::context-after-layout *context*))))
+                (lui.frame:context-after-layout *context*))))
       (emit node))))

@@ -1098,7 +1098,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
 
 (fn (wait-wayland (values)) (display (context context) events)
   "Wait for display input, key repetition, or the context's next frame deadline."
-  (loop :for delay := (lui.frame::frame-wait context events)
+  (loop :for delay := (lui.frame:frame-wait context events)
         :for repeat := (wl-window-repeat-at *window*)
         :when repeat
         :do (let ((ticks (- repeat (get-internal-real-time))))
@@ -1110,7 +1110,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
                    (wl-window-quit-p *window*)
                    (/= (wl-window-width *window*) (context-width context))
                    (/= (wl-window-height *window*) (context-height context))))
-  (lui.frame::limit-frame-rate context)
+  (lui.frame:limit-frame-rate context)
   (values))
 
 (fn (close-wayland-window (values)) (display)

@@ -1,6 +1,8 @@
 (defpackage #:lui.layout
   (:use #:cl #:lui.fn)
-  (:export #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
+  (:export #:sizing-kind #:sizing-value #:sizing-minimum
+           #:sizing-maximum
+           #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
            #:fixed #:percent #:box #:box-x #:box-y
            #:box-width #:box-height #:box-right #:box-bottom #:make-box
            #:element #:make-element

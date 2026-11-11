@@ -124,7 +124,7 @@ MIN-FPS sets idle redraws per second. MAX-FPS caps input and animation frames.
 INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
   (assert (< 0 min-fps))
   (assert (<= min-fps max-fps))
-  (let* ((lui.frame::*min-fps* min-fps) (lui.frame::*max-fps* max-fps)
+  (let* ((lui.frame:*min-fps* min-fps) (lui.frame:*max-fps* max-fps)
          (name (or backend
                    (and *default-backend-function*
                         (funcall *default-backend-function*))
@@ -249,7 +249,7 @@ inherit only from an explicit PARENT."
 (fn (resolve-palette list) ((defaults list))
   "Resolve a palette object, provider, or registered palette name."
   (labels ((colors (tail)
-             (cond ((null tail) lui.widgets::*base-palette*)
+             (cond ((null tail) lui.widgets:*base-palette*)
                    ((eq (car tail) :palette) (append (cadr tail) (colors
                                                                   (cddr
                                                                    tail))))
@@ -268,17 +268,17 @@ inherit only from an explicit PARENT."
   (let* ((defaults (defaults-of (find-toolkit name)))
          (palette (copy-list (resolve-palette defaults))))
     (values (list* :palette palette
-                   :foreground (lui.widgets::palette-color palette
+                   :foreground (lui.widgets:palette-color palette
                                                            :foreground)
                    :background
                    (or
                     (when (member kind '(:button :tab
                                          :text-field))
-                      (lui.widgets::palette-color palette
+                      (lui.widgets:palette-color palette
                                                   :control-background))
-                    (lui.widgets::palette-color palette
+                    (lui.widgets:palette-color palette
                                                 :background))
-                   :accent (lui.widgets::palette-color palette :accent)
+                   :accent (lui.widgets:palette-color palette :accent)
                    (without-option :palette defaults))
             palette)))
 
@@ -619,10 +619,10 @@ Each direct child occupies one column by default."
 (define-control cell (id text)
   "Display a compact grid cell. Use :selected-p to mark the active cell."
   (selectable :cell style id text options
-              (list* :background (lui.widgets::palette-color palette
+              (list* :background (lui.widgets:palette-color palette
                                                              :cell-background
                                                              "#ffffff")
-                     :foreground (lui.widgets::palette-color palette
+                     :foreground (lui.widgets:palette-color palette
                                                              :cell-foreground
                                                              "#202430")
                      defaults)))
@@ -716,7 +716,7 @@ Owned state is discarded when this widget is absent from a completed frame."
                          :keyboard-focus-p nil :padding (units 1))
                     (toolkit-defaults)))))
       (setf (lui.layout:element-popup-anchor pane) anchor)
-      (push pane (lui.frame::context-popups *context*))
+      (push pane (lui.frame:context-popups *context*))
       pane)))
 
 (fn (combobox-popup (values))
@@ -735,7 +735,7 @@ Owned state is discarded when this widget is absent from a completed frame."
                          (opt :width (lui.layout:grow) :selected-p
                            (eql i
                              index)))
-          (let ((row (gethash row-id (lui.frame::context-ids *context*))))
+          (let ((row (gethash row-id (lui.frame:context-ids *context*))))
             (setf (lui.layout:element-keyboard-focus-p row) nil)
             (when (and reveal (eql index i))
               (setf (lui.layout:element-popup-reveal pane) row)))))
@@ -814,10 +814,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                                                (context-focus
                                                                 *context*))))
          (events (events-for id))
-         (press (lui.frame::context-pointer-press *context*))
+         (press (lui.frame:context-pointer-press *context*))
          (popup-box (previous-box (list id :popup)))
          (edited (%text-field id text (without-option :max-results options)))
-         (anchor (gethash id (lui.frame::context-ids *context*)))
+         (anchor (gethash id (lui.frame:context-ids *context*)))
          (result (if (string= edited text) value edited)))
     (check-type limit (integer 1 *))
     (cond ((not focused) (setf (combobox-state-open-p state) nil))
@@ -828,7 +828,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                                   state) nil
                                                   (combobox-state-highlight
                                                    state) nil))
-          ((and press (not (and popup-box (lui.frame::contains-p popup-box
+          ((and press (not (and popup-box (lui.frame:contains-p popup-box
                                                                  (event-x
                                                                   press)
                                                                  (event-y
@@ -1009,7 +1009,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
          (width (lui.layout:percent (/ 1 7)))
          (palette (toolkit-defaults))
          (foreground (getf palette :foreground "#ffffff"))
-         (muted (lui.widgets::muted-ink
+         (muted (lui.widgets:muted-ink
                  foreground (getf palette :background "#303040")))
          (ink (getf palette :accent foreground)))
     (calendar-header id state year month months)
@@ -1085,7 +1085,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         (terminal (context-text-mode-p *context*)))
     (calendar-trigger id state parts trigger terminal)
     (when (picker-state-open-p state)
-      (let ((press (lui.frame::context-pointer-press *context*))
+      (let ((press (lui.frame:context-pointer-press *context*))
             (bounds (previous-box popup)))
         (cond ((and press bounds
                     (not (some (lambda (target) (find :press (events-for
@@ -1093,7 +1093,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                                               #'event-kind))
                                (list trigger (list id :input) (list id
                                                                     :field))))
-                    (not (lui.frame::contains-p bounds (event-x press)
+                    (not (lui.frame:contains-p bounds (event-x press)
                                                 (event-y press))))
                (setf (picker-state-open-p state) nil))
               ((find :escape (events-for focus) :key #'event-key)
@@ -1113,7 +1113,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                        parts
                                        (local-today)))
                    (when action
-                     (pop (lui.frame::context-popups *context*))
+                     (pop (lui.frame:context-popups *context*))
                      (setf (picker-state-open-p state) nil (context-focus
                                                             *context*)
                            trigger)

@@ -33,6 +33,8 @@ APIs and platform support; historical measurements are not current guarantees.
   including early function exits; reserve `null` for an actual NIL result.
 - Declare public API symbols in `lui`'s `defpackage`; implementation packages
   import them explicitly. Do not mutate exports through private macros.
+- Access other LUI packages through exported symbols; declare shared internals
+  in their owning package exports instead of using double-colon references.
 - Normally wrap Lisp code at 78 columns; use keyword LOOP clauses.
 - Run `make lint` to normalize FN declarations and check strict Mallet rules,
   complexity, function length, and missing docstrings. Only `no-package-use`

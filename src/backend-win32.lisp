@@ -625,13 +625,13 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
   "Wait for Windows input or the next frame deadline."
   (loop
    (pump-messages window)
-   (let ((delay (lui.frame::frame-wait context input)))
+   (let ((delay (lui.frame:frame-wait context input)))
      (when (or (zerop delay) (win-window-events window)
                (win-window-redraw-p window) (win-window-quit window))
        (return))
      (wait-messages 0 (cffi:null-pointer) (ceiling (* 1000 delay))
                     #x4ff 0)))
-  (unless (win-window-quit window) (lui.frame::limit-frame-rate context))
+  (unless (win-window-quit window) (lui.frame:limit-frame-rate context))
   (values))
 
 (fn (render-frame context)

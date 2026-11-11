@@ -306,7 +306,7 @@
          (clip (terminal-paint-state-clip state)) (w (max 0 (- right x)))
          (text (case (widget-kind widget)
                  ((:highlight :splitter :scrollbar) "")
-                 (:slider (lui.terminal::slider-line widget w))
+                 (:slider (slider-line widget w))
                  (otherwise (widget-terminal-text widget)))))
     (loop :for line :across (text-lines text w)
           :for row :from y :below (min height bottom)
@@ -401,7 +401,7 @@
                    (return (prog1 (copy-seq buffer)
                              (setf (fill-pointer buffer) 0))))
                   (char (vector-push-extend char buffer))
-                  (t (let ((delay (lui.frame::frame-wait context)))
+                  (t (let ((delay (lui.frame:frame-wait context)))
                        (when (zerop delay) (return nil))
                        (sleep (min delay 0.02f0)))))))
 
@@ -426,7 +426,7 @@
      ;; Portable line-input fallback. Native terminal raw input is added separately.
      (let ((line (terminal-line context buffer)))
        (when (or (eq line :quit) (equal line ":quit")) (return context))
-       (lui.frame::limit-frame-rate context)
+       (lui.frame:limit-frame-rate context)
        (setf events
              (cond ((null line) nil)
                    ((string= line ":next") (list (make-event :kind :tab)))
@@ -455,7 +455,7 @@
 
 (fn (focused-node (values (or null element) boolean)) ((context context))
   "Look up the focused element in CONTEXT's completed layout."
-  (gethash (context-focus context) (lui.frame::context-ids context)))
+  (gethash (context-focus context) (lui.frame:context-ids context)))
 
 (fn (input-focus (values (or null element) boolean)) ((input input) (context
                                                                      context))
@@ -478,7 +478,7 @@
       (case (event-kind pending)
         (:press
          (setf capture (or (event-id pending)
-                           (lui.frame::hit context (event-x pending)
+                           (lui.frame:hit context (event-x pending)
                                            (event-y pending)))))
         ((:release :cancel) (setf capture nil))
         (:move
@@ -486,9 +486,9 @@
                     (not (logbitp 0 (event-buttons pending))))
            (setf capture nil))) (otherwise nil)))
     (let* ((press (eq (event-kind event) :press))
-           (id (if press (lui.frame::hit context (event-x event)
+           (id (if press (lui.frame:hit context (event-x event)
                                          (event-y event)) capture))
-           (target (gethash id (lui.frame::context-ids context)))
+           (target (gethash id (lui.frame:context-ids context)))
            (widget (when target (element-content target))))
       ;; Preserve the topmost target even when a batch starts on a non-slider.
       (when press (setf (event-id event) id))
@@ -500,7 +500,7 @@
                (width (- (cell-edge (+ (box-x box) (box-width box)
                                        (- padding))) left)))
           (multiple-value-bind (line offset length)
-              (lui.terminal::slider-line widget width)
+              (slider-line widget width)
             (declare (ignore line))
             (push (make-event
                    :kind :change :id id
@@ -706,7 +706,7 @@
                          0))
              (offset (max 0 (- cursor (max 1 (1- width)))))
              (text (if (eq (widget-kind widget) :slider)
-                       (lui.terminal::slider-line
+                       (slider-line
                         widget (max 0 (- (cell-edge
                                           (+ (box-x box) (box-width box)
                                              (- padding)))
@@ -762,7 +762,7 @@
 (fn (wait-frame (values)) ((input input) (context context) width height)
   "Wait for input, resize, or the context's next scheduled frame."
   (loop
-   (let ((remaining (lui.frame::frame-wait context)))
+   (let ((remaining (lui.frame:frame-wait context)))
      (read-input input context (max 0.001f0 (min 0.1f0 remaining)))
      (when (or (zerop remaining) (input-events input) (input-quit-p input))
        (return)))
@@ -805,7 +805,7 @@
                 (display-frame context screen)
                 (wait-frame input context width height)
                 (when (input-quit-p input) (return context))
-                (lui.frame::limit-frame-rate context)))
+                (lui.frame:limit-frame-rate context)))
           (when saved
             (unwind-protect
                  (progn
