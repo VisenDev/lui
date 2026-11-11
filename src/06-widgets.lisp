@@ -186,7 +186,7 @@ An optional terminal-label callback overrides the standard kind-based label."
 (fn (declare-widget boolean)
     ((kind symbol) (style symbol) (id object-id) (text string) &key
      ((width sizing) (fit)) ((height sizing) (fit)) ((padding real) 0)
-     ((position position-spec) :automatic)
+     ((position position-mode) :automatic)
      ((offset-x real) 0) ((offset-y real) 0)
      ((foreground string) "#ffffff") ((background string) "#303040")
      ((radius real) 12) ((frost real) 12) ((value t) nil) ((minimum real) 0)

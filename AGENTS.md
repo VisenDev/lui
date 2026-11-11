@@ -124,9 +124,9 @@ the change and report material limitations instead of claiming untested support.
 - Measurement receives `(widget available-content-width)` and returns width
   and height. NIL width requests intrinsic measurement. Dimensions must be
   nonnegative; measured leaves cannot have children.
-- Widgets accept `:position :automatic` or `(lui:make-point :x x :y y)` in
-  logical client-surface coordinates. Explicit positions remain fixed under
-  ancestor scrolling but obey ancestor clips. `lui:parent-scroll-position`
+- Widgets accept `:position :automatic`, `:absolute`, or `:fixed`.
+  `:fixed` uses `:offset-x` and `:offset-y` in logical client-surface coordinates.
+  It ignores ancestor scrolling but obeys ancestor clips. `lui:parent-scroll-position`
   returns the current parent's retained offsets for explicit compensation.
 - `:position :absolute` uses parent-relative offsets and scrolls with content.
   Both manual positioning forms are outside normal flow: they do not affect

@@ -137,15 +137,16 @@
                    :width (lui:fixed (lui:units 18))
                    :height (lui:fit))))
       (when (lui:button "Manual button"
-              (lui:opt :id :manual-button :position (lui:make-point :x x :y y)
+              (lui:opt :id :manual-button :position :fixed :offset-x x
+                       :offset-y y
                        :width (lui:fixed (lui:units 18))
                        :height (lui:fit)
                        :background "#308cc6" :foreground "#ffffff"))
         (incf (gallery-manual-clicks g)))
       (lui:text-field
        (lui:opt :id :manual-editor :default-value "Manual editor"
-                :position (lui:make-point :x (+ x (lui:units 20))
-                                          :y (+ y (lui:units 4)))
+                :position :fixed :offset-x (+ x (lui:units 20))
+                :offset-y (+ y (lui:units 4))
                 :width (lui:fixed (lui:units 18))
                 :height (lui:fit))))))
 

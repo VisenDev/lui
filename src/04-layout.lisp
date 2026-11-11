@@ -2,7 +2,7 @@
   (:use #:cl #:lui.fn)
   (:export #:sizing-kind #:sizing-value #:sizing-minimum
            #:sizing-maximum
-           #:make-point #:position-spec #:element-position
+           #:position-mode #:element-position
            #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
            #:fixed #:percent #:box #:box-x #:box-y
            #:box-width #:box-height #:box-right #:box-bottom #:make-box
@@ -31,13 +31,9 @@ keep compound IDs stable and do not mutate them after declaration."
   't)
 
 (deftype point () "An X/Y coordinate pair." '(cons real real))
-(deftype position-spec ()
-  "Automatic flow, parent-relative absolute placement, or a fixed surface X/Y pair."
-  '(or (member :automatic :absolute) point))
-
-(fn (make-point point) (&key ((x real) 0) ((y real) 0))
-  "Return an X/Y pair in logical window/client-surface coordinates."
-  (cons x y))
+(deftype position-mode ()
+  "Automatic flow, parent-relative absolute placement, or fixed surface placement."
+  '(member :automatic :absolute :fixed))
 
 (deftype contour () "A vector of ordered polygon points." '(vector point))
 (deftype contours () "A vector of polygon contours." '(vector contour))
@@ -100,7 +96,7 @@ keep compound IDs stable and do not mutate them after declaration."
 
 (defstruct element
   "One layout declaration with children, sizing, solved geometry, and clip state.
-Point positions are fixed surface coordinates. :ABSOLUTE uses parent-relative offsets."
+Offsets use surface coordinates for :FIXED and parent coordinates otherwise."
   (id nil :type object-id)
   content
   (children (make-array 0 :element-type 'element :adjustable t :fill-pointer
@@ -132,8 +128,8 @@ Point positions are fixed surface coordinates. :ABSOLUTE uses parent-relative of
   (scroll-y 0 :type real)
   (scroll-limit-y 0 :type real)
   popup-anchor popup-reveal
-  ;; Point positions stay fixed; :ABSOLUTE offsets scroll with the parent.
-  (position :automatic :type position-spec)
+  ;; :FIXED ignores ancestor scroll; :ABSOLUTE scrolls with the parent.
+  (position :automatic :type position-mode)
   (offset-x 0 :type real)
   (offset-y 0 :type real))
 
@@ -467,9 +463,9 @@ Horizontal table layout uses the shared column widths measured earlier."
             (incf y (if row offset cursor)))
           (incf cursor (+ (element-size-on-axis child axis)
                           (element-gap node))))
-        (let ((position (element-position child)))
-          (setf (box-x box) (if (consp position) (car position) x)
-                (box-y box) (if (consp position) (cdr position) y)))
+        (let ((fixed (eq (element-position child) :fixed)))
+          (setf (box-x box) (if fixed (element-offset-x child) x)
+                (box-y box) (if fixed (element-offset-y child) y)))
         (unless (zerop (length (element-children child)))
           (position-elements child)))))
   (values))
@@ -547,7 +543,7 @@ by adjusting the popup scroll offset when necessary."
   "Apply ancestor scroll offsets DX/DY and intersect NODE's box with CLIP.
 Position anchored popups, clamp scroll offsets to content extents, and recurse
 with the appropriate child clip and accumulated scroll offsets."
-  (when (consp (element-position node)) (setf dx 0 dy 0))
+  (when (eq (element-position node) :fixed) (setf dx 0 dy 0))
   (let ((box (element-box node))
         (padding (element-padding node)))
     (when (element-popup-anchor node) (position-popup node (or
@@ -579,7 +575,7 @@ with the appropriate child clip and accumulated scroll offsets."
                  (bottom (box-bottom content))
                  (extent-x right) (extent-y bottom))
             (do-children (child node)
-              (unless (consp (element-position child))
+              (unless (eq (element-position child) :fixed)
                 (setf extent-x
                     (max extent-x (- (box-right (element-box child))
                                      dx))

@@ -6,7 +6,7 @@
                 #:error-value
                 #:error-backend #:error-font-request)
   (:import-from #:lui.layout
-                #:make-point #:position-spec
+                #:position-mode
                 #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
                 #:fixed #:percent #:box
                 #:make-box #:box-x #:box-y #:box-width #:box-height
@@ -51,7 +51,7 @@
    #:focused-p #:widget-font #:render-pdf #:*pdf-output*
    #:make-terminal-context #:render-terminal #:terminal-text-width
    #:text-lines #:cell-edge #:mount #:unmount #:refresh
-   #:make-point #:position-spec #:object-id #:point #:contour #:contours
+   #:position-mode #:object-id #:point #:contour #:contours
    #:sizing #:fit #:grow #:fixed
    #:percent #:box
    #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
@@ -460,7 +460,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
   "Build widget options, preserving order, explicit NIL, and omitted keys.
 :POSITION defaults to :AUTOMATIC, which participates in row/column layout.
 :ABSOLUTE uses :OFFSET-X/Y from the parent's padded content origin and scrolls
-with its content. A MAKE-POINT instead fixes the widget at logical client-surface
+with its content. :FIXED uses the same offsets in logical client-surface
 coordinates, unaffected by ancestor scrolling. Ancestor clipping still applies.
 Both manual forms are outside normal flow: siblings and FIT container sizes
 ignore them. Reserve space with an automatic container when needed.

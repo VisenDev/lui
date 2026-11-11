@@ -930,8 +930,9 @@
         (lui:with-toolkit ((if manual :qt :glass))
           (lui:button "×"
             (lui:opt :width (fixed 80)
-                     :position (if manual (make-point :x 20 :y 30)
-                                   :automatic)
+                     :position (if manual :fixed :automatic)
+                     :offset-x (if manual 20 0)
+                     :offset-y (if manual 30 0)
                      :height (if manual (fit) (fixed 50))))))
       (setf position nil)
       (paint-frame renderer context)

@@ -143,7 +143,8 @@
   (dolist (direction '(:row :column))
     (dolist (manual-first '(nil t))
       (let* ((root (make-element :direction direction :gap 5 :padding 2))
-             (manual (make-element :position (make-point :x 17 :y 17)
+             (manual (make-element :position :fixed :offset-x 17
+                                   :offset-y 17
                                    :width (fixed 20) :height (fixed 20)))
              (a (make-element :width (fixed 20) :height (fixed 20)))
              (b (make-element :width (fixed 20) :height (fixed 20))))
@@ -151,9 +152,10 @@
         (append-child root a)
         (append-child root b)
         (unless manual-first (append-child root manual))
-        (dolist (position (list (make-point :x 17 :y 17)
-                               (make-point :x 100 :y 100) :absolute))
-          (setf (element-position manual) position)
+        (dolist (placement '((:fixed 17) (:fixed 100) (:absolute 17)))
+          (setf (element-position manual) (first placement)
+                (element-offset-x manual) (second placement)
+                (element-offset-y manual) (second placement))
           (solve root 200 200)
           (let ((axis (if (eq direction :row) #'box-x #'box-y)))
             (assert (= 2 (funcall axis (element-box a))))
@@ -165,7 +167,8 @@
          (flow (append-child parent
                  (make-element :width (fixed 20) :height (fixed 10)))))
     (append-child parent
-      (make-element :position (make-point :x 200 :y 200)
+      (make-element :position :fixed :offset-x 200
+                    :offset-y 200
                     :width (fixed 20) :height (fixed 20)))
     (let ((following (append-child root (make-element :height (fixed 10)))))
       (solve root 300 300)
@@ -188,7 +191,8 @@
                      (make-element :position :absolute :offset-y 30
                                    :width (fixed 20) :height (fixed 20))))
          (manual (append-child parent
-                   (make-element :position (make-point :x 30 :y 35)
+                   (make-element :position :fixed :offset-x 30
+                                 :offset-y 35
                                  :width (fixed 20)
                                  :height (fixed 20)))))
     (solve root 200 200)
@@ -207,7 +211,8 @@
     (flet ((draw ()
              (setf activated
                    (lui:button "Manual"
-                     (lui:opt :id :manual :position (make-point :x x :y 10)
+                     (lui:opt :id :manual :position :fixed :offset-x x
+                              :offset-y 10
                               :width (fixed 20) :height (fixed 5))))))
       (with-frame (context 100 60) (draw))
       (with-frame (context 100 60
