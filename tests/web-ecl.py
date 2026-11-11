@@ -48,6 +48,7 @@ class ECLWebTests(unittest.TestCase):
         expect(self.page.get_by_role("button", name=name, exact=True)).to_have_count(1)
 
     def tearDown(self):
+        self.assertEqual(self.page.evaluate("LuiECL.frames.size"), 0)
         self.page.close()
         self.assertEqual(self.errors, [])
 
@@ -56,6 +57,11 @@ class ECLWebTests(unittest.TestCase):
         box = button.bounding_box()
         self.page.mouse.click(box["x"] + box["width"] / 2,
                               box["y"] + box["height"] / 2)
+        self.frames()
+
+    def frames(self):
+        self.page.evaluate("""() => new Promise(resolve =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)))""")
 
     def test_compiled_gallery_input_and_resize(self):
         self.assertTrue(self.page.evaluate("typeof jscl === 'undefined'"))
@@ -65,6 +71,7 @@ class ECLWebTests(unittest.TestCase):
         self.page.get_by_role("button", name="Reset", exact=True).evaluate("b => b.click()")
         expect(self.page.get_by_text("Hello Common Lisp (0)", exact=True)).to_have_count(1)
         self.page.set_viewport_size({"width": 760, "height": 600})
+        self.frames()
         self.press("Say hello")
         expect(self.page.get_by_text("Hello Common Lisp (1)", exact=True)).to_have_count(1)
         self.assertGreater(self.page.locator("canvas").first.evaluate("c => c.width"), 0)

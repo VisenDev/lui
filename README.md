@@ -468,8 +468,29 @@ still references the generated loader for development. For an application
 of your own, set `ECL_WEB_APP=/absolute/path/start.lisp` to a Lisp file that
 defines your draw function and calls `lui:run` (optionally with
 `:backend :web-ecl`). It is compiled and linked after the library. The
-default entry file runs the shared gallery. Browser objects cross a small
-interop bridge; no JSCL runtime or interpreter is needed for the application.
+default entry file runs the shared gallery. The interop bridge transfers
+numbers, Unicode strings, and object identities directly through WebAssembly
+imports. Calls have separate argument frames so synchronous DOM events can
+reenter Lisp safely. No JavaScript source generation or Lisp text parsing is
+performed for browser calls.
+
+To compare existing JSCL and ECL builds with the same redraw workload:
+
+```sh
+BENCH_TOOLKITS=Glass,Motif,Garnet,macOS,Qt \
+BENCH_PAGES=Controls,Editing,Layout,Scroll,Styles,7GUIs/Cells \
+BENCH_FRAMES=120 WARMUP=30 BENCH_OUTPUT=build/parity.json \
+  make benchmark-web-parity
+```
+
+This target uses `BENCH_FRAMES` and `WARMUP` per toolkit/page case. It fixes
+both viewports to `BENCH_WIDTH` × `BENCH_HEIGHT` (default 900×700), requests
+steady redraws through the same resize notification, and measures the animation
+callback plus a browser layout flush. Reported work times exclude GPU
+rasterization; active FPS includes animation-frame pacing. `PROFILE=1` saves
+ECL browser CPU profiles under `build/profiles/`. `make benchmark PLATFORM=web-ecl`
+builds both implementations before running this comparison. These are steady
+redraw measurements, not input latency or continuous-scroll benchmarks.
 
 ## Install and run
 

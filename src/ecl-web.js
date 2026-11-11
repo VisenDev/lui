@@ -26,23 +26,16 @@ var LuiECL = (() => {
       if (callback) { timers.delete(start + token); forget(callback); }
     };
   }
-  const string = s => '(:string ' + Array.from(s, c => c.codePointAt(0)).join(' ') + ')';
-  function pack(value) {
-    if (value === null) return '(:null)';
-    if (value === undefined) return '(:undefined)';
-    if (typeof value === 'boolean') return value ? '(:true)' : '(:false)';
-    if (typeof value === 'string') return string(value);
-    if (typeof value === 'number') {
-      if (!Number.isFinite(value)) throw new Error('Non-finite browser number');
-      return '(:number ' + String(value).replace('e', 'd') + ')';
-    }
-    if (rootIds.has(value)) return '(:root ' + rootIds.get(value) + ')';
+  const frames = new Map();
+  const freeFrames = [];
+  let nextFrame = 0;
+  function retain(value) {
     let id = identities.get(value);
     if (!id) { id = ++next; identities.set(value, id); }
     const entry = values.get(id) || {value, count: 0};
     entry.count++;
     values.set(id, entry);
-    return '(:reference ' + id + ')';
+    return id;
   }
   function property(object, key) {
     const value = object[key];
@@ -65,10 +58,37 @@ var LuiECL = (() => {
     return entry.bound;
   }
   return {
-    pack, property,
-    perform: operation => {
-      try { return pack(operation()); }
-      catch (error) { return '(:error ' + string(String(error)).slice(1); }
+    property, frames, retain, rootIds,
+    frame: args => {
+      const id = freeFrames.length ? freeFrames.pop() : ++nextFrame;
+      frames.set(id, args);
+      return id;
+    },
+    finish: id => { if (frames.delete(id)) freeFrames.push(id); },
+    execute: (id, op) => {
+      const args = frames.get(id);
+      let result;
+      try {
+        switch (op) {
+          case 0: result = LuiECL.global(args[0]); break;
+          case 1: result = args.slice(1).reduce(property, args[0]); break;
+          case 2: {
+            const parent = args.slice(2, -1).reduce(property, args[0]);
+            parent[args[args.length - 1]] = args[1];
+            break;
+          }
+          case 3: result = args[0](...args.slice(1)); break;
+          case 4: result = Reflect.construct(args[0], args.slice(1)); break;
+          case 5: LuiECL.release(args); break;
+          case 6: roots.delete(args[0]); break;
+          default: throw new Error('Unknown bridge operation ' + op);
+        }
+        frames.set(id, [result]);
+        return 0;
+      } catch (error) {
+        frames.set(id, [String(error)]);
+        return 1;
+      }
     },
     get: id => values.get(id).value,
     global: path => {
@@ -86,11 +106,10 @@ var LuiECL = (() => {
     root: (id, callable) => {
       if (!roots.has(id)) {
         const value = callable ? (...args) => {
-          const text = '(' + args.map(pack).join(' ') + ')';
-          const pointer = stringToNewUTF8(text);
+          const frame = LuiECL.frame(args);
           try {
-            if (!_lui_callback(id, pointer)) throw new Error('LUI callback failed; see Lisp error');
-          } finally { _free(pointer); }
+            if (!_lui_callback(id, frame)) throw new Error('LUI callback failed; see Lisp error');
+          } finally { LuiECL.finish(frame); }
         } : {};
         roots.set(id, value); rootIds.set(value, id);
       }

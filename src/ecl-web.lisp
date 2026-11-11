@@ -14,29 +14,14 @@
 (defvar *next-root* 0)
 (defvar *owner* nil)
 
-#-lui-ecl-host (ffi:clines "#include <emscripten.h>")
+#-lui-ecl-host
+(ffi:clines "extern cl_object lui_js_operation(int, cl_object);")
 
-(fn (evaluate-js string) ((source base-string))
-  #+lui-ecl-host (error "Browser operation in host compiler: ~A" source)
+(fn (operation t) ((code integer) (arguments list))
+  #+lui-ecl-host (error "Browser operation ~D in host: ~S" code arguments)
   #-lui-ecl-host
-  (ffi:c-inline (source) (:cstring) :cstring
-                "emscripten_run_script_string(#0)" :one-liner t))
-
-(fn (quote-js base-string) ((value string))
-  (coerce
-   (with-output-to-string (out)
-     (write-char #\" out)
-     (loop :for char :across value :for code := (char-code char) :do
-       (cond ((find char '(#\" #\\))
-              (write-char #\\ out) (write-char char out))
-             ((<= 32 code 126) (write-char char out))
-             ((<= code #xffff) (format out "\\u~4,'0X" code))
-             (t (let ((n (- code #x10000)))
-                  (format out "\\u~4,'0X\\u~4,'0X"
-                          (+ #xd800 (ash n -10))
-                          (+ #xdc00 (logand n #x3ff)))))))
-     (write-char #\" out))
-   'base-string))
+  (ffi:c-inline (code arguments) (:int :object) :object
+                "lui_js_operation(#0, #1)" :one-liner t))
 
 (fn (root-id integer) (value)
   (or (loop :for id :being :the :hash-keys :of *roots*
@@ -46,74 +31,42 @@
       (let ((id (incf *next-root*)))
         (setf (gethash id *roots*) (cons value *owner*)) id)))
 
-(fn (encode string) (value)
-  (if (member value '(:true :false :null :undefined))
-      (string-downcase (symbol-name value))
-      (typecase value
-        (reference (format nil "LuiECL.get(~D)" (reference-id value)))
-        (string (quote-js value))
-        (real (let ((*read-default-float-format* 'double-float))
-                (substitute #\e #\d
-                            (format nil "~,17E"
-                                    (coerce value 'double-float)))))
-        (null "null")
-        (otherwise
-         (format nil "LuiECL.root(~D,~A)" (root-id value)
-                 (if (functionp value) "true" "false"))))))
+(fn (transport-id integer) (value)
+  (if (reference-p value) (reference-id value) (- (root-id value))))
 
-(fn (decode t) (value)
-  (case (car value)
-    (:string (map 'string #'code-char (cdr value)))
-    (:number (second value))
-    (:root (car (gethash (second value) *roots*)))
-    (:reference
-     (let* ((id (second value)) (old (gethash id *references*)))
-       (cond (old (push id *released*) old)
-             (t (let ((object (make-reference :id id)))
-                  (setf (gethash id *references*) object)
-                  (ext:set-finalizer object
-                                     (lambda (ignored)
-                                       (declare (ignore ignored))
-                                       (push id *released*)))
-                  object)))))
-    (otherwise (car value))))
+(fn (reference-for reference) ((id integer))
+  (let ((old (gethash id *references*)))
+    (cond (old (push id *released*) old)
+          (t (let ((object (make-reference :id id)))
+               (setf (gethash id *references*) object)
+               (ext:set-finalizer object
+                                  (lambda (ignored)
+                                    (declare (ignore ignored))
+                                    (push id *released*)))
+               object)))))
 
-(fn (evaluate t) ((source string))
-  (let ((*read-eval* nil))
-    (when *released*
-      (evaluate-js
-       (coerce (format nil "LuiECL.release([~{~D~^,~}]); ''"
-                       (shiftf *released* nil)) 'base-string)))
-    (let ((result (read-from-string
-                   (evaluate-js
-                    (coerce (format nil "LuiECL.perform(()=>~A)" source)
-                            'base-string)))))
-      (when (eq (car result) :error)
-        (error "Browser operation failed: ~A" (decode (cdr result))))
-      (decode result))))
+(fn (root-value t) ((id integer))
+  (car (gethash id *roots*)))
+
+(fn (transfer t) ((code integer) (arguments list))
+  (when *released* (operation 5 (shiftf *released* nil)))
+  (operation code arguments))
 
 (fn (global t) ((path string))
-  (evaluate (format nil "LuiECL.global(~A)" (quote-js path))))
+  (transfer 0 (list path)))
 
 (fn (oget t) (object &rest keys)
-  (dolist (key keys object)
-    (setf object
-          (evaluate (format nil "LuiECL.property(~A,~A)"
-                            (encode object) (quote-js key))))))
+  (transfer 1 (cons object keys)))
 
 (fn ((setf oget) t) (value object &rest keys)
-  (let ((parent (if (cdr keys) (apply #'oget object (butlast keys)) object)))
-    (evaluate (format nil "(~A[~A]=~A)" (encode parent)
-                      (quote-js (car (last keys))) (encode value))))
+  (transfer 2 (list* object value keys))
   value)
 
 (fn (invoke t) (function &rest arguments)
-  (evaluate (format nil "~A(~{~A~^,~})" (encode function)
-                    (mapcar #'encode arguments))))
+  (transfer 3 (cons function arguments)))
 
 (fn (new t) (constructor &rest arguments)
-  (evaluate (format nil "Reflect.construct(~A,[~{~A~^,~}])"
-                    (encode constructor) (mapcar #'encode arguments))))
+  (transfer 4 (cons constructor arguments)))
 
 (fn (jsstring string) ((value string)) value)
 (fn (clstring string) ((value string)) value)
@@ -126,7 +79,7 @@
   (loop :for id :being :the :hash-keys :of *roots*
         :using (:hash-value entry)
         :when (eq owner (cdr entry))
-          :do (evaluate (format nil "LuiECL.dropRoot(~D)" id))
+          :do (operation 6 (list id))
               (remhash id *roots*))
   nil)
 
@@ -137,7 +90,7 @@
   (let* ((entry (gethash id *roots*)) (*owner* (cdr entry)))
     (handler-case
         (progn (when entry
-                 (apply (car entry) (mapcar #'decode arguments))) t)
+                 (apply (car entry) arguments)) t)
       (serious-condition (condition)
         (format *error-output* "~&LUI browser callback: ~A~%" condition)
         nil))))

@@ -139,7 +139,10 @@ web-demo: web-build
 	@echo 'Open http://localhost:$(PORT)/'
 	$(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 --directory build
 
-.PHONY: web-ecl-toolchain web-ecl-build web-ecl-demo
+.PHONY: web-ecl-toolchain web-ecl-build web-ecl-demo benchmark-web-parity
+benchmark-web-parity:
+	$(PYTHON) -u tests/benchmark-web-parity.py
+
 web-ecl-toolchain:
 	bash scripts/build-ecl-toolchain.sh
 
@@ -235,8 +238,8 @@ ifeq ($(PLATFORM),web)
 	$(MAKE) --no-print-directory web-build
 	$(PYTHON) -u tests/benchmark-web.py
 else ifeq ($(PLATFORM),web-ecl)
-	@echo 'ECL browser benchmarks are not implemented.' >&2
-	@exit 2
+	$(MAKE) --no-print-directory web-build web-ecl-build
+	$(PYTHON) -u tests/benchmark-web-parity.py
 else
 	$(SBCL) $(SBCL_FLAGS) --load scripts/benchmark.lisp
 endif
