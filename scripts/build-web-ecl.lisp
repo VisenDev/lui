@@ -44,6 +44,13 @@
 (pushnew :lui-ecl-web *features*)
 (defparameter *target-info* (c::read-target-info *target*))
 (pushnew :lui-ecl-web (cdr (assoc '*features* *target-info*)))
+;; Override the target's conservative default for application code. The final
+;; link still runs spill-pointers so ECL's collector can find live references.
+(setf (cdr (assoc 'c:*cc-optimize* *target-info*)) "-O3"
+      (cdr (assoc 'c::*cc-flags* *target-info*))
+      (concatenate 'string (cdr (assoc 'c::*cc-flags* *target-info*))
+                   " -O3 -g0"))
+(proclaim '(optimize (speed 3) (debug 0) (space 0) (safety 2)))
 
 (load "src/01-fn.lisp")
 (load "src/02-helpers.lisp")

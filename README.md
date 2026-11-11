@@ -480,6 +480,11 @@ or activate it in your shell. Explicit `EMCC` overrides are respected.
 Keep the compiler paths recorded in target info available as well.
 The build uses ECL's required pointer-spilling linker pass for garbage
 collection, a larger stack, and a persistent runtime for browser callbacks.
+Both docs and gallery builds compile application C and link WebAssembly with
+`-O3`, stripping debug information with `-g0`. Lisp compilation uses speed 3
+and retains safety 2. Prebuilt ECL/GMP/GC libraries retain their toolchain
+compile settings; the final WebAssembly optimization also processes their
+linked code.
 
 Output is isolated in `build/web-ecl/`. Copy or open `index.html` on its own,
 or serve the build directory over HTTP; `make web-ecl-demo` does this on

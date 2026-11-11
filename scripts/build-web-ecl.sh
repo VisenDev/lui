@@ -52,7 +52,7 @@ else
     libraries=$ECL_WASM/lib
 fi
 "$ECL" -norc -shell scripts/build-web-ecl.lisp
-"$EMCC" -O0 -I"$include" scripts/ecl-web.c \
+"$EMCC" -O3 -g0 -I"$include" scripts/ecl-web.c \
     "$build_directory/liblui-web.a" "$libraries"/libecl.a \
     "$libraries"/libeclgc.a "$libraries"/libeclgmp.a \
     -lm -sSTACK_SIZE=4194304 -sALLOW_MEMORY_GROWTH=1 \
