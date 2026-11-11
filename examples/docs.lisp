@@ -80,7 +80,7 @@
      "Native: load lui/wayland or lui/x11 on Linux, lui/win32 on Windows, or lui/cocoa on macOS. X11 uses GLX and Wayland uses EGL with the shared OpenGL renderer; Windows and macOS use native drawing/compositing APIs. Fonts are loaded from the system. The offscreen OpenGL system also supports rendering tests."
      "Browser: make web-demo compiles the same gallery callback with JSCL and serves it locally. The web backend uses a high-DPI canvas for widgets and selectable HTML text for visible labels. Use make docs for the native docs browser, make docs-html for a standalone ECL/WebAssembly build/docs.html, and make docs-pages to refresh docs/index.html for hosting."
      "Terminal: make terminal-demo loads lui/terminal. Uncursed handles terminal cells, Unicode widths, colors, input decoding, and incremental output; LUI maps widgets and events onto it. Plain snapshots also require lui/terminal. Terminal coordinates are cells; graphical coordinates are pixels."
-     "Build commands use GNU Make, Bash, and SBCL. Python is used by the existing integration tests and local web server. make test PLATFORM=core runs portable checks; native, gl, and platform-specific targets cover additional paths. See README for configuration, source registry setup, and the verified platform matrix.")))
+     "Build commands use GNU Make, Bash, and SBCL. Python is used by the existing integration tests and local web server. make test PLATFORM=core runs portable checks; native, gl, and platform-specific targets cover additional paths. See AGENTS.md for configuration, source registry setup, and platform validation guidance.")))
 
 (defstruct browser
   (clicks 0 :type integer) (panel-clicks 0 :type integer)
