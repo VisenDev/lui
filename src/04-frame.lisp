@@ -2,13 +2,11 @@
   (:use #:cl #:lui.fn #:lui.layout)
   (:export #:context #:make-context #:context-root #:context-focus
            #:context-focus-input #:context-active #:context-measure
-           #:*context* #:*parent*
-           #:with-frame
+           #:*context* #:*parent* #:with-frame
            #:row #:column #:event #:event-kind #:event-x #:event-y #:event-id
            #:event-value #:event-key #:event-button #:event-clicks
            #:event-dragging-p #:event-buttons #:event-scroll-mode
-           #:context-events #:events-for
-           #:previous-box
+           #:context-events #:events-for #:previous-box
            #:context-state #:context-width #:context-height #:emit
            #:activated-p #:activated-ids #:record-activation
            #:make-event #:begin-frame #:end-frame #:context-hover #:hovered-p
@@ -125,10 +123,11 @@ The backend supplies measurement, clipboard, and optional input callbacks."
              (previous (context-memo *context*)) (index (length pending))
              (old (when (< index (length previous)) (aref previous index)))
              (entry (if (and old (equal key (memo-entry-key old))) old
-                        (make-memo-entry
-                         :key (mapcar (lambda (v)
-                                        (if (stringp v) (copy-seq v) v)) key)
-                         :value (funcall compute)))))
+                        (make-memo-entry :key
+                                         (mapcar (lambda (v)
+                                                   (if (stringp v)
+                                                       (copy-seq v) v)) key)
+                                         :value (funcall compute)))))
         (vector-push-extend entry pending)
         (memo-entry-value entry))
       (funcall compute)))
@@ -140,8 +139,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
 (fn (layout-clock real) ()
   "High-resolution elapsed-time clock in milliseconds."
   #+jscl (#j:performance:now)
-  #-jscl (* 1000 (/ (get-internal-real-time)
-                    internal-time-units-per-second)))
+  #-jscl (* 1000 (/ (get-internal-real-time) internal-time-units-per-second)))
 
 (fn (record-frame-statistics (values))
     ((stats frame-statistics) (ms real) (now real))
@@ -229,14 +227,13 @@ The backend supplies measurement, clipboard, and optional input callbacks."
                        (when (and (element-interactive-p node)
                                   (element-keyboard-focus-p node))
                          (push (element-id node) ids)))))
-    (setf ids (if backward ids (nreverse ids))
-          (context-focus context)
+    (setf ids (if backward ids (nreverse ids)) (context-focus context)
           (or (second (member (context-focus context) ids :test #'equal))
               (first ids)))))
 
 (fn (pending-input-context context)
-    ((context context) (events sequence)
-     &optional ((width (or null real)) nil) ((height (or null real)) nil))
+    ((context context) (events sequence) &optional
+     ((width (or null real)) nil) ((height (or null real)) nil))
   "Predict focus after a newest-first pending EVENTS batch without mutating CONTEXT.
 Return CONTEXT unchanged when no prediction is needed or dimensions changed.
 Native key translators use this to interpret a key after a batched click or Tab."
@@ -250,8 +247,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
         (loop :for event-index :downfrom (1- (length events)) :to 0
               :for event := (elt events event-index) :do
               (case (event-kind event)
-                (:tab (focus-next
-                       predicted (eq (event-key event) :backward)))
+                (:tab (focus-next predicted (eq (event-key event) :backward)))
                 (:press
                  (let* ((id (hit predicted (event-x event) (event-y event)))
                         (node (gethash id (context-ids predicted))))
@@ -269,8 +265,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
                  (let ((path (if (element-scroll-p node)
                                  (cons (element-id node) parents) parents)))
                    (setf scrollers path)
-                   (do-children (child node)
-                     (visit child path))))))
+                   (do-children (child node) (visit child path))))))
       (when (context-root context) (visit (context-root context) nil)))
     (make-array (length scrollers) :element-type t :initial-contents
                 scrollers)))
@@ -299,8 +294,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
              (elapsed (max 0 (- now (scroll-motion-time motion))))
              ;; Exponential decay is independent of redraw frequency.
              (tail (* remaining (exp (/ (- elapsed) 0.07d0))))
-             (step (if (< (abs tail) 0.05d0) remaining
-                       (- remaining tail)))
+             (step (if (< (abs tail) 0.05d0) remaining (- remaining tail)))
              (used (scroll-along context (scroll-motion-path motion) step)))
         (decf (scroll-motion-remaining motion) used)
         (setf (scroll-motion-time motion) now)
@@ -309,13 +303,12 @@ Native key translators use this to interpret a key after a batched click or Tab.
           (setf (context-scroll-motion context) nil)))))
   (values))
 
-(fn (wheel-scroll (or null real scroll-motion)) ((context context) (event
-                                                                    event))
+(fn (wheel-scroll (or null real scroll-motion))
+    ((context context) (event event))
   "Route wheel input to immediate scrolling or accumulate smooth scroll motion."
   (let ((path (scroll-path context (event-x event) (event-y event)))
         (amount (event-value event))
-        (now (context-time context))
-        (mode (event-scroll-mode event)))
+        (now (context-time context)) (mode (event-scroll-mode event)))
     (cond
       ((or (eq mode :immediate)
            (and (eq mode :auto) (context-text-mode-p context)))
@@ -328,8 +321,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
                     (every #'equal path (scroll-motion-path old))
                     (plusp (* amount (scroll-motion-remaining old)))
                     (<= (- now (scroll-motion-last-input old)) 0.15d0)))
-              (level (if continuing
-                         (min 4 (1+ (scroll-motion-level old))) 1))
+              (level (if continuing (min 4 (1+ (scroll-motion-level old))) 1))
               ;; Repeated wheel notches travel faster, with a bounded gain.
               ;; OS-provided inertia bypasses this path via :IMMEDIATE.
               (delta (* amount (+ 1 (* 0.35d0 (1- level))))))
@@ -395,39 +387,32 @@ Native key translators use this to interpret a key after a batched click or Tab.
     ;; A replacement press or a known unpressed motion ends the old drag.
     (push (make-event :kind :cancel :id captured :buttons 0)
           (gethash captured (context-events context)))
-    (setf (context-active context) nil
-          (context-last-click context) nil
-          (context-scroll-motion context) nil
-          captured nil))
+    (setf (context-active context) nil (context-last-click context) nil
+          (context-scroll-motion context) nil captured nil))
   (when (eq (event-kind event) :cancel)
     (setf (context-active context) nil (context-hover context) nil
           (context-last-click context) nil
           (context-scroll-motion context) nil))
   (setf (event-dragging-p event)
-        (and (not (null captured))
-             (not (eq (event-kind event) :cancel))
+        (and (not (null captured)) (not (eq (event-kind event) :cancel))
              (or (null (event-buttons event))
                  (logbitp 0 (event-buttons event)))))
   captured)
 
-(fn (dispatch-frame-event (values)) ((context context) (event event) target
-                                     (resized boolean))
+(fn (dispatch-frame-event (values))
+    ((context context) (event event) target (resized boolean))
   "Apply one event to scrolling, activation, focus, and pointer state."
   (case (event-kind event)
-    (:scroll
-     (unless resized
-       (wheel-scroll context event)))
-    (:press
-     (route-pointer-press context event target))
+    (:scroll (unless resized (wheel-scroll context event)))
+    (:press (route-pointer-press context event target))
     (:release
      (when (and (eq (event-button event) :primary)
                 target (equal target (context-active context)))
        (record-activation context target))
      (when (eq (event-button event) :primary)
        (setf (context-active context) nil)))
-    (:tab
-     (setf (context-focus-visible-p context) t)
-     (focus-next context (eq (event-key event) :backward)))
+    (:tab (setf (context-focus-visible-p context) t)
+          (focus-next context (eq (event-key event) :backward)))
     (:key (setf (context-focus-visible-p context) t))
     (:activate
      (let ((id (or (event-id event) (context-focus context))))
@@ -435,8 +420,8 @@ Native key translators use this to interpret a key after a batched click or Tab.
          (record-activation context id))))
     (otherwise nil))  (values))
 
-(fn (route-frame-event (values)) ((context context) (event event) (resized
-                                                                   boolean))
+(fn (route-frame-event (values))
+    ((context context) (event event) (resized boolean))
   "Route EVENT against completed geometry and enqueue it for its owning widget."
   (let ((target (or (and (member (event-kind event) '(:press :release))
                          (event-id event))
@@ -459,20 +444,19 @@ Native key translators use this to interpret a key after a batched click or Tab.
       (when id (push event (gethash id (context-events context))))))
   (values))
 
-(fn (reset-frame-declarations (eql t)) ((context context) (width real)
-                                        (height real))
+(fn (reset-frame-declarations (eql t))
+    ((context context) (width real) (height real))
   "Preserve completed hit regions and initialize declarations for the next frame."
   (clrhash (context-regions context))
   (when (context-root context)
-    (walk-elements
-     (context-root context)
-     (lambda (node)
-       (when (element-id node)
-         (setf (gethash (element-id node) (context-regions context))
-               (element-box node))))))
+    (walk-elements (context-root context)
+                   (lambda (node)
+                     (when (element-id node)
+                       (setf (gethash (element-id node)
+                                      (context-regions context))
+                             (element-box node))))))
   (clrhash (context-ids context))
-  (setf (context-after-layout context) nil
-        (context-pending-memo context)
+  (setf (context-after-layout context) nil (context-pending-memo context)
         (make-array 0 :element-type 'memo-entry :adjustable t :fill-pointer 0)
         (context-tabs-handled-p context) nil
         (context-previous-root context) (context-root context)
@@ -485,8 +469,8 @@ Native key translators use this to interpret a key after a batched click or Tab.
         (context-root context) (make-element :width (grow) :height (grow))
         (context-building-p context) t))
 
-(fn (begin-frame (eql t)) ((context context) (width real) (height real)
-                           (events sequence))
+(fn (begin-frame (eql t))
+    ((context context) (width real) (height real) (events sequence))
   "Begin rebuilding CONTEXT at WIDTH and HEIGHT after routing EVENTS.
 Input is resolved against the previous completed tree; this resets the frame
 clock, redraw deadline, declarations, and per-frame activation state."
@@ -616,12 +600,12 @@ Clear focus/hover for removed controls and return the completed root element."
                (remhash id (context-state context))))
            (context-state context))
   (clrhash (context-scroll context))
-  (walk-elements
-   (context-root context)
-   (lambda (node)
-     (when (and (element-id node) (element-scroll-p node))
-       (setf (gethash (element-id node) (context-scroll context))
-             (cons (element-scroll-x node) (element-scroll-y node))))))
+  (walk-elements (context-root context)
+                 (lambda (node)
+                   (when (and (element-id node) (element-scroll-p node))
+                     (setf (gethash (element-id node) (context-scroll context))
+                           (cons (element-scroll-x node)
+                                 (element-scroll-y node))))))
   (let ((motion (context-scroll-motion context)))
     (when motion
       (if (gethash (aref (scroll-motion-path motion) 0) (context-ids context))
@@ -636,8 +620,7 @@ Clear focus/hover for removed controls and return the completed root element."
   "Dispatch input, build and solve one frame, and return its root element."
   `(let ((*context* ,context))
      (begin-frame *context* ,width ,height ,events)
-     (let ((*parent* (context-root *context*))
-           (complete nil))
+     (let ((*parent* (context-root *context*)) (complete nil))
        (unwind-protect
             (progn
               ,@body
@@ -645,8 +628,7 @@ Clear focus/hover for removed controls and return the completed root element."
               (setf complete t)
               (context-root *context*))
          (unless complete
-           (setf (context-root *context*) nil
-                 (context-memo *context*) #()
+           (setf (context-root *context*) nil (context-memo *context*) #()
                  (context-pending-memo *context*) #()
                  (context-building-p *context*) nil
                  (context-previous-root *context*) nil

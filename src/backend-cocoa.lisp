@@ -1,6 +1,5 @@
 (defpackage #:lui.cocoa
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.font
-        #:lui.draw)
+  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.font #:lui.draw)
   (:export #:run-cocoa))
 (in-package #:lui.cocoa)
 
@@ -10,20 +9,13 @@
 (sb-alien:define-alien-type utf8-string
     (sb-alien:c-string :external-format :utf-8))
 (sb-alien:define-alien-type objc-bool
-    #+arm64 sb-alien:unsigned-char
-    #-arm64 sb-alien:char)
+    #+arm64 sb-alien:unsigned-char #-arm64 sb-alien:char)
 (sb-alien:define-alien-type point
-    (sb-alien:struct point
-                     (x sb-alien:double)
-                     (y sb-alien:double)))
+    (sb-alien:struct point (x sb-alien:double) (y sb-alien:double)))
 (sb-alien:define-alien-type size
-    (sb-alien:struct size
-                     (width sb-alien:double)
-                     (height sb-alien:double)))
+    (sb-alien:struct size (width sb-alien:double) (height sb-alien:double)))
 (sb-alien:define-alien-type rect
-    (sb-alien:struct rect
-                     (origin point)
-                     (size size)))
+    (sb-alien:struct rect (origin point) (size size)))
 
 (defvar *selectors* nil)
 
@@ -41,8 +33,7 @@
 (fn (objc-class sb-sys:system-area-pointer) ((name string))
   "Resolve an Objective-C class by name."
   (sb-alien:alien-funcall
-   (sb-alien:extern-alien "objc_getClass"
-                          (function object sb-alien:c-string))
+   (sb-alien:extern-alien "objc_getClass" (function object sb-alien:c-string))
    name))
 
 (defmacro with-cocoa-float-mode (&body body)
@@ -79,10 +70,8 @@
   "Allocate a temporary native rectangle for the dynamic extent of BODY."
   `(sb-alien:with-alien ((,name rect))
      (setf (sb-alien:slot (sb-alien:slot ,name 'origin) 'x)
-           (float ,x 1.0d0)
-           (sb-alien:slot (sb-alien:slot ,name 'origin) 'y)
-           (float ,y 1.0d0)
-           (sb-alien:slot (sb-alien:slot ,name 'size) 'width)
+           (float ,x 1.0d0) (sb-alien:slot (sb-alien:slot ,name 'origin) 'y)
+           (float ,y 1.0d0) (sb-alien:slot (sb-alien:slot ,name 'size) 'width)
            (float ,width 1.0d0)
            (sb-alien:slot (sb-alien:slot ,name 'size) 'height)
            (float ,height 1.0d0))
@@ -109,8 +98,7 @@
   "Return a non-null object or signal BACKEND-ERROR describing the failed operation."
   (when (null-object-p object)
     (error 'lui.conditions:backend-error
-           :backend :cocoa
-           :operation :require-object
+           :backend :cocoa :operation :require-object
            :format-control "Cannot create Cocoa ~A."
            :format-arguments (list description)))
   object)
@@ -130,8 +118,7 @@
                   (setf (sb-alien:slot p 'x) (float x 1.0d0)
                         (sb-alien:slot p 'y) (float y 1.0d0))
                   (message sb-alien:void path
-                           (if first "moveToPoint:" "lineToPoint:")
-                           point p)))
+                           (if first "moveToPoint:" "lineToPoint:") point p)))
           (message sb-alien:void path "closePath"))
     path))
 
@@ -156,8 +143,7 @@
         (let ((path (make-path contours)))
           ;; Keep stable geometry when animation introduces additional shapes.
           (when (< (hash-table-count cache) 2048)
-            (setf (gethash contours cache)
-                  (message object path "retain")))
+            (setf (gethash contours cache) (message object path "retain" )))
           path))))
 
 (fn (clear-paths hash-table) ((cache hash-table))
@@ -177,8 +163,7 @@
     ((font font) (text string) (x real) (y real) (color string))
   "Paint glyph outlines at a baseline using AppKit paths."
   (let* ((cache (cocoa-app-text-paths *app*))
-         (key (list font (font-size font) text))
-         (path (gethash key cache))
+         (key (list font (font-size font) text)) (path (gethash key cache))
          (graphics (objc-class "NSGraphicsContext")))
     (unless path
       (when (>= (hash-table-count cache) 256) (clear-paths cache))
@@ -186,12 +171,12 @@
                                   :fill-pointer 0)))
         ;; Reuse the font parser, kerning and geometry of the common renderer.
         (paint-text
-         (make-renderer :font font
-                        :polygons (lambda (paths ink alpha)
-                                    (declare (ignore ink alpha))
-                                    (loop :for path :across paths :do
-                                          (vector-push-extend path
-                                                              contours))))
+         (make-renderer :font font :polygons
+                        (lambda (paths ink alpha)
+                          (declare (ignore ink alpha))
+                          (loop :for path :across paths :do
+                                (vector-push-extend path
+                                                    contours))))
          text 0 0 color)
         (setf path (message object (make-path contours) "retain")
               (gethash (list font (font-size font) (copy-seq text)) cache)
@@ -229,8 +214,7 @@
 
 (sb-alien:define-alien-callable flipped objc-bool
   ((view object) (selector object))
-  (with-cocoa-float-mode
-      (callback-true view selector)))
+  (with-cocoa-float-mode (callback-true view selector)))
 
 (fn (draw-cocoa-view t) (view selector dirty)
   "Paint the active LUI frame from the native view's draw callback."
@@ -257,15 +241,13 @@
       (unless completed
         (when *app*
           (setf (cocoa-app-error *app*)
-                (make-condition 'simple-error
-                                :format-control
+                (make-condition 'simple-error :format-control
                                 "Nonlocal exit from a Cocoa draw callback.")))
         (return-from draw-cocoa-view nil)))))
 
 (sb-alien:define-alien-callable draw-view sb-alien:void
   ((view object) (selector object) (dirty rect))
-  (with-cocoa-float-mode
-      (draw-cocoa-view view selector dirty)))
+  (with-cocoa-float-mode (draw-cocoa-view view selector dirty)))
 
 (fn (install-method (values))
     (class (name string) (function symbol) (signature string))
@@ -279,8 +261,7 @@
           (sb-alien:alien-sap (sb-alien:alien-callable-function function))
           signature))
     (error 'lui.conditions:backend-error
-           :backend :cocoa
-           :operation :install-method
+           :backend :cocoa :operation :install-method
            :format-control "Cannot install Cocoa method ~A."
            :format-arguments (list name)))
   (values))
@@ -296,8 +277,7 @@
               (sb-alien:extern-alien "objc_allocateClassPair"
                                      (function object object sb-alien:c-string
                                                sb-alien:unsigned-long))
-              (objc-class (if accelerated "NSOpenGLView" "NSView"))
-              name 0)
+              (objc-class (if accelerated "NSOpenGLView" "NSView")) name 0)
              "view class"))
       (let ((registered nil)
             (bool-signature (if (member :arm64 *features*) "B@:" "c@:")))
@@ -326,17 +306,14 @@
   (let ((pasteboard (message object (objc-class "NSPasteboard")
                              "generalPasteboard")))
     (message sb-alien:long pasteboard "clearContents")
-    (message objc-bool pasteboard "setString:forType:"
-             object (ns-string text)
+    (message objc-bool pasteboard "setString:forType:" object (ns-string text)
              object (ns-string "public.utf8-plain-text"))))
 
-(fn (cocoa-key-input (or null event)) ((code integer) (flags integer)
-                                       (characters string)
-                                       &optional text-p (key-name characters)
-                                         activation-p)
+(fn (cocoa-key-input (or null event))
+    ((code integer) (flags integer) (characters string) &optional text-p
+     (key-name characters) activation-p)
   "Translate a macOS key code and modifiers to LUI keyboard or text input."
-  (let* ((command (logtest flags #x100000))
-         (shift (logtest flags #x20000))
+  (let* ((command (logtest flags #x100000)) (shift (logtest flags #x20000))
          (command-key
           (when (and text-p (not command))
             (lui.widgets:readline-key
@@ -351,16 +328,13 @@
                             (115 . :home) (119 . :end)
                             (51 . :backspace) (117 . :delete)
                             (53 . :escape))))))
-    (cond ((and command (= code 8))
-           (make-event :kind :key :key :copy))
+    (cond ((and command (= code 8)) (make-event :kind :key :key :copy))
           (command-key (make-event :kind :key :key command-key))
           ((and text-p command (= code 0))
            (make-event :kind :key :key :select-all))
           (command nil)
-          ((= code 48)
-           (make-event :kind :tab :key (when shift :backward)))
-          ((and (= code 49) activation-p
-                (not (logtest flags #xc0000)))
+          ((= code 48) (make-event :kind :tab :key (when shift :backward)))
+          ((and (= code 49) activation-p (not (logtest flags #xc0000)))
            (make-event :kind :activate))
           ((member code '(36 76)) (make-event :kind :activate))
           (key (make-event :kind :key
@@ -388,16 +362,14 @@
     (let ((cursor
            (message object (objc-class "NSCursor")
                     (cursor-selector
-                     (lui.widgets:cursor-at
-                      (cocoa-app-context *app*) x y)))))
+                     (lui.widgets:cursor-at (cocoa-app-context *app*) x y)))))
       (message sb-alien:void cursor "set")))
   (values))
 
 (fn (input-for-window-p boolean) ((type integer) window target)
   "Test whether a native event is applicable to the LUI window."
   (and (member type '(1 2 3 4 5 6 7 8 9 10 22))
-       (not (null-object-p target))
-       (same-object-p window target)))
+       (not (null-object-p target)) (same-object-p window target)))
 
 (fn (cocoa-pointer-buttons integer) ((type integer) (previous integer))
   "Update the primary button mask from a native mouse event type."
@@ -416,23 +388,21 @@
       (setf (cocoa-app-buttons *app*) 0)
       (make-event :kind :cancel :buttons 0))))
 
-(fn (cocoa-key-event (or null event))
-    (event)
+(fn (cocoa-key-event (or null event)) (event)
   "Read native key strings and translate them using the active input context."
   (let ((characters (message object event "characters")))
     (return-from cocoa-key-event
-      (cocoa-key-input
-       (message sb-alien:unsigned-short event "keyCode")
-       (message sb-alien:unsigned-long event "modifierFlags")
-       (if (null-object-p characters) ""
-           (or (message utf8-string characters "UTF8String") ""))
-       (and *app* (lui.widgets:text-field-focused-p
-                   (cocoa-app-context *app*)))
-       (let ((name (message object event "charactersIgnoringModifiers")))
-         (if (null-object-p name) ""
-             (or (message utf8-string name "UTF8String") "")))
-       (and *app* (lui.widgets:activation-focused-p
-                   (cocoa-app-context *app*)))))))
+      (cocoa-key-input (message sb-alien:unsigned-short event "keyCode")
+                       (message sb-alien:unsigned-long event "modifierFlags")
+                       (if (null-object-p characters) ""
+                           (or (message utf8-string characters "UTF8String") ""))
+                       (and *app* (lui.widgets:text-field-focused-p
+                                   (cocoa-app-context *app*)))
+                       (let ((name (message object event "charactersIgnoringModifiers")))
+                         (if (null-object-p name) ""
+                             (or (message utf8-string name "UTF8String") "")))
+                       (and *app* (lui.widgets:activation-focused-p
+                                   (cocoa-app-context *app*)))))))
 
 (fn (cocoa-event (or null event)) (event view)
   "Translate a native event into LUI coordinates and input semantics."
@@ -452,8 +422,7 @@
     (let* ((location (message point event "locationInWindow"))
            (local (message point view "convertPoint:fromView:"
                            point location object (sb-sys:int-sap 0)))
-           (x (sb-alien:slot local 'x))
-           (y (sb-alien:slot local 'y)))
+           (x (sb-alien:slot local 'x)) (y (sb-alien:slot local 'y)))
       (update-cursor x y)
       (if (= type 22)
           (let ((lines-p (zerop (message objc-bool event
@@ -547,8 +516,8 @@
                    (stream-error () nil)))
                *stacktrace-placeholder*)))))
 
-(fn (replace-stacktrace-method sb-sys:system-area-pointer) (method
-                                                            implementation)
+(fn (replace-stacktrace-method sb-sys:system-area-pointer)
+    (method implementation)
   "Replace an Objective-C method implementation and return the old pointer."
   (sb-alien:alien-funcall
    (sb-alien:extern-alien "method_setImplementation"
@@ -580,14 +549,12 @@
                  (require-object method "stacktrace method"))))
            (setf *stacktrace-placeholder*
                  (message object placeholder "retain")
-                 *stacktrace-method* original
-                 *stacktrace-reported-p* nil)
+                 *stacktrace-method* original *stacktrace-reported-p* nil)
            (unwind-protect
                 (progn
-                  (replace-stacktrace-method
-                   method
-                   (sb-alien:alien-sap
-                    (sb-alien:alien-callable-function 'nonempty-stacktrace)))
+                  (replace-stacktrace-method method
+                                             (sb-alien:alien-sap
+                                              (sb-alien:alien-callable-function 'nonempty-stacktrace)))
                   (funcall function))
              (replace-stacktrace-method method original)
              (setf *stacktrace-method* nil *stacktrace-placeholder* nil)
@@ -614,8 +581,7 @@
           (lui.gl:gpu-logical-height gpu) (sb-alien:slot points 'height)
           (lui.gl:gpu-width gpu) (round (sb-alien:slot pixels 'width))
           (lui.gl:gpu-height gpu) (round (sb-alien:slot pixels 'height)))
-    (when (and (plusp (lui.gl:gpu-width gpu))
-               (plusp (lui.gl:gpu-height gpu)))
+    (when (and (plusp (lui.gl:gpu-width gpu)) (plusp (lui.gl:gpu-height gpu)))
       (message sb-alien:void gl "makeCurrentContext")
       (lui.gl:begin-gpu-frame gpu)
       (paint-frame (lui.gl:gpu-renderer gpu) context)
@@ -638,15 +604,12 @@
   (lui.frame::limit-frame-rate context)
   (values))
 
-(fn (create-cocoa-window-view (values))
-    (format width height)
+(fn (create-cocoa-window-view (values)) (format width height)
   "Create the owned native window and drawing view, attaching pointer tracking."
   (with-rect (frame 0 0 (or width 720) (or height 520))
     (setf (cocoa-app-window *app*)
           (require-object
-           (message object
-                    (message object (objc-class "NSWindow")
-                             "alloc")
+           (message object (message object (objc-class "NSWindow" ) "alloc" )
                     "initWithContentRect:styleMask:backing:defer:"
                     rect frame sb-alien:unsigned-long 15
                     sb-alien:unsigned-long 2 objc-bool 0)
@@ -662,16 +625,13 @@
       (setf (cocoa-app-view *app*)
             (require-object
              (if fast
-                 (message object view
-                          "initWithFrame:pixelFormat:"
+                 (message object view "initWithFrame:pixelFormat:"
                           rect frame object format)
-                 (message object view "initWithFrame:" rect
-                          frame))
+                 (message object view "initWithFrame:" rect frame))
              "drawing view"))
       (when fast
         (message sb-alien:void (cocoa-app-view *app*)
-                 "setWantsBestResolutionOpenGLSurface:"
-                 objc-bool 1)))
+                 "setWantsBestResolutionOpenGLSurface:" objc-bool 1)))
     (install-pointer-tracking (cocoa-app-view *app*) frame)
     (message sb-alien:void (cocoa-app-window *app*)
              "setContentView:" object (cocoa-app-view *app*)))
@@ -688,34 +648,27 @@
               (frame-pool
                (message object
                         (message object
-                                 (objc-class "NSAutoreleasePool")
-                                 "alloc")
+                                 (objc-class "NSAutoreleasePool") "alloc")
                         "init")))
           (unwind-protect
-               (let ((events (poll-cocoa-events application
-                                                view)))
+               (let ((events (poll-cocoa-events application view)))
                  (when (zerop (message objc-bool
-                                       (cocoa-app-window *app*)
-                                       "isVisible"))
+                                       (cocoa-app-window *app*) "isVisible"))
                    (return context))
                  (let* ((bounds (message rect view "bounds"))
                         (size (sb-alien:slot bounds 'size)))
                    (with-frame
                        (context (sb-alien:slot size 'width)
-                                (sb-alien:slot size 'height)
-                                :events events)
+                                (sb-alien:slot size 'height) :events events)
                      (funcall draw)))
                  (update-cursor (cocoa-app-pointer-x *app*)
                                 (cocoa-app-pointer-y *app*))
-                 (message sb-alien:void application
-                          "updateWindows")
-                 (cond (gpu
-                        (paint-gl-view view gl gpu context))
+                 (message sb-alien:void application "updateWindows" )
+                 (cond (gpu (paint-gl-view view gl gpu context))
                        (t
                         (message sb-alien:void view
                                  "setNeedsDisplay:" objc-bool 1)
-                        (message sb-alien:void view
-                                 "displayIfNeeded")))
+                        (message sb-alien:void view "displayIfNeeded" )))
                  (when (cocoa-app-error *app*)
                    (error (cocoa-app-error *app*)))
                  (when interactive
@@ -723,14 +676,11 @@
             (message sb-alien:void frame-pool "drain")))
         :unless interactive :do (return context)))
 
-(fn (show-cocoa-window (values))
-    ((title string))
+(fn (show-cocoa-window (values)) ((title string))
   "Set the window title and focus, then show it at the screen center."
   (let ((window (cocoa-app-window *app*)))
-    (message sb-alien:void window "setTitle:"
-             object (ns-string title))
-    (message sb-alien:void window "setAcceptsMouseMovedEvents:"
-             objc-bool 1)
+    (message sb-alien:void window "setTitle:" object (ns-string title))
+    (message sb-alien:void window "setAcceptsMouseMovedEvents:" objc-bool 1)
     (message sb-alien:void window "center")
     (message sb-alien:void window "makeKeyAndOrderFront:"
              object (sb-sys:int-sap 0))
@@ -757,8 +707,7 @@
   (message sb-alien:void pool "drain")
   (values))
 
-(fn (disable-cocoa-vsync (values))
-    (gl)
+(fn (disable-cocoa-vsync (values)) (gl)
   "Request immediate OpenGL presentation for the Cocoa context."
   (cffi:with-foreign-object (interval :int)
     (setf (cffi:mem-ref interval :int) 0)
@@ -766,32 +715,26 @@
              object interval sb-alien:int 222))
   (values))
 
-(fn (run-cocoa-window context) ((draw function) &key title width height
-                                                  (interactive t))
+(fn (run-cocoa-window context)
+    ((draw function) &key title width height (interactive t))
   "Run a Cocoa application window and restore native resources on normal or error exit."
   (with-cocoa-float-mode
       (let ((pool (message object
                            (message object (objc-class "NSAutoreleasePool")
                                     "alloc")
                            "init"))
-            (application nil)
-            (format nil) (gl nil) (gpu nil)
-            (font nil)
-            (renderer nil)
-            (context nil)
-            (*app* (make-cocoa-app))
-            (*unit* 8))
+            (application nil) (format nil) (gl nil) (gpu nil) (font nil)
+            (renderer nil) (context nil) (*app* (make-cocoa-app)) (*unit* 8))
         (unwind-protect
              (progn
                (setf application (message object (objc-class "NSApplication")
                                           "sharedApplication")
-                     font (open-font)
-                     renderer (make-renderer :font font
-                                             :polygons #'cocoa-polygons
-                                             :text #'cocoa-text
-                                             :clip #'cocoa-clip)
-                     context (make-context :copy #'copy-text
-                                           :measure
+                     font (open-font) renderer
+                     (make-renderer :font font
+                                    :polygons #'cocoa-polygons
+                                    :text #'cocoa-text
+                                    :clip #'cocoa-clip)
+                     context (make-context :copy #'copy-text :measure
                                            (lambda (widget width)
                                              (measure-widget renderer widget
                                                              width)))
@@ -820,14 +763,10 @@
 (fn (run-cocoa context) ((draw function) &rest options)
   "Run DRAW in an AppKit window on the SBCL main thread. OPTIONS are the LUI:RUN window keywords."
   (unless (member :darwin *features*)
-    (error 'lui.conditions:backend-error
-           :backend :cocoa
-           :operation :run-cocoa
+    (error 'lui.conditions:backend-error :backend :cocoa :operation :run-cocoa
            :format-control "The Cocoa backend requires macOS and SBCL."))
   (unless (sb-thread:main-thread-p)
-    (error 'lui.conditions:backend-error
-           :backend :cocoa
-           :operation :run-cocoa
+    (error 'lui.conditions:backend-error :backend :cocoa :operation :run-cocoa
            :format-control "Run Cocoa on the main thread."))
   (with-cocoa-float-mode
       (sb-alien:load-shared-object

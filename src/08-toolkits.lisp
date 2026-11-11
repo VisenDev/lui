@@ -1,12 +1,9 @@
 (defpackage #:lui.glass
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
-  (:import-from #:lui
-                #:*glass-defaults*)
+  (:import-from #:lui #:*glass-defaults*)
   (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel
-           #:tab
-           #:canvas #:gauge #:list-item #:cell
-           #:*glass-defaults*))
+           #:tab #:canvas #:gauge #:list-item #:cell #:*glass-defaults*))
 
 (in-package #:lui.glass)
 
@@ -24,19 +21,15 @@ tint, corner radius, opacity, or frost for a group of controls.")
 (defpackage #:lui.motif
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
-  (:import-from #:lui
-                #:*motif-defaults*)
+  (:import-from #:lui #:*motif-defaults*)
   (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel
-           #:tab
-           #:canvas #:gauge #:list-item #:cell
-           #:*motif-defaults*))
+           #:tab #:canvas #:gauge #:list-item #:cell #:*motif-defaults*))
 
 (in-package #:lui.motif)
 
 (defvar *motif-defaults*
   '(:palette (:background "#b8b8b8" :foreground "#101010" :accent "#4050a0")
-    :terminal-border "++++-|" :opacity 1
-    :radius 0 :frost 0 )
+    :terminal-border "++++-|" :opacity 1 :radius 0 :frost 0 )
   "Motif uses opaque gray surfaces with raised buttons and recessed fields.
 Bind this plist to adjust the surface, text, or selection accent colors.")
 
@@ -47,11 +40,9 @@ Bind this plist to adjust the surface, text, or selection accent colors.")
 (defpackage #:lui.macos
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
-  (:import-from #:lui
-                #:*macos-defaults*)
+  (:import-from #:lui #:*macos-defaults*)
   (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel
-           #:tab
-           #:canvas #:gauge #:list-item #:cell #:*macos-defaults*))
+           #:tab #:canvas #:gauge #:list-item #:cell #:*macos-defaults*))
 
 (in-package #:lui.macos)
 
@@ -71,11 +62,9 @@ Bind this plist to customize the surface, ink, and selection colors.")
 (defpackage #:lui.qt
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
-  (:import-from #:lui
-                #:*qt-defaults*)
+  (:import-from #:lui #:*qt-defaults*)
   (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel
-           #:tab
-           #:canvas #:gauge #:list-item #:cell #:*qt-defaults*))
+           #:tab #:canvas #:gauge #:list-item #:cell #:*qt-defaults*))
 
 (in-package #:lui.qt)
 
@@ -92,20 +81,16 @@ Bind this plist to customize the surface, ink, and selection colors.")
 (defpackage #:lui.garnet
   (:use #:cl)
   (:import-from #:lui #:define-toolkit)
-  (:import-from #:lui
-                #:*garnet-defaults*)
+  (:import-from #:lui #:*garnet-defaults*)
   (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel
-           #:tab
-           #:canvas #:gauge #:list-item #:cell
-           #:*garnet-defaults*))
+           #:tab #:canvas #:gauge #:list-item #:cell #:*garnet-defaults*))
 
 (in-package #:lui.garnet)
 
 (defvar *garnet-defaults*
   '(:palette (:background "#ffffff" :foreground "#000000" :accent "#000000")
     :terminal-border "++++-|" :opacity 1
-    :radius 0 :frost 0
-    :font-family :monospace :font-weight :bold)
+    :radius 0 :frost 0 :font-family :monospace :font-weight :bold)
   "Garnet uses black outlines, offset shadows, and bold monospace labels.
 Bind this plist to change its colors or typography for a group of controls.")
 

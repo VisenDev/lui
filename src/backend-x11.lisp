@@ -59,21 +59,13 @@
          (visual :pointer) (mask :ulong) (attributes :pointer))
 
 (binding ("XDestroyWindow" destroy-window)
-         :int
-         (display :pointer)
-         (window :ulong))
+         :int (display :pointer) (window :ulong))
 
 (binding ("XStoreName" store-name)
-         :int
-         (display :pointer)
-         (window :ulong)
-         (name :string))
+         :int (display :pointer) (window :ulong) (name :string))
 
 (binding ("XSelectInput" select-input)
-         :int
-         (display :pointer)
-         (window :ulong)
-         (mask :long))
+         :int (display :pointer) (window :ulong) (mask :long))
 
 (binding ("XMapWindow" map-window) :int (display :pointer) (window :ulong))
 
@@ -86,25 +78,13 @@
 (binding ("XSync" sync-display) :int (display :pointer) (discard :int))
 
 (binding ("XInternAtom" intern-atom)
-         :ulong
-         (display :pointer)
-         (name :string)
-         (only :int))
+         :ulong (display :pointer) (name :string) (only :int))
 
-(binding ("XSetWMProtocols" set-protocols)
-         :int
-         (display :pointer)
-         (window :ulong)
-         (atoms :pointer)
-         (count :int))
+(binding ("XSetWMProtocols" set-protocols) :int
+         (display :pointer) (window :ulong) (atoms :pointer) (count :int))
 
-(binding ("XLookupString" lookup-string)
-         :int
-         (event :pointer)
-         (buffer :pointer)
-         (size :int)
-         (keysym :pointer)
-         (compose :pointer))
+(binding ("XLookupString" lookup-string) :int (event :pointer)
+         (buffer :pointer) (size :int) (keysym :pointer) (compose :pointer))
 
 (binding ("XFree" free-memory) :int (data :pointer))
 
@@ -134,46 +114,19 @@
     (time :ulong))
 
 (cffi:defcstruct key-event
-    (type :int)
-  (serial :ulong)
-  (send :int)
-  (display :pointer)
-  (window :ulong)
-  (root :ulong)
-  (subwindow :ulong)
-  (time :ulong)
-  (x :int)
-  (y :int)
-  (root-x :int)
-  (root-y :int)
-  (state :uint)
-  (code :uint)
-  (same-screen :int))
+    (type :int) (serial :ulong) (send :int) (display :pointer) (window :ulong)
+    (root :ulong) (subwindow :ulong) (time :ulong) (x :int) (y :int)
+    (root-x :int) (root-y :int) (state :uint) (code :uint) (same-screen :int))
 
-(cffi:defcstruct configure-event
-    (type :int)
-  (serial :ulong)
-  (send :int)
-  (display :pointer)
-  (event :ulong)
-  (window :ulong)
-  (x :int)
-  (y :int)
-  (width :int)
-  (height :int)
-  (border :int)
-  (above :ulong)
-  (override :int))
+(cffi:defcstruct configure-event (type :int) (serial :ulong) (send :int)
+                 (display :pointer) (event :ulong) (window :ulong) (x :int)
+                 (y :int)
+                 (width :int) (height :int) (border :int) (above :ulong)
+                 (override :int))
 
 (cffi:defcstruct client-event
-    (type :int)
-  (serial :ulong)
-  (send :int)
-  (display :pointer)
-  (window :ulong)
-  (message-type :ulong)
-  (format :int)
-  (data :long :count 5))
+    (type :int) (serial :ulong) (send :int) (display :pointer)
+    (window :ulong) (message-type :ulong) (format :int) (data :long :count 5))
 
 (fn (call-glx t) ((function function) &rest arguments)
   "Call FUNCTION with floating-point traps masked, restoring the caller's settings."
@@ -217,23 +170,20 @@
   "Send the X selection notification, using a zero property to indicate failure."
   (cffi:with-foreign-object (reply :long 24)
     (dotimes (index 24) (setf (cffi:mem-aref reply :long index) 0))
-    (setf
-     (cffi:foreign-slot-value reply '(:struct selection-notify)
-                              'type) 31
-     (cffi:foreign-slot-value reply '(:struct selection-notify)
-                              'display) display
-     (cffi:foreign-slot-value reply '(:struct selection-notify)
-                              'requestor) requestor
-     (cffi:foreign-slot-value reply '(:struct selection-notify)
-                              'selection) selection
-     (cffi:foreign-slot-value reply '(:struct selection-notify)
-                              'target) target
-     (cffi:foreign-slot-value reply '(:struct selection-notify)
-                              'property) result
-     (cffi:foreign-slot-value reply '(:struct selection-notify)
-                              'time) time)
-    (send-event display requestor 0 0 reply)
-    (flush-display display)))
+    (setf (cffi:foreign-slot-value reply '(:struct selection-notify) 'type) 31
+          (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                   'display) display
+          (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                   'requestor) requestor
+          (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                   'selection) selection
+          (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                   'target) target
+          (cffi:foreign-slot-value reply '(:struct selection-notify)
+                                   'property) result
+          (cffi:foreign-slot-value reply '(:struct selection-notify) 'time)
+          time)
+    (send-event display requestor 0 0 reply) (flush-display display)))
 
 (fn (selection-request integer) ((window x-window) event)
   "Serve supported clipboard targets and send a selection notification."
@@ -241,8 +191,7 @@
          (targets (intern-atom display "TARGETS" 0))
          (utf8 (intern-atom display "UTF8_STRING" 0))
          (text-atom (intern-atom display "TEXT" 0))
-         (text (x-window-clipboard-text window))
-         (result 0))
+         (text (x-window-clipboard-text window)) (result 0))
     (cffi:with-foreign-slots
         ((requestor selection target property time) event
          (:struct selection-request))
@@ -280,8 +229,7 @@
            (code (cffi:mem-ref symbol :ulong))
            (state (cffi:foreign-slot-value event '(:struct key-event) 'state))
            (control (logtest state 4))
-           (alt (logtest state 8))
-           (shift (logtest state 1))
+           (alt (logtest state 8)) (shift (logtest state 1))
            (text-p (and context (lui.widgets:text-field-focused-p context)))
            (key (cdr (assoc code
                             '((#xff51 . :left) (#xff53 . :right)
@@ -307,10 +255,10 @@
                   (lui.widgets:activation-focused-p context))
              (make-event :kind :activate))
             ((= code #xff0d) (make-event :kind :activate))
-            (key (make-event :kind :key
-                             :key
+            (key (make-event :kind :key :key
                              (lui.widgets:horizontal-selection-key key
-                               (and text-p shift))))
+                                                                   (and
+                                                                    text-p shift))))
             ((and (plusp length) (not control) (not alt))
              (make-event :kind :text :value
                          (cffi:foreign-string-to-lisp
@@ -323,31 +271,33 @@
             (let ((cursor
                    (if (cffi:foreign-symbol-pointer
                         "XcursorLibraryLoadCursor")
-                       (cffi:foreign-funcall
-                        "XcursorLibraryLoadCursor"
-                        :pointer (x-window-display window)
-                        :string (case kind
-                                  (:not-allowed "not-allowed")
-                                  (:pointer "pointer") (:text "text")
-                                  (:resize-horizontal "ew-resize")
-                                  (:resize-vertical "ns-resize")
-                                  (otherwise "default"))
-                        :ulong)
+                       (cffi:foreign-funcall "XcursorLibraryLoadCursor"
+                                             :pointer
+                                             (x-window-display window) :string
+                                             (case kind
+                                               (:not-allowed "not-allowed")
+                                               (:pointer "pointer") (:text "text")
+                                               (:resize-horizontal
+                                                "ew-resize")
+                                               (:resize-vertical "ns-resize")
+                                               (otherwise "default"))
+                                             :ulong)
                        0)))
               (if (plusp cursor) cursor
-                  (create-font-cursor
-                   (x-window-display window)
-                   (case kind (:not-allowed 0) (:pointer 60)
-                         (:text 152) (:resize-horizontal 108)
-                         (:resize-vertical 116)
-                         (otherwise 68))))))))
+                  (create-font-cursor (x-window-display window)
+                                      (case kind (:not-allowed 0)
+                                            (:pointer 60)
+                                            (:text 152)
+                                            (:resize-horizontal 108)
+                                            (:resize-vertical 116)
+                                            (otherwise 68))))))))
 
 (fn (update-cursor symbol) ((window x-window))
   "Update WINDOW's native cursor from the current pointer target."
   (let ((kind (if (x-window-context window)
-                  (lui.widgets:cursor-at
-                   (x-window-context window)
-                   (x-window-pointer-x window) (x-window-pointer-y window))
+                  (lui.widgets:cursor-at (x-window-context window)
+                                         (x-window-pointer-x window)
+                                         (x-window-pointer-y window))
                   :default)))
     (unless (eq kind (x-window-cursor-kind window))
       (define-cursor (x-window-display window) (x-window-window window)
@@ -356,49 +306,40 @@
 
 (fn (pointer-buttons integer) ((state integer))
   "Translate X button-state bits to LUI's pointer button mask."
-  (logior (if (logtest state #x100) 1 0)
-          (if (logtest state #x400) 2 0)))
+  (logior (if (logtest state #x100) 1 0) (if (logtest state #x400) 2 0)))
 
-(fn (pointer-input-events list)
-    ((window x-window) event (events list))
+(fn (pointer-input-events list) ((window x-window) event (events list))
   "Translate an X pointer event and prepend any generated input to EVENTS."
-  (cffi:with-foreign-slots
-      ((type x y code state) event (:struct key-event))
+  (cffi:with-foreign-slots ((type x y code state) event (:struct key-event))
     (cond
       ((and (= type 4) (member code '(4 5)))
        (push (make-event :kind :scroll :x x :y y
                          :value (if (= code 4) -32 32))
              events))
       ((or (member type '(6 7)) (member code '(1 3)))
-       (setf (x-window-pointer-x window) x
-             (x-window-pointer-y window) y)
-       (push (make-event
-              :kind (case type
-                      (4 :press)
-                      (5 :release)
-                      (otherwise :move))
-              :button (if (and (member type '(4 5))
-                               (= code 3))
-                          :secondary :primary)
-              :buttons
-              (unless (= type 7)
-                (let ((buttons (pointer-buttons state))
-                      (bit (if (= code 3) 2 1)))
-                  (case type
-                    (4 (logior buttons bit))
-                    (5 (logandc2 buttons bit))
-                    (otherwise buttons))))
-              :x x :y y)
+       (setf (x-window-pointer-x window) x (x-window-pointer-y window) y)
+       (push (make-event :kind (case type
+                                 (4 :press)
+                                 (5 :release)
+                                 (otherwise :move))
+                         :button (if (and (member type '(4 5)) (= code 3))
+                                     :secondary :primary)
+                         :buttons
+                         (unless (= type 7)
+                           (let ((buttons (pointer-buttons state))
+                                 (bit (if (= code 3) 2 1)))
+                             (case type
+                               (4 (logior buttons bit))
+                               (5 (logandc2 buttons bit))
+                               (otherwise buttons))))
+                         :x x :y y)
              events))))
   events)
 
 (fn (read-events (values (vector event) boolean))
-    ((window x-window) (delete
-                        integer))
+    ((window x-window) (delete integer))
   "Drain pending X events, translating input and tracking window resize and closure."
-  (let ((display (x-window-display window))
-        (events nil)
-        (quit nil))
+  (let ((display (x-window-display window)) (events nil) (quit nil))
     (cffi:with-foreign-object (event :long 24)
       (loop :while (plusp (pending display))
             :do (next-event display event)
@@ -448,16 +389,14 @@
               visual (choose-visual display screen attrs)))
       (when (cffi:null-pointer-p visual)
         (error 'lui.conditions:backend-error
-               :backend :x11
-               :operation :glx-visual
+               :backend :x11 :operation :glx-visual
                :format-control "No double-buffered OpenGL visual on this X display."))
       visual)))
 
 (fn (open-window integer) ((window x-window) info parent)
   "Create an X window, colormap, and GLX context with cleanup on initialization failure."
   (let ((display (x-window-display window))
-        (visual (cffi:foreign-slot-value
-                 info '(:struct visual-info) 'visual))
+        (visual (cffi:foreign-slot-value info '(:struct visual-info) 'visual))
         (depth (cffi:foreign-slot-value info '(:struct visual-info) 'depth)))
     (setf (x-window-colormap window)
           (create-colormap display parent visual 0))
@@ -480,19 +419,19 @@
         (setf fd (cffi:foreign-funcall "XConnectionNumber"
                                        :pointer display :int)
               events 1))
-      (cffi:foreign-funcall "poll" :pointer p :ulong 1
-                            :int
-        (ceiling (* 1000
-                                             (lui.frame::frame-wait
-                                              context
-                                               (plusp
-                                                 (length
-                                                   events))))) :int)))
+      (cffi:foreign-funcall "poll" :pointer p :ulong 1 :int
+                            (ceiling
+                             (* 1000
+                                (lui.frame::frame-wait context
+                                                       (plusp
+                                                        (length events)))))
+                            :int)))
   (lui.frame::limit-frame-rate context)
   (values))
 
-(fn (draw-window context) ((window x-window) (gpu gpu) (context context)
-                           (draw function) interactive delete)
+(fn (draw-window context)
+    ((window x-window) (gpu gpu) (context context) (draw function)
+     interactive delete)
   "Draw and present one X11 frame using WINDOW's current dimensions."
   (loop
    (multiple-value-bind (events quit) (read-events window delete)
@@ -509,8 +448,7 @@
      (unless interactive (return context))
      (wait-x11 (x-window-display window) context events))))
 
-(fn (close-x11-window (values))
-    ((window x-window) display glx gpu font)
+(fn (close-x11-window (values)) ((window x-window) display glx gpu font)
   "Release rendering resources, native cursors, the window, and its display connection."
   (when gpu (close-gpu gpu))
   (when font (close-font font))
@@ -527,8 +465,8 @@
   (close-display display)
   (values))
 
-(fn (run-x11 context) ((draw function) &key title width height (interactive
-                                                                t))
+(fn (run-x11 context)
+    ((draw function) &key title width height (interactive t))
   "Run DRAW in an Xlib window using the shared OpenGL renderer via GLX."
   (let* ((display (open-display (cffi:null-pointer)))
          (w (or width 720)) (h (or height 520))
@@ -551,9 +489,7 @@
                      (zerop (make-current display (x-window-window window)
                                           glx)))
              (error 'lui.conditions:backend-error
-                    :backend :x11
-                    :operation :run-x11
-                    :format-control
+                    :backend :x11 :operation :run-x11 :format-control
                     "Cannot activate the X11 OpenGL context."))
            (setf font (open-font) gpu (attach-gpu font w h)
                  (x-window-clipboard window)

@@ -15,11 +15,9 @@ and arguments retain the diagnostic message; ERROR-OPERATION identifies the
 operation. Catch a more specific subtype when recovery depends on the cause."))
 
 (define-condition configuration-error (lui-error)
-  ((setting :initarg :setting :reader error-setting
-            :documentation
+  ((setting :initarg :setting :reader error-setting :documentation
             "Configuration setting that could not be resolved.")
-   (value :initarg :value :initform nil :reader error-value
-          :documentation
+   (value :initarg :value :initform nil :reader error-value :documentation
           "Requested value for the invalid or missing setting."))
   (:documentation
    "An invalid or unavailable backend, toolkit, palette, control, or rendering callback.
@@ -27,8 +25,7 @@ ERROR-SETTING identifies the setting and ERROR-VALUE contains its requested
 value. Configure or load the missing capability before retrying the operation."))
 
 (define-condition backend-error (lui-error)
-  ((backend :initarg :backend :reader error-backend
-            :documentation
+  ((backend :initarg :backend :reader error-backend :documentation
             "Backend keyword whose platform operation failed."))
   (:documentation
    "A platform operation failed during initialization, input, rendering, or cleanup.
@@ -53,8 +50,8 @@ retrying an operation that reads its solved layout."))
   (:export #:wrap-lines))
 (in-package #:lui.text)
 
-(fn (wrap-lines (vector string)) ((text string) (width (or null real))
-                                  (measure function))
+(fn (wrap-lines (vector string))
+    ((text string) (width (or null real)) (measure function))
   "Wrap at spaces and newlines. MEASURE takes TEXT and a start/end range.
 Preserve empty lines and allow words wider than WIDTH to overflow."
   (let ((start 0) (length (length text))

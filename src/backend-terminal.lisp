@@ -1,10 +1,8 @@
 (defpackage #:lui.terminal
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui)
   (:import-from #:uncursed #:character-width)
-  (:import-from #:lui
-                #:make-terminal-context #:render-terminal
-                #:terminal-text-width
-                #:text-lines #:cell-edge)
+  (:import-from #:lui #:make-terminal-context #:render-terminal
+                #:terminal-text-width #:text-lines #:cell-edge)
   (:export #:make-terminal-context #:render-terminal #:text-lines
            #:run-terminal #:character-width #:terminal-text-width
            #:cell-edge))
@@ -31,8 +29,8 @@
     (uncursed::clear-buffer buffer)
     buffer))
 
-(fn (cell-style uncursed:style) (foreground background &optional bold
-                                                         underline)
+(fn (cell-style uncursed:style)
+    (foreground background &optional bold underline)
   "Construct an uncursed style from foreground, background, and emphasis options."
   (flet ((color (value)
            (if (stringp value)
@@ -41,8 +39,8 @@
     (uncursed:make-style :fg (color foreground) :bg (color background)
                          :boldp bold :underlinep underline)))
 
-(fn (slider-line (values string integer integer)) ((widget widget) (width
-                                                                    integer))
+(fn (slider-line (values string integer integer))
+    ((widget widget) (width integer))
   "Return a slider's text and the track limits used for terminal pointer input."
   (let* ((fraction (min 1 (max 0 (/ (- (widget-value widget)
                                        (widget-minimum widget))
@@ -82,18 +80,17 @@
   "Snap every box and clip edge to the same nearest terminal-cell boundary."
   (floor (+ position 0.5f0)))
 
-(fn (cell-visible-p boolean) ((clip box) (x integer) (y integer)
-                              (width integer))
+(fn (cell-visible-p boolean)
+    ((clip box) (x integer) (y integer) (width integer))
   "Test whether a cell span is contained in the solved clip rectangle."
   (and (>= x (cell-edge (box-x clip)))
        (<= (+ x width) (cell-edge (+ (box-x clip) (box-width clip))))
        (>= y (cell-edge (box-y clip)))
        (<= (1+ y) (cell-edge (+ (box-y clip) (box-height clip))))))
 
-(fn (paint-character (or null integer)) ((cells array) style (row integer)
-                                         (column integer)
-                                         (left integer) (character character)
-                                         (width integer))
+(fn (paint-character (or null integer))
+    ((cells array) style (row integer) (column integer) (left integer)
+     (character character) (width integer))
   "Write a character and style into a visible terminal cell span."
   (when (or (plusp width) (> column left))
     (when (zerop width)
@@ -107,18 +104,16 @@
                       (invoke-restart 'uncursed:overwrite-char))))
       (uncursed:put character (1+ row) (1+ column) *rect* style cells))))
 
-(fn (paint-panel boolean) ((cells array) (borders array) style
-                           (node element) (widget widget))
+(fn (paint-panel boolean)
+    ((cells array) (borders array) style (node element) (widget widget))
   "Paint a terminal panel's background and toolkit border characters."
   (let* ((box (element-box node))
-         (left (cell-edge (box-x box)))
-         (top (cell-edge (box-y box)))
+         (left (cell-edge (box-x box))) (top (cell-edge (box-y box)))
          (right (1- (cell-edge (+ (box-x box) (box-width box)))))
          (bottom (1- (cell-edge (+ (box-y box) (box-height box)))))
          (border (or (widget-terminal-border widget)
                      (if (zerop (widget-radius widget)) "++++-|" "╭╮╰╯─│")))
-         (horizontal (char border 4))
-         (vertical (char border 5)))
+         (horizontal (char border 4)) (vertical (char border 5)))
     (flet ((put (x y character)
              (when (and (<= 0 x) (< x (array-dimension cells 1))
                         (<= 0 y) (< y (array-dimension cells 0))
@@ -138,15 +133,14 @@
         (put left bottom (char border 2))
         (put right bottom (char border 3))))))
 
-(fn (paint-canvas (values)) ((cells array) (borders array)
-                             (node element) (widget widget))
+(fn (paint-canvas (values))
+    ((cells array) (borders array) (node element) (widget widget))
   "Translate custom canvas commands into terminal cells within the node's clip."
   (let ((box (element-box node)) (clip (element-clip node)))
     (dolist (command (widget-value widget))
       (destructuring-bind (kind cx cy radius stroke fill) command
         (assert (eq kind :circle))
-        (let ((center-x (+ (box-x box) cx))
-              (center-y (+ (box-y box) cy))
+        (let ((center-x (+ (box-x box) cx)) (center-y (+ (box-y box) cy))
               (extent (+ radius (if stroke 0.6f0 0)))
               (outline-style (cell-style (or stroke (widget-foreground
                                                      widget))
@@ -173,14 +167,11 @@
                                                (expt (- (+ row 0.5f0)
                                                         center-y) 2))))
                                      (edge (and stroke
-                                                (<= (abs (- distance
-                                                            radius))
+                                                (<= (abs (- distance radius))
                                                     0.6f0))))
-                                (when (or edge
-                                          (and fill (< distance radius)))
+                                (when (or edge (and fill (< distance radius)))
                                   (setf (uncursed::cell-string
-                                         (aref cells
-                                               row column))
+                                         (aref cells row column))
                                         (if edge "o" ".")
                                         (uncursed::cell-style (aref cells row
                                                                     column))
@@ -188,9 +179,8 @@
                                             fill-style))))))))))
   (values))
 
-(fn (terminal-style uncursed:style) ((widget widget) (node element) (context
-                                                                     context)
-                                     &optional background)
+(fn (terminal-style uncursed:style)
+    ((widget widget) (node element) (context context) &optional background)
   "Resolve a widget's terminal colors and interaction emphasis."
   (let* ((enabled (and (element-interactive-p node)
                        (not (widget-disabled-p widget))))
@@ -250,10 +240,10 @@
                 (cell-style (widget-accent widget)
                             (widget-background widget) t)))))
     (make-terminal-paint-state
-     :widget widget :clip clip :rail-style rail-style
-     :style (terminal-style
-             widget node context (terminal-background-color cells widget
-                                                            clip))
+     :widget widget :clip clip :rail-style rail-style :style
+     (terminal-style
+      widget node context (terminal-background-color cells widget
+                                                     clip))
      :thumb (when (eq (widget-kind widget) :scrollbar) (scrollbar-thumb node))
      :x (cell-edge (+ (box-x box) padding))
      :y (cell-edge (+ (box-y box) padding))
@@ -407,20 +397,16 @@
                        (when (zerop delay) (return nil))
                        (sleep (min delay 0.02f0)))))))
 
-(fn (run-line-terminal context) ((draw function) &key title width height
-                                                   (interactive t))
+(fn (run-line-terminal context)
+    ((draw function) &key title width height (interactive t))
   "Plain snapshots and line-oriented input for redirected or limited terminals."
   (declare (ignore title))
-  (let ((context (make-terminal-context))
-        (*unit* 1)
-        (events nil)
+  (let ((context (make-terminal-context)) (*unit* 1) (events nil)
         (buffer (make-array 32 :element-type 'character
                             :adjustable t :fill-pointer 0))
-        (width (or width 80))
-        (height (or height 24)))
+        (width (or width 80)) (height (or height 24)))
     (loop
-     (with-frame (context width height :events events)
-       (funcall draw))
+     (with-frame (context width height :events events) (funcall draw))
      (when interactive (format t "~C[H~C[2J" #\Escape #\Escape))
      (write-string (render-terminal context))
      (finish-output)
@@ -459,8 +445,8 @@
   "Look up the focused element in CONTEXT's completed layout."
   (gethash (context-focus context) (lui.frame::context-ids context)))
 
-(fn (input-focus (values (or null element) boolean)) ((input input) (context
-                                                                     context))
+(fn (input-focus (values (or null element) boolean))
+    ((input input) (context context))
   "Resolve the input parser's focus override or the context's current focus."
   (focused-node (pending-input-context context (input-events input))))
 
@@ -496,8 +482,7 @@
       (when press (setf (event-id event) id))
       (when (and (widget-p widget) (eq (widget-kind widget) :slider)
                  (not (widget-disabled-p widget)))
-        (let* ((box (element-box target))
-               (padding (element-padding target))
+        (let* ((box (element-box target)) (padding (element-padding target))
                (left (cell-edge (+ (box-x box) padding)))
                (width (- (cell-edge (+ (box-x box) (box-width box)
                                        (- padding))) left)))
@@ -505,14 +490,19 @@
               (lui.terminal::slider-line widget width)
             (declare (ignore line))
             (push (make-event
-                   :kind :change :id id
-                   :value (+ (widget-minimum widget)
-                             (* (- (widget-maximum widget)
-                                   (widget-minimum widget))
-                                (min 1 (max 0
-                                            (/ (- (floor (event-x event))
-                                                  left offset)
-                                               (max 1 (1- length))))))))
+                   :kind :change :id id :value
+                   (+ (widget-minimum widget)
+                      (* (-
+                          (widget-maximum widget)
+                          (widget-minimum widget))
+                         (min 1
+                              (max 0
+                                   (/
+                                    (-
+                                     (floor
+                                      (event-x event))
+                                     left offset)
+                                    (max 1 (1- length))))))))
                   (input-events input)))))))
   (values))
 
@@ -554,25 +544,21 @@
           (input-events input)))
   (values))
 
-(fn (terminal-key-name (or null string))
-    (kind key)
+(fn (terminal-key-name (or null string)) (kind key)
   "Return the textual key name used by shared editor shortcut translation."
   (if (characterp kind) (string kind)
       (and key (symbol-name key))))
 
-(fn (terminal-tab-p boolean)
-    (kind control)
+(fn (terminal-tab-p boolean) (kind control)
   "Recognize a literal tab or the terminal Control-I equivalent."
   (or (and (eql kind #\i) control) (eql kind #\Tab)))
 
-(fn (terminal-quit-p boolean)
-    (kind control)
+(fn (terminal-quit-p boolean) (kind control)
   "Recognize Control-C and Control-Q as terminal session exit requests."
   (and control (characterp kind) (not (null
                                        (find kind "cq" :test #'char-equal)))))
 
-(fn (terminal-navigation-key symbol)
-    (kind)
+(fn (terminal-navigation-key symbol) (kind)
   "Map uncursed arrow names to shared keys and preserve other keyword events."
   (case kind (:left-arrow :left) (:right-arrow :right)
         (:up-arrow :up) (:down-arrow :down)
@@ -592,8 +578,7 @@
                                      :shift shift))))
     (cond
       ((uncursed:mouse-event-p event) (mouse-event input kind context))
-      ((terminal-quit-p kind control)
-       (setf (input-quit-p input) t))
+      ((terminal-quit-p kind control) (setf (input-quit-p input) t))
       ((terminal-tab-p kind control)
        (push (make-event :kind :tab :key (when shift :backward))
              (input-events input)))
@@ -683,13 +668,11 @@
   "Position the terminal cursor at the focused editor's visible caret."
   (let* ((node (focused-node context))
          (widget (and node (element-content node))))
-    (when (and (widget-p widget)
-               (not (eq (widget-kind widget) :splitter))
+    (when (and (widget-p widget) (not (eq (widget-kind widget) :splitter))
                (or (context-focus-visible-p context)
                    (eq (widget-kind widget) :text-field)))
       (let* ((box (element-box node))
-             (clip (element-clip node))
-             (padding (element-padding node))
+             (clip (element-clip node)) (padding (element-padding node))
              (origin (cell-edge (+ (box-x box) padding)))
              (x (max 0 origin (cell-edge (box-x clip))))
              (y (cell-edge (+ (box-y box) padding)))
@@ -708,11 +691,11 @@
                          0))
              (offset (max 0 (- cursor (max 1 (1- width)))))
              (text (if (eq (widget-kind widget) :slider)
-                       (lui.terminal::slider-line
-                        widget (max 0 (- (cell-edge
-                                          (+ (box-x box) (box-width box)
-                                             (- padding)))
-                                         origin)))
+                       (slider-line widget
+                                    (max 0 (- (cell-edge
+                                               (+ (box-x box) (box-width box)
+                                                  (- padding)))
+                                              origin)))
                        (widget-terminal-text widget))))
         (when (and (plusp width) (<= 0 y) (< y (context-height context))
                    (<= (cell-edge (box-y clip)) y)
@@ -777,8 +760,7 @@
 (fn (run-terminal context)
     ((draw function) &key title width height (interactive t))
   "Run an interactive uncursed session with terminal restoration on every exit."
-  (if (or (not interactive)
-          (not (interactive-stream-p *standard-input*))
+  (if (or (not interactive) (not (interactive-stream-p *standard-input*))
           (not (interactive-stream-p *standard-output*))
           #+unix (let ((term (uiop:getenv "TERM")))
                    (or (null term) (zerop (length term))

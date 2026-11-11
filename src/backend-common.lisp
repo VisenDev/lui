@@ -1,7 +1,6 @@
 (defpackage #:lui.font
   (:use #:cl #:lui.fn #:lui.layout)
-  (:import-from #:lui
-                #:font #:open-font #:close-font #:font-size #:text-width
+  (:import-from #:lui #:font #:open-font #:close-font #:font-size #:text-width
                 #:line-height
                 #:baseline #:wrap-text #:glyph-polygons #:*font-path*
                 #:*font-paths*
@@ -62,8 +61,7 @@
   (fn (font-css string) ((font font))
     "Return the CSS font shorthand used by measurement and drawing."
     (unless (eql (font-css-size font) (font-size font))
-      (setf (font-css-size font) (font-size font)
-            (font-css-value font)
+      (setf (font-css-size font) (font-size font) (font-css-value font)
             (format nil "~A ~Apx ~A"
                     (if (eq (font-weight font) :bold) "bold" "normal")
                     (jscl/ffi:clstring (#j:String (font-size font)))
@@ -73,8 +71,7 @@
 
   (fn (measure-text t) ((font font) (text string))
     (let ((css (font-css font))
-          (cache (font-metrics font))
-          (key (list (font-size font) text)))
+          (cache (font-metrics font)) (key (list (font-size font) text)))
       (or (gethash key cache)
           (let ((context (font-loader font)))
             (when (>= (hash-table-count cache) 2048) (clrhash cache))
@@ -96,16 +93,14 @@
     (let* ((metrics (measure-text font "Mg"))
            (ascent (jscl/ffi:oget metrics "fontBoundingBoxAscent"))
            (descent (jscl/ffi:oget metrics "fontBoundingBoxDescent")))
-      (if (and (numberp ascent) (numberp descent)
-               (plusp (+ ascent descent)))
+      (if (and (numberp ascent) (numberp descent) (plusp (+ ascent descent)))
           (max (* (font-size font) 1.2f0) (+ ascent descent))
           (* (font-size font) 1.2f0))))
 
   (fn (glyph-polygons nil) ((font font) (char character))
     (declare (ignore font char))
     (error 'lui.conditions:backend-error
-           :backend :web
-           :operation :glyph-polygons
+           :backend :web :operation :glyph-polygons
            :format-control "Browser text is drawn by the renderer text callback."))
 
   (fn (uncached-wrap-text (vector string)) ((font font) (text string) width)
@@ -116,15 +111,13 @@
 
 
   (fn (wrap-text (vector string))
-      ((font font) (text string) (width (or null
-                                            real)))
+      ((font font) (text string) (width (or null real)))
     (let ((cache (font-wrapped font))
           (key (list (font-size font) text width)))
       (cond ((gethash key cache))
-            (t
-             (when (>= (hash-table-count cache) 512) (clrhash cache))
-             (setf (gethash key cache)
-                   (uncached-wrap-text font text width)))))))
+            (t (when (>= (hash-table-count cache) 512) (clrhash cache))
+               (setf (gethash key cache)
+                     (uncached-wrap-text font text width)))))))
 
 ;;; Native fonts measure and outline text through zpb-ttf.
 #-(or jscl lui-ecl-web)
@@ -177,8 +170,7 @@
                                :thereis (probe-file
                                          (merge-pathnames name dir))))
           (error 'lui.conditions:font-error
-                 :backend :native :request key
-                 :operation :resolve-face
+                 :backend :native :request key :operation :resolve-face
                  :format-control "No TrueType font for ~S. Set LUI.FONT:*FONT-PATHS*."
                  :format-arguments (list key)))))
 
@@ -231,8 +223,7 @@
 
   (fn (text-width real) ((font font) (text string))
     "Measure a string using glyph advances and pair kerning at the current size."
-    (let ((previous nil)
-          (width 0))
+    (let ((previous nil) (width 0))
       (loop :for char :across text
             :do (incf width
                       (+ (zpb-ttf:advance-width
@@ -263,30 +254,34 @@
                                                      (loop :for i :from 1 :to
                                                            12
                                                            :for u :=
-                                                           (/ i
-                                                              12.0f0)
+                                                           (/ i 12.0f0)
                                                            :for v := (- 1 u)
                                                            :do
                                                            (push
                                                             (cons
                                                              (+
                                                               (* v v
-                                                                (zpb-ttf:x p0))
+                                                                 (zpb-ttf:x
+                                                                  p0))
                                                               (* 2 u v
-                                                                (zpb-ttf:x p1))
+                                                                 (zpb-ttf:x
+                                                                  p1))
                                                               (* u u
-                                                                (zpb-ttf:x p2)))
+                                                                 (zpb-ttf:x
+                                                                  p2)))
                                                              (+
                                                               (* v v
-                                                                (zpb-ttf:y p0))
+                                                                 (zpb-ttf:y
+                                                                  p0))
                                                               (* 2 u v
-                                                                (zpb-ttf:y p1))
+                                                                 (zpb-ttf:y
+                                                                  p1))
                                                               (* u u
-                                                                (zpb-ttf:y p2))))
+                                                                 (zpb-ttf:y
+                                                                  p2))))
                                                             points))
                                                      (push
-                                                      (cons (zpb-ttf:x
-                                                             p2)
+                                                      (cons (zpb-ttf:x p2)
                                                             (zpb-ttf:y p2))
                                                       points)))
                     (when points (push (coerce (nreverse points) 'contour)
@@ -305,8 +300,7 @@
                 #:geometry-text-p #:geometry-value-p #:widget-geometry
                 #:text-box
                 #:rounded-polygon #:color-components #:paint-text #:shape
-                #:outline
-                #:inset-box #:focused-p #:widget-font)
+                #:outline #:inset-box #:focused-p #:widget-font)
   (:export #:renderer #:make-renderer #:renderer-font #:renderer-polygons
            #:renderer-clip #:renderer-glass #:renderer-text
            #:renderer-surface #:renderer-stipple
@@ -350,8 +344,7 @@
   (patterns (make-hash-table :test 'equal) :type hash-table))
 
 (fn (color-components (vector single-float 4))
-    ((color string) &optional
-                      ((alpha real) 1))
+    ((color string) &optional ((alpha real) 1))
   "Return normalized red, green, blue, and alpha in a four-float vector."
   (assert (and (= (length color) 7) (char= (char color 0) #\#)))
   (let ((rgba (make-array 4 :element-type 'single-float)))
@@ -364,11 +357,8 @@
 
 (fn (rounded-polygon contour) ((box box) (radius real))
   "Return contour points for BOX with corners rounded by RADIUS."
-  (let* ((x (box-x box))
-         (y (box-y box))
-         (w (box-width box))
-         (h (box-height box))
-         (r (max 0 (min radius (/ w 2) (/ h 2)))))
+  (let* ((x (box-x box)) (y (box-y box)) (w (box-width box))
+         (h (box-height box)) (r (max 0 (min radius (/ w 2) (/ h 2)))))
     (when (zerop r)
       (return-from rounded-polygon
         (typed-vector point (cons (+ x w) y) (cons (+ x w) (+ y h))
@@ -392,8 +382,7 @@
 
 (fn (trapezoids (values)) ((contours contours) (emit function))
   "Convert contours into nonzero-winding trapezoids for native triangle APIs."
-  (let ((edges nil)
-        (ys nil))
+  (let ((edges nil) (ys nil))
     (loop :for points :across contours :do
           (loop :for i :below (length points)
                 :for a := (aref points i)
@@ -415,12 +404,10 @@
                         ;; Each slab must retain the full original EDGES list.
                         (loop :for edge :in edges
                               :when (< (min (cdar edge) (cddr edge))
-                                       middle
-                                       (max (cdar edge) (cddr edge)))
+                                       middle (max (cdar edge) (cddr edge)))
                               :collect edge)
                         #'< :key (lambda (edge) (at-y edge middle))))
-                      (winding 0)
-                      (left nil))
+                      (winding 0) (left nil))
                   (dolist (edge active)
                     (when (zerop winding) (setf left edge))
                     (incf winding (if (< (cdar edge) (cddr edge)) 1 -1))
@@ -435,8 +422,7 @@
 
 (fn (widget-font font) ((renderer renderer) (widget widget))
   "Select the widget’s font face and size for this renderer."
-  (let ((font (font-face (renderer-font renderer)
-                         (widget-font-family widget)
+  (let ((font (font-face (renderer-font renderer) (widget-font-family widget)
                          (widget-font-weight widget))))
     (setf (font-size font) (widget-font-size widget))
     font))
@@ -457,8 +443,7 @@
            widget))
 
 (fn (measure-widget (values number number))
-    ((renderer renderer) (widget
-                          widget) width)
+    ((renderer renderer) (widget widget) width)
   "Measure current geometry, reusing matching prior-frame text measurements."
   (let* ((g (widget-geometry widget)) (font (widget-font renderer widget))
          (horizontal (+ (geometry-left g) (geometry-right g)))
@@ -475,9 +460,7 @@
                   (let ((lines (if text
                                    (wrap-text font text
                                               (when width
-                                                (max 0
-                                                     (-
-                                                      width horizontal))))
+                                                (max 0 (- width horizontal))))
                                    #())) (widest 0))
                     (dotimes (i (length lines))
                       (setf widest (max widest (text-width font (aref lines
@@ -492,8 +475,8 @@
   "Return the toolkit's text area, including pressed displacement."
   (let ((g (widget-geometry widget)))
     (make-box :x (+ (box-x box) (geometry-left g)
-                   (if pressed
-                     (geometry-offset-x g) 0))
+                    (if pressed
+                        (geometry-offset-x g) 0))
               :y (+ (box-y box) (geometry-top g) (if pressed
                                                      (geometry-offset-y g) 0))
               :width (max 0 (- (box-width box) (geometry-left g)
@@ -501,8 +484,8 @@
               :height (max 0 (- (box-height box) (geometry-top g)
                                 (geometry-bottom g))))))
 
-(fn (paint-text t) ((renderer renderer) (text string) (x real) (y real)
-                    (color string))
+(fn (paint-text t)
+    ((renderer renderer) (text string) (x real) (y real) (color string))
   "Draw TEXT at horizontal position X and baseline Y in COLOR."
   (unless (zerop (length text))
     (if (renderer-text renderer)
@@ -510,30 +493,30 @@
                  text x y color)
         #+(or jscl lui-ecl-web)
         (error 'lui.conditions:configuration-error
-               :setting :text-renderer :value nil
-               :operation :paint-text
+               :setting :text-renderer :value nil :operation :paint-text
                :format-control "The browser renderer requires a text drawing callback.")
         #-(or jscl lui-ecl-web)
         (let* ((font (renderer-font renderer))
                (scale (/ (font-size font) (zpb-ttf:units/em (font-loader
                                                              font))))
-               (cursor x)
-               (previous nil))
+               (cursor x) (previous nil))
           (loop :for char :across text
                 :do (when previous
                       (incf cursor
                             (* scale (zpb-ttf:kerning-offset
                                       previous char (font-loader font)))))
-                (funcall
-                 (renderer-polygons renderer)
-                 (map 'contours
-                      (lambda (points)
-                        (map 'contour (lambda (point)
-                                        (cons (+ cursor (* scale (car point)))
-                                              (- y (* scale (cdr point)))))
-                             points))
-                      (glyph-polygons font char))
-                 color 1)
+                (funcall (renderer-polygons renderer)
+                         (map 'contours
+                              (lambda (points)
+                                (map 'contour (lambda (point)
+                                                (cons (+ cursor
+                                                         (* scale
+                                                            (car point)))
+                                                      (- y (* scale
+                                                              (cdr point)))))
+                                     points))
+                              (glyph-polygons font char))
+                         color 1)
                 (incf cursor
                       (* scale (zpb-ttf:advance-width
                                 (zpb-ttf:find-glyph char
@@ -546,8 +529,8 @@
             :width (max 0 (- (box-width box) (* 2 inset)))
             :height (max 0 (- (box-height box) (* 2 inset)))))
 
-(fn (shape t) ((renderer renderer) (box box) (radius real) (color string)
-               (alpha real))
+(fn (shape t)
+    ((renderer renderer) (box box) (radius real) (color string) (alpha real))
   "Fill BOX with COLOR at ALPHA opacity using rounded corners of RADIUS."
   (if (renderer-surface renderer)
       (funcall (renderer-surface renderer) box radius color alpha)
@@ -555,27 +538,25 @@
                (make-array 1 :element-type 'contour :initial-element
                            (rounded-polygon box radius)) color alpha)))
 
-(fn (outline t) ((renderer renderer) (box box) (radius real) (color string)
-                 (alpha real) (thickness real))
+(fn (outline t)
+    ((renderer renderer) (box box) (radius real) (color string) (alpha real)
+     (thickness real))
   "Stroke the inside edge of BOX with the given THICKNESS and corner RADIUS."
   (if (renderer-surface renderer)
-      (funcall (renderer-surface renderer)
-               box radius color alpha thickness)
+      (funcall (renderer-surface renderer) box radius color alpha thickness)
       (funcall (renderer-polygons renderer)
                (typed-vector contour (rounded-polygon box radius)
                              (reverse
-                               (rounded-polygon (inset-box box
-                                                                  thickness)
-                                                       (max 0
-                                                         (- radius
-                                                           thickness)))))
+                              (rounded-polygon (inset-box box thickness)
+                                               (max 0
+                                                    (- radius
+                                                       thickness)))))
                color alpha)))
 
 (fn (focused-p boolean) ((node element))
   "Return true when NODE has input focus in the current frame."
   (and (element-interactive-p node)
-       (boundp '*context*)
-       (equal (element-id node) (context-focus *context*))
+       (boundp '*context*) (equal (element-id node) (context-focus *context*))
        (not (widget-disabled-p (element-content node)))))
 
 (fn (paint-widget t) ((renderer renderer) (node element))
@@ -595,26 +576,30 @@
                 (funcall paint renderer node))
       (setf (renderer-font renderer) font))))
 
-(fn (paint-frame t) ((renderer renderer) (context context) &optional
-                      external-labels viewport)
+(fn (paint-frame t)
+    ((renderer renderer) (context context) &optional external-labels viewport)
   "Paint the visible elements of a solved frame and its text selection."
   (unless (context-input-handler context)
     (setf (context-input-handler context)
           (lambda (context events)
             (selection-input renderer context events))))
   (let ((*context* context))
-    (visible-elements
-     (context-root context)
-     (lambda (node)
-       (when (and (widget-p (element-content node))
-                  (or (null viewport)
-                      (let ((clip (element-clip node)))
-                        (and (< (box-y clip) (+ (box-y viewport) (box-height
-                                                                  viewport)))
-                             (< (box-y viewport) (+ (box-y clip) (box-height
-                                                                  clip))))))
-                  (not (and external-labels (gethash node external-labels))))
-         (paint-widget renderer node))))
+    (visible-elements (context-root context)
+                      (lambda (node)
+                        (when (and (widget-p (element-content node))
+                                   (or (null viewport)
+                                       (let ((clip (element-clip node)))
+                                         (and
+                                          (< (box-y clip)
+                                             (+
+                                              (box-y viewport) (box-height
+                                                                viewport)))
+                                          (< (box-y viewport)
+                                             (+ (box-y clip) (box-height
+                                                              clip))))))
+                                   (not (and external-labels
+                                             (gethash node external-labels))))
+                          (paint-widget renderer node))))
     (finish-selection renderer context)))
 
 
@@ -653,12 +638,12 @@
 (fn (selection-target (or null element)) ((context context) (x real) (y real))
   "Find the selectable text node under a pointer position."
   (let ((target nil))
-    (walk-elements
-     (context-root context)
-     (lambda (node)
-       (when (and (widget-p (element-content node))
-                  (lui.frame::contains-p (element-clip node) x y))
-         (setf target node))))
+    (walk-elements (context-root context)
+                   (lambda (node)
+                     (when (and (widget-p (element-content node))
+                                (lui.frame::contains-p (element-clip node) x
+                                                       y))
+                       (setf target node))))
     target))
 
 (fn (selection-text string) ((node element))
@@ -681,24 +666,21 @@
                                          (line-height font))) 2))))
     area))
 
-(fn (selection-left real) ((font font) (node element) (area box) (line
-                                                                  string))
+(fn (selection-left real)
+    ((font font) (node element) (area box) (line string))
   "Compute a line's left edge, accounting for centered text."
   (+ (box-x area) (if (geometry-center-x (widget-geometry (element-content
                                                            node)))
                       (max 0 (/ (- (box-width area) (text-width font line))
                                 2)) 0)))
 
-(fn (selection-index integer) ((renderer renderer) (node element) (x real)
-                               (y
-                                real))
+(fn (selection-index integer)
+    ((renderer renderer) (node element) (x real) (y real))
   "Map a pointer position to a character index using rendered glyph widths."
   (let ((area (selection-area renderer node)))
     (let* ((font (widget-font renderer (element-content node)))
            (text (selection-text node)) (start 0)
-           (top (box-y area))
-           (lines (wrap-text font text
-                             (box-width area))))
+           (top (box-y area)) (lines (wrap-text font text (box-width area))))
       (loop :for line :across lines :do
             (when (< y (+ top (line-height font)))
               (let ((at (- x (selection-left font node area line))) (left 0)
@@ -731,8 +713,7 @@
             :finally (return (length text))))))
 
 (fn (selection-range (values (or null integer) &optional (or null integer)))
-    ((selection text-selection) (index integer)
-     (length integer))
+    ((selection text-selection) (index integer) (length integer))
   "Return ordered selection endpoints for a node in the selection sequence."
   (let ((a (text-selection-anchor selection))
         (b (text-selection-focus selection)))
@@ -744,8 +725,8 @@
         (values (min length (if (= index (car a)) (cdr a) 0))
                 (min length (if (= index (car b)) (cdr b) length)))))))
 
-(fn (copy-selection t) ((context context) (nodes (vector element))
-                        (selection text-selection))
+(fn (copy-selection t)
+    ((context context) (nodes (vector element)) (selection text-selection))
   "Copy selected text to the registered clipboard callback."
   (let ((text
          (if (text-selection-anchor selection)
@@ -784,17 +765,15 @@
                  (dy (max 0 (- (box-y box) y)
                           (- y (+ (box-y box) (box-height box)))))
                  (d dy))
-            (when (and (plusp (box-width box))
-                       (plusp (box-height box))
+            (when (and (plusp (box-width box)) (plusp (box-height box))
                        (or (null distance) (< d distance)
-                           (and (= d distance) (< dx
-                                                  horizontal))))
+                           (and (= d distance) (< dx horizontal))))
               (setf target node distance d horizontal dx)))))
   target)
 
 (fn (start-text-selection text-selection)
-    ((renderer renderer) (context context) (nodes (vector element))
-     (x real) (y real))
+    ((renderer renderer) (context context) (nodes (vector element)) (x real)
+     (y real))
   "Begin a pointer selection in an editor or across selectable text nodes."
   (let ((selection (make-text-selection))
         (target (selection-target context x y)))
@@ -806,9 +785,7 @@
         (if (eq (widget-kind (element-content target)) :text-field)
             (let* ((id (element-id target))
                    (state (or (gethash id (context-state context))
-                              (setf (gethash id
-                                             (context-state
-                                              context))
+                              (setf (gethash id (context-state context))
                                     (make-edit-state)))))
               (setf (text-selection-field selection) id
                     (edit-state-anchor state) at
@@ -816,12 +793,9 @@
             (multiple-value-bind (snapshot keys)
                 (selectable-nodes context t)
               (setf (text-selection-node-count selection)
-                    (length snapshot)
-                    (text-selection-anchor-key selection)
-                    (gethash target keys)
-                    (text-selection-focus-key selection)
-                    (gethash target keys)
-                    (text-selection-anchor selection)
+                    (length snapshot) (text-selection-anchor-key selection)
+                    (gethash target keys) (text-selection-focus-key selection)
+                    (gethash target keys) (text-selection-anchor selection)
                     (cons (position target nodes) at)
                     (text-selection-focus selection)
                     (cons (position target nodes) at)
@@ -837,8 +811,7 @@
   "Extend an editor caret or a multi-node text selection to the pointer position."
   (if (text-selection-field selection)
       (let* ((id (text-selection-field selection))
-             (node (find id nodes :key #'element-id :test
-                         #'equal))
+             (node (find id nodes :key #'element-id :test #'equal))
              (state (gethash id (context-state context))))
         (when (and node state)
           (setf (edit-state-cursor state)
@@ -847,8 +820,7 @@
         (multiple-value-bind (snapshot keys)
             (selectable-nodes context t)
           (declare (ignore snapshot))
-          (setf (text-selection-focus-key selection)
-                (gethash target keys)))
+          (setf (text-selection-focus-key selection) (gethash target keys)))
         (setf (text-selection-focus selection)
               (cons (position target nodes)
                     (selection-index renderer target x y))
@@ -856,12 +828,10 @@
               (copy-seq (selection-text target)))))
   (values))
 
-(fn (selection-input-needed-p boolean)
-    ((context context) (events sequence))
+(fn (selection-input-needed-p boolean) ((context context) (events sequence))
   "Test whether input can start, extend, or copy a native text selection."
   (or (and (context-selection context)
-           (text-selection-dragging-p
-            (context-selection context)))
+           (text-selection-dragging-p (context-selection context)))
       (some (lambda (event)
               (or (and (eq (event-kind event) :press)
                        (eq (event-button event) :primary))
@@ -911,32 +881,24 @@
      (end integer))
   "Paint the selected character range across the node's wrapped text lines."
   (let ((area (selection-area renderer node)))
-    (let ((font (widget-font renderer
-                             (element-content node)))
-          (offset 0))
+    (let ((font (widget-font renderer (element-content node))) (offset 0))
       (funcall (renderer-clip renderer) (element-clip node))
       (loop :for line :across
-            (wrap-text font text
-                       (box-width area))
+            (wrap-text font text (box-width area))
             :for y :from (box-y area)
             :by (line-height font)
             :for left := (max start offset)
             :for right := (min end (+ offset (length line)))
             :do
             (when (< left right)
-              (let ((x (text-width
-                        font (subseq text offset left))))
+              (let ((x (text-width font (subseq text offset left))))
                 (shape renderer
                        (make-box
                         :x (+ (selection-left font node area line) x) :y y
-                        :width (- (text-width
-                                   font
-                                   (subseq text offset
-                                           right))
+                        :width (- (text-width font (subseq text offset right))
                                   x)
                         :height (line-height font))
-                       0 (widget-color (element-content
-                                        node) :accent)
+                       0 (widget-color (element-content node) :accent)
                        0.4f0)))
             (incf offset (1+ (length line))))))
   (values))
@@ -1031,13 +993,11 @@
                      (when (geometry-center-y g) (box-height area)))))
 
 (fn (paint-paragraph (values))
-    ((renderer renderer) (text string) (x real) (y real)
-     (wrap-width real) (color string)
-     &optional ((center-width (or null real)) nil)
-       ((center-height (or null real)) nil))
+    ((renderer renderer) (text string) (x real) (y real) (wrap-width real)
+     (color string) &optional ((center-width (or null real)) nil)
+     ((center-height (or null real)) nil))
   "Paint wrapped text, optionally centered within the supplied dimensions."
-  (let* ((font (renderer-font renderer))
-         (line-height (line-height font))
+  (let* ((font (renderer-font renderer)) (line-height (line-height font))
          (lines (wrap-text font text wrap-width))
          (top (+ y (if center-height
                        (max 0 (/ (- center-height (* (length lines)
@@ -1068,10 +1028,9 @@
                color 1 1.5f0)
       (bar 1 5 12 1.5f0) (bar 3 0 2 4) (bar 9 0 2 4))))
 
-(fn (paint-text-field (values))     ((renderer renderer) (node element))
+(fn (paint-text-field (values)) ((renderer renderer) (node element))
   "Paint editor contents, selection, and caret within the text field's inner clip."
-  (let* ((widget (element-content node))
-         (font (renderer-font renderer))
+  (let* ((widget (element-content node)) (font (renderer-font renderer))
          (area (text-box widget (element-box node)))
          (x (box-x area)) (y (box-y area)) (width (box-width area))
          (text (widget-display-value widget))
@@ -1094,15 +1053,16 @@
                       (right (min end (max cursor anchor))))
                   (when (< left right)
                     (shape renderer
-                           (make-box
-                            :x (+ x (text-width
-                                     font (subseq text start left)))
-                            :y top
-                            :width (- (text-width
-                                       font (subseq text start right))
+                           (make-box :x (+ x (text-width
+                                              font (subseq text start left)))
+                                     :y top :width
+                                     (-
+                                      (text-width
+                                       font
+                                       (subseq text start right))
                                       (text-width
                                        font (subseq text start left)))
-                            :height (line-height font))
+                                     :height (line-height font))
                            0 (widget-accent widget) 0.35f0))))
           (paint-text renderer line x (+ top (baseline font))
                       (if (widget-disabled-p widget) (widget-color widget
@@ -1134,15 +1094,12 @@
 
 (fn (paint-cell t) ((renderer renderer) (node element))
   "Paint a spreadsheet cell with the renderer’s selected widget font."
-  (let* ((widget (element-content node))
-         (box (element-box node))
-         (selected (widget-value widget))
-         (text (widget-text widget)))
+  (let* ((widget (element-content node)) (box (element-box node))
+         (selected (widget-value widget)) (text (widget-text widget)))
     (shape renderer box 0 (if selected (widget-color widget :selection)
                               (widget-background widget)) 1)
     (outline renderer box 0 (if selected (widget-accent widget)
-                                (widget-color
-                                 widget :border))
+                                (widget-color widget :border))
              1 (if selected 2 1))
     (when (plusp (length text))
       (paint-widget-text renderer node (widget-foreground widget)))))
@@ -1150,8 +1107,7 @@
 (fn (paint-focus-ring t) ((renderer renderer) (node element) (radius real))
   "Paint a keyboard-focus outline inside the widget bounds."
   (when (and (focused-p node) (context-focus-visible-p *context*))
-    (let ((widget (element-content node))
-          (box (element-box node)))
+    (let ((widget (element-content node)) (box (element-box node)))
       (outline renderer (inset-box box 2) (max 0 (- radius 2))
                (widget-accent widget) 1 2))))
 
@@ -1179,8 +1135,7 @@
   (shape renderer box 0
          (if (widget-value widget) (widget-accent widget)
              (widget-background widget)) 1)
-  (when (and (not (widget-value widget))
-             (hovered-p (element-id node)))
+  (when (and (not (widget-value widget)) (hovered-p (element-id node)))
     (shape renderer box 0 foreground 0.12f0))
   (when (and (lui.widgets::widget-center-text-p widget) (focused-p node)
              (context-focus-visible-p *context*))
@@ -1192,17 +1147,14 @@
                                         widget :on-accent) foreground))
   (values))
 
-(fn (paint-shared-widget t) ((renderer renderer) (node element) (radius real)
-                             (shadow real)
-                             (scrollbar function) (body function))
+(fn (paint-shared-widget t)
+    ((renderer renderer) (node element) (radius real) (shadow real)
+     (scrollbar function) (body function))
   "Paint shared controls, delegate toolkit bodies, and finish keyboard-focus feedback."
-  (let* ((widget (element-content node))
-         (box (element-box node))
-         (kind (widget-kind widget))
-         (disabled (widget-disabled-p widget))
+  (let* ((widget (element-content node)) (box (element-box node))
+         (kind (widget-kind widget)) (disabled (widget-disabled-p widget))
          (pressed (and (not disabled) (hovered-p (element-id node))
-                       (equal (element-id node)
-                              (context-active *context*))))
+                       (equal (element-id node) (context-active *context*))))
          (foreground (if disabled (widget-color widget :disabled)
                          (widget-foreground widget))))
     (cond
@@ -1219,8 +1171,7 @@
               0 (widget-accent widget)
               (if (or pressed (hovered-p (element-id node))) 1 0.5f0)))
       ((eq kind :highlight)
-       (shape renderer box 0 (widget-accent widget)
-              (widget-opacity widget))
+       (shape renderer box 0 (widget-accent widget) (widget-opacity widget))
        (outline renderer box 0 (widget-accent widget) 1 1))
       ((eq (lui.widgets::widget-icon widget) :calendar)
        ;; The field owns the surface and its rounded border.
@@ -1241,14 +1192,11 @@
 (fn (paint-standard-slider (values))
     ((renderer renderer) (widget widget) (box box) disabled translucent flat)
   "Paint the standard slider indicator using the toolkit surface policy."
-  (let ((fraction (/ (- (widget-value widget)
-                        (widget-minimum widget))
-                     (- (widget-maximum widget)
-                        (widget-minimum widget))))
-        (track (make-box
-                :x (+ (box-x box) 8)
-                :y (+ (box-y box) (/ (box-height box) 2) -2)
-                :width (max 0 (- (box-width box) 16)) :height 4)))
+  (let ((fraction (/ (- (widget-value widget) (widget-minimum widget))
+                     (- (widget-maximum widget) (widget-minimum widget))))
+        (track (make-box :x (+ (box-x box) 8)
+                         :y (+ (box-y box) (/ (box-height box) 2) -2)
+                         :width (max 0 (- (box-width box) 16)) :height 4)))
     (shape renderer track 2 (widget-color widget :track) 1)
     (setf (box-width track) (* fraction (box-width track)))
     (shape renderer track 2
@@ -1264,8 +1212,7 @@
                           0.6f0 1))))
   (values))
 
-(fn (checkbox-fill-color string)
-    ((widget widget) translucent flat disabled)
+(fn (checkbox-fill-color string) ((widget widget) translucent flat disabled)
   "Resolve the checkbox indicator fill for toolkit style, selection, and disabled state."
   (if (or translucent flat)
       (if (widget-value widget)
@@ -1280,24 +1227,25 @@
   "Paint the standard checkbox indicator using the toolkit surface policy."
   (let ((indicator (make-box :x x :y y :width 16 :height 16)))
     (shape renderer indicator (if (or translucent flat) 4 0)
-           (checkbox-fill-color widget translucent flat disabled)
-           1)
+           (checkbox-fill-color widget translucent flat disabled) 1)
     (unless (or translucent (and flat (widget-value widget)))
       (funcall bevel renderer widget indicator
                (or pressed (widget-value widget)) disabled))
     (when (widget-value widget)
-      (funcall
-       (renderer-polygons renderer)
-       (make-array 1 :element-type 'contour :initial-element
-                   (make-array 6 :element-type 'point :initial-contents
-                               (mapcar
-                                (lambda (point)
-                                  (cons (+ x (car point)) (+ y (cdr
-                                                                point))))
-                                '((3 . 7) (6 . 10) (12 . 3) (14 . 5)
-                                  (6 . 13) (2 . 9)))))
-       (if (or translucent flat) (widget-color widget :on-accent) foreground)
-       1)))
+      (funcall (renderer-polygons renderer)
+               (make-array 1 :element-type 'contour :initial-element
+                           (make-array 6 :element-type 'point
+                                       :initial-contents
+                                       (mapcar
+                                        (lambda (point)
+                                          (cons (+ x (car point))
+                                                (+ y
+                                                   (cdr point))))
+                                        '((3 . 7) (6 . 10) (12 . 3) (14 . 5)
+                                          (6 . 13) (2 . 9)))))
+               (if (or translucent flat) (widget-color widget :on-accent)
+                   foreground)
+               1)))
   (paint-widget-text renderer node foreground)
   (values))
 
@@ -1305,8 +1253,7 @@
     ((renderer renderer) (node element) (widget widget) (x real) (y real)
      disabled translucent flat (foreground string))
   "Paint the standard radio indicator using the toolkit surface policy."
-  (let ((indicator (make-box :x x :y (+ y 1)
-                             :width 16 :height 16)))
+  (let ((indicator (make-box :x x :y (+ y 1) :width 16 :height 16)))
     (shape renderer indicator 8
            (if (or translucent flat) (widget-color widget :light)
                (widget-background widget)) 1)
@@ -1329,8 +1276,7 @@
                                                         :slider))))
     (when (and translucent (< (widget-opacity widget) 1)
                (renderer-glass renderer))
-      (funcall (renderer-glass renderer)
-               box radius (widget-frost widget)))
+      (funcall (renderer-glass renderer) box radius (widget-frost widget)))
     (shape renderer box radius (widget-background widget)
            (if translucent (widget-opacity widget) 1))
     (if translucent
@@ -1343,22 +1289,17 @@
                    disabled))))
   (values))
 
-(fn (paint-standard-body t) ((renderer renderer) (node element) translucent
-                             bevel
-                             &optional flat)
+(fn (paint-standard-body t)
+    ((renderer renderer) (node element) translucent bevel &optional flat)
   "Paint standard control bodies with the selected toolkit's surface treatment."
-  (let* ((widget (element-content node))
-         (box (element-box node))
-         (kind (widget-kind widget))
-         (disabled (widget-disabled-p widget))
+  (let* ((widget (element-content node)) (box (element-box node))
+         (kind (widget-kind widget)) (disabled (widget-disabled-p widget))
          (pressed (and (not disabled) (hovered-p (element-id node))
-                       (equal (element-id node)
-                              (context-active *context*))))
+                       (equal (element-id node) (context-active *context*))))
          (foreground (if disabled (widget-color widget :disabled)
                          (widget-foreground widget)))
          (radius (widget-radius widget))
-         (inset (if (eq kind :label) 0 12))
-         (x (+ (box-x box) inset))
+         (inset (if (eq kind :label) 0 12)) (x (+ (box-x box) inset))
          (y (+ (box-y box) (if (eq kind :label) 0 6))))
     (paint-standard-surface renderer widget box kind radius disabled pressed
                             translucent flat bevel)
@@ -1372,8 +1313,7 @@
          (shape renderer box radius (widget-color widget :light) 0.14f0)))
       (when (and (eq kind :tab) (widget-value widget))
         (if flat (shape renderer (inset-box box 1) radius
-                   (widget-color
-                     widget :selection) 1)
+                        (widget-color widget :selection) 1)
             (shape renderer
                    (make-box :x (+ (box-x box) 3)
                              :y (+ (box-y box) (box-height box) -3)
@@ -1423,17 +1363,16 @@
                                 t)
 
 
-(fn (motif-bevel t) ((renderer renderer) (widget widget) (box box)
-                     &optional recessed disabled)
+(fn (motif-bevel t)
+    ((renderer renderer) (widget widget) (box box) &optional recessed
+     disabled)
   "Paint a raised or recessed Motif bevel around a surface."
   (let* ((light (if disabled (widget-color widget :disabled-bevel-light)
                     (widget-color widget :bevel-light)))
          (dark (if disabled (widget-color widget :disabled-bevel-dark)
                    (widget-color widget :bevel-dark)))
-         (x (box-x box))
-         (y (box-y box))
-         (right (+ x (box-width box)))
-         (bottom (+ y (box-height box)))
+         (x (box-x box)) (y (box-y box))
+         (right (+ x (box-width box))) (bottom (+ y (box-height box)))
          (edge (min 2 (/ (box-width box) 2) (/ (box-height box) 2))))
     (funcall (renderer-polygons renderer)
              (make-array 1 :element-type 'contour :initial-element
@@ -1448,8 +1387,7 @@
                          (typed-vector point (cons x bottom) (cons right
                                                                    bottom)
                                        (cons right y) (cons (- right edge)
-                                                            (+
-                                                             y edge))
+                                                            (+ y edge))
                                        (cons (- right edge) (- bottom edge))
                                        (cons (+ x edge) (- bottom edge))))
              (if recessed light dark) 1)))
@@ -1477,16 +1415,18 @@
                                 t)
 
 
-(fn (macos-bevel t) ((renderer renderer) (widget widget) (box box)
-                     &optional recessed disabled)
+(fn (macos-bevel t)
+    ((renderer renderer) (widget widget) (box box) &optional recessed
+     disabled)
   "Paint the macOS surface treatment with rounded fill and edge accents."
   (declare (ignore recessed))
   (outline renderer box (min 6 (widget-radius widget))
            (widget-color widget (if disabled :disabled-surface :border))
            0.65f0 1))
 
-(fn (qt-bevel t) ((renderer renderer) (widget widget) (box box)
-                  &optional recessed disabled)
+(fn (qt-bevel t)
+    ((renderer renderer) (widget widget) (box box) &optional recessed
+     disabled)
   "Paint a Qt-style raised or recessed surface."
   (let ((light (widget-color widget (if disabled :disabled-bevel-light
                                         :bevel-light)))
@@ -1500,8 +1440,7 @@
                                 :height 1)
              0 (if recessed dark light) 1)
       (shape renderer (make-box :x (+ x 2) :y (+ y height -2) :width
-                        (- width
-                          4) :height 1)
+                                (- width 4) :height 1)
              0 (if recessed light dark) 1))))
 
 (fn (paint-macos-body t) ((renderer renderer) (node element))
@@ -1513,8 +1452,7 @@
   (paint-standard-body renderer node nil #'qt-bevel))
 
 (fn (paint-desktop-scrollbar t)
-    ((renderer renderer) (node element) (bevel
-                                         function))
+    ((renderer renderer) (node element) (bevel function))
   "Paint a desktop scrollbar using the supplied track and thumb colors."
   (let ((widget (element-content node)) (thumb (scrollbar-thumb node)))
     (shape renderer (element-box node) 0 (widget-color widget :track) 1)
@@ -1554,8 +1492,7 @@
         (right (+ (box-x box) (box-width box)))
         (bottom (+ (box-y box) (box-height box))))
     (typed-vector point (cons x y) (cons right y) (cons right bottom)
-                  (cons x
-                        bottom))))
+                  (cons x bottom))))
 
 (fn (garnet-fill t) ((renderer renderer) (box box) (color string))
   "Fill a Garnet widget rectangle through the renderer's polygon callback."
@@ -1564,33 +1501,31 @@
              (make-array 1 :element-type 'contour :initial-element
                          (rectangle-path box)) color 1)))
 
-(fn (garnet-outline t) ((renderer renderer) (widget widget) (box box)
-                        &optional ((thickness real) 1))
+(fn (garnet-outline t)
+    ((renderer renderer) (widget widget) (box box) &optional
+     ((thickness real) 1))
   "Paint a rectangular Garnet outline at the requested thickness."
   (when (and (plusp (box-width box)) (plusp (box-height box)))
     (let ((inner (inset-box box thickness)))
       (funcall (renderer-polygons renderer)
                (if (and (plusp (box-width inner)) (plusp (box-height inner)))
                    (typed-vector contour (rectangle-path box)
-                                 (reverse
-                                  (rectangle-path inner)))
+                                 (reverse (rectangle-path inner)))
                    (make-array 1 :element-type 'contour :initial-element
                                (rectangle-path box)))
                (widget-color widget :outline) 1))))
 
-(fn (garnet-stipple t) ((renderer renderer) (widget widget) (box box)
-                        &optional border)
+(fn (garnet-stipple t)
+    ((renderer renderer) (widget widget) (box box) &optional border)
   "Paint a checkerboard fill or border for Garnet emphasis."
   (when (renderer-stipple renderer)
     (return-from garnet-stipple
       (funcall (renderer-stipple renderer) box border
-        (widget-color widget
-          :outline))))
+               (widget-color widget :outline))))
   ;; One cached contour batch, with opaque white underlay supplied by the face.
   (let* ((key (list (box-x box) (box-y box) (box-width box)
                     (box-height box) border))
-         (cache (renderer-patterns renderer))
-         (paths (gethash key cache)))
+         (cache (renderer-patterns renderer)) (paths (gethash key cache)))
     (unless paths
       (when (>= (hash-table-count cache) 256) (clrhash cache))
       (let ((left (ceiling (box-x box))) (top (ceiling (box-y box)))
@@ -1601,29 +1536,24 @@
                      :nconc
                      (loop :for x :from (+ left (mod (+ left y) 2))
                            :below right :by 2
-                           :when (or (null border)
-                                     (< x (+ left border))
+                           :when (or (null border) (< x (+ left border))
                                      (>= x (- right border))
                                      (< y (+ top border))
                                      (>= y (- bottom border)))
                            :collect
-                           (typed-vector point
-                                         (cons x y) (cons (1+ x) y)
+                           (typed-vector point (cons x y) (cons (1+ x) y)
                                          (cons (1+ x) (1+ y))
-                             (cons x
-                               (1+
-                                 y)))))))
+                                         (cons x (1+ y)))))))
           (setf paths (make-array (length squares) :element-type 'contour
                                   :initial-contents squares)
                 (gethash key cache) paths))))
     (when paths
       (funcall (renderer-polygons renderer) paths
-        (widget-color widget
-          :outline) 1))))
+               (widget-color widget :outline) 1))))
 
-(fn (garnet-slider t) ((renderer renderer) (widget widget) (track box) (thumb
-                                                                        box)
-                       (background string) hover)
+(fn (garnet-slider t)
+    ((renderer renderer) (widget widget) (track box) (thumb box)
+     (background string) hover)
   "Paint Garnet's slider track and value-dependent thumb."
   (garnet-fill renderer track (widget-color widget :light))
   (garnet-stipple renderer widget (inset-box track 1))
@@ -1633,13 +1563,12 @@
 
 (defconstant +garnet-shadow-offset+ 4)
 
-(fn (garnet-face box) ((renderer renderer) (widget widget) (box box)
-                       (background string)
-                       &optional pressed ((band integer) 3))
+(fn (garnet-face box)
+    ((renderer renderer) (widget widget) (box box) (background string)
+     &optional pressed ((band integer) 3))
   "Paint a raised or pressed Garnet control face."
   (let* ((shadow (make-box :x (+ (box-x box) +garnet-shadow-offset+) :y
-                           (+
-                            (box-y box) +garnet-shadow-offset+)
+                           (+ (box-y box) +garnet-shadow-offset+)
                            :width (max 0 (- (box-width box)
                                             +garnet-shadow-offset+))
                            :height (max 0 (- (box-height box)
@@ -1669,8 +1598,7 @@
                                  (max 0 (/ (- (box-height box) 24) 2)))
                            :width 24 :height 24))
          (face (garnet-face renderer widget square
-                 (widget-color widget
-                   :light) pressed)))
+                            (widget-color widget :light) pressed)))
     (when hover (garnet-outline renderer widget (inset-box face 4) 2))
     (when (widget-value widget)
       (let ((x (+ (box-x face) 5)) (y (+ (box-y face) 5)))
@@ -1680,20 +1608,18 @@
                               (cons (+ x 10) (+ y 10))
                               (cons (+ x 8) (+ y 10)))
                         (list (cons (+ x 8) y) (cons (+ x 10) y)
-                              (cons (+ x 2) (+ y 10))
-                              (cons x (+ y 10)))))
+                              (cons (+ x 2) (+ y 10)) (cons x (+ y 10)))))
           (funcall (renderer-polygons renderer)
-                   (make-array 1 :element-type 'contour
-                               :initial-element
+                   (make-array 1 :element-type 'contour :initial-element
                                (make-array 4 :element-type
-                                 'point :initial-contents stroke)) ink 1))))
+                                           'point :initial-contents stroke))
+                   ink 1))))
     (paint-widget-text renderer node ink))
   (values))
 
 (fn (paint-garnet-radio (values))
     ((renderer renderer) (node element) (widget widget) (box box) hover
-     (ink
-      string))
+     (ink string))
   "Paint the Garnet radio indicator and its interaction feedback."
   (let ((indicator (make-box :x (- (+ (box-x box) (box-width box)) 22)
                              :y (+ (box-y box)
@@ -1712,14 +1638,11 @@
   "Paint the Garnet slider indicator and its interaction feedback."
   (let* ((track (make-box :x (+ (box-x box) 8)
                           :y (+ (box-y box) (/ (box-height box) 2) -6)
-                          :width (max 0 (- (box-width box) 16))
-                          :height 12))
+                          :width (max 0 (- (box-width box) 16)) :height 12))
          (fraction (/ (- (widget-value widget) (widget-minimum widget))
-                      (- (widget-maximum widget)
-                         (widget-minimum widget))))
+                      (- (widget-maximum widget) (widget-minimum widget))))
          (thumb (make-box :x (+ (box-x track)
-                                (* fraction
-                                   (max 0 (- (box-width track) 18))))
+                                (* fraction (max 0 (- (box-width track) 18))))
                           :y (- (box-y track) 3) :width 18 :height 18)))
     (garnet-slider renderer widget track thumb (widget-background widget)
                    hover))
@@ -1727,18 +1650,15 @@
 
 (fn (paint-garnet t) ((renderer renderer) (node element))
   "Paint a Garnet control body and its text or state indicator."
-  (let* ((widget (element-content node))
-         (box (element-box node))
-         (kind (widget-kind widget))
-         (disabled (widget-disabled-p widget))
+  (let* ((widget (element-content node)) (box (element-box node))
+         (kind (widget-kind widget)) (disabled (widget-disabled-p widget))
          (hover (and (not disabled) (hovered-p (element-id node))))
          (pressed (and hover (equal (element-id node)
                                     (context-active *context*))))
          (ink (if disabled (widget-color widget :disabled) (widget-foreground
                                                             widget))))
     (case kind
-      (:label
-       (paint-widget-text renderer node ink))
+      (:label (paint-widget-text renderer node ink))
       (:panel
        (if (and (= 0 (box-x box) (box-y box))
                 (= (box-width box) (context-width *context*))
@@ -1755,19 +1675,16 @@
                                                                   :outline)))
          (when hover (garnet-outline renderer widget field 2))
          (paint-widget-text renderer node
-           (if selected
-                                              (widget-color widget
-                                                :on-accent) ink))))
+                            (if selected
+                                (widget-color widget
+                                              :on-accent) ink))))
       (:checkbox
        (paint-garnet-checkbox renderer node widget box hover pressed ink))
-      (:radio
-       (paint-garnet-radio renderer node widget box hover ink))
-      (:slider
-       (paint-garnet-slider renderer widget box hover))
-      (:text-field
-       (garnet-fill renderer box (widget-background widget))
-       (garnet-outline renderer widget box)
-       (paint-text-field renderer node))
+      (:radio (paint-garnet-radio renderer node widget box hover ink))
+      (:slider (paint-garnet-slider renderer widget box hover))
+      (:text-field (garnet-fill renderer box (widget-background widget))
+                   (garnet-outline renderer widget box)
+                   (paint-text-field renderer node))
       (otherwise nil))))
 
 (fn (paint-garnet-scrollbar t) ((renderer renderer) (node element))
