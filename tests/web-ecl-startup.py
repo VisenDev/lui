@@ -40,22 +40,29 @@ class StartupTests(unittest.TestCase):
         return f"http://127.0.0.1:{self.server.server_port}/{path}"
 
     def test_both_entry_points_start(self):
-        for path in ("examples/web-ecl.html", "build/web-ecl/index.html"):
-            with self.subTest(path=path):
+        paths = ("examples/web-ecl.html", "build/web-ecl/index.html")
+        urls = [self.url(path) for path in paths]
+        urls += [(ROOT / path).as_uri() for path in paths]
+        for url in urls:
+            with self.subTest(url=url):
                 page = self.browser.new_page()
                 errors = []
+                wasm_requests = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
+                page.on("request", lambda request: wasm_requests.append(request.url)
+                        if request.url.endswith(".wasm") else None)
                 try:
-                    page.goto(self.url(path))
+                    page.goto(url)
                     expect(page.get_by_role("button", name="Say hello", exact=True)).to_have_count(
                         1, timeout=60000)
                     expect(page.locator("#loading")).to_have_count(0)
                     self.assertEqual(errors, [])
+                    self.assertEqual(wasm_requests, [])
                 finally:
                     page.close()
 
     def test_missing_assets_show_errors(self):
-        for asset in ("lui.js", "lui.wasm"):
+        for asset in ("lui.js",):
             with self.subTest(asset=asset):
                 page = self.browser.new_page()
                 try:

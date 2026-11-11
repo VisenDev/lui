@@ -30,9 +30,10 @@ command -v "$EMCC" >/dev/null
     build/web-ecl/liblui-web.a "$libraries"/libecl.a \
     "$libraries"/libeclgc.a "$libraries"/libeclgmp.a \
     -lm -sSTACK_SIZE=4194304 -sALLOW_MEMORY_GROWTH=1 \
-    -sBINARYEN_EXTRA_PASSES=--spill-pointers -sEXIT_RUNTIME=0 \
+    -sBINARYEN_EXTRA_PASSES=--spill-pointers -sEXIT_RUNTIME=0 -sSINGLE_FILE=1 \
     -sEXPORTED_RUNTIME_METHODS='["stringToNewUTF8"]' \
     -sEXPORTED_FUNCTIONS='["_main","_lui_callback","_lui_release","_malloc","_free"]' \
     --pre-js src/ecl-web.js -o build/web-ecl/lui.js
+rm -f build/web-ecl/lui.wasm
 sed 's#../build/web-ecl/lui.js#lui.js#g' \
     examples/web-ecl.html > build/web-ecl/index.html
