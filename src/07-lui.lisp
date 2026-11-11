@@ -38,7 +38,8 @@
    #:close-font #:font-size #:text-width #:line-height #:baseline
    #:wrap-text #:glyph-polygons #:*font-path* #:*font-paths*
    #:*font-directories* #:*font-names* #:font-face #:renderer
-   #:renderer-font #:renderer-polygons #:renderer-clip #:renderer-glass
+   #:renderer-font #:renderer-polygons #:renderer-clip
+   #:renderer-backdrop-effect
    #:renderer-text #:geometry #:make-geometry #:geometry-left
    #:geometry-top #:geometry-right #:geometry-bottom #:geometry-min-width
    #:geometry-min-height #:geometry-center-x #:geometry-center-y

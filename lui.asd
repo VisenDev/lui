@@ -101,7 +101,13 @@
 (defsystem "lui/native"
   :depends-on ("lui/core" "cffi" "zpb-ttf")
   :components ((:module "src"
-                :components ((:file "backend-common")))))
+                :serial t
+                :components ((:file "backend-common")
+                             (:file "paint-glass")
+                             (:file "paint-motif")
+                             (:file "paint-macos")
+                             (:file "paint-qt")
+                             (:file "paint-garnet")))))
 
 (defsystem "lui/pdf"
   :description "Render a layout to a single vector PDF page"

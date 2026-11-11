@@ -940,7 +940,12 @@ The portable sources are numbered in dependency order:
 - `04-layout.lisp`, `05-frame.lisp`: layout solving and frame state.
 - `06-widgets.lisp`, `07-lui.lisp`, `08-interaction.lisp`: controls, application
   declarations, and input handling.
-- `09-glass.lisp` through `13-garnet.lisp`: one file per toolkit package.
+- `09-glass.lisp` through `13-garnet.lisp`: dependency-free toolkit definitions.
+- `paint-<toolkit>.lisp`: graphical painters and geometry registrations for each
+  built-in toolkit, loaded after the shared renderer. Backends do not select
+  painters by toolkit name. Custom toolkits register their own callbacks.
+  `lui:renderer-backdrop-effect` is an optional renderer callback taking a box,
+  corner radius, and blur radius; any toolkit can use it before painting a tint.
 - `14-debug.lisp`: optional layout debugger, loaded by `lui/debug`.
 
 Platform backends live in `src/backend-<platform>.lisp` and may group related

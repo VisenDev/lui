@@ -554,7 +554,7 @@
            (make-renderer
             :font font
             :clip (lambda (box) (declare (ignore box)))
-            :glass (lambda (&rest arguments)
+            :backdrop-effect (lambda (&rest arguments)
                      (declare (ignore arguments)) (incf glass-calls))
             :text (lambda (face text x y color)
                     (push (list text x y color face) texts))
@@ -829,7 +829,7 @@
                       :text (lambda (face text x y color)
                               (declare (ignore face x y))
                               (push (list text color) texts))
-                      :glass (lambda (&rest args)
+                      :backdrop-effect (lambda (&rest args)
                                (declare (ignore args)) (incf glass))))
            (context (make-context
                      :measure (lambda (widget width)

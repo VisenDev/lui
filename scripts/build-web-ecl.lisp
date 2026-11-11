@@ -36,6 +36,11 @@
     "src/13-garnet.lisp"
     "src/14-debug.lisp"
     "src/backend-common.lisp"
+    "src/paint-glass.lisp"
+    "src/paint-motif.lisp"
+    "src/paint-macos.lisp"
+    "src/paint-qt.lisp"
+    "src/paint-garnet.lisp"
     "src/backend-common-web.lisp"))
 (setf *sources*
       (append *sources*

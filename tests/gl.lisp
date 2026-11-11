@@ -86,14 +86,25 @@
   (format t "Opaque window alpha survives Motif hover and Glass tint.~%"))
 
 (defun test-backdrop-frost (gpu renderer context)
+  ;; No built-in toolkit parent: the backdrop is an independent capability.
+  (lui:register-toolkit :test-backdrop
+    :geometry (lambda (widget)
+                (declare (ignore widget)) (lui:make-geometry))
+    :paint (lambda (target node)
+             (let ((widget (element-content node)) (box (element-box node)))
+               (funcall (renderer-backdrop-effect target)
+                        box 0 (lui.widgets:widget-frost widget))
+               (shape target box 0 (lui.widgets:widget-background widget)
+                      (lui.widgets:widget-opacity widget)))))
   (labels ((contrast (frost opacity)
              (with-frame (context 720 520)
                (column (:width (grow) :height (grow))
-                 (lui.glass:panel (lui:opt :floating-p t :offset-x 40
-                  :offset-y 40
-                :width (fixed 200) :height (fixed 120)
-                :background "#606060" :opacity opacity
-                                           :frost frost :radius 0))))
+                 (lui:with-toolkit (:test-backdrop)
+                   (lui:panel
+                    (lui:opt :floating-p t :offset-x 40 :offset-y 40
+                             :width (fixed 200) :height (fixed 120)
+                             :background "#606060" :opacity opacity
+                             :frost frost :radius 0)))))
              (begin-gpu-frame gpu)
              (funcall (renderer-clip renderer)
                       (make-box :width 720 :height 520))
@@ -114,7 +125,7 @@
       (assert (> sharp 150))
       (assert (< frosted (* sharp 0.7)))
       (assert (< opaque (* sharp 0.3)))
-      (format t "Glass frost smooths backdrop pixels; opacity controls tint.~%"))))
+      (format t "Custom toolkit backdrop blurs pixels; opacity controls tint.~%"))))
 
 (defun test-translated-geometry-cache (gpu renderer)
   (lui.gl::clear-geometry gpu)

@@ -703,7 +703,7 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
                          (lambda (polygons color alpha)
                            (draw-polygons window polygons color alpha))
                          :clip (lambda (box) (clip-window window box))
-                         :glass (lambda (box radius blur)
+                         :backdrop-effect (lambda (box radius blur)
                                   (blur-backdrop window box radius blur))))
          (context
           (make-render-context renderer :copy

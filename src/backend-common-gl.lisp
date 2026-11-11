@@ -42,7 +42,7 @@
   "#version 120
 void main() { gl_Position = ftransform(); }")
 
-(defparameter *glass-source*
+(defparameter *backdrop-fragment-source*
   "#version 120
 uniform sampler2D backdrop;
 uniform vec2 resolution;
@@ -102,7 +102,7 @@ void main() {
         (program (call-gl "glCreateProgram" :uint)))
     (unwind-protect
          (progn
-           (setf fragment (compile-shader #x8b30 *glass-source*))
+           (setf fragment (compile-shader #x8b30 *backdrop-fragment-source*))
            (call-gl "glAttachShader" :uint program :uint vertex :void)
            (call-gl "glAttachShader" :uint program :uint fragment :void)
            (call-gl "glLinkProgram" :uint program :void)
@@ -114,7 +114,7 @@ void main() {
                (error 'lui.conditions:backend-error
                       :backend :gl
                       :operation :make-program
-                      :format-control "Cannot link the GL glass shader.")))
+                      :format-control "Cannot link the GL backdrop shader.")))
            program)
       (call-gl "glDeleteShader" :uint vertex :void)
       (when (plusp fragment)
@@ -256,8 +256,9 @@ void main() {
   (call-gl "glGetUniformLocation" :uint (gpu-program gpu)
            :string name :int))
 
-(fn (gl-glass (values)) ((gpu gpu) (box box) (radius real) (frost real))
-  "Sample and blur the existing framebuffer behind a rounded glass surface."
+(fn (gl-backdrop-effect (values))
+    ((gpu gpu) (box box) (radius real) (frost real))
+  "Sample and blur the existing framebuffer behind a rounded translucent surface."
   (call-gl "glBindTexture" :uint #x0de1 :uint (gpu-texture gpu) :void)
   (let* ((w (gpu-width gpu)) (h (gpu-height gpu))
          (area (pixel-box gpu box))
@@ -271,7 +272,8 @@ void main() {
          (bottom (min h (+ (ceiling (box-bottom area))
                            margin)))
          (y (- h bottom)))
-    (unless (and (< x right) (< top bottom)) (return-from gl-glass (values)))
+    (unless (and (< x right) (< top bottom))
+      (return-from gl-backdrop-effect (values)))
     (unless (and (= w (gpu-texture-width gpu)) (= h (gpu-texture-height gpu)))
       (call-gl "glTexImage2D" :uint #x0de1 :int 0 :int #x1908
                :int w :int h :int 0 :uint #x1908 :uint #x1401
@@ -339,8 +341,8 @@ void main() {
          :text (lambda (font text x y color)
                  (gl-text gpu font text x y color))
          :clip (lambda (box) (gl-clip gpu box))
-         :glass (lambda (box radius frost)
-                  (gl-glass gpu box radius frost))))
+         :backdrop-effect (lambda (box radius frost)
+                  (gl-backdrop-effect gpu box radius frost))))
   gpu)
 
 (fn (attach-gpu gpu) ((font font) (width integer) (height integer))

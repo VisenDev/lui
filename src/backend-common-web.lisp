@@ -746,7 +746,7 @@
      (- (box-height box) (* 2 border))))
   ((oget g "fill") #j"evenodd"))
 
-(fn (canvas-glass t) (canvas g sample blur box radius frost)
+(fn (canvas-backdrop-effect t) (canvas g sample blur box radius frost)
   "Sample the visible backdrop into a reduced scratch canvas and paint it through a rounded clip."
   (when (plusp frost)
     (let* ((scale #j:window:devicePixelRatio)
@@ -805,9 +805,9 @@
        :stipple
        (lambda (box border color)
          (canvas-stipple g tile ink patterns box border color))
-       :glass
+       :backdrop-effect
        (lambda (box radius frost)
-         (canvas-glass canvas g sample blur box radius frost))))))
+         (canvas-backdrop-effect canvas g sample blur box radius frost))))))
 
 (fn (queue-event t) ((app web-app) (event event))
   "Queue an application input event and request a redraw."

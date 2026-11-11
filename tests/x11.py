@@ -559,7 +559,7 @@ class X11Tests(unittest.TestCase):
                                                     (lui.layout:make-box
                                                      :x x :width 8 :height height) 0))
                                              (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
-                          (funcall (lui.draw:renderer-glass renderer)
+                          (funcall (lui.draw:renderer-backdrop-effect renderer)
                                    (lui.layout:make-box :width width :height height)
                                    20 FROST))))))
  :title WINDOW_TITLE :width 241 :height 123)
@@ -611,7 +611,7 @@ class X11Tests(unittest.TestCase):
                                                     (lui.layout:make-box :x x :width 8 :height 120)
                                                     0))
                                              (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
-                          (funcall (lui.draw:renderer-glass renderer)
+                          (funcall (lui.draw:renderer-backdrop-effect renderer)
                                    (lui.layout:make-box :x 40 :y 20 :width 160 :height 80)
                                    20 8))))))
  :title WINDOW_TITLE :width 240 :height 120)

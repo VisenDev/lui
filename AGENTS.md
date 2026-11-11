@@ -65,6 +65,9 @@ the change and report material limitations instead of claiming untested support.
   `backend-<platform>.lisp`; share font/drawing support in `backend-common.lisp`,
   OpenGL in `backend-common-gl.lisp`, and browser rendering/input in
   `backend-common-web.lisp`.
+- Built-in graphical painters and registrations belong in `paint-<toolkit>.lisp`
+  (`lui.paint-<toolkit>`), loaded after the shared renderer. Keep toolkit names
+  out of backend dispatch; backdrop effects are shared rendering capabilities.
 - ECL Lisp interop belongs in `backend-ecl-emscripten.lisp`; C/JavaScript
   build support belongs in `scripts/ecl-web.c` and `scripts/ecl-web.js`.
   Update ASDF, both browser build manifests, and the portable test runner
