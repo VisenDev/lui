@@ -4,6 +4,7 @@ import http.server
 from pathlib import Path
 import shutil
 import threading
+import tempfile
 import unittest
 
 from playwright.sync_api import sync_playwright, expect
@@ -73,6 +74,27 @@ class StartupTests(unittest.TestCase):
                     expect(page.locator("#loading")).not_to_contain_text("Loading LUI")
                 finally:
                     page.close()
+
+    def test_standalone_html_without_network_or_companion_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            standalone = Path(directory) / "lui.html"
+            shutil.copyfile(ROOT / "build/web-ecl/index.html", standalone)
+            context = self.browser.new_context(offline=True)
+            page = context.new_page()
+            requests, errors = [], []
+            page.on("request", lambda request: requests.append(request.url))
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            try:
+                page.goto(standalone.as_uri())
+                button = page.get_by_role("button", name="Say hello", exact=True)
+                expect(button).to_have_count(1, timeout=60000)
+                button.evaluate("button => button.click()")
+                expect(page.get_by_text("Hello Common Lisp (1)", exact=True)).to_have_count(1)
+                self.assertEqual(page.locator("script[src]").count(), 0)
+                self.assertEqual(requests, [standalone.as_uri()])
+                self.assertEqual(errors, [])
+            finally:
+                context.close()
 
 
 if __name__ == "__main__":

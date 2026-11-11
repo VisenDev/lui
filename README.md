@@ -425,8 +425,9 @@ Playwright and Chromium.
 ### ECL / WebAssembly browser backend
 
 `PLATFORM=web-ecl` compiles Lisp to C with ECL and links it to WebAssembly
-with Emscripten. WebAssembly is embedded in `lui.js`, avoiding a separate
-binary fetch and allowing the HTML examples to open directly from disk. JSCL is not used
+with Emscripten. The generated `build/web-ecl/index.html` embeds both the
+JavaScript loader and WebAssembly: one static HTML file, with no companion
+assets or server required. JSCL is not used
 in this build. Both browser builds share Canvas painting, DOM labels,
 accessibility, text editing, and page/viewport scrolling. The new backend is
 experimental; do not assume JSCL performance or browser coverage carries over.
@@ -460,10 +461,10 @@ active for compilation, including the compiler paths recorded in target info.
 The build uses ECL's required pointer-spilling linker pass for garbage
 collection, a larger stack, and a persistent runtime for browser callbacks.
 
-Output is isolated in `build/web-ecl/`. Open `examples/web-ecl.html` or
-`build/web-ecl/index.html` directly, or serve the build directory over HTTP;
-`make web-ecl-demo` does this on localhost using `PORT`. Keep `lui.js` beside
-the generated `index.html` when copying the build. For an application
+Output is isolated in `build/web-ecl/`. Copy or open `index.html` on its own,
+or serve the build directory over HTTP; `make web-ecl-demo` does this on
+localhost using `PORT`. `examples/web-ecl.html` is the build template and
+still references the generated loader for development. For an application
 of your own, set `ECL_WEB_APP=/absolute/path/start.lisp` to a Lisp file that
 defines your draw function and calls `lui:run` (optionally with
 `:backend :web-ecl`). It is compiled and linked after the library. The

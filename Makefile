@@ -144,7 +144,7 @@ web-ecl-toolchain:
 	bash scripts/build-ecl-toolchain.sh
 
 web-ecl-build:
-	ECL="$(ECL)" EMCC="$(EMCC)" ECL_WASM="$(ECL_WASM)" \
+	ECL="$(ECL)" EMCC="$(EMCC)" ECL_WASM="$(ECL_WASM)" PYTHON="$(PYTHON)" \
 		bash scripts/build-web-ecl.sh
 
 web-ecl-demo: web-ecl-build

@@ -35,5 +35,4 @@ command -v "$EMCC" >/dev/null
     -sEXPORTED_FUNCTIONS='["_main","_lui_callback","_lui_release","_malloc","_free"]' \
     --pre-js src/ecl-web.js -o build/web-ecl/lui.js
 rm -f build/web-ecl/lui.wasm
-sed 's#../build/web-ecl/lui.js#lui.js#g' \
-    examples/web-ecl.html > build/web-ecl/index.html
+"${PYTHON:-python3}" scripts/package-web-ecl.py
