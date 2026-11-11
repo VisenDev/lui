@@ -9,7 +9,8 @@
            #:edit-value))
 (in-package #:lui.interaction)
 
-(fn (key-pressed-p boolean) (key &optional ((context context) *context*))
+(fn (key-pressed-p boolean)
+    ((key symbol) &optional ((context context) *context*))
   "Whether this frame contains a press of the semantic KEY."
   (loop :for events :being :the :hash-values :of (context-events context)
         :thereis (some (lambda (event)
@@ -17,21 +18,21 @@
                               (eq (event-key event) key)))
                        events)))
 
-(fn (take-events (vector event)) (id)
+(fn (take-events (vector event)) ((id object-id))
   "Return and consume a vector of a control's ordered frame events."
   (setf id (lui.frame:widget-id id))
   (prog1 (events-for id)
     (setf (gethash id (context-events *context*)) nil)))
 
-(fn (event-targets (vector t)) ()
+(fn (event-targets (vector object-id)) ()
   "Return a vector of control IDs with unconsumed events in the current frame.
 ID types are unrestricted and may differ between vector elements."
   (let ((ids nil))
     (maphash (lambda (id events) (when events (push id ids)))
              (context-events *context*))
-    (make-array (length ids) :element-type t :initial-contents ids)))
+    (make-array (length ids) :element-type 'object-id :initial-contents ids)))
 
-(fn (reset-editor lui.widgets:edit-state) (id (text string))
+(fn (reset-editor lui.widgets:edit-state) ((id object-id) (text string))
   "Reset owned text and editor state, placing the caret at the end of TEXT.
 ID is a resolved widget ID or a unique declared key."
   (setf id (lui:widget-id id))
@@ -40,8 +41,9 @@ ID is a resolved widget ID or a unique declared key."
     (setf (gethash id (context-state *context*))
           (lui.widgets:make-edit-state :cursor length :anchor length))))
 
-(fn (edit-value string) (id (text string) &optional ((events sequence)
-                                                     (take-events id)))
+(fn (edit-value string)
+    ((id object-id) (text string) &optional
+     ((events sequence) (take-events id)))
   "Apply editor events without declaring a widget; preserve caret and kill state."
   (setf id (lui:widget-id id))
   (let* ((state (or (gethash id (context-state *context*))
@@ -90,10 +92,9 @@ outside editing. Return an event or NIL; printable input remains text."
       (:down (min (1- count) (1+ index)))
       (:home 0) (:end (1- count)) (otherwise nil))))
 
-(fn (reveal-rect (or null boolean)) (id (left real) (top real) (width real)
-                                     (height real)
-                                     &key ((leading-x real) 0) ((leading-y
-                                                                 real) 0))
+(fn (reveal-rect (or null boolean))
+    ((id object-id) (left real) (top real) (width real) (height real) &key
+     ((leading-x real) 0) ((leading-y real) 0))
   "Scroll a content rectangle into view, reserving optional leading header space."
   (let ((viewport (previous-box id)))
     (when viewport

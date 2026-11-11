@@ -37,7 +37,7 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
   (buttons nil :type (or null integer))
   ;; Precise OS inertia uses :IMMEDIATE; :AUTO keeps plain text contexts direct.
   (scroll-mode :auto :type (member :auto :smooth :immediate))
-  id
+  (id nil :type object-id)
   value
   key
   (x 0 :type real)
@@ -45,7 +45,7 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
 
 (defstruct scroll-motion
   ;; IDs intentionally accept mixed types, including application-defined keys.
-  (path #() :type (vector t))
+  (path #() :type (vector object-id))
   (remaining 0 :type real)
   (time 0 :type real)
   (last-input 0 :type real)
@@ -92,10 +92,10 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (statistics (make-frame-statistics) :type frame-statistics)
   (time 0 :type real)
   (next-frame nil :type (or null real))
-  focus
+  (focus nil :type object-id)
   (focus-visible-p nil :type boolean)
-  hover
-  active
+  (hover nil :type object-id)
+  (active nil :type object-id)
   (values (make-hash-table :test 'equal) :type hash-table)
   (state (make-hash-table :test 'equal) :type hash-table)
   (regions (make-hash-table :test 'equal) :type hash-table)
@@ -125,7 +125,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   "Scope widget identity to KEY, evaluated once. Use stable item keys in loops."
   `(let ((*key-scope* (cons ,key *key-scope*))) ,@body))
 
-(fn (resolved-widget-id-p boolean) (id)
+(fn (resolved-widget-id-p boolean) ((id object-id))
   "Recognize opaque call-site IDs and internal child IDs derived from them."
   (and (consp id)
     (or (eq (car id) :lui-widget-id)
@@ -145,19 +145,19 @@ The backend supplies measurement, clipboard, and optional input callbacks."
              :format-arguments (unless (eq key site) (list key))))
     id))
 
-(fn (widget-key t) (id)
+(fn (widget-key object-id) ((id object-id))
   "Return the declared key of an opaque widget ID, including derived child keys."
   (cond ((and (consp id) (eq (car id) :lui-widget-id)) (fourth id))
     ((resolved-widget-id-p id) (mapcar #'widget-key id))
     (t id)))
 
-(fn (id-scope list) (id)
+(fn (id-scope list) ((id object-id))
   "Return the enclosing key scope of a widget or internal child ID."
   (cond ((and (consp id) (eq (car id) :lui-widget-id)) (third id))
     ((resolved-widget-id-p id) (id-scope (car id)))
     (t nil)))
 
-(fn (lookup-widget-id t) (key (table hash-table))
+(fn (lookup-widget-id object-id) ((key object-id) (table hash-table))
   "Find KEY in TABLE within this scope; signal an error for ambiguous keys."
   (let ((found nil))
     (maphash
@@ -174,7 +174,8 @@ The backend supplies measurement, clipboard, and optional input callbacks."
       table)
     found))
 
-(fn (widget-id t) (key &optional ((context context) *context*))
+(fn (widget-id object-id)
+    ((key object-id) &optional ((context context) *context*))
   "Resolve KEY in the current key scope to a widget ID, or return KEY if absent.
 Opaque IDs pass through unchanged. A key shared by call sites is ambiguous;
 use the third value returned by a widget instead. IDs are local to CONTEXT."
@@ -182,7 +183,7 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
     (or (lookup-widget-id key (context-ids context))
       (lookup-widget-id key (context-regions context)) key)))
 
-(fn (focus-widget (values)) (id)
+(fn (focus-widget (values)) ((id object-id))
   "Request focus for a resolved ID or unique key, including a newly declared widget."
   (setf (context-focus *context*) (widget-id id)
     (context-focus-visible-p *context*) t)
@@ -269,8 +270,8 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
                 (/ (frame-statistics-total-ms stats) count)))))
 
 (fn (frame-wait real)
-    ((context context) &optional urgent
-     (now (/ (get-internal-real-time) internal-time-units-per-second)))
+    ((context context) &optional ((urgent (or boolean list)) nil)
+     ((now real) (/ (get-internal-real-time) internal-time-units-per-second)))
   "Return seconds until the next allowed frame, honoring idle and active limits."
   (let* ((start (context-time context))
          (first (+ start (/ 1 (context-max-fps context))))
@@ -302,7 +303,7 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
   (and (<= (box-x bounds) x) (< x (box-right bounds))
        (<= (box-y bounds) y) (< y (box-bottom bounds))))
 
-(fn (hit t) ((context context) (x real) (y real))
+(fn (hit object-id) ((context context) (x real) (y real))
   "Find the deepest interactive element whose solved clip contains X/Y."
   (let ((found nil))
     (when (and (context-root context) (<= 0 x) (< x (context-width context))
@@ -314,7 +315,8 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
                          (setf found (element-id node))))))
     found))
 
-(fn (focus-next t) ((context context) &optional backward)
+(fn (focus-next object-id)
+    ((context context) &optional ((backward boolean) nil))
   "Advance keyboard focus through eligible elements in declaration order."
   (let ((ids nil))
     (when (context-root context)
@@ -354,7 +356,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
         predicted)
       context))
 
-(fn (scroll-path (vector t)) ((context context) (x real) (y real))
+(fn (scroll-path (vector object-id)) ((context context) (x real) (y real))
   "Collect scrollable ancestor IDs under X/Y for nested wheel propagation.
 IDs may mix symbols, numbers, strings, and compound or application-defined keys."
   ;; Follow the painted hit path, deepest scroller first.
@@ -367,10 +369,11 @@ IDs may mix symbols, numbers, strings, and compound or application-defined keys.
                    (do-children (child node)
                      (visit child path))))))
       (when (context-root context) (visit (context-root context) nil)))
-    (make-array (length scrollers) :element-type t :initial-contents
+    (make-array (length scrollers) :element-type 'object-id :initial-contents
                 scrollers)))
 
-(fn (scroll-along real) ((context context) (path (vector t)) (amount real))
+(fn (scroll-along real)
+    ((context context) (path (vector object-id)) (amount real))
   "Apply a scroll delta along the heterogeneous ID PATH; return the amount consumed."
   ;; Bubble the unused portion outward, including during the animated tail.
   (let ((requested amount))
@@ -439,19 +442,20 @@ IDs may mix symbols, numbers, strings, and compound or application-defined keys.
                                        :last-input now :level level)))))
       (t (setf (context-scroll-motion context) nil)))))
 
-(fn (record-activation (eql t)) ((context context) id)
+(fn (record-activation (eql t)) ((context context) (id object-id))
   "Record an activated ID so the next frame can consume its action."
   (push id (context-activation-order context))
   (setf (gethash id (context-activated context)) t))
 
-(fn (activated-ids (vector t)) (&optional ((context context) *context*))
+(fn (activated-ids (vector object-id))
+    (&optional ((context context) *context*))
   "Return active widget IDs in input order, including repeated activations.
 ID types are unrestricted and may differ between vector elements."
   (let ((ids (remove-if-not (lambda (id) (gethash id (context-activated
                                                       context)))
                             (context-activation-order context))))
-    (make-array (length ids) :element-type t :initial-contents (nreverse
-                                                                ids))))
+    (make-array (length ids) :element-type 'object-id :initial-contents
+                (nreverse ids))))
 
 (fn (pointer-cancel-p boolean) ((event event))
   "Recognize input that cancels an active pointer gesture or capture."
@@ -459,7 +463,8 @@ ID types are unrestricted and may differ between vector elements."
       (and (eq (event-kind event) :move) (event-buttons event)
            (not (logbitp 0 (event-buttons event))))))
 
-(fn (route-pointer-press (values)) ((context context) (event event) target)
+(fn (route-pointer-press (values))
+    ((context context) (event event) (target object-id))
   "Record pointer presses, detect double clicks, and update capture and focus."
   (setf (context-pointer-press context) event)
   (let ((previous (context-last-click context)))
@@ -481,7 +486,8 @@ ID types are unrestricted and may differ between vector elements."
       (setf (context-focus context) target)))
   (values))
 
-(fn (update-pointer-capture t) ((context context) (event event) captured)
+(fn (update-pointer-capture object-id)
+    ((context context) (event event) (captured object-id))
   "Cancel stale capture and mark whether EVENT belongs to an active drag."
   (when (and captured
              (or (and (eq (event-kind event) :press)
@@ -506,8 +512,8 @@ ID types are unrestricted and may differ between vector elements."
                  (logbitp 0 (event-buttons event)))))
   captured)
 
-(fn (dispatch-frame-event (values)) ((context context) (event event) target
-                                     (resized boolean))
+(fn (dispatch-frame-event (values))
+    ((context context) (event event) (target object-id) (resized boolean))
   "Apply one event to scrolling, activation, focus, and pointer state."
   (case (event-kind event)
     (:scroll
@@ -646,12 +652,12 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
               (element-scroll-y node) (cdr offset)))))
   (append-child *parent* node))
 
-(fn (scroll-position (values real real)) (id)
+(fn (scroll-position (values real real)) ((id object-id))
   "Return the retained horizontal and vertical scroll offsets."
   (let ((offset (gethash id (context-scroll *context*))))
     (values (or (car offset) 0) (or (cdr offset) 0))))
 
-(fn (scroll-to (or null real)) (id (x real) (y real))
+(fn (scroll-to (or null real)) ((id object-id) (x real) (y real))
   "Set scroll offsets; layout clamps them to the content extent."
   (setf (context-scroll-motion *context*) nil)
   (let ((offset (cons (max 0 x) (max 0 y))))
@@ -661,21 +667,21 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
         (setf (element-scroll-x node) (car offset)
               (element-scroll-y node) (cdr offset))))))
 
-(fn (previous-box (values (or null box) boolean)) (id)
+(fn (previous-box (values (or null box) boolean)) ((id object-id))
   "Return ID's solved box from the previous completed frame, or NIL."
   (gethash (widget-id id) (context-regions *context*)))
 
-(fn (events-for (vector event)) (id)
+(fn (events-for (vector event)) ((id object-id))
   "Return a vector of ID's input events in chronological order for this frame."
   (let ((events (gethash (widget-id id) (context-events *context*))))
     (make-array (length events) :element-type 'event :initial-contents
                 (reverse events))))
 
-(fn (hovered-p boolean) (id)
+(fn (hovered-p boolean) ((id object-id))
   "Whether the pointer currently hovers over the non-NIL control ID."
   (and id (equal (widget-id id) (context-hover *context*))))
 
-(fn (activated-p boolean) (id)
+(fn (activated-p boolean) ((id object-id))
   "Whether ID was activated by this frame's pointer or keyboard input."
   (not (null (gethash (widget-id id) (context-activated *context*)))))
 

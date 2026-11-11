@@ -14,6 +14,8 @@ APIs and platform support; historical measurements are not current guarantees.
 - This is a work-in-progress API. When replacing an API, remove the retired form
   and migrate its in-tree callers and documentation. Do not retain compatibility
   shims for obsolete APIs.
+- Annotate FN parameters explicitly; use OR unions for nullable or multi-type
+  inputs. Use `object-id` for widget identities; it intentionally expands to T.
 - Use structures with typed slots and `lui.fn:fn` with explicit return types for
   implementation functions. Do not reintroduce `destruct*` or an alternate
   structure API; use standard `defstruct`.

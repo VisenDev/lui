@@ -17,7 +17,7 @@
 
 (fn (typed-bindings list) ((value integer)
                           &optional ((increment integer) 2 supplied-p)
-                          &rest extra)
+                          &rest (extra list))
   (list (+ value increment) supplied-p extra))
 
 #-jscl
@@ -105,6 +105,10 @@
     (flet ((check (value)
              (incf checks)
              (assert value () "Check ~D failed." checks)))
+      (check (typep (make-hash-table) 'lui:object-id))
+      (check (typep (make-element) 'lui:object-id))
+      (check (equal '(7 t (1 "two" :three))
+                    (typed-bindings 3 4 1 "two" :three)))
       (check (= (typed-example 2) 3))
       #-jscl (check (= (typed-aux 2) 3))
       (check (equal '(5 nil nil) (typed-bindings 3)))

@@ -23,7 +23,7 @@
   (nodes (make-hash-table :test 'equal) :type hash-table)
   (rows (make-array 0 :element-type 'entry :adjustable t :fill-pointer 0)
         :type (vector entry)))
-(fn (id list) (name &optional key)
+(fn (id list) ((name symbol) &optional ((key object-id) nil))
   "Construct a debugger-owned widget ID from NAME and optional KEY."
   (list
    :lui.debug name key))
@@ -111,7 +111,7 @@
           (lui.layout::sizing-value rule) (lui.layout::sizing-minimum rule)
           (or (lui.layout::sizing-maximum rule) "none")))
 
-(fn (property-text string) (value)
+(fn (property-text string) ((value t))
   "Convert a property value into text suitable for the debugger panel."
   (cond
     ((stringp value)
@@ -147,7 +147,7 @@
                      :when enabled :collect name)))
     (if names (format nil "~{~A~^, ~}" names) empty)))
 
-(fn (properties (values)) ((title string) (width real) &rest pairs)
+(fn (properties (values)) ((title string) (width real) &rest (pairs list))
   "Declare a titled group of property name/value rows within WIDTH."
   (let ((accent (getf (toolkit-defaults) :accent "#258bff")))
     (row (:width (grow) :gap (units 0.5f0))
@@ -171,7 +171,7 @@
   (values))
 
 (fn (layout-details (values))
-    ((node element) (width real) container)
+    ((node element) (width real) (container boolean))
   "Describe sizing, flow, clipping, and scrolling for the selected element."
   (properties "Layout" width
               (list "Width" (sizing-label (element-width node)))
@@ -210,7 +210,8 @@
   (values))
 
 (fn (input-details (values))
-    ((node element) (width real) widget node-id focused)
+    ((node element) (width real) (widget t) (node-id object-id)
+     (focused boolean))
   "Describe input eligibility and the selected element's current interaction state."
   (properties
    "Input" width
@@ -312,7 +313,7 @@
 
 (fn (debugger-tree-row (values))
     ((state debugger-state) (width real) (step real) (index integer)
-     entry (node element) key)
+     (entry entry) (node element) (key list))
   "Declare one visible debugger tree row with indentation, collapse control, and selection."
   (row (:floating-p t :offset-y (* index step)
                     :width (grow) :height (fixed
@@ -589,7 +590,7 @@
 
 (fn (draw-debugger (or null element)) ((state debugger-state) (toolkit
                                                                symbol)
-                                       previous)
+                                       (previous (or null element)))
   "Attach the debugger to the frame when enabled and clear its caches when closed."
   (when (and (debugger-state-open-p state) (null previous)) (request-frame))
   (when (and (debugger-state-open-p state) previous)
@@ -608,14 +609,14 @@
           (debugger state width)
           (resize-handle width))))))
 
-(fn (debugger-enabled-p boolean) (&optional (context *context*))
+(fn (debugger-enabled-p boolean) (&optional ((context context) *context*))
   "Whether CONTEXT currently has an open debugger attached to its overlay."
   (let ((state (context-overlay-state context)))
     (and state (debugger-state-open-p state))))
 
-(fn (set-debugger-enabled boolean) ((enabled boolean) &key ((context context)
-                                                            *context*) state
-                                                        toolkit)
+(fn (set-debugger-enabled boolean)
+    ((enabled boolean) &key ((context context) *context*)
+     ((state (or null debugger-state)) nil) ((toolkit symbol) nil))
   "Enable the context's debugger. Call on a toggle, not on every draw."
   (let ((state (or state (context-overlay-state context)
                    (make-debugger-state))))

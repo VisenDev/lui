@@ -35,14 +35,15 @@
                      (push (if (eq mode '&key)
                                (list (intern (symbol-name name) :keyword)
                                      type)
-                               type)
+                               (if (eq mode '&rest) t type))
                            argument-types))))))
       (values (nreverse lambda-list) (nreverse argument-types)
               (nreverse declarations)))))
 
 (defmacro fn (name typed-lambda-list &body body)
   "Define a function with typed parameters and an optional (NAME RETURN-TYPE).
-Optional/key parameters use ((NAME TYPE) DEFAULT SUPPLIED-P)."
+Optional/key parameters use ((NAME TYPE) DEFAULT SUPPLIED-P).
+For &REST, TYPE describes the collected list, not each supplied argument."
   (multiple-value-bind (lambda-list argument-types types)
       (parse-typed-lambda-list typed-lambda-list)
     (let ((function-name (if (listp name) (first name) name))

@@ -34,7 +34,8 @@
     (metrics (make-hash-table :test 'equal))
     (wrapped (make-hash-table :test 'equal)))
 
-  (fn (open-font font) (&optional path ((size real) 16))
+  (fn (open-font font)
+    (&optional ((path (or null string pathname)) nil) ((size real) 16))
     "Create a browser font at SIZE; PATH is accepted for API compatibility."
     (declare (ignore path))
     (let ((canvas (#j:document:createElement #j"canvas")))
@@ -99,7 +100,8 @@
            :operation :glyph-polygons
            :format-control "Browser text is drawn by the renderer text callback."))
 
-  (fn (uncached-wrap-text (vector string)) ((font font) (text string) width)
+  (fn (uncached-wrap-text (vector string))
+    ((font font) (text string) (width (or null real)))
     "Split TEXT into lines at newlines and spaces; NIL width preserves explicit breaks."
     (lui.text:wrap-lines text width
                          (lambda (text start end)
@@ -177,7 +179,8 @@
     (or *font-path* (uiop:getenvp "LUI_FONT")
         (resolve-face :sans-serif :normal)))
 
-  (fn (open-font font) (&optional path ((size real) 16))
+  (fn (open-font font)
+    (&optional ((path (or null string pathname)) nil) ((size real) 16))
     "Open a TrueType file at SIZE; a missing PATH uses the configured base face."
     (make-font :loader (zpb-ttf:open-font-loader (or path (default-font)))
                :size size))
@@ -224,7 +227,8 @@
             (setf previous char))
       (* (scale-font font) width)))
 
-  (fn (wrap-text (vector string)) ((font font) (text string) width)
+  (fn (wrap-text (vector string))
+    ((font font) (text string) (width (or null real)))
     "Split TEXT into lines at newlines and spaces; NIL width preserves explicit breaks."
     (lui.text:wrap-lines text width
                          (lambda (text start end)
@@ -459,7 +463,7 @@
                       :format-arguments (list (widget-style widget))))
            widget))
 
-(fn (make-render-context context) ((renderer renderer) &rest options)
+(fn (make-render-context context) ((renderer renderer) &rest (options list))
   "Create a frame context measured by RENDERER, with backend-specific OPTIONS."
   (apply #'make-context
          :measure (lambda (widget width)
@@ -468,7 +472,7 @@
 
 (fn (measure-widget (values number number))
     ((renderer renderer) (widget
-                          widget) width)
+                          widget) (width (or null real)))
   "Measure current geometry, reusing matching prior-frame text measurements."
   (let* ((g (widget-geometry widget)) (font (widget-font renderer widget))
          (horizontal (+ (geometry-left g) (geometry-right g)))
@@ -498,7 +502,8 @@
                                                               font))))))))))
     (values (car size) (cdr size))))
 
-(fn (text-box box) ((widget widget) (box box) &optional pressed)
+(fn (text-box box)
+    ((widget widget) (box box) &optional ((pressed boolean) nil))
   "Return the toolkit's text area, including pressed displacement."
   (let ((g (widget-geometry widget)))
     (make-box :x (+ (box-x box) (geometry-left g)
@@ -605,8 +610,10 @@
                 (funcall paint renderer node))
       (setf (renderer-font renderer) font))))
 
-(fn (paint-frame t) ((renderer renderer) (context context) &optional
-                      external-labels viewport)
+(fn (paint-frame t)
+    ((renderer renderer) (context context) &optional
+     ((external-labels (or null hash-table)) nil)
+     ((viewport (or null box)) nil))
   "Paint the visible elements of a solved frame and its text selection."
   (unless (context-input-handler context)
     (setf (context-input-handler context)
@@ -632,7 +639,7 @@
   (dragging-p nil :type boolean))
 
 (fn (selectable-nodes (values (vector element) (or null hash-table)))
-    ((context context) &optional keys-p)
+    ((context context) &optional ((keys-p boolean) nil))
   "Collect visible selectable text nodes in layout order."
   (let ((nodes (make-array 0 :element-type 'element :adjustable t
                            :fill-pointer 0)) (keys (when keys-p
@@ -780,8 +787,9 @@
     (when (and text (plusp (length text)) (context-copy context))
       (funcall (context-copy context) text))))
 
-(fn (nearest-selection-node t)
-    ((nodes (vector element)) (x real) (y real) &optional target)
+(fn (nearest-selection-node (or null element))
+    ((nodes (vector element)) (x real) (y real) &optional
+     ((target (or null element)) nil))
   "Find the nearest visible text node, preferring vertical proximity before horizontal distance."
   (let ((distance nil) (horizontal nil))
     (loop :for node :across nodes :do
@@ -840,7 +848,7 @@
 
 (fn (extend-text-selection (values))
     ((renderer renderer) (context context) (selection text-selection)
-     (nodes (vector element)) target (x real) (y real))
+     (nodes (vector element)) (target (or null element)) (x real) (y real))
   "Extend an editor caret or a multi-node text selection to the pointer position."
   (if (text-selection-field selection)
       (let* ((id (text-selection-field selection))
@@ -1245,7 +1253,8 @@
     (paint-focus-ring renderer node radius)))
 
 (fn (paint-standard-slider (values))
-    ((renderer renderer) (widget widget) (box box) disabled translucent flat)
+    ((renderer renderer) (widget widget) (box box) (disabled boolean)
+     (translucent boolean) (flat boolean))
   "Paint the standard slider indicator using the toolkit surface policy."
   (let ((fraction (/ (- (widget-value widget)
                         (widget-minimum widget))
@@ -1271,7 +1280,7 @@
   (values))
 
 (fn (checkbox-fill-color string)
-    ((widget widget) translucent flat disabled)
+    ((widget widget) (translucent boolean) (flat boolean) (disabled boolean))
   "Resolve the checkbox indicator fill for toolkit style, selection, and disabled state."
   (if (or translucent flat)
       (if (widget-value widget)
@@ -1282,7 +1291,8 @@
 
 (fn (paint-standard-checkbox (values))
     ((renderer renderer) (node element) (widget widget) (x real) (y real)
-     disabled pressed translucent flat bevel (foreground string))
+     (disabled boolean) (pressed boolean) (translucent boolean)
+     (flat boolean) (bevel (or null function)) (foreground string))
   "Paint the standard checkbox indicator using the toolkit surface policy."
   (let ((indicator (make-box :x x :y y :width 16 :height 16)))
     (shape renderer indicator (if (or translucent flat) 4 0)
@@ -1309,7 +1319,8 @@
 
 (fn (paint-standard-radio (values))
     ((renderer renderer) (node element) (widget widget) (x real) (y real)
-     disabled translucent flat (foreground string))
+     (disabled boolean) (translucent boolean) (flat boolean)
+     (foreground string))
   "Paint the standard radio indicator using the toolkit surface policy."
   (let ((indicator (make-box :x x :y (+ y 1)
                              :width 16 :height 16)))
@@ -1329,7 +1340,8 @@
 
 (fn (paint-standard-surface (values))
     ((renderer renderer) (widget widget) (box box) (kind symbol)
-     (radius real) disabled pressed translucent flat bevel)
+     (radius real) (disabled boolean) (pressed boolean) (translucent boolean)
+     (flat boolean) (bevel (or null function)))
   "Paint the control background, optional glass backdrop, and toolkit bevel."
   (unless (or (eq kind :label) (and flat (member kind '(:checkbox :radio
                                                         :slider))))
@@ -1349,9 +1361,9 @@
                    disabled))))
   (values))
 
-(fn (paint-standard-body t) ((renderer renderer) (node element) translucent
-                             bevel
-                             &optional flat)
+(fn (paint-standard-body t)
+    ((renderer renderer) (node element) (translucent boolean)
+     (bevel (or null function)) &optional ((flat boolean) nil))
   "Paint standard control bodies with the selected toolkit's surface treatment."
   (let* ((widget (element-content node))
          (box (element-box node))
@@ -1414,8 +1426,9 @@
     (outline renderer face radius foreground 0.4f0
              (min 1 (/ (box-width face) 2)))))
 
-(fn (motif-bevel t) ((renderer renderer) (widget widget) (box box)
-                     &optional recessed disabled)
+(fn (motif-bevel t)
+    ((renderer renderer) (widget widget) (box box) &optional
+     ((recessed boolean) nil) ((disabled boolean) nil))
   "Paint a raised or recessed Motif bevel around a surface."
   (let* ((light (if disabled (widget-color widget :disabled-bevel-light)
                     (widget-color widget :bevel-light)))
@@ -1454,8 +1467,9 @@
     (shape renderer (element-box node) 0 foreground 0.15f0)
     (shape renderer (scrollbar-thumb node) 0 (widget-accent widget) 1)))
 
-(fn (macos-bevel t) ((renderer renderer) (widget widget) (box box)
-                     &optional recessed disabled)
+(fn (macos-bevel t)
+    ((renderer renderer) (widget widget) (box box) &optional
+     ((recessed boolean) nil) ((disabled boolean) nil))
   "Paint the macOS surface treatment with rounded fill and edge accents."
   (declare (ignore recessed))
   (outline renderer box (min 6 (widget-radius widget))
@@ -1463,7 +1477,7 @@
            0.65f0 1))
 
 (fn (qt-bevel t) ((renderer renderer) (widget widget) (box box)
-                  &optional recessed disabled)
+                  &optional ((recessed boolean) nil) ((disabled boolean) nil))
   "Paint a Qt-style raised or recessed surface."
   (let ((light (widget-color widget (if disabled :disabled-bevel-light
                                         :bevel-light)))
@@ -1500,7 +1514,9 @@
   (paint-desktop-scrollbar renderer node #'qt-bevel))
 
 (fn (register-standard-painter symbol)
-    ((name symbol) radius (scrollbar function) bevel &key translucent flat)
+    ((name symbol) (radius (or null real)) (scrollbar function)
+     (bevel (or null function)) &key ((translucent boolean) nil)
+     ((flat boolean) nil))
   "Register standard control painting with toolkit-specific surface callbacks."
   (let ((body (lambda (renderer node)
                 (paint-standard-body renderer node translucent bevel flat))))
@@ -1550,7 +1566,7 @@
                (widget-color widget :outline) 1))))
 
 (fn (garnet-stipple t) ((renderer renderer) (widget widget) (box box)
-                        &optional border)
+                        &optional ((border (or null real)) nil))
   "Paint a checkerboard fill or border for Garnet emphasis."
   (when (renderer-stipple renderer)
     (return-from garnet-stipple
@@ -1594,7 +1610,7 @@
 
 (fn (garnet-slider t) ((renderer renderer) (widget widget) (track box) (thumb
                                                                         box)
-                       (background string) hover)
+                       (background string) (hover boolean))
   "Paint Garnet's slider track and value-dependent thumb."
   (garnet-fill renderer track (widget-color widget :light))
   (garnet-stipple renderer widget (inset-box track 1))
@@ -1606,7 +1622,7 @@
 
 (fn (garnet-face box) ((renderer renderer) (widget widget) (box box)
                        (background string)
-                       &optional pressed ((band integer) 3))
+                       &optional ((pressed boolean) nil) ((band integer) 3))
   "Paint a raised or pressed Garnet control face."
   (let* ((shadow (make-box :x (+ (box-x box) +garnet-shadow-offset+) :y
                            (+
@@ -1632,8 +1648,8 @@
     face))
 
 (fn (paint-garnet-checkbox (values))
-    ((renderer renderer) (node element) (widget widget) (box box) hover
-     pressed (ink string))
+    ((renderer renderer) (node element) (widget widget) (box box)
+     (hover boolean) (pressed boolean) (ink string))
   "Paint the Garnet checkbox indicator and its interaction feedback."
   (let* ((square (make-box :x (- (box-right box) 24)
                            :y (+ (box-y box)
@@ -1662,9 +1678,8 @@
   (values))
 
 (fn (paint-garnet-radio (values))
-    ((renderer renderer) (node element) (widget widget) (box box) hover
-     (ink
-      string))
+    ((renderer renderer) (node element) (widget widget) (box box)
+     (hover boolean) (ink string))
   "Paint the Garnet radio indicator and its interaction feedback."
   (let ((indicator (make-box :x (- (box-right box) 22)
                              :y (+ (box-y box)
@@ -1679,7 +1694,7 @@
   (values))
 
 (fn (paint-garnet-slider (values))
-    ((renderer renderer) (widget widget) (box box) hover)
+    ((renderer renderer) (widget widget) (box box) (hover boolean))
   "Paint the Garnet slider indicator and its interaction feedback."
   (let* ((track (make-box :x (+ (box-x box) 8)
                           :y (+ (box-y box) (/ (box-height box) 2) -6)

@@ -78,6 +78,8 @@ Repeating a control call site without distinct keys or scopes signals
 when the second instance is declared, before it can reuse the first’s state.
 Wrap repeated groups or reusable drawing functions in `(lui:with-key key ...)`.
 IDs use `equal`; do not mutate compound keys after declaring them.
+The public `lui:object-id` type names this identity contract and currently
+expands to `t`, so arbitrary application objects remain valid IDs.
 
 Owned state is local to a UI context and is discarded when its widget is
 absent from a completed frame. Recompiling a call site creates a new identity.

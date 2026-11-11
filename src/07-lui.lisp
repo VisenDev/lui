@@ -6,8 +6,8 @@
                 #:error-value
                 #:error-backend #:error-font-request)
   (:import-from #:lui.layout
-                #:point #:contour #:contours #:sizing #:fit #:grow #:fixed
-                #:percent #:box
+                #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
+                #:fixed #:percent #:box
                 #:make-box #:box-x #:box-y #:box-width #:box-height
                 #:element-box
                 #:element-content)
@@ -47,7 +47,8 @@
    #:focused-p #:widget-font #:render-pdf #:*pdf-output*
    #:make-terminal-context #:render-terminal #:terminal-text-width
    #:text-lines #:cell-edge #:mount #:unmount #:refresh
-   #:point #:contour #:contours #:sizing #:fit #:grow #:fixed #:percent #:box
+   #:object-id #:point #:contour #:contours #:sizing #:fit #:grow #:fixed
+   #:percent #:box
    #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
    #:element-content #:row #:column #:with-frame #:frame-time #:request-frame
    #:previous-box #:scroll-position #:scroll-to #:activated-p #:activated-ids
@@ -111,9 +112,9 @@
     results))
 
 (fn (run t)
-    ((draw function) &key (backend *backend*) ((title string) "LUI") width
-                       height (interactive t) ((min-fps real) 1) ((max-fps
-                                                                   real) 240))
+    ((draw function) &key ((backend symbol) *backend*) ((title string) "LUI")
+     ((width (or null real)) nil) ((height (or null real)) nil)
+     ((interactive boolean) t) ((min-fps real) 1) ((max-fps real) 240))
   "Run the same immediate-mode DRAW function on any registered backend.
 Backend-specific window, DOM, input, frame, and lifetime management stay in LUI.
 WIDTH/HEIGHT are optional backend coordinates; omit them for sensible defaults.
@@ -182,11 +183,11 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
   (not (null (rendering-option name :native-labels))))
 
 (fn (register-toolkit-rendering symbol)
-    ((name symbol) &key (paint nil
+    ((name symbol) &key ((paint (or null function)) nil
                                paint-p)
-                     (geometry nil
+                     ((geometry (or null function)) nil
                                geometry-p)
-                     (native-labels nil
+                     ((native-labels boolean) nil
                                     labels-p))
   "Set graphical callbacks for registered NAME. Omitted keys retain their
 settings or inherit from :PARENT; explicit NIL disables the inherited setting."
@@ -202,12 +203,12 @@ settings or inherit from :PARENT; explicit NIL disables the inherited setting."
     (incf *toolkit-revision*))
   name)
 
-(fn (register-toolkit symbol) ((name symbol) &key parent defaults controls
-                                               (paint nil paint-p)
-                                               (geometry
-                                                nil
-                                                geometry-p)
-                                               (native-labels nil labels-p))
+(fn (register-toolkit symbol)
+    ((name symbol) &key ((parent symbol) nil)
+     ((defaults (or list function)) nil) ((controls list) nil)
+     ((paint (or null function)) nil paint-p)
+     ((geometry (or null function)) nil geometry-p)
+     ((native-labels boolean) nil labels-p))
   "Register a toolkit. DEFAULTS is a plist or a zero-argument function.
 CONTROLS maps control names to functions taking the public arguments and options.
 PAINT, GEOMETRY and NATIVE-LABELS configure graphical rendering; omitted values
@@ -255,11 +256,12 @@ inherit only from an explicit PARENT."
                    (t (colors (cddr tail))))))
     (append *palette* (colors defaults))))
 
-(fn (toolkit-palette list) (&optional (name *toolkit*))
+(fn (toolkit-palette list) (&optional ((name symbol) *toolkit*))
   "Return scoped semantic colors followed by NAME's inherited palette."
   (resolve-palette (defaults-of (find-toolkit name))))
 
-(fn (toolkit-defaults (values list list)) (&optional (name *toolkit*) kind)
+(fn (toolkit-defaults (values list list))
+    (&optional ((name symbol) *toolkit*) ((kind symbol) nil))
   "Return appearance defaults for KIND and the captured palette as a second value."
   (let* ((defaults (defaults-of (find-toolkit name)))
          (palette (copy-list (resolve-palette defaults))))
@@ -412,7 +414,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
       (let ((parent (%toolkit-parent entry)))
         (when parent (override kind (find-toolkit parent))))))
 
-(fn (control t) ((kind symbol) &rest arguments)
+(fn (control t) ((kind symbol) &rest (arguments list))
   "Invoke a user-defined control from the current toolkit or its ancestors."
   (apply (or (override kind (or *toolkit-definition*
                                 (find-toolkit *toolkit*)))
@@ -473,7 +475,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
   "Distinguish an explicitly supplied option, including NIL, from an omitted one."
   (loop :for option :in options :by #'cddr :thereis (eq option key)))
 
-(fn (owned-widget-value t) (id (options list) default)
+(fn (owned-widget-value t) ((id object-id) (options list) (default t))
   "Resolve a controlled value or initialize retained state exactly once."
   (if (widget-option-p :value options)
       (getf options :value)
@@ -483,7 +485,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
 
 (fn (invoke-widget (values t t t))
     ((function function) (site symbol) (arguments list) (options list)
-     (value-p boolean) default)
+     (value-p boolean) (default t))
   "Resolve identity and owned values, invoke the control, and return its ID third."
   (let* ((id (unless (and (eq function #'%label)
                          (not (widget-option-p :id options)))
@@ -519,7 +521,14 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
   (let ((kind (intern (symbol-name name) :keyword))
         (internal (intern (concatenate 'string "%" (symbol-name name)))))
     `(progn
-       (fn (,internal t) (,@args &optional options)
+       (fn (,internal t)
+           (,@(mapcar (lambda (argument)
+                        (list argument
+                              (case argument
+                                (id 'object-id) (text 'string)
+                                (fraction 'real) (commands 'list)
+                                (otherwise t)))) args)
+            &optional ((options list) nil))
        ,doc
        (let* ((entry (or *toolkit-definition* (find-toolkit *toolkit*)))
               (custom (override ,kind entry)))
@@ -547,8 +556,9 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
         (push (car tail) result)
         (push (cadr tail) result)))))
 
-(fn (selectable boolean) ((kind symbol) (style symbol) id (text string)
-                          (options list) (defaults list))
+(fn (selectable boolean)
+    ((kind symbol) (style symbol) (id object-id) (text string) (options list)
+     (defaults list))
   "Declare a selectable control and return whether it was activated."
   ;; Extract selection while removing its public option in one pass. Preserve
   ;; GETF's first-value rule, including an explicitly supplied NIL.
@@ -685,8 +695,8 @@ Owned state is discarded when this widget is absent from a completed frame."
     (make-array count :element-type '(cons integer string) :initial-contents
                 (nreverse matches))))
 
-(fn (anchored-popup lui.layout:element) (id (anchor lui.layout:element)
-                                         (options list))
+(fn (anchored-popup lui.layout:element)
+    ((id object-id) (anchor lui.layout:element) (options list))
   "Declare a floating popup whose geometry is constrained to ANCHOR."
   (let ((*parent* (lui.layout:make-element)))
     (let ((pane
@@ -702,9 +712,9 @@ Owned state is discarded when this widget is absent from a completed frame."
       pane)))
 
 (fn (combobox-popup (values))
-    (id (matches (vector (cons integer string))) index (anchor
-                                                        lui.layout:element)
-     reveal)
+    ((id object-id) (matches (vector (cons integer string)))
+     (index (or null integer)) (anchor lui.layout:element)
+     (reveal (or null event)))
   "Declare the filtered combobox choices with stable source-index IDs."
   (let* ((pane (anchored-popup (list id :popup) anchor nil))
          (*parent* pane))
@@ -729,20 +739,18 @@ Owned state is discarded when this widget is absent from a completed frame."
        (not (null (member (event-key event) '(:up :down))))))
 
 (fn (completion-next-index (or null integer))
-    ((matches sequence) index (last integer) (event event))
+    ((matches sequence) (index (or null integer)) (last integer)
+     (event event))
   "Advance the highlighted completion index, retaining NIL for an empty result set."
   (when (plusp (length matches))
     (if (eq :down (event-key event))
         (min last (1+ (or index -1)))
         (max 0 (1- (or index (1+ last)))))))
 
-(fn (combobox-completion (or null string)) (id (state combobox-state) (text
-                                                                       string)
-                                            (choices sequence) (limit
-                                                                (integer 1 *))
-                                            (events (vector event))
-                                            (anchor
-                                             lui.layout:element))
+(fn (combobox-completion (or null string))
+    ((id object-id) (state combobox-state) (text string) (choices sequence)
+     (limit (integer 1 *)) (events (vector event))
+     (anchor lui.layout:element))
   "Apply autocomplete navigation or selection to the combobox editor state."
   (let ((navigate (find-if #'completion-navigation-p events)))
     (when (or navigate (combobox-state-open-p state))
@@ -783,7 +791,8 @@ Owned state is discarded when this widget is absent from a completed frame."
   nil)
 
 (fn (%searchable-combobox (values t boolean))
-    (id value (choices sequence) &optional ((options list) nil))
+    ((id object-id) (value (or null string)) (choices sequence) &optional
+     ((options list) nil))
   "Edit a string, returning the text and a change flag just like TEXT-FIELD.
 Suggestions open on focus or typing. Up/Down highlight a suggestion and
 Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
@@ -850,7 +859,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (make-array 3 :element-type 'integer :initial-contents (list year month
                                                                day)))
 
-(fn (parse-picker-date (or null date-parts)) (text)
+(fn (parse-picker-date (or null date-parts)) ((text (or null string)))
   "Parse YYYY-MM-DD or MM/DD/YYYY into a year/month/day vector, checking leap years."
   (when (and (stringp text) (= 10 (length text)))
     (flet ((number-at (start end)
@@ -901,7 +910,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (multiple-value-bind (year-offset index) (floor (+ month -1 delta) 12)
     (values (+ year year-offset) (1+ index))))
 
-(fn (calendar-item boolean) (id (text string) &rest options)
+(fn (calendar-item boolean)
+    ((id object-id) (text string) &rest (options list))
   "Declare one selectable calendar entry with its date-specific options."
   (%list-item id text (append options (opt :font-size 14))))
 
@@ -915,7 +925,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                     (-1 (+ day (month-days y m)))
                     (1 (- day count)) (otherwise day))))))
 
-(fn (calendar-arrow-focus (values)) (id (state picker-state))
+(fn (calendar-arrow-focus (values)) ((id object-id) (state picker-state))
   "Move calendar keyboard focus according to arrow and paging keys."
   (let ((focus (context-focus *context*)))
     (when (and (consp focus) (equal (first focus) id)
@@ -939,7 +949,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (values))
 
 (fn (calendar-header (values))
-    (id (state picker-state) (year integer) (month integer) months)
+    ((id object-id) (state picker-state) (year integer) (month integer)
+     (months boolean))
   "Declare month/year navigation and update the picker state when activated."
   (row (:width (lui.layout:grow))
     (when (calendar-item (list id :month-menu)
@@ -965,7 +976,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (values))
 
 (fn (calendar-month-grid (values))
-    (id (state picker-state) (month integer))
+    ((id object-id) (state picker-state) (month integer))
   "Declare the month chooser and switch back to the day grid after selection."
   (dotimes (r 4)
     (row (:width (lui.layout:grow))
@@ -982,7 +993,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (values))
 
 (fn (picker-calendar (values (or null date-parts) boolean))
-    (id (state picker-state) (selected (or null date-parts)))
+    ((id object-id) (state picker-state) (selected (or null date-parts)))
   "Return the selected date parts (or NIL for Clear) and an action flag."
   (calendar-arrow-focus id state)
   (let* ((year (picker-state-year state)) (month (picker-state-month state))
@@ -990,7 +1001,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
          (width (lui.layout:percent (/ 1 7)))
          (palette (toolkit-defaults))
          (foreground (getf palette :foreground "#ffffff"))
-         (muted (lui.widgets::muted-ink foreground (getf palette :background "#303040")))
+         (muted (lui.widgets::muted-ink
+                 foreground (getf palette :background "#303040")))
          (ink (getf palette :accent foreground)))
     (calendar-header id state year month months)
     (setf year (picker-state-year state) month (picker-state-month state))
@@ -1028,7 +1040,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     (values nil nil)))
 
 (fn (calendar-trigger (values))
-    (id (state picker-state) parts trigger terminal)
+    ((id object-id) (state picker-state) (parts (or null date-parts))
+     (trigger object-id) (terminal boolean))
   "Toggle the calendar from its icon or field and establish its initial date and focus."
   (let* ((input (list id :input))
          (field-click (or (activated-p input) (activated-p (list id
@@ -1057,7 +1070,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (values))
 
 (fn (calendar-popup (values (or null date-parts) boolean))
-    (id (state picker-state) (parts (or null date-parts)))
+    ((id object-id) (state picker-state) (parts (or null date-parts)))
   "Declare the date-picker overlay and return a selected date and change flag."
   (let ((trigger (list id :calendar)) (popup (list id :popup))
         (focus (context-focus *context*))
@@ -1099,7 +1112,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                      (return-from calendar-popup (values date t)))))))))
     (values nil nil)))
 
-(fn (%date-picker (or null string)) (id value &optional ((options list) nil))
+(fn (%date-picker (or null string))
+    ((id object-id) (value (or null string)) &optional ((options list) nil))
   "Type a date as MM/DD/YYYY or pick it from the calendar. Return YYYY-MM-DD
 or NIL when cleared. An incomplete or invalid draft preserves the model value."
   (let ((date (parse-picker-date value))
@@ -1109,8 +1123,8 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
         (result value))
     (unless (equal value (picker-state-value state))
       (setf (picker-state-value state) value
-            (picker-state-draft state) (if date (picker-display date) (or
-                                                                       value ""))))
+            (picker-state-draft state) (if date
+                                       (picker-display date) (or value ""))))
     (column (:id id :width (getf options :width (lui.layout:fit)))
       (panel (append (opt :id (list id :field) :interactive-p t
                           :keyboard-focus-p nil)

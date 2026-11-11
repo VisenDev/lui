@@ -1,7 +1,7 @@
 (defpackage #:lui.layout
   (:use #:cl #:lui.fn)
-  (:export #:point #:contour #:contours #:sizing #:fit #:grow #:fixed
-           #:percent #:box #:box-x #:box-y
+  (:export #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
+           #:fixed #:percent #:box #:box-x #:box-y
            #:box-width #:box-height #:box-right #:box-bottom #:make-box
            #:element #:make-element
            #:element-id #:element-children #:element-box #:element-content
@@ -22,6 +22,11 @@
 
 (in-package #:lui.layout)
 
+(deftype object-id ()
+  "An application-defined identity compared with EQUAL. Any Lisp object is valid;
+keep compound IDs stable and do not mutate them after declaration."
+  't)
+
 (deftype point () "An X/Y coordinate pair." '(cons real real))
 (deftype contour () "A vector of ordered polygon points." '(vector point))
 (deftype contours () "A vector of polygon contours." '(vector contour))
@@ -41,17 +46,18 @@
   (maximum nil :type (or null real)))
 
 (fn (make-checked-sizing sizing)
-    ((kind symbol) (value real) (minimum real) maximum)
+    ((kind symbol) (value real) (minimum real) (maximum (or null real)))
   "Create a sizing policy after checking its minimum and maximum bounds."
   (assert (and (>= minimum 0) (or (null maximum) (>= maximum minimum))))
   (make-sizing :kind kind :value value
                :minimum minimum :maximum maximum))
 
-(fn (fit sizing) (&optional ((minimum real) 0) maximum)
+(fn (fit sizing) (&optional ((minimum real) 0) ((maximum (or null real)) nil))
   "Size to measured content, bounded by MINIMUM and optional MAXIMUM."
   (make-checked-sizing :fit 0 minimum maximum))
 
-(fn (grow sizing) (&optional ((minimum real) 0) maximum)
+(fn (grow sizing)
+    (&optional ((minimum real) 0) ((maximum (or null real)) nil))
   "Share the remaining space with grow siblings, respecting size bounds."
   (make-checked-sizing :grow 0 minimum maximum))
 
@@ -84,7 +90,7 @@
 (defstruct element
   "One layout declaration with children, sizing, solved geometry, and clip state.
 Floating children use offsets; interactive nodes participate in input routing."
-  id
+  (id nil :type object-id)
   content
   (children (make-array 0 :element-type 'element :adjustable t :fill-pointer
                         0) :type (vector element))
@@ -454,7 +460,8 @@ Horizontal table layout uses the shared column widths measured earlier."
   "Visible page bounds used to constrain popups during SOLVE; NIL otherwise.")
 
 (fn (solve element)
-    ((root element) (width real) (height real) &optional page-top)
+    ((root element) (width real) (height real) &optional
+     ((page-top (or null real)) nil))
   "Measure and position ROOT and its descendants within WIDTH and HEIGHT.
 Update boxes, padded clipping rectangles, and bounded scroll offsets in place.
 With PAGE-TOP, HEIGHT is the minimum page height and popups stay in the viewport."

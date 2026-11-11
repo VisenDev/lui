@@ -182,34 +182,20 @@ An optional terminal-label callback overrides the standard kind-based label."
   (values))
 
 (fn (declare-widget boolean)
-    ((kind symbol) (style symbol) id (text string) &key ((width sizing) (fit))
-                                                     ((height sizing) (fit))
-                                                     ((padding real) 0)
-                                                     ((floating-p boolean)
-                                                      nil) ((offset-x real)
-                                                      0) ((offset-y real) 0)
-                                                     ((foreground string) "#ffffff") ((background string) "#303040")
-                                                     ((radius real) 12)
-                                                     ((frost real) 12) value
-                                                     ((minimum real) 0)
-                                                     ((maximum real) 1)
-                                                     ((step real) 0.01f0)
-                                                     ((font-size real) 16)
-                                                     ((font-family symbol)
-                                                      :sans-serif)
-                                                     ((font-weight symbol)
-                                                      :normal)
-                                                     ((opacity real) 0.85f0)
-                                                     ((accent string) "#258bff") (disabled-p nil)
-                                                     painter terminal-label
-                                                     ((terminal-border
-                                                       (or
-                                                        null
-                                                        (string 6))) nil)
-                                                     accessible-name icon
-                                                     center-text-p
-                                                     (password-p nil)
-                                                     (palette *base-palette*))
+    ((kind symbol) (style symbol) (id object-id) (text string) &key
+     ((width sizing) (fit)) ((height sizing) (fit)) ((padding real) 0)
+     ((floating-p boolean) nil) ((offset-x real) 0) ((offset-y real) 0)
+     ((foreground string) "#ffffff") ((background string) "#303040")
+     ((radius real) 12) ((frost real) 12) ((value t) nil) ((minimum real) 0)
+     ((maximum real) 1) ((step real) 0.01f0) ((font-size real) 16)
+     ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
+     ((opacity real) 0.85f0) ((accent string) "#258bff")
+     ((disabled-p boolean) nil) ((painter (or null function)) nil)
+     ((terminal-label (or null function)) nil)
+     ((terminal-border (or null (string 6))) nil)
+     ((accessible-name (or null string)) nil) ((icon symbol) nil)
+     ((center-text-p boolean) nil) ((password-p boolean) nil)
+     ((palette list) *base-palette*))
   "Declare a low-level widget in the current frame using STYLE and stable ID.
 Layout, typography, colors, optical effects, and backend extension callbacks
 are supplied as keywords. Return activation for enabled actionable kinds.
@@ -300,13 +286,15 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
                       (otherwise :default)))))))))
     cursor))
 
-(fn (horizontal-selection-key symbol) ((key symbol) extend)
+(fn (horizontal-selection-key symbol) ((key symbol) (extend boolean))
   "Map horizontal arrows to selection-extending commands when EXTEND is true."
   (if extend
       (case key (:left :shift-left) (:right :shift-right) (otherwise key))
       key))
 
-(fn (readline-key symbol) ((key string) &key control alt shift)
+(fn (readline-key symbol)
+    ((key string) &key ((control boolean) nil) ((alt boolean) nil)
+     ((shift boolean) nil))
   "Translate modified keys to shared editor commands; NIL leaves native handling."
   (let* ((name (string-downcase key))
          (arrow (cond ((member name '("left" "arrowleft") :test #'string=)
@@ -351,8 +339,9 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
   "Return the end index of the line containing POSITION in TEXT."
   (or (position #\Newline text :start cursor) (length text)))
 
-(fn (word-position integer) ((text string) (cursor integer)
-                             (direction integer) &optional whitespace)
+(fn (word-position integer)
+    ((text string) (cursor integer) (direction integer) &optional
+     ((whitespace boolean) nil))
   "Find the next word boundary for a directional editor motion."
   (let ((index (if (minusp direction) (1- cursor) cursor)))
     (flet ((word-p (character)
@@ -368,7 +357,8 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
     (if (minusp direction) (1+ index) index)))
 
 (fn (move-editor-cursor (values))
-    ((text string) (state edit-state) (position integer) &optional extend)
+    ((text string) (state edit-state) (position integer) &optional
+     ((extend boolean) nil))
   "Clamp the caret to TEXT and collapse selection unless EXTEND is true."
   (setf (edit-state-cursor state) (max 0 (min (length text) position)))
   (unless extend
@@ -384,7 +374,8 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
   (concatenate 'string (subseq text 0 start) replacement (subseq text end)))
 
 (fn (kill-editor-selection string)
-    ((text string) (state edit-state) (start integer) (end integer) backward)
+    ((text string) (state edit-state) (start integer) (end integer)
+     (backward boolean))
   "Remove START..END and append to a consecutive kill in the proper direction."
   (when (< start end)
     (let ((killed (subseq text start end)))
@@ -509,8 +500,8 @@ Events include semantic Readline keys, text insertion, and replacement changes."
               (and (eq (event-kind event) :key) (event-key event))))
   text)
 
-(fn (slider-value real) (id (value real) (options list) (events (vector
-                                                                 event)))
+(fn (slider-value real)
+    ((id object-id) (value real) (options list) (events (vector event)))
   "Apply slider input, then clamp and snap the value to the configured step."
   (let ((minimum (getf options :minimum 0))
         (maximum (getf options :maximum 1))
@@ -546,7 +537,8 @@ Events include semantic Readline keys, text insertion, and replacement changes."
                  (* step (round (/ (- value minimum) step))))))))
 
 (fn (value-widget (values t boolean))
-    ((kind symbol) (style symbol) id value (text string) (options list))
+    ((kind symbol) (style symbol) (id object-id) (value t) (text string)
+     (options list))
   "Declare a value control, apply its current input, and return the updated value.
 KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
   (let ((original value)
@@ -601,7 +593,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
                     (* (- (box-height track) height)
                        (/ offset (max 1 (- extent viewport))))))))
 
-(fn (scrollbar-input t) (id owner)
+(fn (scrollbar-input t) ((id object-id) (owner object-id))
   "Translate scrollbar dragging, clicking, and keys into a scroll position."
   (let* ((events (events-for id))
          (state (when (plusp (length events)) (gethash id (context-state
@@ -649,7 +641,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
               (setf offset (max 0 (min limit offset))))
         (when handled (scroll-to owner (scroll-position owner) offset))))))
 
-(fn (decorate-scrollbar (or null element)) ((owner element) id)
+(fn (decorate-scrollbar (or null element)) ((owner element) (id object-id))
   "Attach scrollbar interaction and visuals to an overflowing container."
   (when (plusp (element-scroll-limit-y owner))
     (let* ((bounds (element-box owner)) (padding (element-padding owner))
