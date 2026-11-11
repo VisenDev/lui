@@ -3,9 +3,11 @@
   (:import-from #:lui
                 #:set-debugger-enabled #:debugger-enabled-p #:debugger-state
                 #:make-debugger-state #:debugger-state-open-p
-                #:debugger-state-selected #:debugger-state-width)
+                #:debugger-state-selected
+                #:debugger-state-width)
   (:export #:set-debugger-enabled #:debugger-enabled-p #:debugger-state
-           #:make-debugger-state #:debugger-state-open-p
+           #:make-debugger-state
+           #:debugger-state-open-p
            #:debugger-state-selected #:debugger-state-width))
 (in-package #:lui.debug)
 
@@ -14,7 +16,7 @@
   "Debugger state: visibility, selected snapshot node, expansion, and pane width."
   (open-p nil :type boolean) selected
   (details-height nil :type (or null real))
-  (details-grab nil :type (or null real))
+  (details-grab nil :type (or null cons))
   (reveal-selection-p nil :type boolean)
   (width nil :type (or null real)) (grab nil :type (or null real))
   (collapsed (make-hash-table :test 'equal) :type hash-table)
@@ -22,7 +24,8 @@
   (rows (make-array 0 :adjustable t :fill-pointer 0) :type vector))
 (fn (id list) (name &optional key)
   "Construct a debugger-owned widget ID from NAME and optional KEY."
-  (list :lui.debug name key))
+  (list
+   :lui.debug name key))
 
 (fn (own-node-p boolean) ((node element))
   "Recognize debugger elements so snapshots exclude the debugger itself."
@@ -130,7 +133,8 @@
                                                    (symbolp item)
                                                    (characterp item)) item
                                                    :object))) items)))
-           (format nil "List (~D~A items)" (length items) (if tail "+" "")))))
+           (format nil "List (~D~A items)" (length items)
+                   (if tail "+" "")))))
     ((vectorp value) (format nil "Vector (~D items)" (length value)))
     (t (let ((type (type-of value)))
          (format nil "#<~A>" (if (symbolp type) (symbol-name type)
@@ -165,7 +169,8 @@
                             :font-weight :normal)))))
   (values))
 
-(fn (layout-details (values)) ((node element) (width real) container)
+(fn (layout-details (values))
+    ((node element) (width real) container)
   "Describe sizing, flow, clipping, and scrolling for the selected element."
   (properties "Layout" width
               (list "Width" (sizing-label (element-width node)))
@@ -206,30 +211,27 @@
 (fn (input-details (values))
     ((node element) (width real) widget node-id focused)
   "Describe input eligibility and the selected element's current interaction state."
-  (properties "Input" width
-              (list "Flags"
-                    (flag-label
-                     (list (cons "Interactive" (element-interactive-p node))
-                           (cons "Tab stop"
-                                 (and (element-interactive-p node)
+  (properties
+   "Input" width
+   (list "Flags"
+         (flag-label
+          (list (cons "Interactive" (element-interactive-p node))
+                (cons "Tab stop" (and (element-interactive-p node)
                                       (element-keyboard-focus-p node)))
-                           (cons "Pointer focus"
-                                 (element-pointer-focus-p node))
-                           (cons "Disabled" (and (widget-p widget)
-                                                 (widget-disabled-p widget))))
-                     "None"))
-              (list "State"
-                    (flag-label
-                     (list (cons "Focused" focused)
-                           (cons "Focus ring"
-                                 (and focused
-                                      (context-focus-visible-p *context*)))
-                           (cons "Hovered" (hovered-p node-id))
-                           (cons "Pressed"
-                                 (and node-id
-                                      (equal node-id
-                                             (context-active *context*)))))
-                     "Idle")))
+                (cons "Pointer focus" (element-pointer-focus-p node))
+                (cons "Disabled" (and (widget-p widget)
+                                      (widget-disabled-p widget))))
+          "None"))
+   (list "State"
+         (flag-label
+          (list (cons "Focused" focused)
+                (cons "Focus ring"
+                      (and focused (context-focus-visible-p *context*)))
+                (cons "Hovered" (hovered-p node-id))
+                (cons "Pressed" (and node-id
+                                     (equal node-id
+                                            (context-active *context*)))))
+          "Idle")))
   (values))
 
 (fn (details (values)) ((node element) (width real))
@@ -244,7 +246,8 @@
                 (list "Clip" (box-label (element-clip node))))
     (layout-details node width container)
     (when (widget-p widget)
-      (properties "Appearance" width (list "Toolkit" (widget-style widget))
+      (properties "Appearance" width
+                  (list "Toolkit" (widget-style widget))
                   (list "Foreground" (widget-foreground widget))
                   (list "Background" (widget-background widget))
                   (list "Accent" (widget-accent widget))
@@ -256,7 +259,8 @@
                                        (widget-font-family widget)
                                        (widget-font-weight widget)
                                        (widget-font-size widget)))))
-    (properties "Content" width (list "ID" node-id)
+    (properties "Content" width
+                (list "ID" node-id)
                 (list "Kind" (format nil "~A; ~D children"
                                      (if (widget-p widget)
                                          (widget-kind widget)
@@ -268,18 +272,17 @@
     (input-details node width widget node-id focused))
   (values))
 
-(fn (highlight (or null element))
-    ((box box) (name symbol) (opacity real) (accent string))
+(fn (highlight (or null element)) ((box box) (name symbol) (opacity real)
+                                   (accent string))
   "Declare a noninteractive overlay around the selected application's element."
   (when (and (plusp (box-width box)) (plusp (box-height box)))
-    (emit (make-element :id (id name) :floating-p t :offset-x (box-x box)
-                        :offset-y (box-y box) :width (fixed (box-width box))
-                        :height (fixed (box-height box))
-                        :content (make-widget :kind :highlight :style
-                                              (lui:current-toolkit)
-                                              :background "#ffb347"
-                                              :accent accent :opacity
-                                              opacity)))))
+    (emit (make-element
+           :id (id name) :floating-p t :offset-x (box-x box)
+           :offset-y (box-y box) :width (fixed (box-width box))
+           :height (fixed (box-height box))
+           :content (make-widget :kind :highlight :style (lui:current-toolkit)
+                                 :background "#ffb347"
+                                 :accent accent :opacity opacity)))))
 
 (fn (close-details real) ((state debugger-state))
   "Close the selected-node details pane and clear its resize gesture."
@@ -296,47 +299,59 @@
   (when (debugger-state-reveal-selection-p state)
     (setf (debugger-state-reveal-selection-p state) nil)
     (let ((index (position (debugger-state-selected state) rows :key
-                           #'entry-key :test #'equal)))
+                           #'entry-key
+                           :test #'equal)))
       (when index
-        (let ((top (* index step)) (viewport (max step (- height (units 2)))))
+        (let ((top (* index step))
+              (viewport (max step (- height (units 2)))))
           (setf offset
                 (max 0 (min top (max offset (- (+ top step) viewport)))))
           (scroll-to (id :tree) 0 offset)))))
   offset)
 
 (fn (debugger-tree-row (values))
-    ((state debugger-state) (width real) (step real) (index integer) entry
-     (node element) key)
+    ((state debugger-state) (width real) (step real) (index integer)
+     entry (node element) key)
   "Declare one visible debugger tree row with indentation, collapse control, and selection."
   (row (:floating-p t :offset-y (* index step)
-                    :width (grow) :height (fixed step)
-                    :gap (units 0.25f0) :cross-align :center)
-    (emit (make-element :width
-                        (fixed (min (/ width 3)
-                                    (units (* 2
-                                              (entry-depth entry)))))))
+                    :width (grow) :height (fixed
+                                           step)
+                    :gap (units 0.25f0) :cross-align
+                    :center)
+    (emit (make-element
+           :width
+           (fixed (min (/ width 3)
+                       (units (* 2 (entry-depth
+                                    entry)))))))
     (if (plusp (length (element-children node)))
-        (when (lui:list-item (id :collapse key)
-                             (if
-                              (gethash key (debugger-state-collapsed state))
-                              "+" "-")
+        (when (lui:list-item
+               (id :collapse key)
+               (if (gethash key
+                            (debugger-state-collapsed state))
+                   "+" "-")
 
-                             (lui:opt :width (fixed (units 3)) :height
-                                      (fixed step)))
-          (setf (gethash key (debugger-state-collapsed state))
-                (not (gethash key (debugger-state-collapsed state))))
+               (lui:opt :width (fixed (units 3))
+                        :height (fixed step)))
+          (setf (gethash key
+                         (debugger-state-collapsed state))
+                (not (gethash key
+                              (debugger-state-collapsed state))))
           (request-frame))
-        (emit (make-element :width (fixed (units 3)))))
-    (when (lui:list-item (id :row key) (caption node)
+        (emit (make-element :width (fixed (units
+                                           3)))))
+    (when (lui:list-item
+           (id :row key) (caption node)
 
-                         (lui:opt :width (grow) :height (fixed step)
-                                  :selected-p
-                                  (equal key
-                                         (debugger-state-selected state))))
+           (lui:opt :width (grow) :height (fixed
+                                           step)
+                    :selected-p
+                    (equal key
+                           (debugger-state-selected state))))
       (if (equal key (debugger-state-selected state))
           (close-details state)
           (setf (debugger-state-selected state) key
-                (debugger-state-reveal-selection-p state) t))
+                (debugger-state-reveal-selection-p
+                 state) t))
       (request-frame)))
   (values))
 
@@ -345,71 +360,68 @@
   (lui:panel (lui:opt :id (id :tree) :width (grow) :height (grow)
                       :scroll-p t :padding (units 1) :opacity 1
                       :radius 0 :frost 0)
-             (let* ((rows (debugger-state-rows state))
-                    (step (units (if (context-text-mode-p *context*) 1 3)))
-                    (viewport (previous-box (id :tree)))
-                    (height (if viewport (box-height viewport)
-                                (/ (lui.frame::context-viewport-height
-                                    *context*) 2)))
-                    (offset (reveal-selection state rows step height
-                                              (nth-value 1 (scroll-position
-                                                            (id :tree)))))
-                    (limit (max 0 (- (* step (length rows)) height)))
-                    (first (max 0 (floor (min offset limit) step)))
-                    (end (min (length rows) (+ first (ceiling height step)
-                                               1))))
-               (column (:width (grow) :height (fixed (* step (length rows))))
-                 (loop :for index :from first :below end
-                       :for entry := (aref rows index)
-                       :for node := (entry-node entry)
-                       :for key := (entry-key entry)
-                       :do (debugger-tree-row state width step index entry
-                                              node key)))))
+    (let* ((rows (debugger-state-rows state))
+           (step (units (if (context-text-mode-p *context*) 1 3)))
+           (viewport (previous-box (id :tree)))
+           (height (if viewport (box-height viewport)
+                       (/ (lui.frame::context-viewport-height
+                           *context*) 2)))
+           (offset (reveal-selection
+                    state rows step height
+                    (nth-value 1 (scroll-position (id :tree)))))
+           (limit (max 0 (- (* step (length rows)) height)))
+           (first (max 0 (floor (min offset limit) step)))
+           (end (min (length rows) (+ first (ceiling height step)
+                                      1))))
+      (column (:width (grow) :height (fixed (* step (length rows))))
+        (loop :for index :from first :below end
+              :for entry := (aref rows index)
+              :for node := (entry-node entry)
+              :for key := (entry-key entry)
+              :do (debugger-tree-row state width step index entry
+                                     node key)))))
   (values))
-
-(fn (resize-input (values real (or null real) boolean))
-    ((name symbol) (event event) (size real) grab (coordinate real)
-     (edge real) (keys list))
-  "Apply one divider event; return size, pointer grab offset, and change flag."
-  (let ((kind (event-kind event)) (changed nil))
-    (when (or (eq kind :cancel)
-              (and (eq kind :move) (not (event-dragging-p event))))
-      (setf grab nil))
-    (case kind
-      (:press
-       (when (eq (event-button event) :primary)
-         (setf grab (+ coordinate size (- edge)) changed t
-               (context-focus *context*) (id name))))
-      ((:move :release)
-       (when grab
-         (setf size (+ edge (- coordinate) grab) changed t)
-         (when (eq kind :release) (setf grab nil))))
-      (:key
-       (let ((entry (assoc (event-key event) keys)))
-         (when entry (setf size (cdr entry) changed t))))
-      (otherwise nil))
-    (values size grab changed)))
 
 (fn (debugger-width real) ((state debugger-state))
   "Resolve the debugger pane width within the available viewport bounds."
-  (let* ((window (context-width *context*)) (minimum (min window (units 25)))
+  (let* ((window (context-width *context*))
+         (minimum (min window (units 25)))
          (maximum (max minimum (- window (units 12))))
          (width (min maximum (max minimum
                                   (if (debugger-state-width state)
                                       (units (debugger-state-width state))
                                       (* window 0.4f0))))))
     (loop :for event :across (events-for (id :resize)) :do
-          (multiple-value-bind (next grab changed)
-              (resize-input :resize event width (debugger-state-grab state)
-                            (event-x event) window
-                            (list (cons :left (+ width (units 2)))
-                                  (cons :right (- width (units 2)))
-                                  (cons :home minimum) (cons :end maximum)))
-            (setf (debugger-state-grab state) grab)
-            (when changed
-              (setf width (min maximum (max minimum next))
-                    (debugger-state-width state) (/ width *unit*))
-              (request-frame))))
+          (when (or (eq (event-kind event) :cancel)
+                    (and (eq (event-kind event) :move)
+                         (not (event-dragging-p event))))
+            (setf (debugger-state-grab state) nil))
+          (when (or (and (eq (event-kind event) :press)
+                         (eq (event-button event) :primary))
+                    (and (debugger-state-grab state)
+                         (member (event-kind event) '(:move :release)))
+                    (and (eq (event-kind event) :key)
+                         (member (event-key event) '(:left :right :home
+                                                     :end))))
+            (case (event-kind event)
+              (:press
+               (setf (debugger-state-grab state) (- (event-x event) (- window
+                                                                       width))
+                     (context-focus *context*) (id :resize)))
+              ((:move :release)
+               (setf width (+ (- window (event-x event)) (debugger-state-grab
+                                                          state)))
+               (when (eq (event-kind event) :release)
+                 (setf (debugger-state-grab state) nil)))
+              (:key
+               (case (event-key event)
+                 (:left (incf width (units 2)))
+                 (:right (decf width (units 2)))
+                 (:home (setf width minimum)) (:end (setf width maximum))
+                 (otherwise nil))) (otherwise nil))
+            (setf width (min maximum (max minimum width))
+                  (debugger-state-width state) (/ width *unit*))
+            (request-frame)))
     (unless (equal (context-active *context*) (id :resize))
       (setf (debugger-state-grab state) nil))
     width))
@@ -417,49 +429,64 @@
 (fn (resize-handle element) ((width real))
   "Declare and route input for the debugger's horizontal resize handle."
   (let ((size (units 1)))
-    (emit (make-element :id (id :resize) :interactive-p t :pointer-focus-p t
-                        :floating-p t :offset-y
-                        (lui.frame::context-page-top *context*)
-                        :offset-x (max 0 (- (context-width *context*) width
-                                            (/ size 2)))
-                        :width (fixed size) :height
-                        (fixed
-                         (lui.frame::context-viewport-height
-                          *context*))
-                        :content (apply #'make-widget :kind :splitter
-                                        :style (lui:current-toolkit)
-                                        :value
-                                        (/ width
-                                           (max 1
-                                                (context-width *context*)))
-                                        :text "Debugger width"
-                                        (lui:toolkit-defaults))))))
+    (emit (make-element
+           :id (id :resize) :interactive-p t :pointer-focus-p t
+           :floating-p t
+           :offset-y (lui.frame::context-page-top *context*)
+           :offset-x (max 0 (- (context-width *context*) width (/ size 2)))
+           :width (fixed size) :height (fixed
+                                        (lui.frame::context-viewport-height
+                                         *context*))
+           :content (apply #'make-widget :kind :splitter
+                           :style (lui:current-toolkit)
+                           :value (/ width
+                                     (max 1 (context-width *context*)))
+                           :text "Debugger width"
+                           (lui:toolkit-defaults))))))
 
 (fn (details-height real) ((state debugger-state) (maximum (real 0 *)))
   "Resolve the selected-node details height within the debugger pane."
-  (let* ((minimum (min maximum
-                       (units (if (context-text-mode-p *context*) 6 12))))
-         (height (min maximum (max minimum
-                                   (if (debugger-state-details-height state)
-                                       (units
-                                        (debugger-state-details-height state))
+  (let* ((minimum (min maximum (units (if (context-text-mode-p *context*)
+                                          6 12))))
+         (height (min maximum
+                      (max minimum (if (debugger-state-details-height state)
+                                       (units (debugger-state-details-height
+                                               state))
                                        (* maximum 0.75f0))))))
     (loop :for event :across (events-for (id :details-resize)) :do
-          (multiple-value-bind (next grab changed)
-              (resize-input :details-resize event height
-                            (debugger-state-details-grab state)
-                            (event-y event) 0
-                            (list (cons :up (+ height (units 2)))
-                                  (cons :down (- height (units 2)))
-                                  (cons :home maximum) (cons :end 0)))
-            (setf (debugger-state-details-grab state) grab)
-            (when changed
-              (setf height next)
-              (if (<= height (units 2)) (close-details state)
-                  (setf height (min maximum (max minimum height))
-                        (debugger-state-details-height state)
-                        (/ height *unit*)))
-              (request-frame))))
+          (when (or (eq (event-kind event) :cancel)
+                    (and (eq (event-kind event) :move)
+                         (not (event-dragging-p event))))
+            (setf (debugger-state-details-grab state) nil))
+          (when (or (and (eq (event-kind event) :press)
+                         (eq (event-button event) :primary))
+                    (and (debugger-state-details-grab state)
+                         (member (event-kind event) '(:move :release)))
+                    (and (eq (event-kind event) :key)
+                         (member (event-key event) '(:up :down :home :end))))
+            (case (event-kind event)
+              (:press
+               (setf (debugger-state-details-grab state) (cons (event-y
+                                                                event) height)
+                     (context-focus *context*) (id :details-resize)))
+              ((:move :release)
+               (setf height (+ (cdr (debugger-state-details-grab state))
+                               (- (car (debugger-state-details-grab state))
+                                  (event-y event))))
+               (when (eq (event-kind event) :release)
+                 (setf (debugger-state-details-grab state) nil)))
+              (:key
+               (case (event-key event)
+                 (:up (incf height (units 2))) (:down (decf height (units 2)))
+                 (:home (setf height maximum)) (:end (setf height 0))
+                 (otherwise nil)))
+              (otherwise nil))
+            (if (<= height (units 2))
+                (close-details state)
+                (setf height (min maximum (max minimum height))
+                      (debugger-state-details-height state) (/ height
+                                                               *unit*)))
+            (request-frame)))
     (unless (equal (context-active *context*) (id :details-resize))
       (setf (debugger-state-details-grab state) nil))
     height))
@@ -471,11 +498,11 @@
          :width (grow) :height (fixed (units 1))
          :content (apply #'make-widget :kind :splitter
                          :style (current-toolkit) :orientation :horizontal
-                         :text "Properties height" :value
+                         :text "Properties height"
+                         :value
                          (/ height
                             (max 1
-                                 (lui.frame::context-viewport-height
-                                  *context*)))
+                              (lui.frame::context-viewport-height *context*)))
                          (toolkit-defaults)))))
 
 (fn (debugger-header-height real) ((header element) (width real))
@@ -498,18 +525,24 @@
     ((node element) (width real) (height real))
   "Declare the selected node's property pane and its close control."
   (column (:id (id :property-pane) :width (grow)
-               :height (fixed height) :gap (units 0.5f0))
-    (row (:width (grow) :gap (units 0.5f0) :cross-align :center)
+               :height (fixed height) :gap (units
+                                            0.5f0))
+    (row (:width (grow) :gap (units 0.5f0)
+                 :cross-align
+                 :center)
       (lui:label "Properties" (lui:opt :width (grow)))
       (lui:button (id :close-details) "×"
                   (lui:opt :width (fixed (units 5))
-                           :font-size 14 :accessible-name "Close details")))
-    (lui:panel (lui:opt :id (id :details) :width (grow) :height (grow)
+                           :font-size 14
+                           :accessible-name "Close details")))
+    (lui:panel (lui:opt :id (id :details)
+                        :width (grow) :height (grow)
                         :scroll-p t :padding (units 1)
-                        :gap (if (context-text-mode-p *context*)
+                        :gap (if (context-text-mode-p
+                                  *context*)
                                  0 (units 0.25f0))
                         :opacity 1 :radius 0 :frost 0)
-               (details node width)))
+      (details node width)))
   (values))
 
 (fn (debugger (or null element)) ((state debugger-state) (width real))
@@ -524,32 +557,34 @@
                                       *context*))
                       :padding (units 1) :gap (units 0.5f0) :opacity 1
                       :radius 0 :frost 0)
-             (let ((header nil))
-               (row (:id (id :header) :width (grow) :gap (units 0.5f0))
-                 (setf header *parent*)
-                 (lui:label "Layout debugger" (lui:opt :width (grow)))
-                 (when (lui:button (id :close) "Close")
-                   (setf (debugger-state-open-p state) nil)
-                   (request-frame)))
-               (let* ((header-height
-                       (debugger-header-height header (- width (units 2))))
-                      ;; Root/tree padding, three gaps and the divider also need room.
-                      (maximum (max 0 (- (lui.frame::context-viewport-height
-                                          *context*) header-height (units
-                                                                    6.5f0))))
-                      (height (details-height state maximum)))
-                 (setf (element-height header) (fit header-height))
-                 (tree state width)
-                 (let ((node (gethash (debugger-state-selected state)
-                                      (debugger-state-nodes state))))
-                   (cond (node (details-divider height)
-                               (debugger-property-pane node width height))
-                         (t (lui:label "Select a tree row for properties."
-                                       (lui:opt :width (grow) :font-size
-                                                14)))))))))
+    (let ((header nil))
+      (row (:id (id :header) :width (grow) :gap (units 0.5f0))
+        (setf header *parent*)
+        (lui:label "Layout debugger" (lui:opt :width (grow)))
+        (when (lui:button (id :close) "Close")
+          (setf (debugger-state-open-p state) nil)
+          (request-frame)))
+      (let* ((header-height
+              (debugger-header-height header (- width (units 2))))
+             ;; Root/tree padding, three gaps and the divider also need room.
+             (maximum (max 0 (- (lui.frame::context-viewport-height
+                                 *context*) header-height
+                                 (units 6.5f0))))
+             (height (details-height state maximum)))
+        (setf (element-height header) (fit header-height))
+        (tree state width)
+        (let ((node (gethash (debugger-state-selected state)
+                             (debugger-state-nodes state))))
+          (cond (node
+                 (details-divider height)
+                 (debugger-property-pane node width height))
+                (t (lui:label "Select a tree row for properties."
+                              (lui:opt :width (grow) :font-size
+                                       14)))))))))
 
-(fn (draw-debugger (or null element))
-    ((state debugger-state) (toolkit symbol) previous)
+(fn (draw-debugger (or null element)) ((state debugger-state) (toolkit
+                                                               symbol)
+                                       previous)
   "Attach the debugger to the frame when enabled and clear its caches when closed."
   (when (and (debugger-state-open-p state) (null previous)) (request-frame))
   (when (and (debugger-state-open-p state) previous)
@@ -573,13 +608,15 @@
   (let ((state (context-overlay-state context)))
     (and state (debugger-state-open-p state))))
 
-(fn (set-debugger-enabled boolean)
-    ((enabled boolean) &key ((context context) *context*) state toolkit)
+(fn (set-debugger-enabled boolean) ((enabled boolean) &key ((context context)
+                                                            *context*) state
+                                                        toolkit)
   "Enable the context's debugger. Call on a toggle, not on every draw."
   (let ((state (or state (context-overlay-state context)
                    (make-debugger-state))))
     (setf (debugger-state-open-p state) enabled
-          (context-overlay-state context) state (context-overlay context)
+          (context-overlay-state context) state
+          (context-overlay context)
           (when enabled
             (lambda (previous)
               (let* ((children (element-children (context-root context)))

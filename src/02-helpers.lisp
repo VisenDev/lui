@@ -1,7 +1,6 @@
 (defpackage #:lui.conditions
   (:use #:cl)
-  (:export #:fail-backend #:fail-configuration
-           #:lui-error #:configuration-error #:backend-error #:font-error
+  (:export #:lui-error #:configuration-error #:backend-error #:font-error
            #:frame-state-error #:error-operation #:error-setting
            #:error-value #:error-backend #:error-font-request))
 (in-package #:lui.conditions)
@@ -16,9 +15,11 @@ and arguments retain the diagnostic message; ERROR-OPERATION identifies the
 operation. Catch a more specific subtype when recovery depends on the cause."))
 
 (define-condition configuration-error (lui-error)
-  ((setting :initarg :setting :reader error-setting :documentation
+  ((setting :initarg :setting :reader error-setting
+            :documentation
             "Configuration setting that could not be resolved.")
-   (value :initarg :value :initform nil :reader error-value :documentation
+   (value :initarg :value :initform nil :reader error-value
+          :documentation
           "Requested value for the invalid or missing setting."))
   (:documentation
    "An invalid or unavailable backend, toolkit, palette, control, or rendering callback.
@@ -26,7 +27,8 @@ ERROR-SETTING identifies the setting and ERROR-VALUE contains its requested
 value. Configure or load the missing capability before retrying the operation."))
 
 (define-condition backend-error (lui-error)
-  ((backend :initarg :backend :reader error-backend :documentation
+  ((backend :initarg :backend :reader error-backend
+            :documentation
             "Backend keyword whose platform operation failed."))
   (:documentation
    "A platform operation failed during initialization, input, rendering, or cleanup.
@@ -46,27 +48,13 @@ path or font directory before opening the next graphical window."))
 ERROR-OPERATION identifies the attempted operation; complete a frame before
 retrying an operation that reads its solved layout."))
 
-(lui.fn:fn (fail-backend nil)
-    ((backend symbol) (operation symbol) (control string) &rest arguments)
-  "Signal BACKEND-ERROR with platform, operation, and formatted diagnostic."
-  (error 'backend-error :backend backend :operation operation
-         :format-control control :format-arguments arguments))
-
-(lui.fn:fn (fail-configuration nil)
-    ((setting symbol) value (operation symbol) (control string)
-     &rest arguments)
-  "Signal CONFIGURATION-ERROR with the rejected setting and requested value."
-  (error 'configuration-error :setting setting :value value
-         :operation operation :format-control control
-         :format-arguments arguments))
-
 (defpackage #:lui.text
   (:use #:cl #:lui.fn)
   (:export #:wrap-lines))
 (in-package #:lui.text)
 
-(fn (wrap-lines (vector string))
-    ((text string) (width (or null real)) (measure function))
+(fn (wrap-lines (vector string)) ((text string) (width (or null real))
+                                  (measure function))
   "Wrap at spaces and newlines. MEASURE takes TEXT and a start/end range.
 Preserve empty lines and allow words wider than WIDTH to overflow."
   (let ((start 0) (length (length text))

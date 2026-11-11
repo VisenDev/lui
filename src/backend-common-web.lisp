@@ -50,28 +50,33 @@
             (input-session-pending-root session) (context-root context)))
     (pending-input-context context (input-session-pending session))))
 
-(fn (input-send t) ((session input-session) event)
+(fn (input-send t)
+    ((session input-session) event)
   "Queue input only while the session is alive, retaining pending focus changes."
   (when (input-session-alive session)
     (pending-session-context session)
     (push event (input-session-pending session))
     (funcall (input-session-queue session) event)))
 
-(fn (input-stop t) (event)
+(fn (input-stop t)
+    (event)
   "Prevent the browser default action for an input event."
   ((oget event "preventDefault")))
 
-(fn (input-flag boolean) (event (name string))
+(fn (input-flag boolean)
+    (event (name string))
   "Read a JavaScript event flag as a Lisp boolean."
   (clbool (oget event name)))
 
-(fn (input-focus-without-scroll t) (element)
+(fn (input-focus-without-scroll t)
+    (element)
   "Focus a native input element without moving its scroll container."
   (let ((options (new #j:Object)))
     (setf (oget options "preventScroll") #j:true)
     ((oget element "focus") options)))
 
-(fn (input-release t) ((session input-session))
+(fn (input-release t)
+    ((session input-session))
   "Release the session's captured pointer if capture is still held."
   (let ((id (input-session-pointer session)))
     (setf (input-session-pointer session) nil)
@@ -81,7 +86,8 @@
       ((oget (input-session-canvas session) "releasePointerCapture")
        id))))
 
-(fn (input-cancel t) ((session input-session))
+(fn (input-cancel t)
+    ((session input-session))
   "Cancel gesture state, release capture, and queue a cancellation event."
   (setf (input-session-touch-start session) nil
         (input-session-touch-motion session) nil
@@ -89,7 +95,8 @@
   (input-release session)
   (input-send session (make-event :kind :cancel :buttons 0)))
 
-(fn (input-current-p boolean) ((session input-session) event)
+(fn (input-current-p boolean)
+    ((session input-session) event)
   "Test whether EVENT belongs to the session's current pointer."
   (or (null (input-session-pointer session))
       (eql (input-session-pointer session) (oget event
@@ -100,13 +107,16 @@
   "Translate browser client coordinates into a LUI event relative to the host."
   (let ((rect ((oget (input-session-host session) "getBoundingClientRect"))))
     (apply #'make-event :kind kind
-           :x (- (oget event "clientX") (oget rect "left"))
+           :x (- (oget event "clientX")
+                 (oget rect "left"))
            :y (- (oget event "clientY")
                  (oget rect "top")) arguments)))
 
-(fn (input-pointer-event t) ((session input-session) event kind)
+(fn (input-pointer-event t)
+    ((session input-session) event kind)
   "Queue pointer input and update the canvas cursor for its target."
-  (let ((input (input-position-event session event kind
+  (let ((input (input-position-event session
+                                     event kind
                                      :buttons (oget event "buttons")
                                      :button (if (= 2 (oget event "button"))
                                                  :secondary :primary)
@@ -122,9 +132,11 @@
              (otherwise "default"))))
     (input-send session input)))
 
-(fn (input-text t) ((session input-session) value)
+(fn (input-text t)
+    ((session input-session) value)
   "Queue nonempty text supplied by browser editing or clipboard events."
-  (when (and value (not (eq value #j:null)) (not (eq value #j:undefined)))
+  (when (and value (not (eq value #j:null))
+             (not (eq value #j:undefined)))
     (let ((value (clstring value)))
       (unless (zerop (length value))
         (input-send session (make-event :kind :text :value value))))))
@@ -204,14 +216,15 @@
   (input-listen session #j:window "blur" #'handle-browser-window-blur)
   (values))
 
-(fn (handle-browser-focus t) ((session input-session) event)
+(fn (handle-browser-focus t)
+    ((session input-session) event)
   "Handle the browser focus event for this input session."
   (declare (ignore event))
-  (unless (input-session-page-scroll-p session) (input-focus-without-scroll
-                                                 (input-session-sink
-                                                  session))))
+  (unless (input-session-page-scroll-p session)
+    (input-focus-without-scroll (input-session-sink session))))
 
-(fn (handle-browser-pointerdown t) ((session input-session) event)
+(fn (handle-browser-pointerdown t)
+    ((session input-session) event)
   "Handle the browser pointerdown event for this input session."
   (when (and (input-current-p session event)
              (or (eq (oget event "target") (input-session-canvas
@@ -221,25 +234,24 @@
                                (input-session-sink session)))
                       (equal (oget event "pointerType") #j"touch"))))
     (setf (input-session-touch-native session)
-          (not
-           (eq (oget event "target")
-               (input-session-canvas session))))
+          (not (eq (oget event "target") (input-session-canvas session))))
     (let ((touch (and (input-session-page-scroll-p session)
                       (equal (oget event "pointerType") #j"touch"))))
       (when touch (funcall (input-session-scroll-page session) 0))
-      (setf (input-session-touch-start session)
-            (when touch
-              (cons (oget event "clientX")
-                    (oget event "clientY"))))
+      (setf (input-session-touch-start session) (when touch
+                                                  (cons (oget event "clientX")
+                                                        (oget event
+                                                              "clientY"))))
       ;; Suppress the compatibility mouse click that would refocus
       ;; the canvas after we focus the editor.
       (setf (input-session-touch-time session) (oget event "timeStamp")
             (input-session-touch-velocity session) 0
             (input-session-touch-motion session) (when touch :pending)
-            (input-session-touch-y session)
-            (when touch (oget event "clientY")))
+            (input-session-touch-y session) (when touch (oget event
+                                                              "clientY")))
       (unless (input-session-touch-native session) (input-stop event))
-      (unless touch (input-focus-without-scroll (input-session-sink session)))
+      (unless touch (input-focus-without-scroll (input-session-sink
+                                                 session)))
       (setf (input-session-pointer session) (oget event "pointerId"))
       (unless (input-session-touch-native session)
         ((oget (input-session-canvas session) "setPointerCapture")
@@ -249,11 +261,13 @@
 (fn (native-touch-selection-p boolean)
     ((session input-session) selection event)
   "Test whether this touch is extending native browser text selection."
-  (and (input-session-touch-native session) (not (eq selection #j:null))
+  (and (input-session-touch-native session)
+       (not (eq selection #j:null))
        (clbool
         ((oget selection "containsNode")
          (oget event "target") #j:true))
-       (not (clbool (oget selection "isCollapsed" )))))
+       (not (clbool
+             (oget selection "isCollapsed")))))
 
 (fn (resolve-touch-direction (values))
     ((session input-session) (dx real) (dy real))
@@ -264,16 +278,17 @@
           (if (and (input-session-scroll-page session) (> (abs dy) (abs dx)))
               :pan :horizontal))
     (when (and (eq (input-session-touch-motion session) :pan)
-               (not (input-session-touch-native session)))
+               (not
+                (input-session-touch-native session)))
       (input-send session (make-event :kind :cancel :buttons 0))))
   (values))
 
-(fn (handle-browser-pointermove t) ((session input-session) event)
+(fn (handle-browser-pointermove t)
+    ((session input-session) event)
   "Handle the browser pointermove event for this input session."
   (when (and (input-current-p session event)
              (or (input-session-pointer session)
-                 (eq (oget event "target")
-                     (input-session-canvas session))))
+                 (eq (oget event "target") (input-session-canvas session))))
     (cond
       ((input-session-touch-start session)
        (let* ((x (oget event "clientX"))
@@ -288,15 +303,18 @@
                                :selection))
          (resolve-touch-direction session dx dy)
          (case (input-session-touch-motion session)
-           (:pan (input-stop event)
-                 (let ((elapsed (- (oget event "timeStamp")
-                                   (input-session-touch-time session))))
-                   (when (plusp elapsed)
-                     (setf (input-session-touch-velocity session)
-                           (/ (- (input-session-touch-y session) y)
-                              elapsed))))
-                 (funcall (input-session-scroll-page session)
-                          (- (input-session-touch-y session) y)))
+           (:pan
+            (input-stop event)
+            (let ((elapsed (- (oget event "timeStamp")
+                              (input-session-touch-time session))))
+              (when (plusp elapsed)
+                (setf (input-session-touch-velocity session)
+                      (/
+                       (-
+                        (input-session-touch-y session) y) elapsed))))
+            (funcall (input-session-scroll-page session)
+                     (-
+                      (input-session-touch-y session) y)))
            (:horizontal
             (unless (input-session-touch-native session) (input-pointer-event
                                                           session event
@@ -308,7 +326,8 @@
                                                     event "timeStamp")))))
       (t (input-pointer-event session event :move)))))
 
-(fn (handle-browser-pointerup t) ((session input-session) event)
+(fn (handle-browser-pointerup t)
+    ((session input-session) event)
   "Handle the browser pointerup event for this input session."
   (when (and (input-session-pointer session) (input-current-p session event))
     (when (eq (input-session-touch-motion session) :pan)
@@ -317,15 +336,22 @@
                          (input-session-touch-time session)) 100)
                    (input-session-touch-velocity session) 0)))
     (unless (or (input-session-touch-native session)
-                (eq (input-session-touch-motion session) :pan))
+                (eq
+                 (input-session-touch-motion session) :pan))
       (input-pointer-event session event :release))
     (when (and (not (input-session-touch-native session))
-               (not (eq (input-session-touch-motion session) :pan))
+               (not
+                (eq
+                 (input-session-touch-motion session) :pan))
                (input-session-touch-start session)
-               (< (abs (- (car (input-session-touch-start session))
-                          (oget event "clientX"))) 8)
-               (< (abs (- (cdr (input-session-touch-start session))
-                          (oget event "clientY"))) 8))
+               (< (abs (-
+                        (car
+                         (input-session-touch-start session))
+                        (oget event "clientX"))) 8)
+               (< (abs (-
+                        (cdr
+                         (input-session-touch-start session))
+                        (oget event "clientY"))) 8))
       (let ((input (pending-session-context session)) (position
                                                        (input-position-event
                                                         session event
@@ -346,17 +372,20 @@
           (input-session-touch-native session) nil)
     (input-release session)))
 
-(fn (handle-browser-cancel t) ((session input-session) event)
+(fn (handle-browser-cancel t)
+    ((session input-session) event)
   "Handle pointer capture cancellation."
   (when (and (input-session-pointer session) (input-current-p session event))
     (input-cancel session)))
 
-(fn (handle-browser-pointerleave t) ((session input-session) event)
+(fn (handle-browser-pointerleave t)
+    ((session input-session) event)
   "Handle the browser pointerleave event for this input session."
   (unless (input-session-pointer session) (input-pointer-event session event
                                                                :move)))
 
-(fn (handle-browser-wheel t) ((session input-session) event)
+(fn (handle-browser-wheel t)
+    ((session input-session) event)
   "Handle the browser wheel event for this input session."
   (unless (and (input-session-page-scroll-p session) (input-flag event "ctrlKey"))
     (input-stop event)
@@ -371,26 +400,40 @@
                (input-session-scroll-page session))
           (funcall (input-session-scroll-page session) pixels)
           (input-send session (input-position-event session
-                                                    event :scroll :scroll-mode
+                                                    event :scroll
+                                                    :scroll-mode
                                                     (if
-                                                     (and (zerop mode)
-                                                          (< (abs delta) 20))
+                                                     (and
+                                                      (zerop
+                                                       mode)
+                                                      (<
+                                                       (abs
+                                                        delta) 20))
                                                      :immediate :smooth)
                                                     :value pixels))))))
 
-(fn (browser-key-command symbol) ((key string) editing meta control alt shift)
+(fn (browser-key-command symbol)
+    ((key string) editing meta control alt shift)
   "Resolve Readline commands and browser navigation key names."
-  (or (when (and editing (not meta) (not (and control alt)))
-        (readline-key key :control control :alt alt :shift shift))
+  (or (when (and editing (not meta)
+                 (not (and control alt)))
+        (readline-key key :control control
+                      :alt alt :shift shift))
       (cdr (assoc key
-                  '(("ArrowLeft" . :left) ("ArrowRight" . :right)
-                    ("ArrowUp" . :up) ("ArrowDown" . :down)
-                    ("Home" . :home) ("End" . :end) ("PageUp" . :page-up)
-                    ("PageDown" . :page-down) ("Backspace" . :backspace)
-                    ("Delete" . :delete) ("Escape" . :escape))
+                  '(("ArrowLeft" . :left)
+                    ("ArrowRight" . :right)
+                    ("ArrowUp" . :up)
+                    ("ArrowDown" . :down)
+                    ("Home" . :home) ("End" . :end)
+                    ("PageUp" . :page-up)
+                    ("PageDown" . :page-down)
+                    ("Backspace" . :backspace)
+                    ("Delete" . :delete)
+                    ("Escape" . :escape))
                   :test #'string=))))
 
-(fn (handle-browser-keydown t) ((session input-session) event)
+(fn (handle-browser-keydown t)
+    ((session input-session) event)
   "Handle the browser keydown event for this input session."
   (unless (or (not (or (eq (oget event "target")
                            (input-session-canvas session))
@@ -398,70 +441,86 @@
                                                   session))))
               (input-session-composing session) (input-flag event "isComposing")
               (eql 229 (oget event "keyCode")))
-    (let* ((key (clstring (oget event "key" )))
+    (let* ((key (clstring
+                 (oget event "key")))
            (control (input-flag event "ctrlKey"))
            (alt (input-flag event "altKey"))
            (meta (input-flag event "metaKey"))
            (shift (input-flag event "shiftKey"))
            (input (pending-session-context session))
            (editing (text-field-focused-p input))
-           (command (browser-key-command key editing meta control alt shift)))
+           (command
+            (browser-key-command key editing meta control alt shift)))
       (cond
         ;; Clipboard shortcuts must reach browser clipboard events.
         ((and (or control meta) (not alt)
-              (member (string-downcase key) '("c" "v" "x") :test #'string=)))
-        ((string= key "Tab") (input-stop event)
+              (member (string-downcase key) '("c" "v" "x")
+                      :test #'string=)))
+        ((string= key "Tab")
+         (input-stop event)
          (input-send session (make-event :kind :tab
                                          :key (when shift :backward))))
         ((or (string= key "Enter")
-             (and (string= key " " ) (activation-focused-p input)))
-         (input-stop event) (input-send session (make-event :kind :activate)))
-        (command (input-stop event)
-                 (input-send session (make-event
-                                      :kind :key :key
-                                      (if (and editing shift)
-                                          (case command
-                                            (:left :shift-left)
-                                            (:right :shift-right)
-                                            (:home :shift-home)
-                                            (:end :shift-end)
-                                            (otherwise command))
-                                          command))))))))
+             (and (string= key " ")
+                  (activation-focused-p input)))
+         (input-stop event)
+         (input-send session (make-event :kind
+                                         :activate)))
+        (command
+         (input-stop event)
+         (input-send session (make-event
+                              :kind :key
+                              :key (if (and editing shift)
+                                       (case command
+                                         (:left :shift-left)
+                                         (:right :shift-right)
+                                         (:home :shift-home)
+                                         (:end :shift-end)
+                                         (otherwise command))
+                                       command))))))))
 
-(fn (handle-browser-compositionstart t) ((session input-session) event)
+(fn (handle-browser-compositionstart t)
+    ((session input-session) event)
   "Handle the browser compositionstart event for this input session."
   (declare (ignore event))
   (setf (input-session-composing session) t))
 
-(fn (handle-browser-compositionend t) ((session input-session) event)
+(fn (handle-browser-compositionend t)
+    ((session input-session) event)
   "Handle the browser compositionend event for this input session."
   (setf (input-session-composing session) nil)
   (input-text session (oget event "data"))
   (setf (oget (input-session-sink session) "value") #j""))
 
-(fn (handle-browser-beforeinput t) ((session input-session) event)
+(fn (handle-browser-beforeinput t)
+    ((session input-session) event)
   "Handle the browser beforeinput event for this input session."
   (unless (or (input-session-composing session) (input-flag event "isComposing"))
     (input-stop event)
     ;; Composition text was committed by COMPOSITIONEND.
-    (unless (member (clstring (oget event "inputType" ))
-                    '("insertCompositionText" "insertFromComposition"
-                      "insertFromPaste") :test #'string=)
+    (unless (member
+             (clstring
+              (oget event "inputType"))
+             '("insertCompositionText" "insertFromComposition"
+               "insertFromPaste") :test #'string=)
       (input-text session (oget event "data")))))
 
-(fn (handle-browser-input t) ((session input-session) event)
+(fn (handle-browser-input t)
+    ((session input-session) event)
   "Handle the browser input event for this input session."
   (declare (ignore event))
   (unless (input-session-composing session)
     (setf (oget (input-session-sink session) "value") #j"")))
 
-(fn (handle-browser-paste t) ((session input-session) event)
+(fn (handle-browser-paste t)
+    ((session input-session) event)
   "Handle the browser paste event for this input session."
   (input-stop event)
   (input-text session ((oget event "clipboardData" "getData")
                        #j"text/plain")))
 
-(fn (handle-browser-clipboard t) ((session input-session) event)
+(fn (handle-browser-clipboard t)
+    ((session input-session) event)
   "Handle browser copy and cut using the shared LUI selection."
   (input-stop event)
   ;; Shared selection handling owns both editor and label text.
@@ -473,36 +532,43 @@
              (setf (context-copy (input-session-context session))
                    (lambda (value)
                      (setf copied t)
-                     ((oget event "clipboardData" "setData" )
-                      #j"text/plain" (jsstring value))))
-             (lui.draw::copy-selection (input-session-context session) nodes
-                                       (or (context-selection
-                                            (input-session-context session))
-                                           (lui.draw::make-text-selection))))
+                     ((oget
+                       event "clipboardData" "setData")
+                      #j"text/plain"
+                      (jsstring value))))
+             (lui.draw::copy-selection
+              (input-session-context session) nodes
+              (or (context-selection (input-session-context session))
+                  (lui.draw::make-text-selection))))
         (setf (context-copy (input-session-context session)) original)))
     (when (and copied (text-field-focused-p (input-session-context session))
                (string= "cut"
-                        (clstring (oget event "type" ))))
+                        (clstring
+                         (oget event "type"))))
       (let ((state (gethash (context-focus (input-session-context session))
                             (context-state (input-session-context session)))))
         (when (and (typep state 'edit-state)
-                   (/= (edit-state-anchor state) (edit-state-cursor state)))
-          (input-send session (make-event :kind :key :key :backspace)))))))
+                   (/= (edit-state-anchor state)
+                       (edit-state-cursor state)))
+          (input-send session (make-event :kind :key
+                                          :key :backspace)))))))
 
-(fn (handle-browser-blur t) ((session input-session) event)
+(fn (handle-browser-blur t)
+    ((session input-session) event)
   "Handle the browser blur event for this input session."
   (declare (ignore event))
   (setf (input-session-composing session) nil)
   (setf (oget (input-session-sink session) "value") #j"")
   (input-cancel session))
 
-(fn (handle-browser-window-blur t) ((session input-session) event)
+(fn (handle-browser-window-blur t)
+    ((session input-session) event)
   "Handle the browser blur event for this input session."
   (declare (ignore event)) (input-cancel session))
 
 (fn (install-input function)
     (host canvas (context context) (queue function) &key page-scroll-p
-     scroll-page)
+                                                      scroll-page)
   "Install canvas input and one shared IME sink. Return an idempotent cleanup."
   (let ((session (make-input-session :host host :canvas canvas :context
                                      context
@@ -511,8 +577,8 @@
                                      :sink (#j:document:createElement #j"textarea")
                                      :pending-root (context-root context)
                                      :old-copy (context-copy context)
-                                     :old-tab
-                                     ((oget canvas "getAttribute") #j"tabindex")
+                                     :old-tab ((oget canvas "getAttribute")
+                                               #j"tabindex")
                                      :old-touch (oget canvas "style"
                                                       "touchAction")
                                      :old-cursor (oget canvas
@@ -553,7 +619,8 @@
 
 (defpackage #:lui.web
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.draw)
-  (:import-from #:lui #:mount #:unmount #:refresh)
+  (:import-from #:lui
+                #:mount #:unmount #:refresh)
   (:export #:mount #:unmount #:refresh)
   (:import-from #:jscl/ffi #:clbool #:jsstring #:new #:oget))
 (in-package #:lui.web)
@@ -604,7 +671,8 @@
 (fn (rounded-path t) (g (box box) radius &optional (inset 0))
   "Begin a rounded rectangular Canvas path, optionally inset from BOX."
   ((oget g "beginPath"))
-  ((oget g "roundRect") (+ inset (box-x box)) (+ inset (box-y box))
+  ((oget g "roundRect")
+   (+ inset (box-x box)) (+ inset (box-y box))
    (max 0 (- (box-width box) (* 2 inset)))
    (max 0 (- (box-height box) (* 2 inset))) (max 0 (- radius inset))))
 
@@ -617,15 +685,18 @@
       (setf (oget g "fillStyle") (jsstring color)))
   (cond ((zerop radius)
          (if stroke
-             ((oget g "strokeRect") (+ (box-x box) (/ stroke 2))
-              (+ (box-y box) (/ stroke 2)) (max 0 (- (box-width box) stroke))
+             ((oget g "strokeRect")
+              (+ (box-x box) (/ stroke 2))
+              (+ (box-y box) (/ stroke 2))
+              (max 0 (- (box-width box) stroke))
               (max 0 (- (box-height box) stroke)))
              ((oget g "fillRect") (box-x box) (box-y box)
               (box-width box) (box-height box))))
-        (t (rounded-path g box radius (if stroke (/ stroke 2) 0))
-           (if stroke
-               ((oget g "stroke"))
-               ((oget g "fill"))))))
+        (t
+         (rounded-path g box radius (if stroke (/ stroke 2) 0))
+         (if stroke
+             ((oget g "stroke"))
+             ((oget g "fill"))))))
 
 (fn (canvas-polygons t) (g paths color alpha)
   "Fill closed Canvas contours with a shared color and alpha."
@@ -645,7 +716,8 @@
 (fn (canvas-text t) (g font text x y color)
   "Paint text with the resolved browser font and baseline."
   (setf (oget g "globalAlpha") 1
-        (oget g "font") (jsstring (lui.font:font-css font))
+        (oget g "font")
+        (jsstring (lui.font:font-css font))
         (oget g "fillStyle") (jsstring color))
   ((oget g "fillText") (jsstring text) x y))
 
@@ -678,20 +750,25 @@
            (w (max 0 (- (min (box-right box)
                              (/ (oget canvas "width") scale)) x)))
            (h (max 0 (- (min (box-bottom box)
-                             (+ offset (/ (oget canvas "height" ) scale)))
+                             (+ offset (/ (oget canvas "height")
+                                          scale)))
                         y)))
            (step (max 1 (/ frost 2))) (sw (max 1 (ceiling (/ w step))))
            (sh (max 1 (ceiling (/ h step)))))
       ;; Restrict the scratch bitmap to the visible artwork. The original
       ;; rounded surface still supplies the destination clip.
       (when (and (plusp w) (plusp h))
-        (when (> sw (oget sample "width" )) (setf (oget sample "width" ) sw))
-        (when (> sh (oget sample "height")) (setf (oget sample "height") sh))
+        (when (> sw (oget sample "width"))
+          (setf (oget sample "width") sw))
+        (when (> sh (oget sample "height"))
+          (setf (oget sample "height") sh))
         ((oget blur "clearRect") 0 0 sw sh)
         ((oget blur "drawImage") canvas
          (* scale x) (* scale (- y offset)) (* scale w) (* scale h) 0 0 sw sh)
-        ((oget g "save")) (rounded-path g box radius)
-        ((oget g "clip")) (setf (oget g "globalAlpha") 1)
+        ((oget g "save"))
+        (rounded-path g box radius)
+        ((oget g "clip"))
+        (setf (oget g "globalAlpha") 1)
         ((oget g "drawImage") sample 0 0 sw sh x y w h)
         ((oget g "restore"))))))
 
@@ -703,33 +780,35 @@
          (blur ((oget sample "getContext") #j"2d")))
     (setf (oget tile "width") 2 (oget tile "height") 2)
     (let ((patterns (make-hash-table :test 'equal)))
-      (make-renderer :font (lui.font:open-font) :surface
-                     (lambda (box radius color alpha &optional stroke)
-                       (canvas-surface g box radius color alpha stroke))
-                     :polygons
-                     (lambda (paths color alpha)
-                       (canvas-polygons g paths color alpha))
-                     :text
-                     (lambda (font text x y color)
-                       (canvas-text g font text x y color))
-                     :clip
-                     (lambda (box)
-                       ((oget g "restore"))
-                       ((oget g "save"))
-                       (rounded-path g box 0)
-                       ((oget g "clip")))
-                     :stipple
-                     (lambda (box border color)
-                       (canvas-stipple g tile ink patterns box border color))
-                     :glass
-                     (lambda (box radius frost)
-                       (canvas-glass canvas g sample blur box radius
-                                     frost))))))
+      (make-renderer
+       :font (lui.font:open-font)
+       :surface
+       (lambda (box radius color alpha &optional stroke)
+         (canvas-surface g box radius color alpha stroke))
+       :polygons
+       (lambda (paths color alpha)
+         (canvas-polygons g paths color alpha))
+       :text
+       (lambda (font text x y color)
+         (canvas-text g font text x y color))
+       :clip
+       (lambda (box)
+         ((oget g "restore"))
+         ((oget g "save"))
+         (rounded-path g box 0)
+         ((oget g "clip")))
+       :stipple
+       (lambda (box border color)
+         (canvas-stipple g tile ink patterns box border color))
+       :glass
+       (lambda (box radius frost)
+         (canvas-glass canvas g sample blur box radius frost))))))
 
 (fn (queue-event t) ((app web-app) (event event))
   "Queue an application input event and request a redraw."
   (when (web-app-alive-p app)
-    (if (and (eq (event-kind event) :move) (web-app-events app)
+    (if (and (eq (event-kind event) :move)
+             (web-app-events app)
              (eq (event-kind (first (web-app-events app))) :move))
         (setf (first (web-app-events app)) event)
         (push event (web-app-events app)))
@@ -770,7 +849,8 @@
   "Index a painted region by vertical bands for occlusion queries."
   (do ((band (floor (overlay-region-y region) 64) (1+ band))
        (end (ceiling (overlay-region-bottom region) 64)))
-      ((>= band end)) (push region (gethash band (overlay-scan-bands scan)))))
+      ((>= band end))
+    (push region (gethash band (overlay-scan-bands scan)))))
 
 (fn (overlay-uncovered-p t) ((scan overlay-scan) x y right bottom)
   "Test whether a rectangle is unobstructed by earlier painted regions."
@@ -788,11 +868,13 @@
   (let* ((x (box-x clip)) (y (box-y clip))
          (right (+ x (box-width clip))) (bottom (+ y (box-height clip)))
          (old (pop (overlay-scan-previous scan))))
-    (cond ((and old (= x (overlay-region-x old)) (= y (overlay-region-y old))
+    (cond ((and old (= x (overlay-region-x old))
+                (= y (overlay-region-y old))
                 (= right (overlay-region-right old))
                 (= bottom (overlay-region-bottom old))
                 (eq candidate (overlay-region-candidate old)))
-           (push old (overlay-scan-seen scan)) (overlay-region-visible old))
+           (push old (overlay-scan-seen scan))
+           (overlay-region-visible old))
           (t
            (unless (overlay-scan-bands scan)
              (setf (overlay-scan-previous scan) nil (overlay-scan-bands scan)
@@ -803,18 +885,20 @@
                    (and candidate
                         (overlay-uncovered-p scan x y right bottom)))
                   (region
-                   (make-overlay-region :x x :y y :right right :bottom bottom
-                                        :candidate candidate :visible
-                                        visible)))
+                   (make-overlay-region
+                    :x x :y y :right right :bottom bottom
+                    :candidate candidate :visible visible)))
              (push region (overlay-scan-seen scan))
              (index-overlay-region scan region)
              visible)))))
 
 (fn (visit-overlay-node t) ((scan overlay-scan) node path interactive)
   "Walk children front to back and collect unoccluded native-label candidates."
-  (let ((key (if (element-id node) (list :id (element-id node)) path))
+  (let ((key (if (element-id node)
+                 (list :id (element-id node)) path))
         (children (element-children node))
-        (clip (element-clip node)) (widget (element-content node)))
+        (clip (element-clip node))
+        (widget (element-content node)))
     (let ((count (length children)))
       (dotimes (offset count)
         (let ((i (- count offset 1)))
@@ -826,7 +910,8 @@
                    (element-interactive-p node)))
       (let ((kind (and (lui.widgets:widget-p widget)
                        (lui.widgets:widget-kind widget))))
-        (when (overlay-region-visible-p scan clip
+        (when (overlay-region-visible-p scan
+                                        clip
                                         (and (member kind '(:cell :label
                                                             :button :tab
                                                             :list-item
@@ -902,14 +987,16 @@
        (jsstring (string-downcase (symbol-name kind)))))
     button))
 
-(fn (same-overlay-order-p boolean)
-    ((records (vector dom-widget)) (entries (vector list)))
+(fn (same-overlay-order-p boolean) ((records (vector dom-widget)) (entries
+                                                                   (vector
+                                                                    list)))
   "Test whether overlay records already match the candidate keys in order."
   (and (= (length records) (length entries))
        (loop :for record :across records :for entry :across entries
              :always (equal (dom-widget-key record) (second entry)))))
 
-(fn (order-overlay-elements (values)) (layer (order (vector dom-widget)))
+(fn (order-overlay-elements (values))
+    (layer (order (vector dom-widget)))
   "Move visible native elements into layout order while leaving cached hidden nodes in place."
   (let ((cursor (oget layer "firstChild")))
     (loop :for record :across order :do
@@ -922,8 +1009,8 @@
             (setf cursor (oget element "nextSibling")))))
   (values))
 
-(fn (reconcile-overlay (vector dom-widget))
-    ((app web-app) (entries (vector list)))
+(fn (reconcile-overlay (vector dom-widget)) ((app web-app) (entries (vector
+                                                                     list)))
   "Reuse keyed DOM records, reconcile their order, and bound the hidden-node cache."
   ;; Look up keyed nodes and inspect DOM order only when membership or order changes.
   (let ((order (web-app-overlay-order app)))
@@ -995,7 +1082,8 @@
      label)
   "Update label font, color, alignment, and pointer policy only when appearance changes."
   (unless (equal appearance (dom-widget-style record))
-    (let ((font (lui.draw::widget-font (web-app-renderer app) widget))
+    (let ((font (lui.draw::widget-font (web-app-renderer app)
+                                       widget))
           (style (oget element "style")))
       (setf (oget style "pointerEvents") (if interactive
                                              #j"none" #j"auto")
@@ -1059,8 +1147,8 @@
               (setf (dom-widget-text record) text))))
     external))
 
-(fn (queue-page-scroll t)
-    ((app web-app) (delta real) &optional ((velocity real) 0))
+(fn (queue-page-scroll t) ((app web-app) (delta real) &optional ((velocity
+                                                                  real) 0))
   "Accumulate page scrolling and bounded momentum, then request a redraw."
   (incf (web-app-scroll-delta app) delta)
   (setf (web-app-velocity app) (max -4 (min 4 velocity))
@@ -1076,7 +1164,8 @@
              (elapsed (min 50 (- now (web-app-scroll-time app))))
              (decay (exp (/ (- elapsed) 190))))
         (incf delta (* speed 190 (- 1 decay)))
-        (setf (web-app-scroll-time app) now (web-app-velocity app)
+        (setf (web-app-scroll-time app) now
+              (web-app-velocity app)
               (if (< (* (abs speed) decay) 0.02f0) 0 (* speed decay)))))
     delta))
 
@@ -1095,7 +1184,8 @@
   (let* ((canvas (web-app-canvas app)) (g (web-app-graphics app))
          (context (web-app-context app)) (*unit* 8)
          (width (oget canvas "clientWidth"))
-         (port (web-app-scrollport app)) (stage (web-app-stage app))
+         (port (web-app-scrollport app))
+         (stage (web-app-stage app))
          (origin (if port (page-offset stage port) 0))
          (delta (if port (frame-scroll-delta app) 0))
          (height (if port (page-viewport-height port)
@@ -1178,7 +1268,8 @@
        (oget (#j:window:matchMedia #j"(pointer: coarse)") "matches"))
       :page :viewport))
 
-(fn (mount-app-elements (values)) ((app web-app) page-scroll-p)
+(fn (mount-app-elements (values))
+    ((app web-app) page-scroll-p)
   "Style and attach the application's stage, canvas, and native-label layer."
   (let ((host (web-app-host app)) (stage (web-app-stage app))
         (canvas (web-app-canvas app)) (labels (web-app-overlay app))
@@ -1207,10 +1298,13 @@
     ((oget host "appendChild") stage))
   (values))
 
-(fn (mount web-app)
-    (host (callback function) &key (min-fps lui.frame::*min-fps*)
-     (max-fps lui.frame::*max-fps*)
-     ((scroll-mode (member :page :viewport)) (default-scroll-mode)))
+(fn (mount web-app) (host (callback function) &key (min-fps
+                                                    lui.frame::*min-fps*)
+                                                (max-fps lui.frame::*max-fps*)
+                                                ((scroll-mode
+                                                  (member :page
+                                                          :viewport))
+                                                 (default-scroll-mode)))
   "Mount a Canvas 2D app in HOST. SCROLL-MODE is :PAGE for content expansion or
 :VIEWPORT for a fixed embedded view; the default is :PAGE on coarse pointers."
   (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
@@ -1226,13 +1320,13 @@
                         (make-render-context renderer
                                              :min-fps min-fps :max-fps
                                              max-fps))
-                       (app (make-web-app #+lui-ecl-web :ffi-owner
-                                          #+lui-ecl-web lui.web.ffi:*owner*
-                                          :host host :stage stage :overlay
-                                          labels :canvas canvas :graphics g
-                                          :renderer renderer
-                                          :context context :callback callback
-                                          :scrollport port))
+                       (app (make-web-app
+                             #+lui-ecl-web :ffi-owner
+                             #+lui-ecl-web lui.web.ffi:*owner*
+                             :host host :stage stage :overlay labels
+                             :canvas canvas :graphics g :renderer renderer
+                             :context context :callback callback :scrollport
+                             port))
                        (resize (lambda (&rest ignored)
                                  (declare (ignore ignored)) (refresh app))))
     (mount-app-elements app page-scroll-p)
@@ -1284,7 +1378,8 @@
     (funcall (web-app-cleanup app))
     (lui.font:close-font (renderer-font (web-app-renderer app)))
     (setf (web-app-overlay-order app) #()
-          (web-app-overlay-cache app) nil (web-app-overlay-geometry app) nil)
+          (web-app-overlay-cache app) nil
+          (web-app-overlay-geometry app) nil)
     ((oget (web-app-stage app) "remove"))
     #+lui-ecl-web
     (progn
@@ -1295,8 +1390,8 @@
   "Convert a numeric CSS size to pixels, preserving strings and using FALLBACK for NIL."
   (if value ((oget (#j:String value) "concat") #j"px") fallback))
 
-(fn (run-web web-app)
-    ((draw function) &key title width height (interactive t))
+(fn (run-web web-app) ((draw function) &key title width height (interactive
+                                                                t))
   "Create a browser host and mount DRAW with the requested title and dimensions."
   (declare (ignore interactive))
   (setf (oget #j:document "title") (jsstring title))
@@ -1305,7 +1400,8 @@
     ((oget host "setAttribute") #j"aria-label"
      (jsstring title))
     (setf (oget host "style" "width")
-          (css-size width #j"100%") (oget host "style" "height")
+          (css-size width #j"100%")
+          (oget host "style" "height")
           (css-size height (if (eq scroll-mode :page) #j"auto" #j"100vh")))
     (#j:document:body:appendChild host)
     (mount host draw :scroll-mode scroll-mode)))

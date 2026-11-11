@@ -3,12 +3,14 @@
   (:import-from #:lui.conditions
                 #:lui-error #:configuration-error #:backend-error #:font-error
                 #:frame-state-error #:error-operation #:error-setting
-                #:error-value #:error-backend #:error-font-request)
+                #:error-value
+                #:error-backend #:error-font-request)
   (:import-from #:lui.layout
                 #:point #:contour #:contours #:sizing #:fit #:grow #:fixed
                 #:percent #:box
                 #:make-box #:box-x #:box-y #:box-width #:box-height
-                #:element-box #:element-content)
+                #:element-box
+                #:element-content)
   (:import-from #:lui.frame
                 #:row #:column #:with-frame #:frame-time #:request-frame
                 #:previous-box
@@ -18,69 +20,69 @@
                 #:event-value
                 #:event-key #:event-button #:event-buttons #:event-clicks
                 #:event-dragging-p)
-  (:import-from #:lui.widgets #:declare-widget #:widget-text)
+  (:import-from #:lui.widgets
+                #:declare-widget #:widget-text)
   ;; Public symbols are owned here; optional implementations import them.
   ;; Loading a backend supplies its functions without mutating this package.
-  (:export #:lui-error #:configuration-error #:backend-error #:font-error
-           #:frame-state-error #:error-operation #:error-setting #:error-value
-           #:error-backend #:error-font-request
-           #:key-pressed-p #:text-input-event #:visible-span #:list-index
-           #:reveal-rect #:take-events #:event-targets #:reset-editor
-           #:edit-value
-           #:*glass-defaults* #:*motif-defaults* #:*macos-defaults*
-           #:*qt-defaults*
-           #:*garnet-defaults* #:set-debugger-enabled #:debugger-enabled-p
-           #:debugger-state #:make-debugger-state #:debugger-state-open-p
-           #:debugger-state-selected #:debugger-state-width #:font #:open-font
-           #:close-font #:font-size #:text-width #:line-height #:baseline
-           #:wrap-text #:glyph-polygons #:*font-path* #:*font-paths*
-           #:*font-directories* #:*font-names* #:font-face #:renderer
-           #:renderer-font #:renderer-polygons #:renderer-clip
-           #:renderer-glass
-           #:renderer-text #:geometry #:make-geometry #:geometry-left
-           #:geometry-top #:geometry-right #:geometry-bottom
-           #:geometry-min-width
-           #:geometry-min-height #:geometry-center-x #:geometry-center-y
-           #:geometry-offset-x #:geometry-offset-y #:geometry-text-p
-           #:geometry-value-p #:widget-geometry #:text-box #:rounded-polygon
-           #:color-components #:paint-text #:shape #:outline #:inset-box
-           #:focused-p #:widget-font #:render-pdf #:*pdf-output*
-           #:make-terminal-context #:render-terminal #:terminal-text-width
-           #:text-lines #:cell-edge #:mount #:unmount #:refresh
-           #:point #:contour #:contours #:sizing #:fit #:grow #:fixed
-           #:percent #:box
-           #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
-           #:element-content #:row #:column #:with-frame #:frame-time
-           #:request-frame
-           #:previous-box #:scroll-position #:scroll-to #:activated-p
-           #:activated-ids
-           #:hovered-p #:event #:event-kind #:event-x #:event-y #:event-id
-           #:event-value #:event-key #:event-button #:event-buttons
-           #:event-clicks #:event-dragging-p #:declare-widget #:widget-text
-           #:run #:register-backend #:available-backends #:units #:*backend*
-           #:*unit* #:with-toolkit #:with-palette #:toolkit-palette
-           #:widget-color #:current-toolkit #:toolkit-defaults
-           #:available-palettes #:palette #:palette-p #:make-palette
-           #:palette-thumb
-           #:palette-control-background #:palette-background
-           #:palette-foreground
-           #:palette-accent #:palette-window-background #:palette-selection
-           #:palette-border #:palette-disabled #:palette-disabled-accent
-           #:palette-disabled-surface #:palette-disabled-bevel-light
-           #:palette-disabled-bevel-dark
-           #:palette-outline #:palette-light #:palette-shadow
-           #:palette-bevel-light #:palette-bevel-dark #:palette-track
-           #:palette-cell-background #:palette-cell-foreground
-           #:palette-on-accent #:+palette-default+ #:+palette-light+
-           #:+palette-dark+
-           #:+palette-ocean+ #:+palette-forest+ #:register-toolkit
-           #:register-toolkit-rendering #:toolkit-paint #:toolkit-geometry
-           #:toolkit-native-labels-p
-           #:control #:define-toolkit #:table #:table-row #:table-cell
-           #:opt #:panel #:label #:button #:tab #:checkbox #:radio #:slider
-           #:text-field #:cell #:list-item #:gauge #:canvas
-           #:date-picker #:searchable-combobox
-           #:*default-backend-function* #:*toolkit-revision*))
+  (:export
+   #:lui-error #:configuration-error #:backend-error #:font-error
+   #:frame-state-error #:error-operation #:error-setting #:error-value
+   #:error-backend #:error-font-request
+   #:key-pressed-p #:text-input-event #:visible-span #:list-index
+   #:reveal-rect #:take-events #:event-targets #:reset-editor #:edit-value
+   #:*glass-defaults* #:*motif-defaults* #:*macos-defaults* #:*qt-defaults*
+   #:*garnet-defaults* #:set-debugger-enabled #:debugger-enabled-p
+   #:debugger-state #:make-debugger-state #:debugger-state-open-p
+   #:debugger-state-selected #:debugger-state-width #:font #:open-font
+   #:close-font #:font-size #:text-width #:line-height #:baseline
+   #:wrap-text #:glyph-polygons #:*font-path* #:*font-paths*
+   #:*font-directories* #:*font-names* #:font-face #:renderer
+   #:renderer-font #:renderer-polygons #:renderer-clip #:renderer-glass
+   #:renderer-text #:geometry #:make-geometry #:geometry-left
+   #:geometry-top #:geometry-right #:geometry-bottom #:geometry-min-width
+   #:geometry-min-height #:geometry-center-x #:geometry-center-y
+   #:geometry-offset-x #:geometry-offset-y #:geometry-text-p
+   #:geometry-value-p #:widget-geometry #:text-box #:rounded-polygon
+   #:color-components #:paint-text #:shape #:outline #:inset-box
+   #:focused-p #:widget-font #:render-pdf #:*pdf-output*
+   #:make-terminal-context #:render-terminal #:terminal-text-width
+   #:text-lines #:cell-edge #:mount #:unmount #:refresh
+   #:point #:contour #:contours #:sizing #:fit #:grow #:fixed #:percent #:box
+   #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
+   #:element-content #:row #:column #:with-frame #:frame-time #:request-frame
+   #:previous-box #:scroll-position #:scroll-to #:activated-p #:activated-ids
+   #:hovered-p #:event #:event-kind #:event-x #:event-y #:event-id
+   #:event-value #:event-key #:event-button #:event-buttons
+   #:event-clicks #:event-dragging-p #:declare-widget #:widget-text
+   #:run #:register-backend #:available-backends #:units #:*backend*
+   #:*unit* #:with-toolkit #:with-palette #:toolkit-palette
+   #:widget-color #:current-toolkit #:toolkit-defaults
+   #:available-palettes #:palette #:palette-p #:make-palette
+   #:palette-thumb
+   #:palette-control-background #:palette-background
+   #:palette-foreground
+   #:palette-accent #:palette-window-background #:palette-selection
+   #:palette-border #:palette-disabled #:palette-disabled-accent
+   #:palette-disabled-surface #:palette-disabled-bevel-light
+   #:palette-disabled-bevel-dark
+   #:palette-outline #:palette-light #:palette-shadow
+   #:palette-bevel-light #:palette-bevel-dark #:palette-track
+   #:palette-cell-background #:palette-cell-foreground
+   #:palette-on-accent
+   #:+palette-default+ #:+palette-light+ #:+palette-dark+
+   #:+palette-ocean+ #:+palette-forest+
+   #:register-toolkit
+   #:register-toolkit-rendering #:toolkit-paint #:toolkit-geometry
+   #:toolkit-native-labels-p
+   #:control
+   #:define-toolkit
+   #:table #:table-row #:table-cell
+   #:opt #:panel #:label
+   #:button #:tab #:checkbox #:radio #:slider
+   #:text-field #:cell #:list-item #:gauge #:canvas
+   #:date-picker #:searchable-combobox
+   #:*default-backend-function*
+   #:*toolkit-revision*))
 (in-package #:lui)
 
 (defvar *backends* (make-hash-table :test 'eq))
@@ -108,8 +110,9 @@
     results))
 
 (fn (run t)
-    ((draw function) &key (backend *backend*) ((title string) "LUI" ) width
-     height (interactive t) ((min-fps real) 1) ((max-fps real) 240))
+    ((draw function) &key (backend *backend*) ((title string) "LUI") width
+                       height (interactive t) ((min-fps real) 1) ((max-fps
+                                                                   real) 240))
   "Run the same immediate-mode DRAW function on any registered backend.
 Backend-specific window, DOM, input, frame, and lifetime management stay in LUI.
 WIDTH/HEIGHT are optional backend coordinates; omit them for sensible defaults.
@@ -125,8 +128,11 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
                          :return backend)))
          (runner (gethash name *backends*)))
     (unless runner
-      (lui.conditions:fail-configuration :backend name :run
-                                         "Backend ~S is not loaded. Available: ~S" name (available-backends)))
+      (error 'lui.conditions:configuration-error
+             :setting :backend :value name
+             :operation :run
+             :format-control "Backend ~S is not loaded. Available: ~S"
+             :format-arguments (list name (available-backends))))
     (funcall runner draw :title title :width width :height height
              :interactive interactive)))
 
@@ -143,10 +149,11 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 
 (fn (find-toolkit toolkit) ((name symbol))
   "Resolve a toolkit name or signal a CONFIGURATION-ERROR for an unknown name."
-  (or (gethash name *toolkits*)
-      (lui.conditions:fail-configuration :toolkit
-                                         name :find-toolkit "Unknown toolkit ~S."
-                                         name)))
+  (or (gethash name *toolkits*) (error 'lui.conditions:configuration-error
+                                       :setting :toolkit :value name
+                                       :operation :find-toolkit
+                                       :format-control "Unknown toolkit ~S."
+                                       :format-arguments (list name))))
 
 (fn (rendering-option t) ((name symbol) (key symbol))
   "Resolve an inherited toolkit rendering policy through its parent chain."
@@ -174,8 +181,12 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
   (not (null (rendering-option name :native-labels))))
 
 (fn (register-toolkit-rendering symbol)
-    ((name symbol) &key (paint nil paint-p) (geometry nil geometry-p)
-     (native-labels nil labels-p))
+    ((name symbol) &key (paint nil
+                               paint-p)
+                     (geometry nil
+                               geometry-p)
+                     (native-labels nil
+                                    labels-p))
   "Set graphical callbacks for registered NAME. Omitted keys retain their
 settings or inherit from :PARENT; explicit NIL disables the inherited setting."
   (let ((entry (find-toolkit name)))
@@ -184,13 +195,18 @@ settings or inherit from :PARENT; explicit NIL disables the inherited setting."
     (when paint-p (setf (%toolkit-paint entry) paint))
     (when geometry-p (setf (%toolkit-geometry entry) geometry))
     (when labels-p (setf (%toolkit-native-labels entry)
-                         (not (null native-labels))))
+                     (not
+                       (null
+                         native-labels))))
     (incf *toolkit-revision*))
   name)
 
-(fn (register-toolkit symbol)
-    ((name symbol) &key parent defaults controls (paint nil paint-p)
-     (geometry nil geometry-p) (native-labels nil labels-p))
+(fn (register-toolkit symbol) ((name symbol) &key parent defaults controls
+                                               (paint nil paint-p)
+                                               (geometry
+                                                nil
+                                                geometry-p)
+                                               (native-labels nil labels-p))
   "Register a toolkit. DEFAULTS is a plist or a zero-argument function.
 CONTROLS maps control names to functions taking the public arguments and options.
 PAINT, GEOMETRY and NATIVE-LABELS configure graphical rendering; omitted values
@@ -198,8 +214,11 @@ inherit only from an explicit PARENT."
   (loop :for ancestor := parent
         :then (%toolkit-parent (find-toolkit ancestor))
         :while ancestor :when (eq ancestor name)
-        :do (lui.conditions:fail-configuration :toolkit name
-                                               :register-toolkit "Circular toolkit inheritance at ~S." name))
+        :do (error 'lui.conditions:configuration-error
+                   :setting :toolkit :value name
+                   :operation :register-toolkit
+                   :format-control "Circular toolkit inheritance at ~S."
+                   :format-arguments (list name)))
   (when paint-p (check-type paint (or null function)))
   (when geometry-p (check-type geometry (or null function)))
   (incf *toolkit-revision*)
@@ -207,8 +226,8 @@ inherit only from an explicit PARENT."
         (make-toolkit :parent parent :defaults defaults :controls controls
                       :paint (if paint-p paint :inherit)
                       :geometry (if geometry-p geometry :inherit)
-                      :native-labels
-                      (if labels-p (not (null native-labels)) :inherit)))
+                      :native-labels (if labels-p (not (null native-labels))
+                                         :inherit)))
   name)
 
 (fn (current-toolkit symbol) ()
@@ -217,7 +236,8 @@ inherit only from an explicit PARENT."
 
 (fn (defaults-of list) ((entry toolkit))
   "Collect toolkit defaults, evaluating dynamic providers for this declaration."
-  (let* ((parent (%toolkit-parent entry)) (source (%toolkit-defaults entry))
+  (let* ((parent (%toolkit-parent entry))
+         (source (%toolkit-defaults entry))
          (defaults (if (functionp source) (funcall source) source)))
     (if parent (append defaults (defaults-of (find-toolkit parent)))
         defaults)))
@@ -247,10 +267,12 @@ inherit only from an explicit PARENT."
                                                            :foreground)
                    :background
                    (or
-                    (when (member kind '(:button :tab :text-field))
+                    (when (member kind '(:button :tab
+                                         :text-field))
                       (lui.widgets::palette-color palette
                                                   :control-background))
-                    (lui.widgets::palette-color palette :background))
+                    (lui.widgets::palette-color palette
+                                                :background))
                    :accent (lui.widgets::palette-color palette :accent)
                    (without-option :palette defaults))
             palette)))
@@ -298,7 +320,8 @@ inherit only from an explicit PARENT."
       (make-palette :control-background "#424954" :background "#292d35"
                     :foreground "#eeeeee" :accent "#79b8ff"
                     :disabled "#89919d" :disabled-accent "#626c7a"
-                    :disabled-surface "#343a44"
+                    :disabled-surface
+                    "#343a44"
                     :disabled-bevel-light "#424954" :disabled-bevel-dark
                     "#242830"
                     :window-background "#1d2026" :selection "#34465e" :border
@@ -307,7 +330,8 @@ inherit only from an explicit PARENT."
                     :bevel-light "#505866" :bevel-dark "#171a20" :track
                     "#626c7a"
                     :cell-background "#23272e" :cell-foreground "#eeeeee"
-                    :on-accent "#101820"))
+                    :on-accent
+                    "#101820"))
   "Built-in immutable palette for WITH-PALETTE.")
 (defconstant +palette-ocean+
   (if (boundp '+palette-ocean+) (symbol-value '+palette-ocean+)
@@ -329,8 +353,10 @@ inherit only from an explicit PARENT."
 
 (defparameter *named-palettes*
   (list (cons :default +palette-default+)
-        (cons :light +palette-light+) (cons :dark +palette-dark+)
-        (cons :ocean +palette-ocean+) (cons :forest +palette-forest+)))
+        (cons :light +palette-light+)
+        (cons :dark +palette-dark+)
+        (cons :ocean +palette-ocean+)
+        (cons :forest +palette-forest+)))
 
 (fn (available-palettes (vector symbol)) ()
   "Return the names accepted by WITH-PALETTE."
@@ -365,9 +391,11 @@ inherit only from an explicit PARENT."
   "Call FUNCTION with a resolved palette dynamically bound for declarations."
   (let* ((value (etypecase palette
                   (symbol (or (cdr (assoc palette *named-palettes*))
-                              (lui.conditions:fail-configuration
-                               :palette palette :call-with-palette
-                               "Unknown palette ~S." palette)))
+                              (error 'lui.conditions:configuration-error
+                                     :setting :palette :value palette
+                                     :operation :call-with-palette
+                                     :format-control "Unknown palette ~S."
+                                     :format-arguments (list palette))))
                   (palette palette)))
          (*palette* (append (palette-options value) *palette*)))
     (funcall draw)))
@@ -387,9 +415,11 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
   "Invoke a user-defined control from the current toolkit or its ancestors."
   (apply (or (override kind (or *toolkit-definition*
                                 (find-toolkit *toolkit*)))
-             (lui.conditions:fail-configuration
-              :control kind :control
-              "No ~S control in toolkit ~S." kind *toolkit*))
+             (error 'lui.conditions:configuration-error
+                    :setting :control :value kind
+                    :operation :control
+                    :format-control "No ~S control in toolkit ~S."
+                    :format-arguments (list kind *toolkit*)))
          arguments))
 
 (defmacro with-toolkit ((designator) &body body)
@@ -406,7 +436,8 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
                              foreground background palette radius frost
                              minimum maximum step
                              font-size font-family font-weight opacity accent
-                             disabled-p painter terminal-label terminal-border
+                             disabled-p
+                             painter terminal-label terminal-border
                              accessible-name
                              placeholder password-p max-results selected-p
                              text)
@@ -417,7 +448,8 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
                    floating-p offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
                    palette radius frost minimum maximum step font-size
-                   font-family font-weight opacity accent disabled-p painter
+                   font-family
+                   font-weight opacity accent disabled-p painter
                    terminal-label terminal-border accessible-name
                    placeholder password-p max-results selected-p text))
   `(list ,@forms))
@@ -459,9 +491,8 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
         (push (car tail) result)
         (push (cadr tail) result)))))
 
-(fn (selectable boolean)
-    ((kind symbol) (style symbol) id (text string) (options list)
-     (defaults list))
+(fn (selectable boolean) ((kind symbol) (style symbol) id (text string)
+                          (options list) (defaults list))
   "Declare a selectable control and return whether it was activated."
   ;; Extract selection while removing its public option in one pass. Preserve
   ;; GETF's first-value rule, including an explicitly supplied NIL.
@@ -470,7 +501,9 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
       (cond ((eq (car tail) :selected-p)
              (unless selected-seen
                (setf selected (cadr tail) selected-seen t)))
-            (t (push (car tail) appearance) (push (cadr tail) appearance))))
+            (t
+             (push (car tail) appearance)
+             (push (cadr tail) appearance))))
     (apply #'declare-widget kind style id text :value selected
            (nreconc appearance defaults))))
 
@@ -512,12 +545,12 @@ Each direct child occupies one column by default."
 (define-control cell (id text)
   "Display a compact grid cell. Use :selected-p to mark the active cell."
   (selectable :cell style id text options
-              (list* :background
-                     (lui.widgets::palette-color palette
-                                                 :cell-background "#ffffff")
-                     :foreground
-                     (lui.widgets::palette-color palette
-                                                 :cell-foreground "#202430")
+              (list* :background (lui.widgets::palette-color palette
+                                                             :cell-background
+                                                             "#ffffff")
+                     :foreground (lui.widgets::palette-color palette
+                                                             :cell-foreground
+                                                             "#202430")
                      defaults)))
 
 (define-control checkbox (id value text)
@@ -566,7 +599,8 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
        ,@(loop :for local :in names :for fn :in functions :for a :in args
                :collect
                `(fn (,local t) (,@a &optional options)
-                  (with-toolkit (,name) (,fn ,@a options))))
+                  (with-toolkit (,name)
+                    (,fn ,@a options))))
        (defmacro ,panel-name (options &body body)
          (list 'with-toolkit (list ,name) (list* 'panel options body))))))
 
@@ -578,8 +612,9 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
 (defstruct (combobox-state (:include edit-state))
   open-p focused-p filter-p highlight)
 
-(fn (combobox-matches (vector (cons integer string)))
-    ((query string) (choices sequence) (limit (integer 1 *)))
+(fn (combobox-matches (vector (cons integer string))) ((query string)
+                                                       (choices sequence)
+                                                       (limit (integer 1 *)))
   "Return source-index/label pairs matching QUERY, limited to LIMIT choices."
   ;; Keep the source index for IDs so filtering never retargets a pointer event.
   (let ((index 0) (count 0) matches)
@@ -593,34 +628,35 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
     (make-array count :element-type '(cons integer string) :initial-contents
                 (nreverse matches))))
 
-(fn (anchored-popup lui.layout:element)
-    (id (anchor lui.layout:element) (options list))
+(fn (anchored-popup lui.layout:element) (id (anchor lui.layout:element)
+                                         (options list))
   "Declare a floating popup whose geometry is constrained to ANCHOR."
   (let ((*parent* (lui.layout:make-element)))
     (let ((pane
-           (declare-panel *toolkit*
-                          (append options
-                                  (opt :id id :floating-p t :opacity 1
-                                       :scroll-p t
-                                       :scrollbar-p nil :clip-p t
-                                       :interactive-p t
-                                       :keyboard-focus-p nil :padding
-                                       (units 1))
-                                  (toolkit-defaults)))))
+           (declare-panel
+            *toolkit*
+            (append options
+                    (opt :id id :floating-p t :opacity 1 :scroll-p t
+                         :scrollbar-p nil :clip-p t :interactive-p t
+                         :keyboard-focus-p nil :padding (units 1))
+                    (toolkit-defaults)))))
       (setf (lui.layout:element-popup-anchor pane) anchor)
       (push pane (lui.frame::context-popups *context*))
       pane)))
 
 (fn (combobox-popup (values))
-    (id (matches (vector (cons integer string))) index
-     (anchor lui.layout:element) reveal)
+    (id (matches (vector (cons integer string))) index (anchor
+                                                        lui.layout:element)
+     reveal)
   "Declare the filtered combobox choices with stable source-index IDs."
-  (let* ((pane (anchored-popup (list id :popup) anchor nil)) (*parent* pane))
+  (let* ((pane (anchored-popup (list id :popup) anchor nil))
+         (*parent* pane))
     (loop :for match :across matches :for i :from 0
           :for row-id := (list id :choice (car match))
           :do (list-item row-id (cdr match)
                          (opt :width (lui.layout:grow) :selected-p
-                              (eql i index)))
+                           (eql i
+                             index)))
           (let ((row (gethash row-id (lui.frame::context-ids *context*))))
             (setf (lui.layout:element-keyboard-focus-p row) nil)
             (when (and reveal (eql index i))
@@ -640,10 +676,13 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
         (min last (1+ (or index -1)))
         (max 0 (1- (or index (1+ last)))))))
 
-(fn (combobox-completion (or null string))
-    (id (state combobox-state) (text string) (choices sequence)
-     (limit (integer 1 *)) (events (vector event))
-     (anchor lui.layout:element))
+(fn (combobox-completion (or null string)) (id (state combobox-state) (text
+                                                                       string)
+                                            (choices sequence) (limit
+                                                                (integer 1 *))
+                                            (events (vector event))
+                                            (anchor
+                                             lui.layout:element))
   "Apply autocomplete navigation or selection to the combobox editor state."
   (let ((navigate (find-if #'completion-navigation-p events)))
     (when (or navigate (combobox-state-open-p state))
@@ -672,8 +711,10 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
         (setf (combobox-state-highlight state) index)
         (when (and (plusp (length matches)) (combobox-state-open-p state))
           (let ((clicked (find-if
-                          (lambda (match) (activated-p (list id :choice
-                                                             (car match))))
+                          (lambda (match) (activated-p (list id
+                                                             :choice
+                                                             (car
+                                                              match))))
                           matches)))
             (when clicked
               (setf (combobox-state-open-p state) nil)
@@ -703,7 +744,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
          (result (if (string= edited text) value edited)))
     (check-type limit (integer 1 *))
     (cond ((not focused) (setf (combobox-state-open-p state) nil))
-          ((or (not (combobox-state-focused-p state)) (find :press events :key
+          ((or (not (combobox-state-focused-p state)) (find :press events
+                                                            :key
                                                             #'event-kind))
            (setf (combobox-state-open-p state) t (combobox-state-filter-p
                                                   state) nil
@@ -742,8 +784,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
 
 (deftype date-parts () '(vector integer 3))
 
-(fn (make-date-parts date-parts)
-    ((year integer) (month integer) (day integer))
+(fn (make-date-parts date-parts) ((year integer) (month integer) (day
+                                                                  integer))
   "Validate numeric year/month/day parts and construct the date representation."
   (make-array 3 :element-type 'integer :initial-contents (list year month
                                                                day)))
@@ -829,7 +871,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                       (calendar-day (picker-state-year state)
                                     (picker-state-month state) (+ day step))
                     (when (<= 1 y 9999)
-                      (setf day next (picker-state-year state) y
+                      (setf day next
+                            (picker-state-year state) y
                             (picker-state-month state) m
                             (context-focus *context*) (list id :day
                                                             day))))))))))
@@ -841,7 +884,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (row (:width (lui.layout:grow))
     (when (calendar-item (list id :month-menu)
                          (format nil "~A ~4,'0D ▼"
-                                 (aref *month-names* (1- month)) year)
+                                 (aref *month-names* (1-
+                                                      month)) year)
                          :width (lui.layout:grow) :font-weight :bold)
       (setf (picker-state-months-p state) (not months)))
     (dolist (step '(-1 1))
@@ -850,8 +894,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         (when (calendar-item (list id (if (minusp step) :previous-month
                                           :next-month))
                              (if (minusp step) "↑" "↓") :font-size 19
-                             :center-text-p t :width (lui.layout:fixed
-                                                      (if
+                             :center-text-p t
+                             :width (lui.layout:fixed (if
                                                        (context-text-mode-p
                                                         *context*) 3 28))
                              :disabled-p (not (<= 1 y 9999))
@@ -860,7 +904,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
           (setf (picker-state-year state) y (picker-state-month state) m)))))
   (values))
 
-(fn (calendar-month-grid (values)) (id (state picker-state) (month integer))
+(fn (calendar-month-grid (values))
+    (id (state picker-state) (month integer))
   "Declare the month chooser and switch back to the day grid after selection."
   (dotimes (r 4)
     (row (:width (lui.layout:grow))
@@ -882,7 +927,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (calendar-arrow-focus id state)
   (let* ((year (picker-state-year state)) (month (picker-state-month state))
          (months (picker-state-months-p state))
-         (width (lui.layout:percent (/ 1 7))) (palette (toolkit-defaults))
+         (width (lui.layout:percent (/ 1 7)))
+         (palette (toolkit-defaults))
          (foreground (getf palette :foreground "#ffffff"))
          (muted (lui.widgets::muted-ink foreground (getf palette :background "#303040")))
          (ink (getf palette :accent foreground)))
@@ -924,7 +970,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     (id (state picker-state) parts trigger terminal)
   "Toggle the calendar from its icon or field and establish its initial date and focus."
   (let* ((input (list id :input))
-         (field-click (or (activated-p input) (activated-p (list id :field))))
+         (field-click (or (activated-p input) (activated-p (list id
+                                                                 :field))))
          (icon-click (calendar-item trigger "▦" :icon :calendar
                                     :accessible-name "Choose date"
                                     :height (lui.layout:grow) :width
@@ -942,8 +989,9 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                                     (picker-state-month
                                                      state) (aref initial 1))
                (when icon-click
-                 (setf (context-focus *context*) (list id :day (aref initial
-                                                                     2))))))
+                 (setf (context-focus *context*) (list id :day (aref
+                                                                initial
+                                                                2))))))
            (when field-click (setf (context-focus *context*) input)))))
   (values))
 
@@ -978,7 +1026,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                                             (if terminal 32
                                                                 260))))))
                  (multiple-value-bind (date action)
-                     (picker-calendar id state (or parts (local-today)))
+                     (picker-calendar id state
+                                      (or
+                                       parts
+                                       (local-today)))
                    (when action
                      (pop (lui.frame::context-popups *context*))
                      (setf (picker-state-open-p state) nil (context-focus
