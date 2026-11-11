@@ -1,13 +1,49 @@
 #!/usr/bin/env bash
-# ECL's source tree is read-only; both configurations live in build/deps/.
+# Download pinned tools when no overrides are supplied; install locally.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-: "${ECL_SOURCE:?Set ECL_SOURCE to an ECL checkout with cross-compilation support}"
-: "${EMSDK_ENV:?Set EMSDK_ENV to the installed SDK emsdk_env.sh}"
+deps=$PWD/build/deps
+for tool in git make python3 cc c++; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "Missing build prerequisite: $tool" >&2
+        exit 2
+    fi
+done
+
+# Never update or switch an existing checkout. Explicit overrides remain owned
+# by the caller; fresh default checkouts use the revisions tested with LUI.
+checkout() {
+    local destination=$1 repository=$2 revision=$3
+    if [[ ! -d $destination ]]; then
+        mkdir -p "$destination"
+        git -C "$destination" init
+        git -C "$destination" remote add origin "$repository"
+    elif [[ ! -d $destination/.git ]]; then
+        echo "Expected a Git checkout at $destination; set an explicit tool override." >&2
+        exit 2
+    fi
+    # Retry an interrupted initial download on the next setup invocation.
+    if ! git -C "$destination" rev-parse --verify HEAD >/dev/null 2>&1; then
+        git -C "$destination" fetch --depth 1 origin "$revision"
+        git -C "$destination" checkout --detach FETCH_HEAD
+    fi
+}
+
+if [[ -z ${ECL_SOURCE:-} ]]; then
+    ECL_SOURCE=$deps/ecl-source
+    checkout "$ECL_SOURCE" https://gitlab.com/embeddable-common-lisp/ecl.git \
+        855f93431bab0e972fad816a8e0437afdc1de245
+fi
+if [[ -z ${EMSDK_ENV:-} ]]; then
+    checkout "$deps/emsdk" https://github.com/emscripten-core/emsdk.git \
+        1693ce7359fc9694f198694f902a2cc061239b86
+    "$deps/emsdk/emsdk" install 4.0.12
+    "$deps/emsdk/emsdk" activate 4.0.12
+    EMSDK_ENV=$deps/emsdk/emsdk_env.sh
+fi
 : "${JOBS:=4}"
 ECL_SOURCE=$(cd "$ECL_SOURCE" && pwd)
 source "$EMSDK_ENV"
-deps=$PWD/build/deps
 mkdir -p "$deps/ecl-host-build" "$deps/ecl-wasm-build"
 (
     cd "$deps/ecl-host-build"

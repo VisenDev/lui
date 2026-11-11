@@ -443,20 +443,32 @@ Emscripten `4.0.12`. See the upstream
 and [cross-compilation manual](https://ecl.common-lisp.dev/static/manual/System-building.html).
 The host must match the target's structure macro behavior as well as its version.
 
-Build both ECL configurations locally, without modifying the source checkout:
+On a fresh machine, install Git, GNU Make, Bash, Python 3, a native C/C++
+build toolchain, and ECL's native build prerequisites. SBCL is also needed
+for generating the docs reference. Then run:
+
+```sh
+make web-ecl-toolchain  # Download tested versions and build both ECL variants
+make web-ecl-build      # Standalone gallery
+make docs-pages         # Standalone docs and published copy
+```
+
+Setup needs internet access and installs everything under `build/deps/`,
+without system-wide changes. Subsequent builds activate the local SDK
+automatically. The setup command can be rerun; existing source checkouts are
+preserved and Emscripten 4.0.12 is selected in the local SDK. The workflow has
+been validated on Linux; other build hosts remain untested.
+
+To use existing tools instead of downloading them:
 
 ```sh
 ECL_SOURCE=/path/to/ecl EMSDK_ENV=/path/to/emsdk/emsdk_env.sh \
   make web-ecl-toolchain
-source /path/to/emsdk/emsdk_env.sh
-make web-ecl-build ECL="$PWD/build/deps/ecl-host/bin/ecl"
-make demo PLATFORM=web-ecl ECL="$PWD/build/deps/ecl-host/bin/ecl"
-make test PLATFORM=web-ecl ECL="$PWD/build/deps/ecl-host/bin/ecl"
 ```
 
-The toolchain target requires the usual ECL native build prerequisites and
-an already installed SDK; it does not download dependencies. `JOBS` controls
-build parallelism. `ECL_WASM` selects the installed wasm ECL prefix (default
+For subsequent builds with an external SDK, set `EMSDK_ENV` again or source
+its environment script in your shell. `JOBS` controls build parallelism.
+`ECL_WASM` selects the installed wasm ECL prefix (default
 `build/deps/ecl-wasm`); `ECL_TARGET_INFO` can select its `target-info.lsp`
 explicitly. `EMCC` selects the Emscripten compiler. The launcher activates
 `build/deps/emsdk/emsdk_env.sh` automatically when `emcc` is missing from
