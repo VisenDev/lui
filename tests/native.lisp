@@ -914,7 +914,7 @@
       (assert (null (lui:widget-key (lui.frame::hit context 5 5)))))))
 
 (defun test-button-text-centering (font)
-  ;; A compact close glyph must stay centered in a generously sized control.
+  ;; Explicit positions retain the same measured text room and centering.
   (let* ((position nil)
          (renderer
            (make-renderer
@@ -924,23 +924,31 @@
                     (declare (ignore face color))
                     (when (string= text "×")
                       (setf position (cons x y))))))
-         (context (make-context
-                   :measure (lambda (widget width)
-                              (measure-widget renderer widget width)))))
-    (with-frame (context 200 100)
-      (lui.glass:button
-        "×"
-        (lui:opt :id :close :width (fixed 80) :height (fixed 50))))
-    (paint-frame renderer context)
-    (let* ((node (gethash (lui:widget-id :close context)
-                   (lui.frame::context-ids context)))
-           (box (element-box node)))
-      (assert position)
-      (assert (near (+ (car position) (/ (text-width font "×") 2))
-                    (+ (box-x box) (/ (box-width box) 2))))
-      (assert (near (- (cdr position) (baseline font)
-                       (- (/ (line-height font) 2)))
-                    (+ (box-y box) (/ (box-height box) 2)))))))
+         (context (make-render-context renderer)))
+    (dolist (manual '(nil t))
+      (with-frame (context 200 100)
+        (lui:with-toolkit ((if manual :qt :glass))
+          (lui:button "×"
+            (lui:opt :width (fixed 80)
+                     :position (if manual (make-point :x 20 :y 30)
+                                   :automatic)
+                     :reserve-space-p (not manual)
+                     :height (if manual (fit) (fixed 50))))))
+      (setf position nil)
+      (paint-frame renderer context)
+      (let* ((node (aref (element-children (context-root context)) 0))
+             (box (element-box node))
+             (area (text-box (element-content node) box nil)))
+        (assert position)
+        (assert (>= (+ (box-height area) 0.001) (line-height font)))
+        (when manual
+          (assert (= 30 (box-y box)))
+          (assert (near (box-height box) (+ 12 (line-height font)))))
+        (assert (near (+ (car position) (/ (text-width font "×") 2))
+                      (+ (box-x box) (/ (box-width box) 2))))
+        (assert (near (- (cdr position) (baseline font)
+                         (- (/ (line-height font) 2)))
+                      (+ (box-y box) (/ (box-height box) 2))))))))
 
 (defun test-toolkit-geometry (font)
   ;; Asymmetric custom geometry must determine both wrapping and hit positions.

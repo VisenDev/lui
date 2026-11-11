@@ -192,7 +192,7 @@ benchmark targets. Scripts discover optional dependency checkouts under
 | ECL browser | `make web-ecl-build` / `make web-ecl-demo`; see ECL/WebAssembly setup below for the matching host and wasm toolchain |
 | Browser tests | `make test PLATFORM=web` or, after building, `python3 tests/web.py`; requires Playwright and Chromium |
 | Docs | `make docs-pages`; `make test-docs` checks extraction, examples, and offline browser behavior |
-| Manual-only demo | `make manual-demo` (or `PLATFORM=x11`, `terminal`, etc.); all widgets use explicit positions, fixed sizes, and no reservations |
+| Manual-only demo | `make manual-demo` (or `PLATFORM=x11`, `terminal`, etc.); all widgets use explicit positions and no reservations; heights fit measured content |
 | Native executable | `make demo PLATFORM=x11` (or another backend); `RUN_ARGS=--smoke-test` renders one frame and exits |
 | Terminal | `make test PLATFORM=terminal`; `python3 tests/terminal.py --lisp sbcl` runs POSIX PTY checks |
 | Terminal parity | `make test-terminal-parity`; requires historical commit `16f79dd`, compares reconstructed styled cells and I/O against current layout/widgets/examples |

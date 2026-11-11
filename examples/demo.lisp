@@ -129,18 +129,18 @@
     (unless previous (lui:request-frame))
     (lui:panel
      (lui:opt :id :position-stage :width (lui:grow)
-              :height (lui:fixed (lui:units 20)) :clip-p t
+              :height (lui:fixed (lui:units 28)) :clip-p t
               :padding (lui:units 1) :gap (lui:units 1))
       (dotimes (i 4)
         (lui:button (format nil "Automatic ~D" (1+ i))
           (lui:opt :id (list :automatic i)
                    :width (lui:fixed (lui:units 18))
-                   :height (lui:fixed (lui:units 3)))))
+                   :height (lui:fit))))
       (when (lui:button "Manual button"
               (lui:opt :id :manual-button :position (lui:make-point :x x :y y)
                        :reserve-space-p (gallery-manual-reserve g)
                        :width (lui:fixed (lui:units 18))
-                       :height (lui:fixed (lui:units 3))
+                       :height (lui:fit)
                        :background "#308cc6" :foreground "#ffffff"))
         (incf (gallery-manual-clicks g)))
       (lui:text-field
@@ -149,7 +149,7 @@
                                           :y (+ y (lui:units 4)))
                 :reserve-space-p (gallery-manual-reserve g)
                 :width (lui:fixed (lui:units 18))
-                :height (lui:fixed (lui:units 3)))))))
+                :height (lui:fit))))))
 
 (defun positioning-controls (g)
   (lui:label "Move the manual widgets; automatic siblings avoid their bounds.")

@@ -3,42 +3,57 @@
   (:export #:make-demo #:main))
 (in-package #:lui.example.manual-demo)
 
-(defun at (x y width height)
-  "Place a widget explicitly, without flow sizing or sibling reservations."
-  (let ((terminal (lui.frame:context-text-mode-p lui.frame:*context*)))
-    (lui:opt :position (lui:make-point
-                       :x (lui:units x)
-                       :y (if terminal (floor y 2) (lui:units y)))
-             :reserve-space-p nil
-             :width (lui:fixed (lui:units width))
-             :height (lui:fixed (if terminal 1 (lui:units height))))))
-
 (defun make-demo ()
-  "Return an independent UI whose widgets all have explicit surface positions."
-  (let ((x 4) (y 22) (clicks 0) (enabled t))
+  "Return a manually positioned UI; widgets measure their own text and height."
+  (let ((x 4) (y 17) (clicks 0) (enabled t))
     (lambda ()
       (lui:with-toolkit (:qt)
-        (lui:label "Manual placement only" (at 2 1 60 3))
-        (lui:label "Every widget has a position and fixed size."
-                   (at 2 5 72 3))
-        (lui:label "X" (at 2 9 3 3))
-        (setf x (lui:slider
-                 (append (at 6 9 60 3)
-                         (lui:opt :value x :minimum 2 :maximum 48 :step 1))))
-        (lui:label "Y" (at 2 13 3 3))
-        (setf y (lui:slider
-                 (append (at 6 13 60 3)
-                         (lui:opt :value y :minimum 21 :maximum 36 :step 1))))
+        (lui:label "Manual placement only"
+          (lui:opt :position (lui:make-point :x (lui:units 2) :y (lui:units 1))
+                   :reserve-space-p nil))
+        (lui:label "Explicit positions; heights fit the text."
+          (lui:opt :position (lui:make-point :x (lui:units 2) :y (lui:units 4))
+                   :reserve-space-p nil))
+        (lui:label "X"
+          (lui:opt :position (lui:make-point :x (lui:units 2) :y (lui:units 7))
+                   :reserve-space-p nil))
+        (setf x
+              (lui:slider
+               (lui:opt :position (lui:make-point :x (lui:units 6)
+                                                 :y (lui:units 7))
+                        :reserve-space-p nil :width (lui:fixed (lui:units 28))
+                        :value x :minimum 2 :maximum 48 :step 1)))
+        (lui:label "Y"
+          (lui:opt :position (lui:make-point :x (lui:units 38)
+                                            :y (lui:units 7))
+                   :reserve-space-p nil))
+        (setf y
+              (lui:slider
+               (lui:opt :position (lui:make-point :x (lui:units 42)
+                                                 :y (lui:units 7))
+                        :reserve-space-p nil :width (lui:fixed (lui:units 28))
+                        :value y :minimum 16 :maximum 24 :step 1)))
         (setf enabled
               (lui:checkbox "Enable button"
-                (append (at 2 17 30 3) (lui:opt :value enabled))))
-        (lui:label (format nil "Clicks: ~D" clicks) (at 35 17 30 3))
+                (lui:opt :position (lui:make-point :x (lui:units 2)
+                                                  :y (lui:units 12))
+                         :reserve-space-p nil :value enabled)))
+        (lui:label (format nil "Clicks: ~D" clicks)
+          (lui:opt :position (lui:make-point :x (lui:units 35)
+                                            :y (lui:units 12))
+                   :reserve-space-p nil))
         (when (lui:button "Click me"
-                (append (at x y 24 3) (lui:opt :disabled-p (not enabled))))
+                (lui:opt :position (lui:make-point :x (lui:units x)
+                                                  :y (lui:units y))
+                         :reserve-space-p nil
+                         :width (lui:fixed (lui:units 24))
+                         :disabled-p (not enabled)))
           (incf clicks))
         (lui:text-field
-         (append (at x (+ y 4) 30 3)
-                 (lui:opt :default-value "Move me; text stays")))))))
+         (lui:opt :position (lui:make-point :x (lui:units x)
+                                           :y (lui:units (+ y 5)))
+                  :reserve-space-p nil :width (lui:fixed (lui:units 30))
+                  :default-value "Move me; text stays"))))))
 
 (defun main ()
   "Open the manual-only demo on the selected backend."

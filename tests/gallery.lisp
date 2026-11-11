@@ -90,8 +90,7 @@
         (loop :for child :across children :do
           (assert (consp (element-position child)))
           (assert (not (element-reserve-space-p child)))
-          (assert (eq :fixed (sizing-kind (element-width child))))
-          (assert (eq :fixed (sizing-kind (element-height child))))))
+          (assert (eq :fit (sizing-kind (element-height child))))))
     (assert (visible-text-p context "Click me"))
     (assert (visible-text-p context "Move me; text stays")))))
 
