@@ -6,6 +6,7 @@
                 #:error-value
                 #:error-backend #:error-font-request)
   (:import-from #:lui.layout
+                #:make-point #:position-spec
                 #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
                 #:fixed #:percent #:box
                 #:make-box #:box-x #:box-y #:box-width #:box-height
@@ -15,7 +16,8 @@
                 #:call-with-frame #:call-with-key
                 #:row #:column #:with-frame #:frame-time #:request-frame
                 #:previous-box
-                #:scroll-position #:scroll-to #:activated-p #:activated-ids
+                #:parent-scroll-position #:scroll-position #:scroll-to
+                #:activated-p #:activated-ids
                 #:hovered-p
                 #:event #:event-kind #:event-x #:event-y #:event-id
                 #:event-value
@@ -49,11 +51,13 @@
    #:focused-p #:widget-font #:render-pdf #:*pdf-output*
    #:make-terminal-context #:render-terminal #:terminal-text-width
    #:text-lines #:cell-edge #:mount #:unmount #:refresh
-   #:object-id #:point #:contour #:contours #:sizing #:fit #:grow #:fixed
+   #:make-point #:position-spec #:object-id #:point #:contour #:contours
+   #:sizing #:fit #:grow #:fixed
    #:percent #:box
    #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
    #:element-content #:row #:column #:with-frame #:frame-time #:request-frame
-   #:previous-box #:scroll-position #:scroll-to #:activated-p #:activated-ids
+   #:previous-box #:parent-scroll-position
+   #:scroll-position #:scroll-to #:activated-p #:activated-ids
    #:hovered-p #:event #:event-kind #:event-x #:event-y #:event-id
    #:event-value #:event-key #:event-button #:event-buttons
    #:event-clicks #:event-dragging-p #:declare-widget #:widget-text
@@ -443,7 +447,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
 (defmacro opt (&rest forms &key width height padding gap align cross-align
                              id direction column-gap column-span
                              clip-p scroll-p scrollbar-p scrollbar-width
-                             floating-p offset-x offset-y
+                             position reserve-space-p offset-x offset-y
                              interactive-p keyboard-focus-p pointer-focus-p
                              foreground background palette radius frost
                              minimum maximum step
@@ -453,11 +457,20 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
                              accessible-name
                              placeholder password-p max-results selected-p
                 text value default-value)
-  "Build widget options, preserving order, explicit NIL, and omitted keys."
+  "Build widget options, preserving order, explicit NIL, and omitted keys.
+:POSITION defaults to :AUTOMATIC. A MAKE-POINT places the widget in logical
+window/client-surface coordinates, unaffected by ancestor scrolling. Ancestor
+clipping still applies. PARENT-SCROLL-POSITION exposes the current parent offset.
+:RESERVE-SPACE-P defaults to T. Absolute rectangles displace intersecting
+siblings forward along their row or column, regardless of declaration order.
+There is no wrapping or backtracking; bounded containers may overflow. Padding
+is inside the reserved rectangle; GAP separates displaced siblings. NIL permits
+overlap and excludes the widget from flow sizing. Table tracks retain their
+shared widths; place positioned widgets inside a cell rather than moving cells."
   (declare (ignore width height padding gap align cross-align
                    id direction column-gap column-span
                    clip-p scroll-p scrollbar-p scrollbar-width
-                   floating-p offset-x offset-y interactive-p
+                   position reserve-space-p offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
                    palette radius frost minimum maximum step font-size
                    font-family
@@ -712,7 +725,7 @@ Owned state is discarded when this widget is absent from a completed frame."
            (declare-panel
             *toolkit*
             (append options
-                    (opt :id id :floating-p t :opacity 1 :scroll-p t
+                    (opt :id id :reserve-space-p nil :opacity 1 :scroll-p t
                          :scrollbar-p nil :clip-p t :interactive-p t
                          :keyboard-focus-p nil :padding (units 1))
                     (toolkit-defaults)))))

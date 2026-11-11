@@ -173,16 +173,16 @@ def script(error=False, debug=False):
   (let ((context (lui.terminal:make-terminal-context))
         (clicks 0) (checked nil) (value 0.5))
     (labels ((draw ()
-               (when (lui:button "Click" (lui:opt :id :fractional-button :floating-p t :offset-x start :offset-y start
+               (when (lui:button "Click" (lui:opt :id :fractional-button :reserve-space-p nil :offset-x start :offset-y start
                                 :width (lui.layout:fixed 8)
                                 :height (lui.layout:fixed 1)))
                  (incf clicks))
                (setf checked
-                 (lui:checkbox "Enabled" (lui:opt :id :fractional-check :value checked :floating-p t :offset-x start
+                 (lui:checkbox "Enabled" (lui:opt :id :fractional-check :value checked :reserve-space-p nil :offset-x start
                             :offset-y (+ 2 start) :width (lui.layout:fixed 12)
                             :height (lui.layout:fixed 1))))
                (setf value
-                 (lui:slider (lui:opt :id :fractional-slider :value value :floating-p t :offset-x start
+                 (lui:slider (lui:opt :id :fractional-slider :value value :reserve-space-p nil :offset-x start
                             :offset-y (+ 4 start) :width (lui.layout:fixed 20)
                             :height (lui.layout:fixed 1) :step 0.01))))
              (mouse (button x y &optional release)
@@ -218,7 +218,7 @@ def script(error=False, debug=False):
                                      :height (lui.layout:fixed 1))))
              (setf visible (lui:slider (lui:opt :id :visible :value visible :width (lui.layout:fixed 20)
                                       :height (lui.layout:fixed 1))))
-             (when (lui:button "Close" (lui:opt :id :overlay :floating-p t :width (lui.layout:fixed 20)
+             (when (lui:button "Close" (lui:opt :id :overlay :reserve-space-p nil :width (lui.layout:fixed 20)
                               :height (lui.layout:fixed 1)))
                (incf clicks)))
            (batch (&rest sequences)

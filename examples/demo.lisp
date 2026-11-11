@@ -20,6 +20,7 @@
   (selection 1)
   (split 0.35)
   (alignment :start)
+  (manual-x 10) (manual-y 3) (manual-reserve t) (manual-clicks 0)
   (opacity 0.6)
   (frost 12)
   (radius 12)
@@ -119,7 +120,56 @@
                   "Shift + arrows: select; Ctrl-Shift-A: select all"))
     (lui:label line)))
 
+(defun positioning-scene (g)
+  (let* ((previous (lui:previous-box :position-stage))
+         (x (+ (if previous (lui:box-x previous) 0)
+               (lui:units (gallery-manual-x g))))
+         (y (+ (if previous (lui:box-y previous) 0)
+               (lui:units (gallery-manual-y g)))))
+    (unless previous (lui:request-frame))
+    (lui:panel
+     (lui:opt :id :position-stage :width (lui:grow)
+              :height (lui:fixed (lui:units 20)) :clip-p t
+              :padding (lui:units 1) :gap (lui:units 1))
+      (dotimes (i 4)
+        (lui:button (format nil "Automatic ~D" (1+ i))
+          (lui:opt :id (list :automatic i)
+                   :width (lui:fixed (lui:units 18))
+                   :height (lui:fixed (lui:units 3)))))
+      (when (lui:button "Manual button"
+              (lui:opt :id :manual-button :position (lui:make-point :x x :y y)
+                       :reserve-space-p (gallery-manual-reserve g)
+                       :width (lui:fixed (lui:units 18))
+                       :height (lui:fixed (lui:units 3))
+                       :background "#308cc6" :foreground "#ffffff"))
+        (incf (gallery-manual-clicks g)))
+      (lui:text-field
+       (lui:opt :id :manual-editor :default-value "Manual editor"
+                :position (lui:make-point :x (+ x (lui:units 20))
+                                          :y (+ y (lui:units 4)))
+                :reserve-space-p (gallery-manual-reserve g)
+                :width (lui:fixed (lui:units 18))
+                :height (lui:fixed (lui:units 3)))))))
+
+(defun positioning-controls (g)
+  (lui:label "Move the manual widgets; automatic siblings avoid their bounds.")
+  (lui:label (format nil "Manual X ~D / Y ~D; clicks ~D"
+                     (round (gallery-manual-x g))
+                     (round (gallery-manual-y g)) (gallery-manual-clicks g)))
+  (setf (gallery-manual-x g)
+        (lui:slider (lui:opt :id :manual-x :value (gallery-manual-x g)
+                            :minimum 0 :maximum 36 :step 1 :width (lui:grow)))
+        (gallery-manual-y g)
+        (lui:slider (lui:opt :id :manual-y :value (gallery-manual-y g)
+                            :minimum 0 :maximum 12 :step 1 :width (lui:grow)))
+        (gallery-manual-reserve g)
+        (lui:checkbox "Reserve manual space"
+          (lui:opt :id :manual-reserve :value (gallery-manual-reserve g))))
+  (lui:label "Turn reservation off to allow overlap. Positions use surface coordinates.")
+  (positioning-scene g))
+
 (defun layout-page (g)
+  (positioning-controls g)
   (lui:label "Resize the window: percentages and grow share the space.")
   (setf (gallery-split g)
     (lui:slider
@@ -258,7 +308,8 @@
                       (lui:panel (lui:opt :width (lui:grow) :height (lui:grow)
                                           :opacity 1 :radius 0 :frost 0
                                           :background color)))))
-                (lui:column (:floating-p t :offset-x (lui:units 1) :offset-y
+                (lui:column (:reserve-space-p nil
+                             :offset-x (lui:units 1) :offset-y
                     (lui:units 1)
                          :width (lui:percent 0.95))
                   (preview)))))))))

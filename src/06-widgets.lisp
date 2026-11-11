@@ -186,7 +186,8 @@ An optional terminal-label callback overrides the standard kind-based label."
 (fn (declare-widget boolean)
     ((kind symbol) (style symbol) (id object-id) (text string) &key
      ((width sizing) (fit)) ((height sizing) (fit)) ((padding real) 0)
-     ((floating-p boolean) nil) ((offset-x real) 0) ((offset-y real) 0)
+     ((position position-spec) :automatic) ((reserve-space-p boolean) t)
+     ((offset-x real) 0) ((offset-y real) 0)
      ((foreground string) "#ffffff") ((background string) "#303040")
      ((radius real) 12) ((frost real) 12) ((value t) nil) ((minimum real) 0)
      ((maximum real) 1) ((step real) 0.01f0) ((font-size real) 16)
@@ -224,7 +225,8 @@ Most applications should use the public LUI controls with LUI:OPT instead."
           :accessible-name accessible-name)))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding
-           :floating-p floating-p :offset-x offset-x :offset-y offset-y
+           :position position :reserve-space-p reserve-space-p
+           :offset-x offset-x :offset-y offset-y
            :interactive-p (and (not disabled-p)
                                (not (or (eq kind :label) (eq kind :gauge))))
            :pointer-focus-p (eq kind :text-field)
@@ -657,7 +659,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
            (node (make-element
                   :id id :box box :clip (intersect-boxes box
                                                          (element-clip owner))
-                  :floating-p t :interactive-p t :pointer-focus-p t
+                  :reserve-space-p nil :interactive-p t :pointer-focus-p t
                   :content
                   (make-widget
                    :kind :scrollbar :style (widget-style widget)

@@ -124,6 +124,15 @@ the change and report material limitations instead of claiming untested support.
 - Measurement receives `(widget available-content-width)` and returns width
   and height. NIL width requests intrinsic measurement. Dimensions must be
   nonnegative; measured leaves cannot have children.
+- Widgets accept `:position :automatic` or `(lui:make-point :x x :y y)` in
+  logical client-surface coordinates. Explicit positions remain fixed under
+  ancestor scrolling but obey ancestor clips. `lui:parent-scroll-position`
+  returns the current parent's retained offsets for explicit compensation.
+- `:reserve-space-p` defaults to T, independently of position. Absolute
+  rectangles displace automatic direct siblings forward along their row or
+  column; there is no wrapping/backtracking. Fixed/grow bounds may overflow.
+  NIL excludes a child from flow sizing and reservation. Table tracks retain
+  shared widths; put manually positioned widgets inside cells.
 - Horizontal sizing precedes width-dependent measurement and vertical layout.
   Percentages exclude padding and inter-child gaps. Fixed sizes and minimum
   bounds may overflow rather than silently shrink.

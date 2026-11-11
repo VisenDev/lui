@@ -101,7 +101,7 @@
                (column (:width (grow) :height (grow))
                  (lui:with-toolkit (:test-backdrop)
                    (lui:panel
-                    (lui:opt :floating-p t :offset-x 40 :offset-y 40
+                    (lui:opt :reserve-space-p nil :offset-x 40 :offset-y 40
                              :width (fixed 200) :height (fixed 120)
                              :background "#606060" :opacity opacity
                              :frost frost :radius 0)))))

@@ -21,7 +21,8 @@
            #:make-event #:begin-frame #:end-frame #:context-hover #:hovered-p
            #:context-previous-root #:context-activated
            #:context-focus-visible-p #:frame-time #:request-frame
-           #:context-next-frame #:scroll-position #:scroll-to
+           #:context-next-frame #:parent-scroll-position
+           #:scroll-position #:scroll-to
            #:pending-input-context #:context-overlay #:context-overlay-state
            #:context-tabs-handled-p #:context-text-mode-p
            #:context-copy #:context-input-handler #:context-selection))
@@ -661,6 +662,11 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
         (setf (element-scroll-x node) (car offset)
               (element-scroll-y node) (cdr offset)))))
   (append-child *parent* node))
+
+(fn (parent-scroll-position (values real real)) ()
+  "Return the current layout parent's retained horizontal and vertical scroll.
+Subtract these from an absolute POSITION to opt into parent scrolling."
+  (values (element-scroll-x *parent*) (element-scroll-y *parent*)))
 
 (fn (scroll-position (values real real)) ((id object-id))
   "Return the retained horizontal and vertical scroll offsets."
