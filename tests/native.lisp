@@ -9,7 +9,8 @@
 
 (defun rectangle (x y width height)
   (coerce (list (cons x y) (cons (+ x width) y)
-                (cons (+ x width) (+ y height)) (cons x (+ y height))) 'contour))
+                (cons (+ x width) (+ y height)) (cons x (+ y height)))
+    'contour))
 
 (defun polygon-area (points)
   (/ (abs (loop :for i :below (length points)
@@ -81,8 +82,10 @@
                                       (* 2 (zpb-ttf:y p1))
                                       (zpb-ttf:y p2))
                                    4))))
-                (assert (near (car (aref samples (+ index 11))) (zpb-ttf:x p2)))
-                (assert (near (cdr (aref samples (+ index 11))) (zpb-ttf:y p2)))
+                (assert (near (car (aref samples (+ index 11))) (zpb-ttf:x
+                      p2)))
+                (assert (near (cdr (aref samples (+ index 11))) (zpb-ttf:y
+                      p2)))
                 (incf index 12))
               (progn
                 (assert (= (car (aref samples index)) (zpb-ttf:x p2)))
@@ -131,12 +134,14 @@
                     ("long word" 1 #("long" "word"))
                     ("a  b " 2 #("a " "b ")) ("  a" 1 #(" " "a"))))
       (destructuring-bind (text width expected) case
-        (assert (equalp expected (lui.text:wrap-lines text width #'measure))))))
+        (assert (equalp expected (lui.text:wrap-lines text width
+                #'measure))))))
   (assert (typep (lui.text:wrap-lines "a b" 1 (lambda (text start end)
-                                              (declare (ignore text)) (- end start)))
+          (declare (ignore text)) (- end start)))
                  '(vector string)))
   (let ((longest 0)
-        (text (format nil "~{~A~^ ~}" (make-list 1000 :initial-element "word"))))
+        (text (format nil "~{~A~^ ~}" (make-list 1000 :initial-element
+              "word"))))
     (lui.text:wrap-lines text 10
       (lambda (text start end)
         (declare (ignore text))
@@ -246,9 +251,11 @@
 (defun bounds (contours)
   (let ((left nil) (top nil) (right nil) (bottom nil))
     (loop :for points :across contours :do
-      (loop :for point :across points :for x := (car point) :for y := (cdr point) :do
+      (loop :for point :across points :for x := (car point) :for y := (cdr
+            point) :do
         (setf left (if left (min left x) x) top (if top (min top y) y)
-              right (if right (max right x) x) bottom (if bottom (max bottom y) y))))
+              right (if right (max right x) x) bottom (if bottom (max bottom
+                y) y))))
     (list left top (- right left) (- bottom top))))
 
 (defun test-edit-painting (font)
@@ -264,11 +271,17 @@
                    :measure (lambda (widget width)
                               (measure-widget renderer widget width)))))
     (with-frame (context 240 120)
-      (lui.glass:text-field :name "AV" (lui:opt :width (fixed 180)
-                                                :height (fixed 40) :accent "#ff5500")))
+      (lui.glass:text-field
+        (lui:opt
+          :id :name
+          :value "AV"
+          :width (fixed 180)
+          :height (fixed 40)
+          :accent "#ff5500")))
     (let* ((node (aref (element-children (context-root context)) 0))
-           (state (gethash :name (context-state context))))
-      (setf (context-focus context) :name
+           (state (gethash (lui:widget-id :name context) (context-state
+                context))))
+      (setf (context-focus context) (lui:widget-id :name context)
             (context-focus-visible-p context) t
             (edit-state-anchor state) 0
             (edit-state-cursor state) 2)
@@ -386,14 +399,16 @@
     (with-frame (context 200 100)
       (lui:with-toolkit (:test-graphical-child)
         (lui:control :badge :badge "Badge")))
-    (let* ((node (gethash :badge (lui.frame::context-ids context)))
+    (let* ((node (gethash (lui:widget-id :badge context)
+                   (lui.frame::context-ids context)))
            (widget (element-content node)))
       (assert (eq :test-graphical-child (widget-style widget)))
       (assert measured)
       (assert (= 73 (box-width (element-box node))))
       (assert (= 29 (box-height (element-box node))))
       (assert (equal '(73 29)
-                     (multiple-value-list (measure-widget renderer widget 120))))
+                     (multiple-value-list (measure-widget renderer widget
+                120))))
       (assert (eq :badge (first measured)))
       (paint-frame renderer context)
       (assert (member :badge painted))
@@ -423,16 +438,16 @@
                    :measure (lambda (widget width)
                               (measure-widget renderer widget width)))))
     (with-frame (context 240 120)
-      (lui.glass:button :action "Action" (lui:opt :accent "#ff5500")))
+      (lui.glass:button "Action" (lui:opt :id :action :accent "#ff5500")))
     (flet ((paint ()
              (setf calls nil)
              (paint-frame renderer context)))
-      (setf (context-focus context) :action
-            (context-hover context) :action)
+      (setf (context-focus context) (lui:widget-id :action context)
+        (context-hover context) (lui:widget-id :action context))
       (paint)
       (assert (member '("#ffffff" 0.14f0 1) calls :test #'equal))
       (assert (not (member '("#ff5500" 1 2) calls :test #'equal)))
-      (setf (context-active context) :action)
+      (setf (context-active context) (lui:widget-id :action context))
       (paint)
       (assert (member '("#000000" 0.2f0 1) calls :test #'equal))
       (setf (context-focus-visible-p context) t)
@@ -451,13 +466,14 @@
                    :measure (lambda (widget width)
                               (measure-widget renderer widget width)))))
     (with-frame (context 240 120)
-      (lui.motif:button :disabled "Disabled" (lui:opt :disabled-p t)))
+      (lui.motif:button "Disabled" (lui:opt :id :disabled :disabled-p t)))
     (paint-frame renderer context)
     (assert (find "#777777" calls :key #'second :test #'equal))
     (assert (find "#989898" calls :key #'second :test #'equal))
     (dolist (disabled '(nil t))
       (with-frame (context 240 120)
-        (lui.motif:text-field :editor "" (lui:opt :disabled-p disabled)))
+        (lui.motif:text-field
+          (lui:opt :id :editor :value "" :disabled-p disabled)))
       (setf calls nil)
       (paint-frame renderer context)
       (let ((edges (loop :for (paths color) :in (reverse calls)
@@ -466,8 +482,8 @@
         (assert (equal edges (if disabled '("#989898" "#d0d0d0")
                                  '("#505050" "#ffffff"))))))
     (with-frame (context 240 120)
-      (lui.motif:checkbox :toggle nil "Enabled"))
-    (setf (context-hover context) :toggle calls nil)
+      (lui.motif:checkbox "Enabled" (lui:opt :id :toggle :value nil)))
+    (setf (context-hover context) (lui:widget-id :toggle context) calls nil)
     (paint-frame renderer context)
     (assert (find-if (lambda (call)
                        (and (equal "#ffffff" (second call))
@@ -504,12 +520,16 @@
            (let ((saw-font nil))
              (with-frame (context 240 80)
                (lui.garnet:button
-                :custom "Selected face" (lui:opt :font-size 20
-                                                 :painter (lambda (renderer node)
-                                                            (declare (ignore node))
+              "Selected face"
+              (lui:opt
+                :id :custom
+                :font-size 20
+                :painter
+                  (lambda (renderer node)
+                    (declare (ignore node))
                                                             (setf saw-font
-                                                                  (and (eq bold (renderer-font renderer))
-                                                                       (= 20 (font-size bold))))))))
+                          (and (eq bold (renderer-font renderer))
+                               (= 20 (font-size bold))))))))
              (paint-frame renderer context)
              (assert saw-font)
              (assert (eq base (renderer-font renderer)))
@@ -547,12 +567,14 @@
       (lui.garnet:panel (lui:opt :id :window :width (grow) :height (grow)
                                  :padding 8 :gap 8)
         (lui.garnet:label "Garnet")
-        (lui.garnet:button :push "Push")
-        (lui.garnet:button :disabled "Disabled" (lui:opt :disabled-p t))
-        (lui.garnet:checkbox :check t "Checked")
-        (lui.garnet:slider :range 0.5)
-        (lui.garnet:text-field :text "Edit")
-        (lui.garnet:tab :tab "Selected" (lui:opt :selected-p t))))
+        (lui.garnet:button "Push" (lui:opt :id :push))
+        (lui.garnet:button "Disabled" (lui:opt :id :disabled :disabled-p t))
+        (lui.garnet:checkbox "Checked" (lui:opt :id :check
+                                         :value t))
+        (lui.garnet:slider (lui:opt :id :range :value 0.5))
+        (lui.garnet:text-field (lui:opt :id :text :value "Edit"))
+        (lui.garnet:tab "Selected" (lui:opt :id :tab
+                                     :selected-p t))))
     (flet ((paint ()
              (setf calls nil texts nil)
              (paint-frame renderer context)))
@@ -579,11 +601,11 @@
           (assert (equal '(1 1) (cddr (bounds (vector square))))))
         (paint)
         (assert (find pattern calls :key #'first :test #'eq))
-        (setf (context-hover context) :disabled)
+        (setf (context-hover context) (lui:widget-id :disabled context))
         (paint)
         (assert (= count (length calls)))
-        (setf (context-hover context) :push
-              (context-active context) :push)
+        (setf (context-hover context) (lui:widget-id :push context)
+          (context-active context) (lui:widget-id :push context))
         (paint)
         (let ((pressed (find "Push" texts :key #'first :test #'equal)))
           (assert (near (+ 4 (second push-text)) (second pressed)))
@@ -597,7 +619,8 @@
                        (equal '(10 10) (cddr (bounds (first call))))
                        (near 20 (filled-area (first call))))) calls))
              (box (element-box
-                   (gethash :check (lui.frame::context-ids context))))
+                    (gethash (lui:widget-id :check context)
+                      (lui.frame::context-ids context))))
              (center-x (- (+ (box-x box) (box-width box)) 14))
              (center-y (+ (box-y box) (/ (box-height box) 2) -2)))
         (assert (= 2 (length strokes)))
@@ -620,7 +643,8 @@
     (labels ((draw ()
                (lui.glass:label "Alpha beta")
                (lui.glass:label "Gamma")
-               (lui.glass:text-field :copy-field "Unicode lambda"))
+          (lui.glass:text-field
+            (lui:opt :id :copy-field :value "Unicode lambda")))
              (frame (&rest events)
                (with-frame (context 400 200 :events events) (draw))
                (paint-frame renderer context)))
@@ -644,7 +668,8 @@
       (frame (make-event :kind :key :key :copy))
       (assert (equal (format nil "Alpha beta~%Gamma") copied))
       ;; Fields use the same font hit testing as their caret/selection painter.
-      (let* ((node (gethash :copy-field (lui.frame::context-ids context)))
+      (let* ((node (gethash (lui:widget-id :copy-field context)
+                     (lui.frame::context-ids context)))
              (y (+ (box-y (element-box node)) 7)))
         (frame (make-event :kind :press :x 12 :y y)
                (make-event :kind :release :x 300 :y y))
@@ -672,12 +697,16 @@
                    (column (:id id) (lui.glass:label text)))
                  (when extra (lui.glass:label "Added"))
                  (setf value (lui.interaction:edit-value :field value))
-                 (lui:text-field :field value)
+                 (lui:text-field (lui:opt :id :field :value value))
                  (case cover
                    (:button
                     (column (:floating-p t)
-                      (when (lui.glass:button :cover "Covered"
-                                             (lui:opt :width (fixed 150)
+                       (when
+                    (lui.glass:button
+                      "Covered"
+                      (lui:opt
+                        :id :cover
+                        :width (fixed 150)
                                                       :height (fixed 50)))
                         (incf clicked))))
                    (:panel
@@ -709,7 +738,7 @@
       (select-label)
       (assert (anchor-p))
       ;; Keyboard field selection supersedes label selection in the same batch.
-      (setf (context-focus context) :field)
+      (setf (context-focus context) (lui:widget-id :field context))
       (frame (make-event :kind :key :key :select-all)
              (make-event :kind :key :key :copy))
       (assert (equal "Edited value" copied))
@@ -807,8 +836,10 @@
                                 (measure-widget renderer widget width)))))
       (with-frame (context 200 80)
         (lui:with-toolkit (style)
-          (lui:cell :normal "2" (lui:opt :width (fixed 100)))
-          (lui:cell :selected "3" (lui:opt :width (fixed 100) :selected-p t))))
+          (lui:cell "2" (lui:opt :id :normal :width (fixed 100)))
+          (lui:cell
+            "3"
+            (lui:opt :id :selected :width (fixed 100) :selected-p t))))
       (paint-frame renderer context)
       (assert (zerop glass))
       ;; Two flat fills and two hairlines; no bevel, stipple, or hard shadow.
@@ -822,7 +853,8 @@
                      paths))
       (assert (member '("2" "#202430") texts :test #'equal))
       (assert (member '("3" "#202430") texts :test #'equal))
-      (assert (find (getf (lui:toolkit-palette style) :selection) paths :key #'second :test #'equal)))))
+      (assert (find (getf (lui:toolkit-palette style) :selection) paths :key
+            #'second :test #'equal)))))
 
 (defun test-debug-highlight (font)
   (dolist (style '(:glass :motif :garnet :macos :qt))
@@ -841,7 +873,7 @@
       (paint-frame renderer context)
       (assert (find '("#ff8c00" 0.18) paints :test #'equal))
       (assert (find '("#ff8c00" 1) paints :test #'equal))
-      (assert (null (lui.frame::hit context 5 5))))))
+      (assert (null (lui:widget-key (lui.frame::hit context 5 5)))))))
 
 (defun test-button-text-centering (font)
   ;; A compact close glyph must stay centered in a generously sized control.
@@ -858,10 +890,12 @@
                    :measure (lambda (widget width)
                               (measure-widget renderer widget width)))))
     (with-frame (context 200 100)
-      (lui.glass:button :close "×" (lui:opt :width (fixed 80)
-                                            :height (fixed 50))))
+      (lui.glass:button
+        "×"
+        (lui:opt :id :close :width (fixed 80) :height (fixed 50))))
     (paint-frame renderer context)
-    (let* ((node (gethash :close (lui.frame::context-ids context)))
+    (let* ((node (gethash (lui:widget-id :close context)
+                   (lui.frame::context-ids context)))
            (box (element-box node)))
       (assert position)
       (assert (near (+ (car position) (/ (text-width font "×") 2))
@@ -880,7 +914,8 @@
   (let* ((positions nil)
          (renderer (make-renderer :font font
                                  :clip (lambda (box) (declare (ignore box)))
-                                 :polygons (lambda (&rest args) (declare (ignore args)))
+                                 :polygons (lambda (&rest args) (declare
+                (ignore args)))
                                  :text (lambda (font text x y color)
                                          (declare (ignore font color))
                                          (push (list text x y) positions))))
@@ -904,7 +939,8 @@
                        :clip (lambda (box) (declare (ignore box)))
                        :polygons (lambda (&rest args) (declare (ignore args)))
                        :text (lambda (face text x y color)
-                               (declare (ignore face text y color)) (setf text-x x))))
+                               (declare (ignore face text y color)) (setf
+                  text-x x))))
            (widget (make-widget :kind kind :style :garnet :text "Push"))
            (label-width (text-width (widget-font renderer widget) "Push")))
       (multiple-value-bind (width height) (measure-widget renderer widget nil)
@@ -913,11 +949,13 @@
                (*context* (make-context)))
           (lui.draw::paint-widget renderer node)
           (assert (near (- text-x (+ (box-x box) 4)) 6))
-          (assert (near (- (+ (box-x box) width -8) (+ text-x label-width)) 6))))))
+          (assert (near (- (+ (box-x box) width -8) (+ text-x label-width))
+                6))))))
   ;; Garnet fields retain their narrower horizontal inset in shared measurement.
   (let ((widget (make-widget :kind :text-field :style :garnet :value "alpha beta")))
     (multiple-value-bind (w h)
-        (measure-widget (make-renderer :font font) widget (+ 12 (text-width font "alpha")))
+        (measure-widget (make-renderer :font font) widget (+ 12 (text-width
+              font "alpha")))
       (declare (ignore w))
       (assert (near h (+ 12 (* 2 (line-height font))))))))
 
@@ -928,24 +966,29 @@
                        :clip (lambda (&rest args) (declare (ignore args)))
                        :text (lambda (&rest args) (declare (ignore args)))
                        :polygons (lambda (&rest args) (declare (ignore args)))
-                       :surface (lambda (box radius color alpha &optional stroke)
+                       :surface (lambda (box radius color alpha &optional
+                  stroke)
                                   (declare (ignore alpha))
-                                  (push (list (box-width box) (box-height box) radius color stroke) surfaces))))
+                                  (push (list (box-width box) (box-height box)
+                    radius color stroke) surfaces))))
            (context (make-context :measure (lambda (widget width)
-                                            (measure-widget renderer widget width)))))
+              (measure-widget renderer widget width)))))
       (with-frame (context 300 200)
         (lui:with-toolkit (:macos)
           (lui:with-palette (palette)
-            (lui:checkbox :check t "Checked")
-            (lui:radio :radio :one :one "Selected")
-            (lui:slider :slider 0.5))))
+            (lui:checkbox "Checked" (lui:opt :id :check :value t))
+            (lui:radio :one "Selected" (lui:opt :id :radio :value :one))
+            (lui:slider (lui:opt :id :slider :value 0.5)))))
       (paint-frame renderer context)
       ;; Indicators use accent color; slider has a round thumb and no outer frame.
       (assert (find (if (eq palette :dark) "#79b8ff" "#007aff") surfaces
                     :key #'fourth :test #'equal))
-      (assert (find-if (lambda (surface) (and (equal (subseq surface 0 3) '(14 14 7))
-                                             (equal (fourth surface) "#ffffff") (null (fifth surface)))) surfaces))
-      (assert (notany (lambda (surface) (and (> (first surface) 30) (> (second surface) 10))) surfaces)))))
+      (assert (find-if (lambda (surface) (and (equal (subseq surface 0 3) '(14
+                    14 7))
+              (equal (fourth surface) "#ffffff") (null (fifth surface))))
+            surfaces))
+      (assert (notany (lambda (surface) (and (> (first surface) 30) (> (second
+                    surface) 10))) surfaces)))))
 
 (defun test-control-background-overrides (font)
   (dolist (palette '(:default :dark))
@@ -954,18 +997,30 @@
                        :clip (lambda (&rest args) (declare (ignore args)))
                        :polygons (lambda (&rest args) (declare (ignore args)))
                        :text (lambda (face text x y color)
-                               (declare (ignore face x y)) (push (list text color) texts))
-                       :surface (lambda (box radius color alpha &optional stroke)
+                               (declare (ignore face x y)) (push (list text
+                    color) texts))
+                       :surface (lambda (box radius color alpha &optional
+                  stroke)
                                   (declare (ignore box radius alpha))
                                   (unless stroke (push color fills)))))
            (context (make-context :measure (lambda (widget width)
-                                            (measure-widget renderer widget width)))))
+              (measure-widget renderer widget width)))))
       (with-frame (context 400 200)
         (lui:with-toolkit (:macos)
           (lui:with-palette (palette)
-            (lui:button :default "Default")
-            (lui:button :custom "Preview" (lui:opt :background "#335d91" :foreground "#ffffff"))
-            (lui:text-field :field "Custom field" (lui:opt :background "#81456d" :foreground "#ffffff")))))
+            (lui:button "Default" (lui:opt :id :default))
+            (lui:button
+              "Preview"
+              (lui:opt
+                :id :custom
+                :background "#335d91"
+                :foreground "#ffffff"))
+            (lui:text-field
+              (lui:opt
+                :id :field
+                :value "Custom field"
+                :background "#81456d"
+                :foreground "#ffffff")))))
       (paint-frame renderer context)
       (dolist (color (list "#335d91" "#81456d" (if (eq palette :dark) "#424954" "#ffffff")))
         (assert (member color fills :test #'equal)))
@@ -984,12 +1039,13 @@
                    :measure (lambda (widget width)
                               (measure-widget renderer widget width)))))
     (with-frame (context 300 100)
-      (lui:text-field :secret "secret界" (lui:opt :password-p t)))
+      (lui:text-field (lui:opt :id :secret :value "secret界" :password-p t)))
     (let* ((nodes (lui.draw::selectable-nodes context))
            (node (aref nodes 0))
-           (state (gethash :secret (context-state context))))
+           (state (gethash (lui:widget-id :secret context) (context-state
+                context))))
       (assert (string= "*******" (lui.draw::selection-text node)))
-      (setf (context-focus context) :secret
+      (setf (context-focus context) (lui:widget-id :secret context)
             (edit-state-anchor state) 0)
       (lui.draw::copy-selection context nodes
                                 (lui.draw::make-text-selection))

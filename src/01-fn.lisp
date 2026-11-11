@@ -83,3 +83,20 @@ Optional/key parameters use ((NAME TYPE) DEFAULT SUPPLIED-P)."
               (without-slot-checks
                   (macroexpand (funcall original form environment)
                                environment)))))))
+
+#+jscl
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; JSCL's MULTIPLE-VALUE-SETQ rejects extra values instead of discarding them.
+  ;; Widget calls return an optional identity after their value and change flag.
+  (setf (macro-function 'multiple-value-setq)
+    (lambda (form environment)
+      (declare (ignore environment))
+      (let* ((variables (second form))
+             (temporaries (mapcar (lambda (name)
+                                    (gensym (symbol-name name)))
+                            variables)))
+        (if variables
+          `(multiple-value-bind ,temporaries ,(third form)
+             (setq ,@(mapcan #'list variables temporaries))
+             ,(first temporaries))
+          `(values ,(third form)))))))

@@ -133,7 +133,9 @@
                        (lui:label "Header")))
                    (lui:table-row ()
                      (lui:label "A")
-                     (lui:table-cell () (lui:button :edit "Edit")))
+                     (lui:table-cell ()
+                       (lui.tests.support::draw-button "Edit" (lui:opt :id
+                                                                :edit))))
                    (lui:table-row () (lui:label "First") (lui:label "B"))
                    (lui:table-row () (lui:label "C")))))
           (dolist (width '(32 12))
@@ -144,12 +146,14 @@
                           (list (getf options :width) :column-gap 1)))
             (let* ((table (aref (element-children (context-root context)) 0))
                    (rows (element-children table)))
-              (check (eq :header (element-id (aref rows 0))))
+              (check (eq :header (lui:widget-key (element-id (aref rows 0)))))
               (flet ((cell-box (row col)
-                       (element-box (aref (element-children (aref rows row)) col))))
+                       (element-box (aref (element-children (aref rows row))
+                          col))))
                 (check (= width (box-width (cell-box 0 0))))
                 (check (= (box-x (cell-box 1 1)) (box-x (cell-box 2 1))))
-                (check (= (box-width (cell-box 1 0)) (box-width (cell-box 3 0))))
+                (check (= (box-width (cell-box 1 0)) (box-width (cell-box 3
+                          0))))
                 (check (= width (+ (box-x (cell-box 1 1))
                                    (box-width (cell-box 1 1))))))
               (check (visible-text-p context "Header"))))))
@@ -238,7 +242,9 @@
                    (column (:id :scroll :width (fixed 20) :height (fixed 10)
                             :padding 2 :scroll-p t)
                      (setf clicked
-                           (lui.motif:button :row "Row" (lui:opt :height (fixed 16)))))))
+                       (lui:with-toolkit (:motif)
+                         (lui.tests.support::draw-button "Row" (lui:opt
+                        :id :row :height (fixed 16))))))))
           (with-frame (context 20 10) (draw))
           (check (eq :default (lui.widgets:cursor-at context 3 1)))
           (check (eq :pointer (lui.widgets:cursor-at context 3 2)))
@@ -269,47 +275,65 @@
       ;; Previous-frame hit testing; release requires capture of the same ID.
       (let ((context (make-test-context))
             (clicked nil))
-        (with-frame (context 20 5) (lui.glass:button :button "OK"))
+        (with-frame (context 20 5) (lui:with-toolkit (:glass)
+                                     (lui.tests.support::draw-button "OK"
+                                       (lui:opt :id :button))))
         (with-frame
             (context 20 5 :events
                      (list (make-event :kind :press :x 1 :y 0)
                            (make-event :kind :release :x 1 :y 0)))
-          (setf clicked (lui.glass:button :button "OK")))
+          (setf clicked (lui:with-toolkit (:glass)
+                          (lui.tests.support::draw-button "OK" (lui:opt :id
+                                                                 :button)))))
         (check clicked)
         (with-frame (context 20 5)
-          (setf clicked (lui.glass:button :button "OK")))
+          (setf clicked (lui:with-toolkit (:glass)
+                          (lui.tests.support::draw-button "OK" (lui:opt :id
+                                                                 :button)))))
         (check (not clicked))
         (with-frame
             (context 20 5 :events
                      (list (make-event :kind :press :x 1 :y 0)
                            (make-event :kind :release :x 19 :y 4)))
-          (setf clicked (lui.glass:button :button "OK")))
+          (setf clicked (lui:with-toolkit (:glass)
+                          (lui.tests.support::draw-button "OK" (lui:opt :id
+                                                                 :button)))))
         (check (not clicked))
         (with-frame
             (context 21 5 :events
                      (list (make-event :kind :press :x 1 :y 0)
                            (make-event :kind :release :x 1 :y 0)))
-          (setf clicked (lui.glass:button :button "OK")))
+          (setf clicked (lui:with-toolkit (:glass)
+                          (lui.tests.support::draw-button "OK" (lui:opt :id
+                                                                 :button)))))
         (check (not clicked))
         (with-frame
             (context 21 5 :events
                      (list (make-event :kind :tab)
                            (make-event :kind :activate)))
-          (setf clicked (lui.glass:button :button "OK")))
+          (setf clicked (lui:with-toolkit (:glass)
+                          (lui.tests.support::draw-button "OK" (lui:opt :id
+                                                                 :button)))))
         (check clicked)
         (with-frame (context 21 5))
-        (check (null (context-focus context)))
-        (check (null (context-active context)))
+        (check (null (lui:widget-key (context-focus context))))
+        (check (null (lui:widget-key (context-active context))))
         (check (handler-case
                    (progn
                      (with-frame (context 20 5)
-                       (lui.glass:button :same "A")
-                       (lui.motif:button :same "B"))
+                     (lui:with-toolkit (:glass)
+                       (lui.tests.support::draw-button "A" (lui:opt :id
+                                                             :same)))
+                     (lui:with-toolkit (:motif)
+                       (lui.tests.support::draw-button "B" (lui:opt :id
+                                                             :same))))
                      nil)
                  (error () t)))
         ;; Aborted frame must not leave stale geometry or prevent the next frame.
         (check (null (context-root context)))
-        (with-frame (context 20 5) (lui.motif:button :new "New"))
+        (with-frame (context 20 5) (lui:with-toolkit (:motif)
+                                     (lui.tests.support::draw-button "New"
+                                       (lui:opt :id :new))))
         (check (visible-text-p context "[ New ]")))
 
       (check (handler-case (progn (percent 2) nil) (error () t)))

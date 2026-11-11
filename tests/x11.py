@@ -364,7 +364,7 @@ class X11Tests(unittest.TestCase):
 (lui.x11:run-x11
  (lambda ()
    (setf *clipboard-text*
-     (lui.motif:text-field :copy *clipboard-text*))
+     (lui.motif:text-field (lui:opt :id :copy :value *clipboard-text*)))
    (when (lui.frame:previous-box :copy)
      (let ((box (lui.frame:previous-box :copy)))
        (with-open-file (stream STATE_PATH :direction :output
@@ -375,7 +375,7 @@ class X11Tests(unittest.TestCase):
                  (round (lui.layout:box-width box))
                  (round (lui.layout:box-height box))
                  "focused" (if (eq :copy
-                                  (lui.frame:context-focus lui.frame:*context*))
+                                  (lui:widget-key (lui.frame:context-focus lui.frame:*context*)))
                                "true" "false"))))))
  :title WINDOW_TITLE :width 400 :height 100)
 '''
@@ -418,7 +418,7 @@ class X11Tests(unittest.TestCase):
      (when first
        (setf first nil)
        (lui.debug:set-debugger-enabled t :state state))
-     (lui:button :target "Target")
+     (lui:button "Target" (lui:opt :id :target))
      (let ((rail (lui.frame:previous-box '(:lui.debug :details-resize nil)))
            (pane (lui.frame:previous-box '(:lui.debug :property-pane nil))))
        (when (and rail pane)
@@ -430,8 +430,8 @@ class X11Tests(unittest.TestCase):
                    (round (lui.layout:box-width rail))
                    (round (lui.layout:box-height rail))
                    "height" (lui.layout:box-height pane)
-                   "active" (if (equal (lui.frame:context-active
-                                        lui.frame:*context*)
+                   "active" (if (equal (lui:widget-key (lui.frame:context-active
+                                        lui.frame:*context*))
                                        '(:lui.debug :details-resize nil))
                                 "true" "false")
                    "selected" (if (lui.debug:debugger-state-selected state)
@@ -481,7 +481,7 @@ class X11Tests(unittest.TestCase):
                "enabled" (if (lui.example::gallery-enabled gallery) "true" "false")
                "volume" (lui.example::gallery-volume gallery)
                "width" (round (lui.frame:context-width lui.frame:*context*))
-               "hover" (if (lui.frame:context-hover lui.frame:*context*)
+               "hover" (if (lui:widget-key (lui.frame:context-hover lui.frame:*context*))
                            "true" "false")
                "bounds")
        (loop :for id :in '(:name :volume :enabled :hello :reset)
@@ -544,8 +544,7 @@ class X11Tests(unittest.TestCase):
         source = r'''
 (lui.x11:run-x11
  (lambda ()
-   (lui.glass:button
-    :blur "" (lui:opt :width (lui.layout:grow) :height (lui.layout:grow)
+   (lui.glass:button "" (lui:opt :id :blur :width (lui.layout:grow) :height (lui.layout:grow)
                       :painter
                       (lambda (renderer node)
                         (let* ((box (lui.layout:element-box node))
@@ -598,8 +597,7 @@ class X11Tests(unittest.TestCase):
 (lui.x11:run-x11
  (lambda ()
    (lui.frame:column (:width (lui.layout:grow))
-     (lui.glass:button
-      :blur "" (lui:opt :width (lui.layout:fixed 240) :height (lui.layout:fixed 120)
+     (lui.glass:button "" (lui:opt :id :blur :width (lui.layout:fixed 240) :height (lui.layout:fixed 120)
                         :painter
                         (lambda (renderer node)
                           (declare (ignore node))

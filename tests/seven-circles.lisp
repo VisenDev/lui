@@ -17,7 +17,7 @@
                (let ((found nil))
                  (walk-elements (context-root context)
                                 (lambda (node)
-                                  (when (equal id (element-id node))
+                     (when (equal id (lui:widget-key (element-id node)))
                                     (setf found node))))
                  found))
              (disabled (id)
@@ -46,7 +46,8 @@
           (assert (= 2 (length (circles-items model))))
           (frame (make-event :kind :press :button :secondary :x x :y y))
           (assert (lui.example.seven.circles:modal-p state))
-          (assert (eq :circle-diameter (context-focus context)))
+          (assert (eq :circle-diameter (lui:widget-key (context-focus
+                    context))))
           (assert (disabled :circle-canvas))
           (assert (disabled :circle-undo))
           (assert (disabled :circle-redo))
@@ -57,7 +58,8 @@
           (activate :circle-apply)
           (assert (not (lui.example.seven.circles:modal-p state)))
           (frame)
-          (assert (eq :circle-canvas (context-focus context)))
+          (assert (eq :circle-canvas (lui:widget-key (context-focus
+                    context))))
           (assert (= 3 (length (circles-undo model))))
           (frame)
           (activate :circle-undo)

@@ -29,7 +29,7 @@
 
 (fn (own-node-p boolean) ((node element))
   "Recognize debugger elements so snapshots exclude the debugger itself."
-  (let ((id (element-id node)))
+  (let ((id (widget-key (element-id node))))
     (and (consp id) (eq (first id) :lui.debug))))
 
 (fn (snapshot (values)) ((state debugger-state) (root element))
@@ -92,7 +92,7 @@
   (let* ((widget (element-content node))
          (kind (if (widget-p widget) (widget-kind widget)
                    (element-direction node)))
-         (name (or (element-id node)
+         (name (or (widget-key (element-id node))
                    (when (widget-p widget) (preview (widget-text widget)))
                    ""))
          (status (cond ((offscreen-p node) " [offscreen]")
@@ -260,7 +260,7 @@
                                        (widget-font-weight widget)
                                        (widget-font-size widget)))))
     (properties "Content" width
-                (list "ID" node-id)
+      (list "ID" (widget-key node-id))
                 (list "Kind" (format nil "~A; ~D children"
                                      (if (widget-p widget)
                                          (widget-kind widget)
@@ -324,13 +324,14 @@
                        (units (* 2 (entry-depth
                                     entry)))))))
     (if (plusp (length (element-children node)))
-        (when (lui:list-item
-               (id :collapse key)
+      (when
+        (lui:list-item
                (if (gethash key
                             (debugger-state-collapsed state))
                    "+" "-")
-
-               (lui:opt :width (fixed (units 3))
+          (lui:opt
+            :id (id :collapse key)
+            :width (fixed (units 3))
                         :height (fixed step)))
           (setf (gethash key
                          (debugger-state-collapsed state))
@@ -339,14 +340,14 @@
           (request-frame))
         (emit (make-element :width (fixed (units
                                            3)))))
-    (when (lui:list-item
-           (id :row key) (caption node)
-
-           (lui:opt :width (grow) :height (fixed
-                                           step)
-                    :selected-p
-                    (equal key
-                           (debugger-state-selected state))))
+    (when
+      (lui:list-item
+        (caption node)
+        (lui:opt
+          :id (id :row key)
+          :width (grow)
+          :height (fixed step)
+          :selected-p (equal key (debugger-state-selected state))))
       (if (equal key (debugger-state-selected state))
           (close-details state)
           (setf (debugger-state-selected state) key
@@ -531,8 +532,11 @@
                  :cross-align
                  :center)
       (lui:label "Properties" (lui:opt :width (grow)))
-      (lui:button (id :close-details) "×"
-                  (lui:opt :width (fixed (units 5))
+      (lui:button
+        "×"
+        (lui:opt
+          :id (id :close-details)
+          :width (fixed (units 5))
                            :font-size 14
                            :accessible-name "Close details")))
     (lui:panel (lui:opt :id (id :details)
@@ -561,7 +565,7 @@
       (row (:id (id :header) :width (grow) :gap (units 0.5f0))
         (setf header *parent*)
         (lui:label "Layout debugger" (lui:opt :width (grow)))
-        (when (lui:button (id :close) "Close")
+        (when (lui:button "Close" (lui:opt :id (id :close)))
           (setf (debugger-state-open-p state) nil)
           (request-frame)))
       (let* ((header-height
@@ -590,7 +594,7 @@
   (when (and (debugger-state-open-p state) previous)
     (snapshot state previous)
     (lui:with-toolkit (toolkit)
-      (let* ((hover (context-hover *context*))
+      (let* ((hover (widget-key (context-hover *context*)))
              (key (when (and (consp hover) (eq (first hover) :lui.debug)
                              (member (second hover) '(:row :collapse)))
                     (third hover)))

@@ -600,7 +600,8 @@
                        (or (widget-accessible-name widget)
                            (let ((text (widget-text widget)))
                              (if (plusp (length text)) text
-                                 (princ-to-string (context-focus context)))))
+                           (princ-to-string
+                             (lui:widget-key (context-focus context))))))
                        "Canvas application"))
             (value (if (and widget (widget-p widget)
                             (eq (widget-kind widget) :text-field))

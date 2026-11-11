@@ -45,8 +45,9 @@
     ;; An RGB-only target would hide destination-alpha regressions.
     (assert (>= (cffi:mem-ref bits :int) 8)))
   (flet ((button ()
-           (lui.motif:button :alpha "Hover"
-                             (lui:opt :width (fixed 160) :height (fixed 50)))))
+        (lui.motif:button
+          "Hover"
+          (lui:opt :id :alpha :width (fixed 160) :height (fixed 50)))))
     (with-frame (context 720 520) (button))
     (begin-gpu-frame gpu)
     (paint-frame renderer context)
@@ -55,17 +56,24 @@
                            :events (list (make-event :kind :move
                                                      :x 130 :y 25)))
         (button))
-      (assert (eq :alpha (context-hover context)))
+      (assert (eq :alpha (lui:widget-key (context-hover context))))
       (begin-gpu-frame gpu)
       (paint-frame renderer context)
       (let ((hover (pixel-color 130 25)))
         (assert (> (first hover) (first normal)))
         (assert (= 255 (fourth hover))))))
   (with-frame (context 720 520)
-    (lui.glass:button :glass "Glass" (lui:opt :background "#c00000" :opacity 0.35
-                                              :width (fixed 160) :height (fixed 50))))
+    (lui.glass:button
+      "Glass"
+      (lui:opt
+        :id :glass
+        :background "#c00000"
+        :opacity 0.35
+        :width (fixed 160)
+        :height (fixed 50))))
   (begin-gpu-frame gpu)
-  (funcall (renderer-clip renderer) (make-box :width 720 :height 520))
+  (funcall (renderer-clip renderer)
+           (make-box :width 720 :height 520))
   (funcall (renderer-polygons renderer)
            '#(#((0 . 0) (720 . 0) (720 . 520) (0 . 520))) "#204060" 1)
   (paint-frame renderer context)
@@ -81,9 +89,10 @@
   (labels ((contrast (frost opacity)
              (with-frame (context 720 520)
                (column (:width (grow) :height (grow))
-                 (lui.glass:panel (lui:opt :floating-p t :offset-x 40 :offset-y 40
-                                           :width (fixed 200) :height (fixed 120)
-                                           :background "#606060" :opacity opacity
+                 (lui.glass:panel (lui:opt :floating-p t :offset-x 40
+                  :offset-y 40
+                :width (fixed 200) :height (fixed 120)
+                :background "#606060" :opacity opacity
                                            :frost frost :radius 0))))
              (begin-gpu-frame gpu)
              (funcall (renderer-clip renderer)

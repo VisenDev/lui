@@ -77,6 +77,7 @@
    #:control
    #:define-toolkit
    #:table #:table-row #:table-cell
+    #:with-key #:widget-key #:widget-id #:focus-widget
    #:opt #:panel #:label
    #:button #:tab #:checkbox #:radio #:slider
    #:text-field #:cell #:list-item #:gauge #:canvas
@@ -440,7 +441,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
                              painter terminal-label terminal-border
                              accessible-name
                              placeholder password-p max-results selected-p
-                             text)
+                text value default-value)
   "Build widget options, preserving order, explicit NIL, and omitted keys."
   (declare (ignore width height padding gap align cross-align
                    id direction column-gap column-span
@@ -451,7 +452,8 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
                    font-family
                    font-weight opacity accent disabled-p painter
                    terminal-label terminal-border accessible-name
-                   placeholder password-p max-results selected-p text))
+             placeholder password-p max-results selected-p text
+             value default-value))
   `(list ,@forms))
 
 (defmacro panel (options &body body)
@@ -461,10 +463,63 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
            *toolkit* (append ,options (toolkit-defaults)))))
      ,@body))
 
+(fn (widget-options list) ((options list))
+  "Remove identity and value ownership options before backend declaration."
+  (loop :for (key value) :on options :by #'cddr
+        :unless (member key '(:id :value :default-value))
+        :append (list key value)))
+
+(fn (widget-option-p boolean) ((key symbol) (options list))
+  "Distinguish an explicitly supplied option, including NIL, from an omitted one."
+  (loop :for option :in options :by #'cddr :thereis (eq option key)))
+
+(fn (owned-widget-value t) (id (options list) default)
+  "Resolve a controlled value or initialize retained state exactly once."
+  (if (widget-option-p :value options)
+      (getf options :value)
+      (multiple-value-bind (value present)
+          (gethash id (context-values *context*))
+        (if present value (getf options :default-value default)))))
+
+(fn (invoke-widget (values t t t))
+    ((function function) (site symbol) (arguments list) (options list)
+     (value-p boolean) default)
+  "Resolve identity and owned values, invoke the control, and return its ID third."
+  (let* ((id (unless (and (eq function #'%label)
+                         (not (widget-option-p :id options)))
+               (call-site-id site options)))
+         (appearance (widget-options options))
+         (value (when value-p (owned-widget-value id options default))))
+    (multiple-value-bind (result changed)
+        (apply function id
+               (append (when value-p (list value)) arguments
+                       (list appearance)))
+      (when value-p
+        (setf (gethash id (context-values *context*)) result
+              changed (not (equal value result))))
+      (values result changed id))))
+
+(defmacro define-widget (name arguments doc)
+  "Define a call-site macro over the corresponding typed internal control function."
+  (let ((internal (intern (concatenate 'string "%" (symbol-name name))))
+        (value-p (not (null (member 'value arguments))))
+        (public (remove 'id (remove 'value arguments)))
+        (default (case name
+                   ((text-field searchable-combobox) "")
+                   (slider 0)
+                   (otherwise nil))))
+    `(defmacro ,name (,@public &optional options)
+       ,doc
+       (list 'invoke-widget (list 'function ',internal)
+             (list 'quote (gensym ,(symbol-name name)))
+             (list* 'list (list ,@public)) options ,value-p ,default))))
+
 (defmacro define-control (name args doc &body body)
-  "Define a control function that resolves toolkit defaults before declaring it."
-  (let ((kind (intern (symbol-name name) :keyword)))
-    `(fn (,name t) (,@args &optional options)
+  "Define a public widget macro and a typed implementation with resolved identity."
+  (let ((kind (intern (symbol-name name) :keyword))
+        (internal (intern (concatenate 'string "%" (symbol-name name)))))
+    `(progn
+       (fn (,internal t) (,@args &optional options)
        ,doc
        (let* ((entry (or *toolkit-definition* (find-toolkit *toolkit*)))
               (custom (override ,kind entry)))
@@ -473,14 +528,15 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
                (multiple-value-bind (defaults palette) (toolkit-defaults
                                                         *toolkit* ,kind)
                  (declare (ignorable palette))
-                 ,@body)))))))
+                   ,@body)))))
+       (define-widget ,name ,args ,doc))))
 
-(define-control label (text)
-  "Display selectable text. Width determines wrapping; no ID is needed."
-  (apply #'declare-widget :label style nil text (append options defaults)))
+(define-control label (id text)
+  "Display selectable text. OPT :id optionally names it; width determines wrapping."
+  (apply #'declare-widget :label style id text (append options defaults)))
 
 (define-control button (id text)
-  "Return true in the frame where the control with this ID activates."
+  "Return true on activation. OPT :id supplies an instance key; the ID is returned third."
   (apply #'declare-widget :button style id text (append options defaults)))
 
 (fn (without-option list) ((key symbol) (options list))
@@ -554,23 +610,27 @@ Each direct child occupies one column by default."
                      defaults)))
 
 (define-control checkbox (id value text)
-  "Return the new boolean and a second value indicating a change."
+  "Return the boolean, change flag, and ID. OPT :default-value initializes owned state.
+Use OPT :value for application-owned state; the default is NIL."
   (value-widget :checkbox style id value text (append options defaults)))
 
 (define-control radio (id value choice text)
-  "Return the selected choice and a change flag; keep the returned value in your model."
+  "Return the selected choice, change flag, and ID. Share OPT :value across a group.
+Without :value, each control retains its own value, initially :default-value or NIL."
   (value-widget :radio style id value text
                 (list* :choice choice (append options defaults))))
 
 (define-control slider (id value)
-  "Return the new number and a change flag. OPT accepts :minimum, :maximum and :step."
+  "Return the number, change flag, and ID. OPT accepts :minimum, :maximum and :step.
+OPT :default-value initializes owned state (default 0); :value is controlled."
   (value-widget :slider style id value (getf options :text "")
                 (append (without-option :text options) defaults)))
 
 (define-control text-field (id value)
-  "Return the edited string and a change flag. Keep the returned string in your model.
-:PASSWORD-P masks each character with *.
-The actual value stays in your model; presentation and copied text are masked."
+  "Return text, a change flag, and the resolved ID. Text is retained by default.
+OPT :default-value initializes the string once (default empty); :value supplies
+application-owned text each frame. :password-p masks presentation and copying.
+Owned state is discarded when this widget is absent from a completed frame."
   (value-widget :text-field style id value (getf options :placeholder "")
                 (append (without-option :placeholder options) defaults)))
 
@@ -585,22 +645,19 @@ The actual value stays in your model; presentation and copied text are masked."
          (append options defaults)))
 
 (defmacro define-toolkit (name defaults panel-name &rest names)
-  "Register NAME with drawing-time DEFAULTS. Generate PANEL-NAME and local
-control functions in label/button/tab/checkbox/radio/slider/text-field/cell/
-list-item/gauge/canvas order. Each control accepts a final OPT form."
+  "Register NAME and define toolkit-local widget macros with the LUI signatures."
   (let ((functions '(label button tab checkbox radio slider text-field cell
                      list-item gauge canvas))
-        (args '((text) (id text) (id text) (id value text) (id value choice
-                                                            text)
-                (id value) (id value) (id text) (id text) (id fraction)
-                (id commands))))
+        (args '((text) (text) (text) (text) (choice text)
+                () () (text) (text) (fraction) (commands))))
     `(progn
        (register-toolkit ,name :defaults (lambda () ,defaults))
-       ,@(loop :for local :in names :for fn :in functions :for a :in args
+       ,@(loop :for local :in names :for function :in functions :for a :in
+               args
                :collect
-               `(fn (,local t) (,@a &optional options)
-                  (with-toolkit (,name)
-                    (,fn ,@a options))))
+               `(defmacro ,local (,@a &optional options)
+                  (list 'with-toolkit (list ,name)
+                    (list ',function ,@a options))))
        (defmacro ,panel-name (options &body body)
          (list 'with-toolkit (list ,name) (list* 'panel options body))))))
 
@@ -652,8 +709,11 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
   (let* ((pane (anchored-popup (list id :popup) anchor nil))
          (*parent* pane))
     (loop :for match :across matches :for i :from 0
-          :for row-id := (list id :choice (car match))
-          :do (list-item row-id (cdr match)
+          :for row-id := (list id
+                               :choice
+                               (car
+                                match))
+          :do (%list-item row-id (cdr match)
                          (opt :width (lui.layout:grow) :selected-p
                            (eql i
                              index)))
@@ -722,7 +782,7 @@ list-item/gauge/canvas order. Each control accepts a final OPT form."
           (combobox-popup id matches index anchor navigate)))))
   nil)
 
-(fn (searchable-combobox (values t boolean))
+(fn (%searchable-combobox (values t boolean))
     (id value (choices sequence) &optional ((options list) nil))
   "Edit a string, returning the text and a change flag just like TEXT-FIELD.
 Suggestions open on focus or typing. Up/Down highlight a suggestion and
@@ -739,7 +799,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
          (events (events-for id))
          (press (lui.frame::context-pointer-press *context*))
          (popup-box (previous-box (list id :popup)))
-         (edited (text-field id text (without-option :max-results options)))
+         (edited (%text-field id text (without-option :max-results options)))
          (anchor (gethash id (lui.frame::context-ids *context*)))
          (result (if (string= edited text) value edited)))
     (check-type limit (integer 1 *))
@@ -843,7 +903,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
 
 (fn (calendar-item boolean) (id (text string) &rest options)
   "Declare one selectable calendar entry with its date-specific options."
-  (list-item id text (append options (opt :font-size 14))))
+  (%list-item id text (append options (opt :font-size 14))))
 
 (fn (calendar-day (values integer integer integer))
     ((year integer) (month (integer 1 12)) (day integer))
@@ -934,13 +994,14 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
          (ink (getf palette :accent foreground)))
     (calendar-header id state year month months)
     (setf year (picker-state-year state) month (picker-state-month state))
-    (if (picker-state-months-p state)
+    (if (picker-state-months-p
+         state)
         (calendar-month-grid id state month)
         (let ((start (calendar-start year month)))
           (row (:width (lui.layout:grow))
             (loop :for name :across "SMTWTFS" :do
                   (row (:width width :align :center)
-                    (label (string name) (opt :font-size 13)))))
+                  (%label nil (string name) (opt :font-size 13)))))
           (dotimes (week 6)
             (row (:width (lui.layout:grow))
               (dotimes (column 7)
@@ -1038,7 +1099,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                      (return-from calendar-popup (values date t)))))))))
     (values nil nil)))
 
-(fn (date-picker (or null string)) (id value &optional ((options list) nil))
+(fn (%date-picker (or null string)) (id value &optional ((options list) nil))
   "Type a date as MM/DD/YYYY or pick it from the calendar. Return YYYY-MM-DD
 or NIL when cleared. An incomplete or invalid draft preserves the model value."
   (let ((date (parse-picker-date value))
@@ -1055,7 +1116,7 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
                           :keyboard-focus-p nil)
                      options (opt :direction :row :padding 1 :gap 0))
              (let* ((old (picker-state-draft state))
-                    (draft (text-field (list id :input) old
+               (draft (%text-field (list id :input) old
                                        (opt :width (lui.layout:grow)
                                             :accessible-name "Date"
                                             :placeholder "mm/dd/yyyy"))))
@@ -1080,3 +1141,11 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
     (when (and (picker-state-open-p state) (plusp (length (activated-ids))))
       (request-frame))
     result))
+
+(define-widget searchable-combobox (id value choices)
+  "Return editable text, a change flag, and ID; OPT :default-value initializes owned text.
+Use :value for application-owned text. CHOICES supplies autocomplete suggestions.")
+
+(define-widget date-picker (id value)
+  "Return a date, a change flag, and ID. OPT :default-value initializes an owned date.
+Use :value for an application-owned YYYY-MM-DD date or NIL.")

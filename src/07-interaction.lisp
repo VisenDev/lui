@@ -19,6 +19,7 @@
 
 (fn (take-events (vector event)) (id)
   "Return and consume a vector of a control's ordered frame events."
+  (setf id (lui.frame:widget-id id))
   (prog1 (events-for id)
     (setf (gethash id (context-events *context*)) nil)))
 
@@ -30,7 +31,10 @@
     (make-array (length ids) :element-type t :initial-contents ids)))
 
 (fn (reset-editor lui.widgets:edit-state) (id (text string))
-  "Start a fresh editor with its caret at the end of TEXT."
+  "Reset owned text and editor state, placing the caret at the end of TEXT.
+ID is a resolved widget ID or a unique declared key."
+  (setf id (lui:widget-id id))
+  (setf (gethash id (lui.frame:context-values *context*)) text)
   (let ((length (length text)))
     (setf (gethash id (context-state *context*))
           (lui.widgets:make-edit-state :cursor length :anchor length))))
@@ -38,6 +42,7 @@
 (fn (edit-value string) (id (text string) &optional ((events sequence)
                                                      (take-events id)))
   "Apply editor events without declaring a widget; preserve caret and kill state."
+  (setf id (lui:widget-id id))
   (let* ((state (or (gethash id (context-state *context*))
                     (reset-editor id text)))
          (next (lui.widgets:edit-text text state events)))
@@ -106,7 +111,7 @@ outside editing. Return an event or NIL; printable input remains text."
                                 (min (- origin leading-y)
                                      (max current
                                           (- (+ origin height)
-                                            (lui.frame::context-viewport-height
+                          (lui.frame::context-viewport-height
                                              *context*)))))))
               (unless (= target current)
                 (setf (lui.frame::context-page-top *context*) target

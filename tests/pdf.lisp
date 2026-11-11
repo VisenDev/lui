@@ -7,7 +7,8 @@
   (uiop:with-temporary-file (:pathname path :type "pdf")
     (let ((lui:*pdf-output* path) (frames 0) (pdf:*compress-streams* nil))
       (assert (equal path
-                     (lui:run (lambda () (incf frames) (lui:button :save "Save"))
+                (lui:run (lambda () (incf frames) (lui:button "Save"
+                                                    (lui:opt :id :save)))
                               :backend :pdf :width 180 :height 60)))
       (assert (= frames 1))
       (let ((file (uiop:read-file-string path :external-format :latin-1)))

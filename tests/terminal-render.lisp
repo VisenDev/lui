@@ -1,17 +1,24 @@
 (defpackage #:lui.tests.terminal-render
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets #:lui.terminal)
+  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets
+    #:lui.terminal)
   (:export #:run-tests))
 (in-package #:lui.tests.terminal-render)
 
 (fn test-overlay ()
   (let ((context (make-terminal-context)) (plain nil) (ansi nil))
     (labels ((text ()
-               (lui.glass:cell :background ""
-                (lui:opt :floating-p t :disabled-p t
-                         :width (fixed 10) :height (fixed 3)
+          (lui.glass:cell
+            ""
+            (lui:opt
+              :id :background
+              :floating-p t
+              :disabled-p t
+              :width (fixed 10)
+              :height (fixed 3)
                          :background "#303040"))
                (lui.glass:label "ABCDEFGHIJ"
-                                (lui:opt :width (fixed 10) :height (fixed 3))))
+                                (lui:opt :width (fixed 10) :height (fixed
+                  3))))
              (overlay (opacity)
                (emit (make-element
                       :id :overlay :floating-p t :width (fixed 10)
@@ -55,10 +62,10 @@
                           :width (grow) :height (grow))
         (lui:label "Pane")))
     (let ((idle (render-terminal context :ansi t)))
-      (assert (eq :pane (lui.frame::hit context 15 4)))
-      (setf (context-hover context) :pane)
+      (assert (eq :pane (lui:widget-key (lui.frame::hit context 15 4))))
+      (setf (context-hover context) (lui:widget-id :pane context))
       (assert (equal idle (render-terminal context :ansi t)))
-      (setf (context-active context) :pane)
+      (setf (context-active context) (lui:widget-id :pane context))
       (assert (equal idle (render-terminal context :ansi t))))))
 
 (fn test-scrollbar-rendering ()
@@ -84,12 +91,12 @@
         (lui.glass:label "next")))
     (assert (search (format nil "ab cd~%ef   ~%next ")
                     (render-terminal context)))
-    (with-frame (context 20 5) (lui.motif:button :new "New"))
+    (with-frame (context 20 5) (lui.motif:button "New" (lui:opt :id :new)))
     (assert (search "[ New ]" (render-terminal context)))
     (with-frame (context 32 12)
       (table (opt :width (grow) :column-gap 1)
         (table-row () (table-cell (opt :column-span 2) (label "Header")))
-        (table-row () (label "A") (button :edit "Edit"))))
+        (table-row () (label "A") (button "Edit" (opt :id :edit)))))
     (assert (search "Header" (render-terminal context))))
   (assert (equalp (text-lines (format nil "a~%~%b~%") 3)
                  #("a" "" "b" "")))
@@ -125,7 +132,7 @@
 (fn run-tests ()
   (let ((context (make-terminal-context)))
     (with-frame (context 20 2)
-      (lui:text-field :secret "secret界" (lui:opt :password-p t)))
+      (lui:text-field (lui:opt :id :secret :value "secret界" :password-p t)))
     (let ((text (render-terminal context)))
       (assert (search "*******" text))
       (assert (not (search "secret" text)))))

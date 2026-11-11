@@ -34,38 +34,40 @@
   (unwind-protect
        (progn
          (with-frame (context 400 200)
-           (lui.glass:button :button "Button"))
-         (setf (context-focus context) :button)
+        (lui.glass:button "Button" (lui:opt :id :button)))
+      (setf (context-focus context) (lui:widget-id :button context))
          (assert (eq :backward
                      (event-key (translated-key display #xff09 1 context))))
          (assert (eq :activate
                      (event-kind (translated-key display 32 0 context))))
          (with-frame (context 400 200)
-           (lui.glass:text-field :button "value"))
+        (lui.glass:text-field (lui:opt :id :button :value "value")))
          (assert (equal " "
                         (event-value (translated-key display 32 0 context))))
-         (setf (context-focus context) nil)
+      (setf (context-focus context) (lui:widget-id nil context))
          (with-frame (context 400 200)
-           (lui.glass:text-field :edit "value"))
+        (lui.glass:text-field (lui:opt :id :edit :value "value")))
          (let* ((box (element-box
-                      (gethash :edit (lui.frame::context-ids context))))
+                    (gethash (lui:widget-id :edit context)
+                      (lui.frame::context-ids context))))
                 (press (make-event :kind :press
                                    :x (+ (box-x box) 1)
                                    :y (+ (box-y box) 1)))
                 (predicted (pending-input-context context (list press))))
-           (assert (null (context-focus context)))
-           (assert (eq :edit (context-focus predicted)))
+        (assert (null (lui:widget-key (context-focus context))))
+        (assert (eq :edit (lui:widget-key (context-focus predicted))))
            (assert (eq :select-all
                        (event-key (translated-key display #x41 5 predicted))))
            ;; A queued Tab follows the same focus order without mutating it.
            (assert (eq :edit
-                       (context-focus
+                  (lui:widget-key (context-focus
                         (pending-input-context
-                         context (list (make-event :kind :tab)))))))
+                                    context (list (make-event :kind
+                        :tab))))))))
          (dolist (kind '(:default :pointer :text :not-allowed
                          :resize-horizontal :resize-vertical))
            (assert (plusp (lui.x11::cursor-for window kind))))
-         (format t "X11 reverse Tab, Space, and native cursor checks passed.~%"))
+      (format t "X11 reverse Tab, Space, and native cursor checks passed.~%"))
     (maphash (lambda (kind cursor)
                (declare (ignore kind)) (lui.x11::free-cursor display cursor))
              (lui.x11::x-window-cursors window))
@@ -76,7 +78,8 @@
   (assert (eq :native-result
               (lui.x11::call-glx
                (lambda ()
-                 (assert (null (getf (sb-int:get-floating-point-modes) :traps)))
+                 (assert (null (getf (sb-int:get-floating-point-modes)
+                  :traps)))
                  (sb-int:set-floating-point-modes :rounding-mode :zero)
                  :native-result))))
   (assert (equal before (sb-int:get-floating-point-modes)))

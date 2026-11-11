@@ -3,7 +3,8 @@
   (:export #:context #:make-context #:context-root #:context-focus
            #:context-focus-input #:context-active #:context-measure
            #:*context* #:*parent*
-           #:with-frame
+    #:with-frame #:with-key #:widget-key #:widget-id #:focus-widget
+    #:call-site-id #:context-values
            #:row #:column #:event #:event-kind #:event-x #:event-y #:event-id
            #:event-value #:event-key #:event-button #:event-clicks
            #:event-dragging-p #:event-buttons #:event-scroll-mode
@@ -94,6 +95,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (focus-visible-p nil :type boolean)
   hover
   active
+  (values (make-hash-table :test 'equal) :type hash-table)
   (state (make-hash-table :test 'equal) :type hash-table)
   (regions (make-hash-table :test 'equal) :type hash-table)
   (events (make-hash-table :test 'equal) :type hash-table)
@@ -115,6 +117,87 @@ The backend supplies measurement, clipboard, and optional input callbacks."
 (defvar *parent*)
 (setf (documentation '*parent* 'variable)
       "Dynamically bound layout parent receiving declarations in the current scope.")
+
+(defvar *key-scope* nil "Instance keys enclosing the current declaration.")
+
+(defmacro with-key (key &body body)
+  "Scope widget identity to KEY, evaluated once. Use stable item keys in loops."
+  `(let ((*key-scope* (cons ,key *key-scope*))) ,@body))
+
+(fn (resolved-widget-id-p boolean) (id)
+  "Recognize opaque call-site IDs and internal child IDs derived from them."
+  (and (consp id)
+    (or (eq (car id) :lui-widget-id)
+      (resolved-widget-id-p (car id)))))
+
+(fn (call-site-id list) ((site symbol) (options list))
+  "Combine SITE, enclosing keys, and an optional explicit instance key."
+  (list :lui-widget-id site *key-scope* (getf options :id site)))
+
+(fn (widget-key t) (id)
+  "Return the declared key of an opaque widget ID, including derived child keys."
+  (cond ((and (consp id) (eq (car id) :lui-widget-id)) (fourth id))
+    ((resolved-widget-id-p id) (mapcar #'widget-key id))
+    (t id)))
+
+(fn (id-scope list) (id)
+  "Return the enclosing key scope of a widget or internal child ID."
+  (cond ((and (consp id) (eq (car id) :lui-widget-id)) (third id))
+    ((resolved-widget-id-p id) (id-scope (car id)))
+    (t nil)))
+
+(fn (lookup-widget-id t) (key (table hash-table))
+  "Find KEY in TABLE within this scope; signal an error for ambiguous keys."
+  (let ((found nil))
+    (maphash
+      (lambda (id value)
+        (declare (ignore value))
+        (when (and (equal key (widget-key id))
+                (equal *key-scope* (id-scope id)))
+          (when (and found (not (equal found id)))
+            (error 'lui.conditions:configuration-error
+              :operation :widget-id :setting :id :value key
+              :format-control "Ambiguous widget key ~S; use a resolved ID."
+              :format-arguments (list key)))
+          (setf found id)))
+      table)
+    found))
+
+(fn (widget-id t) (key &optional ((context context) *context*))
+  "Resolve KEY in the current key scope to a widget ID, or return KEY if absent.
+Opaque IDs pass through unchanged. A key shared by call sites is ambiguous;
+use the third value returned by a widget instead. IDs are local to CONTEXT."
+  (if (or (resolved-widget-id-p key) (gethash key (context-ids context))) key
+    (or (lookup-widget-id key (context-ids context))
+      (lookup-widget-id key (context-regions context)) key)))
+
+(fn (focus-widget (values)) (id)
+  "Request focus for a resolved ID or unique key, including a newly declared widget."
+  (setf (context-focus *context*) (widget-id id)
+    (context-focus-visible-p *context*) t)
+  (values))
+
+(fn (resolve-frame-identities (values)) ((context context))
+  "Resolve programmatic focus, hover, and capture keys against declared identities."
+  (setf (context-focus context) (and (context-focus context)
+                                  (widget-id (context-focus context)
+                                    context))
+    (context-hover context) (and (context-hover context)
+                              (widget-id (context-hover context)
+                                context))
+    (context-active context) (and (context-active context)
+                               (widget-id (context-active context)
+                                 context)))
+  (values))
+
+(fn (prune-widget-values (values)) ((context context))
+  "Release owned values for widgets absent from the completed frame."
+  (dolist (table (list (context-values context) (context-state context)))
+    (maphash (lambda (id value)
+               (declare (ignore value))
+               (unless (gethash id (context-ids context)) (remhash id table)))
+      table))
+  (values))
 
 (fn (memoized t) ((key list) (compute function))
   "Reuse a frame-local value for KEY, computing it with FUNCTION on a cache miss."
@@ -438,6 +521,9 @@ Native key translators use this to interpret a key after a batched click or Tab.
 (fn (route-frame-event (values)) ((context context) (event event) (resized
                                                                    boolean))
   "Route EVENT against completed geometry and enqueue it for its owning widget."
+  (when (event-id event)
+    (setf event (copy-event event)
+      (event-id event) (widget-id (event-id event) context)))
   (let ((target (or (and (member (event-kind event) '(:press :release))
                          (event-id event))
                     (unless resized
@@ -491,6 +577,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
 Input is resolved against the previous completed tree; this resets the frame
 clock, redraw deadline, declarations, and per-frame activation state."
   (assert (not (context-building-p context)))
+  (resolve-frame-identities context)
   (assert (and (>= width 0) (>= height 0)))
   (setf (context-time context)
         (/ (get-internal-real-time) internal-time-units-per-second)
@@ -563,26 +650,27 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
 
 (fn (previous-box (values (or null box) boolean)) (id)
   "Return ID's solved box from the previous completed frame, or NIL."
-  (gethash id (context-regions *context*)))
+  (gethash (widget-id id) (context-regions *context*)))
 
 (fn (events-for (vector event)) (id)
   "Return a vector of ID's input events in chronological order for this frame."
-  (let ((events (gethash id (context-events *context*))))
+  (let ((events (gethash (widget-id id) (context-events *context*))))
     (make-array (length events) :element-type 'event :initial-contents
                 (reverse events))))
 
 (fn (hovered-p boolean) (id)
   "Whether the pointer currently hovers over the non-NIL control ID."
-  (and id (equal id (context-hover *context*))))
+  (and id (equal (widget-id id) (context-hover *context*))))
 
 (fn (activated-p boolean) (id)
   "Whether ID was activated by this frame's pointer or keyboard input."
-  (not (null (gethash id (context-activated *context*)))))
+  (not (null (gethash (widget-id id) (context-activated *context*)))))
 
 (fn (end-frame element) ((context context))
   "Complete CONTEXT: draw its overlay, solve layout, and retain input regions.
 Clear focus/hover for removed controls and return the completed root element."
   (assert (context-building-p context))
+  (resolve-frame-identities context)
   (dolist (popup (nreverse (context-popups context)))
     (append-child (context-root context) popup))
   (when (context-overlay context)
@@ -610,11 +698,7 @@ Clear focus/hover for removed controls and return the completed root element."
       (setf (context-hover context) nil))
     (unless (interactive-p (context-active context))
       (setf (context-active context) nil)))
-  (maphash (lambda (id value)
-             (declare (ignore value))
-             (unless (gethash id (context-ids context))
-               (remhash id (context-state context))))
-           (context-state context))
+  (prune-widget-values context)
   (clrhash (context-scroll context))
   (walk-elements
    (context-root context)
@@ -634,7 +718,7 @@ Clear focus/hover for removed controls and return the completed root element."
 
 (defmacro with-frame ((context width height &key events) &body body)
   "Dispatch input, build and solve one frame, and return its root element."
-  `(let ((*context* ,context))
+  `(let ((*context* ,context) (*key-scope* nil))
      (begin-frame *context* ,width ,height ,events)
      (let ((*parent* (context-root *context*))
            (complete nil))

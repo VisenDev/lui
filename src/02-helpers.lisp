@@ -22,9 +22,10 @@ operation. Catch a more specific subtype when recovery depends on the cause."))
           :documentation
           "Requested value for the invalid or missing setting."))
   (:documentation
-   "An invalid or unavailable backend, toolkit, palette, control, or rendering callback.
+    "An invalid or unavailable backend, toolkit, palette, control, rendering callback, or widget key.
 ERROR-SETTING identifies the setting and ERROR-VALUE contains its requested
-value. Configure or load the missing capability before retrying the operation."))
+value. Configure or load the missing capability before retrying the operation.
+For ambiguous widget keys, use the resolved ID returned by the widget."))
 
 (define-condition backend-error (lui-error)
   ((backend :initarg :backend :reader error-backend

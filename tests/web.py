@@ -88,7 +88,8 @@ class WebTests(unittest.TestCase):
                         (setf
                           (jscl/ffi:oget item "id")
                           (jscl/ffi:jsstring
-                            (prin1-to-string (lui.layout:element-id node)))
+                            (prin1-to-string
+                              (lui:widget-key (lui.layout:element-id node))))
                           (jscl/ffi:oget item "kind")
                           (jscl/ffi:jsstring (string-downcase
                             (symbol-name (lui.widgets:widget-kind widget))))
@@ -152,9 +153,8 @@ class WebTests(unittest.TestCase):
         body = body or '''
           (lui.frame:column (:width (lui.layout:grow) :gap 8)
             (setf *web-test-value*
-              (lui.glass:text-field :fixture *web-test-value*
-                (lui:opt :width (lui.layout:grow))))
-            (when (lui.glass:button :push "Fixture push")
+              (lui.glass:text-field (lui:opt :id :fixture :value *web-test-value* :width (lui.layout:grow))))
+            (when (lui.glass:button "Fixture push" (lui:opt :id :push))
               (incf *web-test-clicks*)))'''
         self.lisp(f'''
           (defvar *web-test-value* "original")
@@ -175,7 +175,8 @@ class WebTests(unittest.TestCase):
     def focus_id(self, app="*web-test-app*"):
         self.lisp(f'''(setf (jscl/ffi:oget #j:window "testFocus")
           (jscl/ffi:jsstring (prin1-to-string
-            (lui.frame:context-focus (lui.web::web-app-context {app}))))))''')
+            (lui:widget-key
+              (lui.frame:context-focus (lui.web::web-app-context {app})))))))''')
         return self.page.evaluate("window.testFocus")
 
     def test_font_caches_preserve_alternating_sizes(self):
@@ -357,7 +358,7 @@ class WebTests(unittest.TestCase):
         host = self.fixture('''
           (lui:with-palette ((lui:make-palette :foreground "#124578" :outline "#cc2288"))
             (lui:with-toolkit (:inset-labels) (lui:label "Inset native text"))
-            (lui:with-toolkit (:garnet) (lui:button :pattern "Pattern")))
+            (lui:with-toolkit (:garnet) (lui:button "Pattern" (lui:opt :id :pattern))))
         ''')
         node = self.widget(text="Inset native text", host=host)
         label = self.page.locator(host).get_by_text("Inset native text", exact=True)
@@ -466,8 +467,7 @@ class WebTests(unittest.TestCase):
           (lui.frame:column (:width (lui.layout:fixed 240))
             (lui:label "Under the popup")
             (when (zerop *web-test-clicks*)
-              (when (lui:button :popup "Dismiss"
-                      (lui:opt :floating-p t :width (lui.layout:grow)))
+              (when (lui:button "Dismiss" (lui:opt :id :popup :floating-p t :width (lui.layout:grow)))
                 (incf *web-test-clicks*))))''')
         label = self.page.locator(host).get_by_text("Under the popup", exact=True)
         expect(label).to_have_count(0)
@@ -557,9 +557,7 @@ class WebTests(unittest.TestCase):
                   (lambda ()
                     (lui.frame:column (:width (lui.layout:grow))
                       (dotimes (i 60)
-                        (when (lui.glass:button (list :row i)
-                                (format nil "Row ~D" i)
-                                (lui:opt :height (lui.layout:fixed 48)
+                        (when (lui.glass:button (format nil "Row ~D" i) (lui:opt :id (list :row i) :height (lui.layout:fixed 48)
                                          :width (lui.layout:grow)))
                           (setf *web-test-clicks* i)))))))''')
             ui.frames()
@@ -846,8 +844,7 @@ class WebTests(unittest.TestCase):
 
     def test_password_field(self):
         host = self.fixture(body='''(setf *web-test-value*
-          (lui:text-field :fixture *web-test-value*
-            (lui:opt :password-p t :width (lui.layout:grow))))''')
+          (lui:text-field (lui:opt :id :fixture :value *web-test-value* :password-p t :width (lui.layout:grow))))''')
         self.replace_text(":FIXTURE", "secret界", host)
         self.assertEqual(self.text_value(":FIXTURE", host), "secret界")
         sink = self.page.locator(host + " textarea")
@@ -922,8 +919,8 @@ class WebTests(unittest.TestCase):
         self.page.mouse.move(*point)
         self.page.mouse.down()
         self.frames()
-        self.assertEqual(self.number('''(if (lui.frame:context-active
-          (lui.web::web-app-context *web-test-app*)) 1 0)'''), 1)
+        self.assertEqual(self.number('''(if (lui:widget-key (lui.frame:context-active
+          (lui.web::web-app-context *web-test-app*))) 1 0)'''), 1)
         self.page.mouse.move(700, 500)
         self.page.mouse.up()
         self.frames()
@@ -934,8 +931,8 @@ class WebTests(unittest.TestCase):
         self.page.mouse.up()
         self.frames()
         self.assertEqual(self.number("*web-test-clicks*"), 0)
-        self.assertEqual(self.number('''(if (lui.frame:context-active
-          (lui.web::web-app-context *web-test-app*)) 1 0)'''), 0)
+        self.assertEqual(self.number('''(if (lui:widget-key (lui.frame:context-active
+          (lui.web::web-app-context *web-test-app*))) 1 0)'''), 0)
 
     def test_cursor_feedback_disabled_and_text(self):
         self.hover_widget(text="Disabled")
@@ -952,9 +949,7 @@ class WebTests(unittest.TestCase):
           (lui.frame:column (:id :scroll :width (lui.layout:grow)
                             :height (lui.layout:fixed 280) :scroll-p t)
             (dotimes (i 30)
-              (when (lui.glass:button (list :row i)
-                      (format nil "Row ~D" i)
-                       (lui:opt :height (lui.layout:fixed 32)
+              (when (lui.glass:button (format nil "Row ~D" i) (lui:opt :id (list :row i) :height (lui.layout:fixed 32)
                                 :width (lui.layout:grow)))
                 (setf *web-test-clicks* i))))''')
         before = self.widget(text="Row 1", host=host)["y"]

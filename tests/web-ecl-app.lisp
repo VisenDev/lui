@@ -6,7 +6,6 @@
 ;; The fixture exercises editing, Unicode, GC, and teardown without evaluating
 ;; test Lisp in the browser or depending on JSCL's object representation.
 (defvar *app* nil)
-(defvar *value* "initial")
 (defvar *count* 0)
 
 (defun check-bridge ()
@@ -44,14 +43,17 @@
 (defun draw-fixture ()
   (lui:with-toolkit (:qt)
     (lui:column (:width (lui:grow) :gap 8)
-      (setf *value*
-            (lui:text-field :text *value*
-                            (lui:opt :width (lui:grow)
-                                     :accessible-name "Fixture text")))
-      (lui:label (format nil "Value: ~A" *value*))
-      (when (lui:button :count "Increment") (incf *count*))
+      (let ((value
+            (lui:text-field
+              (lui:opt
+                :id 0
+                :default-value "initial"
+                :width (lui:grow)
+                :accessible-name "Fixture text"))))
+        (lui:label (format nil "Value: ~A" value)))
+      (when (lui:button "Increment" (lui:opt :id :count)) (incf *count*))
       (lui:label (format nil "Count: ~D" *count*))
-      (when (lui:button :gc "Collect garbage")
+      (when (lui:button "Collect garbage" (lui:opt :id :gc))
         (ext:gc t)
         (setf (lui.web.ffi:oget (lui.web.ffi:global "window") "eclLiveRoots")
               (hash-table-count lui.web.ffi::*roots*))))))

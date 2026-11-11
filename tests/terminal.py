@@ -100,7 +100,7 @@ def script(error=False, debug=False):
                           :height (lui.layout:fixed 3) :padding 0)))))
     (assert (= radius (lui.widgets:widget-radius
                        (lui.layout:element-content
-                        (gethash :border (lui.frame::context-ids context))))))
+                        (gethash (lui:widget-id :border context) (lui.frame::context-ids context))))))
     (assert (string= (lui.terminal:render-terminal context)
                      (format nil "~C~A~C~%~C   ~C~%~C~A~C~%"
                              (char border 0) (make-string 3 :initial-element (char border 4))
@@ -127,8 +127,7 @@ def script(error=False, debug=False):
 ;; Track endpoints agree with keyboard and raw mouse edits.
 (let ((context (lui.terminal:make-terminal-context)) (value 0.5))
   (flet ((draw ()
-           (setf value (lui.motif:slider :slide value
-                         (lui:opt :width (lui.layout:fixed 20) :step 0.25)))))
+           (setf value (lui.motif:slider (lui:opt :id :slide :value value :width (lui.layout:fixed 20) :step 0.25)))))
     (dolist (entry '((0 "#---------------- 0%")
                      (0.5 "========#------- 50%")
                      (1 "==============# 100%")))
@@ -157,14 +156,14 @@ def script(error=False, debug=False):
 (dolist (width '(1 2 3))
   (let ((context (lui.terminal:make-terminal-context)))
     (lui.frame:with-frame (context width 1)
-      (lui.motif:slider :narrow 0.5 (lui:opt :width (lui.layout:fixed width))))
+      (lui.motif:slider (lui:opt :id :narrow :value 0.5 :width (lui.layout:fixed width))))
     (let ((line (lui.terminal:render-terminal context)))
       (assert (= (1+ width) (lui:terminal-text-width line)))
       (assert (find #\\# line)))))
 (let ((context (lui.terminal:make-terminal-context)))
   (lui.frame:with-frame (context 12 1)
     (lui.frame:column (:width (lui.layout:fixed 10) :clip-p t)
-      (lui.motif:slider :clipped 1 (lui:opt :width (lui.layout:fixed 20)))))
+      (lui.motif:slider (lui:opt :id :clipped :value 1 :width (lui.layout:fixed 20)))))
   (let ((line (lui.terminal:render-terminal context)))
     (assert (char= (char line 10) #\\Space))
     (assert (char= (char line 11) #\\Space))
@@ -174,19 +173,16 @@ def script(error=False, debug=False):
   (let ((context (lui.terminal:make-terminal-context))
         (clicks 0) (checked nil) (value 0.5))
     (labels ((draw ()
-               (when (lui:button :fractional-button "Click"
-                       (lui:opt :floating-p t :offset-x start :offset-y start
+               (when (lui:button "Click" (lui:opt :id :fractional-button :floating-p t :offset-x start :offset-y start
                                 :width (lui.layout:fixed 8)
                                 :height (lui.layout:fixed 1)))
                  (incf clicks))
                (setf checked
-                 (lui:checkbox :fractional-check checked "Enabled"
-                   (lui:opt :floating-p t :offset-x start
+                 (lui:checkbox "Enabled" (lui:opt :id :fractional-check :value checked :floating-p t :offset-x start
                             :offset-y (+ 2 start) :width (lui.layout:fixed 12)
                             :height (lui.layout:fixed 1))))
                (setf value
-                 (lui:slider :fractional-slider value
-                   (lui:opt :floating-p t :offset-x start
+                 (lui:slider (lui:opt :id :fractional-slider :value value :floating-p t :offset-x start
                             :offset-y (+ 4 start) :width (lui.layout:fixed 20)
                             :height (lui.layout:fixed 1) :step 0.01))))
              (mouse (button x y &optional release)
@@ -213,19 +209,16 @@ def script(error=False, debug=False):
         (mouse 32 1 (+ cell 4))
         (assert (zerop value))
         (mouse 0 1 (+ cell 4) t)
-        (assert (null (lui.frame:context-active context)))))))
+        (assert (null (lui:widget-key (lui.frame:context-active context))))))))
 ;; Sliders behind overlays cannot steal their presses or a batched drag.
 (let ((context (lui.terminal:make-terminal-context))
       (behind 0.5) (visible 0.5) (clicks 0))
   (labels ((draw ()
-             (setf behind (lui:slider :behind behind
-                            (lui:opt :width (lui.layout:fixed 20)
+             (setf behind (lui:slider (lui:opt :id :behind :value behind :width (lui.layout:fixed 20)
                                      :height (lui.layout:fixed 1))))
-             (setf visible (lui:slider :visible visible
-                             (lui:opt :width (lui.layout:fixed 20)
+             (setf visible (lui:slider (lui:opt :id :visible :value visible :width (lui.layout:fixed 20)
                                       :height (lui.layout:fixed 1))))
-             (when (lui:button :overlay "Close"
-                     (lui:opt :floating-p t :width (lui.layout:fixed 20)
+             (when (lui:button "Close" (lui:opt :id :overlay :floating-p t :width (lui.layout:fixed 20)
                               :height (lui.layout:fixed 1)))
                (incf clicks)))
            (batch (&rest sequences)
@@ -251,7 +244,7 @@ def script(error=False, debug=False):
     (assert (zerop visible))
     (batch "35;30;1M" "32;30;1M")
     (assert (zerop visible))
-    (assert (null (lui.frame:context-active context)))
+    (assert (null (lui:widget-key (lui.frame:context-active context))))
     (batch "0;1;2M" "32;30;1M" "0;30;1m")
     (assert (= visible 1))))
 ;; Shared gauge/canvas values have useful plain and colored representations.
@@ -321,20 +314,20 @@ def script(error=False, debug=False):
   (lui.layout:walk-elements
    (lui.frame:context-root context)
    (lambda (node)
-     (when (eq (lui.layout:element-id node) :name)
+     (when (eq (lui:widget-key (lui.layout:element-id node)) :name)
        (let ((box (lui.layout:element-box node)))
          (format t "~&@@NAME=~D,~D~%"
                  (1+ (floor (lui.layout:box-x box)))
                  (1+ (floor (lui.layout:box-y box))))))
-     (when (member (lui.layout:element-id node)
+     (when (member (lui:widget-key (lui.layout:element-id node))
                    '((:page :controls) (:page :editing) (:page :layout))
                    :test #'equal)
        (let ((box (lui.layout:element-box node)))
          (format t "~&@@TAB-~A=~D,~D~%"
-                 (second (lui.layout:element-id node))
+                 (second (lui:widget-key (lui.layout:element-id node)))
                  (1+ (lui.terminal:cell-edge (lui.layout:box-x box)))
                  (1+ (lui.terminal:cell-edge (lui.layout:box-y box))))))
-     (when (eq (lui.layout:element-id node) :reset)
+     (when (eq (lui:widget-key (lui.layout:element-id node)) :reset)
        (let ((box (lui.layout:element-box node)))
          (format t "~&@@RESET=~D,~D~%"
                  (1+ (floor (lui.layout:box-x box)))

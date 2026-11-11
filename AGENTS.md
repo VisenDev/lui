@@ -62,7 +62,8 @@ the change and report material limitations instead of claiming untested support.
 ## Architecture and contracts
 
 - LUI is an immediate-mode Common Lisp UI library. Applications own their model
-  state; `lui:run` owns the backend lifecycle. The same gallery and widget logic
+  state; value controls retain local state unless OPT :value is supplied.
+  `lui:run` owns the backend lifecycle. The same gallery and widget logic
   run on native windows, the browser, and the terminal. Avoid demo-only fixes
   for behavior that should apply to all applications.
 - `lui/core` is dependency-free. All terminal output, including plain snapshots,
@@ -108,7 +109,11 @@ the change and report material limitations instead of claiming untested support.
 - Horizontal sizing precedes width-dependent measurement and vertical layout.
   Percentages exclude padding and inter-child gaps. Fixed sizes and minimum
   bounds may overflow rather than silently shrink.
-- Value widgets return the new value and a changed flag. Preserve release
+- Control macros use quoted call-site IDs, combined with WITH-KEY scopes and
+  OPT :id instance keys (including numbers). OPT :default-value initializes
+  owned values once; absent widgets lose owned state after a completed frame.
+  Value widgets return the new value, a changed flag, and resolved ID.
+  Preserve release
   activation, pointer capture, disabled behavior, and keyboard-only focus rings.
 - `cell` is selectable text; general tables use `table`, `table-row`, and
   `table-cell` for arbitrary contents. Columns share widths across rows; column

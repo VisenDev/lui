@@ -21,6 +21,7 @@
      "AVAILABLE-PALETTES" "+PALETTE-DEFAULT+" "+PALETTE-LIGHT+"
      "+PALETTE-DARK+" "+PALETTE-OCEAN+" "+PALETTE-FOREST+"
      "TOOLKIT-NATIVE-LABELS-P" "WITH-PALETTE" "TOOLKIT-PALETTE" "WIDGET-COLOR"
+      "WITH-KEY" "WIDGET-KEY" "WIDGET-ID" "FOCUS-WIDGET"
      "CONTROL" "DEFINE-TOOLKIT" "OPT" "PANEL" "LABEL" "BUTTON" "TAB"
      "CHECKBOX" "DATE-PICKER" "SLIDER" "TEXT-FIELD" "CELL" "LIST-ITEM" "GAUGE"
      "CANVAS" "POINT" "CONTOUR" "CONTOURS" "SIZING" "FIT" "GROW" "FIXED"
@@ -289,7 +290,7 @@ are read for resolution; only explicitly selected exports enter the reference."
                  ((member head '("PROGN" "EVAL-WHEN") :test #'string=)
                   (mapc #'walk (if (string= head "PROGN") (cdr form)
                                   (cddr form))))
-                 ((member head '("DEFUN" "DEFMACRO" "FN" "DEFINE-CONTROL")
+               ((member head '("DEFUN" "DEFMACRO" "FN" "DEFINE-CONTROL" "DEFINE-WIDGET")
                           :test #'string=)
                   (let* ((name (second form)) (args (third form))
                          (kind (if (string= head "DEFMACRO") :macro
@@ -297,8 +298,15 @@ are read for resolution; only explicitly selected exports enter the reference."
                     (when (string= head "FN")
                       (when (consp name) (setf name (car name)))
                       (setf args (typed-arguments args)))
-                    (when (string= head "DEFINE-CONTROL")
-                      (setf args (append args '(&optional options))))
+                  (when (member head '("DEFINE-CONTROL" "DEFINE-WIDGET")
+                          :test #'string=)
+                    (setf kind :macro
+                      args (append
+                             (remove-if
+                               (lambda (arg)
+                                 (member (local-name arg) '("ID" "VALUE")
+                                   :test #'string=)) args)
+                             '(&optional options))))
                     (record name kind args
                             (when (stringp (fourth form)) (fourth form)))))
                  ((string= head "DEFCFUN")

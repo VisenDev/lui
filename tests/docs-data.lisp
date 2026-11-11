@@ -119,7 +119,8 @@
                   "Stale public API entry ~A:~A." (car scope) name))))
     (assert (every (lambda (item) (string= "lui" (getf item :package)))
                    entries))
-    (assert (string= "(button id text &optional options)"
+    (assert (eq :macro (getf button :kind)))
+    (assert (string= "(button text &optional options)"
                      (getf button :signature)))
     (assert (plusp (length (getf button :documentation))))
     (dolist (pair '(("lui" "MOUNT") ("lui" "*FONT-PATH*")

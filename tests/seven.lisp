@@ -12,7 +12,8 @@
 
 (fn disabled-p ((context context) id)
   (lui.widgets:widget-disabled-p
-   (element-content (gethash id (lui.frame::context-ids context)))))
+    (element-content (gethash (lui:widget-id id context)
+                       (lui.frame::context-ids context)))))
 
 (fn test-owned-models ()
   (let* ((first (make-state)) (second (make-state))
@@ -36,7 +37,7 @@
     (assert (not (lui.example.seven:modal-p second)))
     (let ((context (make-test-context)))
       (with-frame (context 100 60) (draw-content second))
-      (let ((tab (gethash '(:seven-task :counter)
+      (let ((tab (gethash (lui:widget-id '(:seven-task :counter) context)
                            (lui.frame::context-ids context))))
         (assert (not (lui.widgets:widget-disabled-p (element-content tab))))))
     (circle-cancel model)))
@@ -66,7 +67,7 @@
           (assert (plusp (visible-widget-count context)))))
       (lui:with-toolkit (:motif)
         (with-frame (context 100 60) (draw-content state))
-        (assert (null (gethash :seven-window
+        (assert (null (gethash (lui:widget-id :seven-window context)
                                (lui.frame::context-ids context)))))
       (page :counter)
       (frame (list (click :seven-count)))
@@ -115,7 +116,7 @@
             (lui.example.seven::state-timer state) (make-timer :duration 2))
       (frame nil 100)
       (let* ((timer (lui.example.seven::state-timer state))
-             (gauge (gethash :seven-elapsed
+             (gauge (gethash (lui:widget-id :seven-elapsed context)
                              (lui.frame::context-ids context))))
         (assert (not (element-interactive-p gauge)))
         (frame nil 101)
@@ -148,7 +149,7 @@
         (assert (equal "Smith" (person-surname person)))
         (frame (list (input :seven-filter "Sm")))
         (assert (= 1 (length (crud-filter model "Sm"))))
-        (assert (gethash (list :seven-person id)
+        (assert (gethash (lui:widget-id (list :seven-person id) context)
                          (lui.frame::context-ids context)))
         (frame (list (click :seven-delete)))
         (assert (null (crud-selected model)))
@@ -174,7 +175,8 @@
                (row-id (person) (list :seven-person (person-id person)))
                (selected (person)
                  (let ((widget (element-content
-                                (gethash (row-id person)
+                                 (gethash (lui:widget-id (row-id person)
+                                            context)
                                          (lui.frame::context-ids context)))))
                    (assert (eq :list-item (lui.widgets:widget-kind widget)))
                    (lui.widgets:widget-value widget))))
@@ -186,7 +188,8 @@
           (frame (click (row-id first)))
           (assert (selected first))
           (assert (not (selected second)))
-          (assert (equal (row-id first) (context-focus context)))
+          (assert (equal (row-id first) (lui:widget-key (context-focus
+                    context))))
           (frame (input :seven-name "Draft name"))
           (frame (click (row-id first)))
           (assert (equal "Draft name"
@@ -195,7 +198,8 @@
           (assert (selected second))
           (assert (not (selected first)))
           (assert (equal "Max" (lui.example.seven::state-name state)))
-          (assert (equal (row-id second) (context-focus context)))
+          (assert (equal (row-id second) (lui:widget-key (context-focus
+                    context))))
           (frame (make-event :kind :key :key :end))
           (assert (selected last))
           (frame (make-event :kind :key :key :down))
@@ -204,14 +208,16 @@
           (assert (selected first))
           (frame (make-event :kind :key :key :up))
           (assert (selected first))
-          (setf (context-focus context) :seven-name)
+          (setf (context-focus context) (lui:widget-id :seven-name context))
           (frame (input :seven-name "Unsaved"))
-          (assert (equal :seven-name (context-focus context)))
+          (assert (equal :seven-name (lui:widget-key (context-focus
+                    context))))
           (assert (selected first))
           ;; Deletion selects its next neighbor and paints that state now.
           (frame (click :seven-delete))
           (assert (selected second))
-          (assert (equal :seven-name (context-focus context)))
+          (assert (equal :seven-name (lui:widget-key (context-focus
+                    context))))
           (frame (input :seven-filter "T"))
           (assert (null (crud-selected model)))
           (assert (disabled-p context :seven-update))
@@ -220,7 +226,7 @@
           (frame (input :seven-surname "Taylor") (click :seven-update))
           (assert (selected last))
           (let ((widget (element-content
-                         (gethash (row-id last)
+                          (gethash (lui:widget-id (row-id last) context)
                                   (lui.frame::context-ids context)))))
             (assert (equal "Taylor, Roman" (lui.widgets:widget-text widget))))
           (frame (click :seven-delete))

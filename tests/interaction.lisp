@@ -31,9 +31,11 @@
         (let ((events (lui.interaction:take-events :editor)))
           (assert (typep events '(vector event)))
           (assert (zerop (length events))))
-        (lui:text-field :editor text)))
+        (lui.tests.support::draw-text-field (lui:opt :id :editor :value
+                                              text))))
     (let ((widget (element-content
-                   (gethash :editor (lui.frame::context-ids context)))))
+                    (gethash (lui:widget-id :editor context)
+                      (lui.frame::context-ids context)))))
       (assert (equal "abc!" (lui.widgets:widget-value widget)))))
   (let ((context (make-test-context)))
     (flet ((draw ()
@@ -63,7 +65,8 @@
       (emit (make-element :width (fixed 20) :height (fixed 5000))))))
 
 (defun scroll-offset (context &optional (id :view))
-  (element-scroll-y (gethash id (lui.frame::context-ids context))))
+  (element-scroll-y (gethash (lui:widget-id id context)
+                      (lui.frame::context-ids context))))
 
 (defun wheel (amount &optional (mode :auto))
   (make-event :kind :scroll :x 1 :y 1 :value amount :scroll-mode mode))
@@ -193,17 +196,21 @@
     (with-frame (context 40 20)
       (modern-panel (lui:opt :id :modern-panel :padding 1)
         (modern-label "Modern")
-        (modern-button :modern "Action" (lui:opt :width (fixed 11)))))
-    (let* ((node (gethash :modern (lui.frame::context-ids context)))
+        (modern-button "Action" (lui:opt :id :modern :width
+                                  (fixed 11)))))
+    (let* ((node (gethash (lui:widget-id :modern context)
+                   (lui.frame::context-ids context)))
            (widget (element-content node)))
       (assert (eq :test-modern (lui.widgets:widget-style widget)))
       (assert (string= "#abcdef" (lui.widgets:widget-background widget)))
       (assert (= 11 (box-width (element-box node)))))
     (loop for (key value) on *macro-defaults* by #'cddr
-          do (assert (equal value (getf (lui:toolkit-defaults :test-modern) key))))))
+          do (assert (equal value (getf (lui:toolkit-defaults :test-modern)
+              key))))))
 
 (defun test-palettes ()
-  (assert (equalp (lui:available-palettes) #(:default :light :dark :ocean :forest)))
+  (assert (equalp (lui:available-palettes) #(:default :light :dark :ocean
+          :forest)))
   (assert (lui:palette-p lui:+palette-default+))
   (assert (equal (lui:palette-foreground lui:+palette-dark+) "#eeeeee"))
   (assert (handler-case (funcall (symbol-function 'lui::call-with-palette)
@@ -212,37 +219,46 @@
   ;; Resolve a provider once per control, while observing changes within a frame.
   (let ((reads 0) (color "#112233") (context (make-test-context)))
     (lui:register-toolkit :palette-provider :parent :glass
-      :defaults (lambda () (incf reads) (list :palette (list :cell-background color))))
+      :defaults (lambda () (incf reads) (list :palette (list :cell-background
+              color))))
     (with-frame (context 80 30)
       (lui:with-toolkit (:palette-provider)
-        (lui:cell :first "First")
+        (lui.tests.support::draw-cell "First" (lui:opt :id :first))
         (setf color "#445566")
-        (lui:cell :second "Second")))
+        (lui.tests.support::draw-cell "Second" (lui:opt :id :second))))
     (assert (= reads 2))
     (dolist (entry '((:first . "#112233") (:second . "#445566")))
       (assert (equal (cdr entry)
                      (lui:widget-color
-                      (element-content (gethash (car entry) (lui.frame::context-ids context)))
+                  (element-content (gethash (lui:widget-id (car entry)
+                  context) (lui.frame::context-ids context)))
                       :background)))))
   (lui:register-toolkit :palette-parent :parent :glass
                        :defaults '(:palette (:accent "#123456" :outline "#654321")))
   (lui:register-toolkit :palette-child :parent :palette-parent
                        :defaults '(:palette (:background "#abcdef")))
-  (assert (equal "#123456" (getf (lui:toolkit-palette :palette-child) :accent)))
-  (assert (equal "#abcdef" (getf (lui:toolkit-palette :palette-child) :background)))
+  (assert (equal "#123456" (getf (lui:toolkit-palette :palette-child)
+          :accent)))
+  (assert (equal "#abcdef" (getf (lui:toolkit-palette :palette-child)
+          :background)))
   (let ((context (make-test-context)))
     (with-frame (context 80 30)
       (lui:with-palette ((lui:make-palette :accent "#112233" :outline "#445566"))
-        (lui:with-toolkit (:glass) (lui:button :glass "Glass"))
+        (lui:with-toolkit (:glass) (lui.tests.support::draw-button "Glass"
+                                     (lui:opt :id :glass)))
         (lui:with-toolkit (:motif)
           (lui:with-palette ((lui:make-palette :background "#778899"))
-            (lui:button :motif "Motif" (lui:opt :accent "#aabbcc"))
+            (lui.tests.support::draw-button "Motif" (lui:opt :id :motif
+                                                      :accent "#aabbcc"))
             (lui:panel (lui:opt :id :palette-panel) (lui:label "Panel"))))
-        (lui:with-toolkit (:garnet) (lui:button :garnet "Garnet")))
-      (lui:with-toolkit (:glass) (lui:button :unscoped "Default")))
+        (lui:with-toolkit (:garnet) (lui.tests.support::draw-button "Garnet"
+                                      (lui:opt :id :garnet))))
+      (lui:with-toolkit (:glass) (lui.tests.support::draw-button "Default"
+                                   (lui:opt :id :unscoped))))
     ;; Check after the scopes have unwound: widgets retain resolved colors.
     (flet ((color (id role)
-             (lui:widget-color (element-content (gethash id (lui.frame::context-ids context))) role)))
+             (lui:widget-color (element-content (gethash (lui:widget-id id
+                  context) (lui.frame::context-ids context))) role)))
       (assert (equal "#112233" (color :glass :accent)))
       (assert (equal "#445566" (color :garnet :outline)))
       (assert (equal "#aabbcc" (color :motif :accent)))
@@ -275,37 +291,51 @@
     (assert (null (lui::parse-picker-date text))))
   (let ((context (lui.tests.support:make-test-context)))
     (with-frame (context 56 22)
-      (lui:date-picker :appointment "2026-11-06"))
-    (assert (equal '(:appointment :input) (lui.frame::hit context 1 1)))
+      (lui.tests.support::draw-date-picker (lui:opt :id :appointment :value "2026-11-06")))
+    (assert (equal '(:appointment :input) (lui:widget-key (lui.frame::hit
+              context 1 1))))
     (dolist (text '("11/06/2026" "▦"))
       (assert (has-text-p context text))))
   (let ((context (make-test-context)))
     (dolist (style '(:glass :motif :garnet))
       (lui:with-toolkit (style)
         (with-frame (context 80 40)
-          (record-activation context (list style :calendar))
-          (lui:date-picker style "2026-11-06"))
+          (lui.tests.support::draw-date-picker
+            (lui:opt :id style :value "2026-11-06")))
+        (with-frame (context 80 40)
+          (record-activation context
+            (lui:widget-id (list style :calendar) context))
+          (lui.tests.support::draw-date-picker (lui:opt :id style :value "2026-11-06")))
         (let* ((palette (lui:toolkit-defaults))
                (day (element-content
-                     (gethash (list style :day 6) (lui.frame::context-ids context)))))
+                      (gethash (lui:widget-id (list style :day 6) context)
+                        (lui.frame::context-ids context)))))
           (assert (lui.widgets:widget-value day))
-          (assert (equal (lui.widgets:widget-foreground day) (getf palette :foreground)))
-          (assert (equal (lui.widgets:widget-background day) (getf palette :background)))
-          (assert (equal (lui.widgets:widget-accent day) (getf palette :accent)))))))
+          (assert (equal (lui.widgets:widget-foreground day) (getf palette
+                  :foreground)))
+          (assert (equal (lui.widgets:widget-background day) (getf palette
+                  :background)))
+          (assert (equal (lui.widgets:widget-accent day) (getf palette
+                  :accent)))))))
   (let ((context (make-test-context)) (value "2026-11-06"))
     (flet ((frame (&rest events)
              (with-frame (context 60 32 :events events)
-               (setf value (lui:date-picker :date value)))))
+               (setf value (lui.tests.support::draw-date-picker (lui:opt :id
+                  :date :value value))))))
       (dolist (xy '((3 1) (0 0)))
         (frame)
         (destructuring-bind (x y) xy
           (frame (make-event :kind :press :x x :y y))
           (frame (make-event :kind :release :x x :y y)))
-        (assert (equal (context-focus context) '(:date :input)))
-        (assert (gethash '(:date :popup) (lui.frame::context-ids context)))
+        (assert (equal (lui:widget-key (context-focus context)) '(:date
+                :input)))
+        (assert (gethash (lui:widget-id '(:date :popup) context)
+                  (lui.frame::context-ids context)))
         (frame (make-event :kind :key :key :escape))
-        (assert (null (gethash '(:date :popup) (lui.frame::context-ids context)))))
-      (frame (make-event :kind :change :id '(:date :input) :value "11/07/2026"))
+        (assert (null (gethash (lui:widget-id '(:date :popup) context)
+                        (lui.frame::context-ids context)))))
+      (frame (make-event :kind :change :id '(:date :input) :value
+            "11/07/2026"))
       (assert (equal value "2026-11-07"))))
   (assert (= 4 (lui::calendar-start 2026 1)))
   ;; Adjacent days at the lower bound use year zero before being disabled.
@@ -315,29 +345,36 @@
         (value "2024-02-28"))
     (flet ((draw ()
              (column (:gap 1)
-               (setf value (lui:date-picker :date value))
-               (lui:button :following "Following control"))))
+               (setf value (lui.tests.support::draw-date-picker (lui:opt :id
+                  :date :value value)))
+               (lui.tests.support::draw-button "Following control" (lui:opt
+                :id :following)))))
       (with-frame (context 80 40) (draw))
-      (let* ((picker (gethash :date (lui.frame::context-ids context)))
-             (following (gethash :following (lui.frame::context-ids context)))
-             (following-y (lui.layout:box-y (lui.layout:element-box following))))
+      (let* ((picker (gethash (lui:widget-id :date context)
+                       (lui.frame::context-ids context)))
+             (following (gethash (lui:widget-id :following context)
+                          (lui.frame::context-ids context)))
+             (following-y (lui.layout:box-y (lui.layout:element-box
+                  following))))
         ;; Opening the calendar paints over the space below the field; layout
         ;; keeps the following control at its original position.
-        (with-frame (context 80 40
-                     :events (list (make-event :kind :activate
-                                               :id '(:date :calendar))))
+        (with-frame (context 80 40 :events
+                     (list (make-event :kind :activate :id '(:date
+                    :calendar))))
           (draw))
         (assert (= following-y
                    (lui.layout:box-y
                     (lui.layout:element-box
-                     (gethash :following (lui.frame::context-ids context))))))
+                      (gethash (lui:widget-id :following context)
+                        (lui.frame::context-ids context))))))
         (assert picker)
         (assert (visible-text-p context "February 2024"))
         (let ((days 0))
           (walk-elements (context-root context)
             (lambda (node)
-              (let ((id (element-id node)))
-                (when (and (consp id) (member (second id) '(:day :adjacent))) (incf days)))))
+              (let ((id (lui:widget-key (element-id node))))
+                (when (and (consp id) (member (second id) '(:day :adjacent)))
+                  (incf days)))))
           (assert (= days 42))))
       (with-frame (context 80 40
                    :events (list (make-event :kind :activate
@@ -357,18 +394,16 @@
                                              :value "02/30/2024")))
         (draw))
       (assert (equal value "2024-03-01"))
-      (with-frame (context 80 40
-                   :events (list (make-event :kind :activate
-                                             :id '(:date :calendar))))
+      (with-frame (context 80 40 :events
+                   (list (make-event :kind :activate :id '(:date :calendar))))
         (draw))
       (with-frame (context 80 40
                    :events (list (make-event :kind :activate
                                              :id '(:date :clear))))
         (draw))
       (assert (null value))
-      (with-frame (context 80 40
-                   :events (list (make-event :kind :activate
-                                             :id '(:date :calendar))))
+      (with-frame (context 80 40 :events
+                   (list (make-event :kind :activate :id '(:date :calendar))))
         (draw))
       (with-frame (context 80 40
                    :events (list (make-event :kind :activate
@@ -381,10 +416,13 @@
       (with-frame (context 80 40 :events
                    (list (make-event :kind :activate :id '(:date :calendar))))
         (draw))
-      (with-frame (context 80 40 :events (list (make-event :kind :key :key :right)))
+      (with-frame (context 80 40 :events (list (make-event :kind :key :key
+                :right)))
         (draw))
-      (assert (equal (context-focus context) '(:date :day 1)))
-      (with-frame (context 80 40 :events (list (make-event :kind :activate))) (draw))
+      (assert (equal (lui:widget-key (context-focus context)) '(:date :day
+              1)))
+      (with-frame (context 80 40 :events (list (make-event :kind :activate)))
+        (draw))
       (assert (equal value "2025-01-01")))))
 
 (defun test-frame-limits ()
@@ -398,7 +436,119 @@
     (assert (= 0.125 (lui.frame::frame-wait context nil 10)))
     (assert (zerop (lui.frame::frame-wait context nil 11)))))
 
+(defun test-owned-widget-state ()
+  (let ((context (make-test-context)) (other (make-test-context))
+        (default "first") (visible t) value changed id)
+    (flet ((draw (context &optional events)
+             (with-frame (context 80 20 :events events)
+               (when visible
+                 (multiple-value-setq (value changed id)
+                   (lui:text-field (lui:opt :default-value default)))))))
+      (draw context)
+      (assert (equal value "first"))
+      (assert (not changed))
+      (let ((first-id id))
+        (setf default "ignored")
+        (draw context (vector (make-event :kind :change :id id :value
+                                "saved")))
+        (assert (equal value "saved"))
+        (assert changed)
+        (assert (equal first-id id))
+        (draw context)
+        (assert (equal value "saved"))
+        (assert (not changed))
+        (draw other)
+        (assert (equal value "ignored"))
+        (draw context)
+        (assert (equal value "saved")))
+      (let ((*context* context)) (lui:reset-editor id "reset"))
+      (draw context)
+      (assert (equal value "reset"))
+      (setf visible nil)
+      (draw context)
+      (assert (zerop (hash-table-count (context-values context))))
+      (setf visible t)
+      (draw context)
+      (assert (equal value "ignored")))))
+
+(defun test-keyed-widget-state ()
+  (let ((context (make-test-context)) (order '(0 1)) ids values)
+    (flet ((draw (&optional events)
+             (setf ids nil values nil)
+             (with-frame (context 80 20 :events events)
+               (dolist (key order)
+                 (lui:with-key key
+                   (multiple-value-bind (value changed id)
+                     (lui:text-field (lui:opt :id 0 :default-value ""))
+                     (declare (ignore changed))
+                     (push (cons key value) values)
+                     (push (cons key id) ids))
+                   (multiple-value-bind (checked changed id)
+                     (lui:checkbox "Enabled" (lui:opt :id 0))
+                     (declare (ignore checked changed))
+                     (assert (not (equal id (cdar ids))))))))))
+      (draw)
+      (let ((first-id (cdr (assoc 0 ids))))
+        (setf order '(1 0))
+        (draw (vector (make-event :kind :change :id first-id :value "zero")))
+        (assert (equal "zero" (cdr (assoc 0 values))))
+        (assert (equal "" (cdr (assoc 1 values))))
+        (assert (equal first-id (cdr (assoc 0 ids))))
+        (let ((*context* context))
+          (assert (handler-case (progn (lui:with-key 0 (lui:widget-id 0)) nil)
+                    (lui:configuration-error () t))))))))
+
+(defun test-controlled-widget-state ()
+  (let ((context (make-test-context)) (model "model") value id)
+    (flet ((draw (&optional events)
+             (with-frame (context 80 20 :events events)
+               (multiple-value-bind (text changed identity)
+                 (lui:text-field (lui:opt :value model :default-value
+                    "unused"))
+                 (declare (ignore changed))
+                 (setf value text id identity)))))
+      (draw)
+      (assert (equal "model" value))
+      (draw (vector (make-event :kind :change :id id :value "edit")))
+      (assert (equal "edit" value))
+      (draw)
+      (assert (equal "model" value))
+      (with-frame (context 80 20)
+        (assert (null (lui:checkbox "False"
+                        (lui:opt :value nil :default-value
+                          t))))))))
+
+(defun test-automatic-widget-identity ()
+  (let ((context (make-test-context)) ids (evaluations 0))
+    (flet ((draw ()
+             (with-frame (context 80 20)
+               (setf ids
+                 (list (nth-value 2 (lui:text-field))
+                   (nth-value 2 (lui:text-field))))
+            (lui:button
+              (progn (incf evaluations) "Once")
+              (progn (incf evaluations) (lui:opt :id 0))))))
+      (draw)
+      (assert (= evaluations 2))
+      (assert (not (equal (first ids) (second ids))))
+      (let ((previous ids))
+        (draw)
+        (assert (equal previous ids)))
+      (assert
+        (handler-case
+          (progn
+            (with-frame (context 80 20)
+              (dotimes (i 2)
+                (declare (ignorable i))
+                (lui:text-field (lui:opt :id 0))))
+            nil)
+          (error () t))))))
+
 (defun run-tests ()
+  (test-owned-widget-state)
+  (test-keyed-widget-state)
+  (test-controlled-widget-state)
+  (test-automatic-widget-identity)
   (test-named-palette-scope)
   (test-palettes)
   (test-frame-limits)
@@ -411,33 +561,45 @@
       (let ((context (make-test-context)) (evaluations 0)
             (checked nil) (number 3) (text "raw"))
         (labels ((node (id)
-                   (gethash id (lui.frame::context-ids context)))
+                   (gethash (lui:widget-id id context)
+                     (lui.frame::context-ids context)))
                  (appearance (id) (element-content (node id)))
                  (draw ()
                    (lui:with-toolkit ((progn (incf evaluations) style))
                      (assert (eq style (lui:current-toolkit)))
                      (lui:label "Plain label")
-                     (lui:button :plain "Plain button")
-                     (lui:button :sized "Sized"
-                                 (lui:opt :width (progn (incf evaluations)
+                     (lui.tests.support::draw-button "Plain button" (lui:opt
+                    :id :plain))
+                     (lui.tests.support::draw-button "Sized" (lui:opt :id
+                    :sized :width (progn (incf evaluations)
                                                        (fixed 9))
-                                          :height (fixed 2)))
-                     (lui:tab :tab "Tab" (lui:opt :selected-p t))
-                     (setf checked (lui:checkbox :check checked "Check")
-                           number (lui:slider :slider number
-                                              (lui:opt :minimum 0 :maximum 10
+                                                               :height
+                                                               (fixed 2)))
+                     (lui.tests.support::draw-tab "Tab" (lui:opt :id :tab
+                                                          :selected-p t))
+                     (setf checked (lui.tests.support::draw-checkbox "Check"
+                                     (lui:opt :id :check :value checked))
+                       number (lui.tests.support::draw-slider (lui:opt
+                      :id :slider :value number :minimum 0 :maximum 10
                                                        :step 1))
-                           text (lui:text-field :field text))
-                     (lui:cell :cell "Cell" (lui:opt :selected-p t))
-                     (lui:list-item :item "Item" (lui:opt :selected-p t))
-                     (lui:gauge :gauge 0.5)
-                     (lui:canvas :canvas nil)
+                       text (lui.tests.support::draw-text-field (lui:opt
+                      :id :field :value text)))
+                     (lui.tests.support::draw-cell "Cell" (lui:opt :id :cell
+                                                            :selected-p t))
+                     (lui.tests.support::draw-list-item "Item" (lui:opt :id
+                    :item :selected-p t))
+                     (lui.tests.support::draw-gauge 0.5 (lui:opt :id :gauge))
+                     (lui.tests.support::draw-canvas nil (lui:opt :id
+                                                           :canvas))
                      (lui:panel (lui:opt :id :panel :width (fixed 15)
                                           :padding 1)
-                       (lui:button :inside "Inside")
+                       (lui.tests.support::draw-button "Inside"
+                         (lui:opt :id :inside))
                        (lui:with-toolkit (:garnet)
-                         (lui:button :nested "Nested")))
-                     (lui:button :after "After")))
+                         (lui.tests.support::draw-button "Nested"
+                           (lui:opt :id :nested))))
+                     (lui.tests.support::draw-button "After" (lui:opt :id
+                                                               :after))))
                  (frame (&rest events)
                    (with-frame (context 50 50 :events events) (draw))))
           (frame)
@@ -469,12 +631,16 @@
           (context (make-test-context)))
       (with-frame (context 20 5)
         (lui:with-toolkit (:glass)
-          (lui:button :inherited "Inherited")
-          (lui:button :enabled "Enabled" (lui:opt :disabled-p nil))))
+          (lui.tests.support::draw-button "Inherited" (lui:opt :id
+                                                        :inherited))
+          (lui.tests.support::draw-button "Enabled" (lui:opt :id :enabled
+                                                      :disabled-p nil))))
       (assert (not (element-interactive-p
-                    (gethash :inherited (lui.frame::context-ids context)))))
+                     (gethash (lui:widget-id :inherited context)
+                       (lui.frame::context-ids context)))))
       (assert (element-interactive-p
-               (gethash :enabled (lui.frame::context-ids context)))))
+                (gethash (lui:widget-id :enabled context)
+                  (lui.frame::context-ids context)))))
     (assert (handler-case (progn (lui:with-toolkit (:unknown) t) nil)
               (error () t)))
     (assert (eq outer (lui:current-toolkit))))
@@ -494,17 +660,19 @@
     (with-frame (context 30 10)
       (lui:with-toolkit (:test)
         (assert (eq :test (lui:current-toolkit)))
-        (lui:button :custom "Custom" options)
+        (lui.tests.support::draw-button "Custom" (list* :id :custom options))
         (lui:label "Inherited")
         (lui:panel (lui:opt :id :custom-panel)
           (lui:label "Child"))))
-    (assert (equal (subseq received 0 2) '(:custom "Custom")))
+    (assert (equal (list (lui:widget-key (first received)) (second received))
+              '(:custom "Custom")))
     (assert (equal (third received) options))
     (assert (equal "#123456" (getf (lui:toolkit-defaults :test) :accent)))
     (assert (equal "#b8b8b8"
                    (getf (lui:toolkit-defaults :test-child) :background)))
     (let ((widget (element-content
-                   (gethash :custom (lui.frame::context-ids context)))))
+                    (gethash (lui:widget-id :custom context)
+                      (lui.frame::context-ids context)))))
       (assert (eq :test (lui.widgets:widget-style widget)))
       (assert (equal "#123456" (lui.widgets:widget-accent widget)))))
   (format t "Public toolkit scopes, controls, options and panels passed.~%")

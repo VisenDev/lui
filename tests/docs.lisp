@@ -21,7 +21,8 @@
   (with-frame (context 100 40 :events events) (funcall draw)))
 
 (defun node-with-id (context id)
-  (first (nodes context (lambda (node) (equal id (element-id node))))))
+  (first (nodes context (lambda (node) (equal id (lui:widget-key (element-id
+                node)))))))
 
 (defun test-live-widgets ()
   (let* ((lui:*unit* 1) (context (make-test-context))
@@ -93,8 +94,11 @@
       (dolist (palette '(:light :dark :ocean :forest :default))
         (activate :docs-palette)
         (frame context draw)
-        (assert (has-label context (format nil "Palette: ~A" (string-capitalize (symbol-name palette)))))
-        (assert (string= "Changed" (widget-value (widget :docs-preview-text)))))
+        (assert (has-label context (format nil "Palette: ~A"
+                (string-capitalize (symbol-name palette)))))
+        (assert (string= "Changed" (widget-value (widget
+                  :docs-preview-text)))))
+      (frame second other)
       (frame second other (make-event :kind :activate
                                       :id '(:docs-guide :previews)))
       (assert (has-label second "Button clicks: 0"))
@@ -107,7 +111,7 @@
   (let* ((lui:*unit* 1) (context (make-test-context))
          (draw (lui.docs:make-docs
                 :entries '((:package "lui" :name "BUTTON" :kind :function
-                            :signature "(button id text &optional options)"
+                              :signature "(button text &optional options)"
                             :documentation "Return activation.")))))
     (labels ((narrow (&rest events)
                (with-frame (context 60 40 :events events) (funcall draw))))
@@ -179,7 +183,8 @@
          (draw (lui.docs:make-docs
                 :entries
                 (loop :for i :below 100
-                      :collect (list :package "lui" :name (format nil "ROW~D" i)
+                      :collect (list :package "lui" :name (format nil "ROW~D"
+                  i)
                                      :kind :function :signature "()"
                                      :documentation "An entry.")))))
     (frame context draw)
@@ -194,7 +199,8 @@
       (frame context draw
              (make-event :kind :activate :id '(:docs-entry 1))
              (make-event :kind :scroll :x (+ (box-x box) 1)
-                         :y (+ (box-y box) 1) :value 100 :scroll-mode :immediate)))
+                         :y (+ (box-y box) 1) :value 100 :scroll-mode
+            :immediate)))
     (assert (null (node-with-id context '(:docs-entry 1))))
     (assert (has-label context "lui:ROW1"))
     (frame context draw (make-event :kind :move :x 99 :y 39))
@@ -258,14 +264,16 @@
     (assert (plusp (element-scroll-limit-y
                    (first (nodes context
                                  (lambda (node)
-                                   (eq :docs-detail (element-id node))))))))
+                                (eq :docs-detail (lui:widget-key
+                                                   (element-id node)))))))))
     (let ((rows (nodes context
                        (lambda (node)
-                         (let ((id (element-id node)))
+                    (let ((id (lui:widget-key (element-id node))))
                            (and (consp id) (eq (first id) :docs-entry)))))))
       ;; A large reference declares only a viewport of actual control rows.
       (assert (< 0 (length rows) 20))
-      (assert (every (lambda (node) (evenp (second (element-id node))))
+      (assert (every (lambda (node) (evenp (second (lui:widget-key
+                                                     (element-id node)))))
                      rows)))
     (frame context draw (make-event :kind :change :id :docs-search
                                     :value "Documentation 198"))
@@ -279,6 +287,7 @@
     (assert (not (has-label second "No matching entries."))))
   (let ((lui:*unit* 1) (context (make-test-context))
         (draw (lui.docs:make-docs :entries nil)))
+    (frame context draw)
     (frame context draw (make-event :kind :activate
                                     :id '(:docs-package nil)))
     (assert (has-label context "0 API entries"))

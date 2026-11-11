@@ -31,9 +31,9 @@ work.
 - Tabs support Left/Right wrapping and Home/End navigation, skipping disabled
   tabs. Widgets return current-frame values and activation results.
 
-A draw function describes the current frame. Give interactive controls stable
-IDs so a release, keypress, or edit can find the same control on the next
-frame. For example, this entire application runs with any loaded backend:
+A draw function describes the current frame. Control macros generate stable
+IDs for each call site, so ordinary forms need no explicit IDs. For example,
+this application runs with any loaded backend:
 
 ```lisp
 (defun counter (&optional (toolkit :qt))
@@ -42,7 +42,7 @@ frame. For example, this entire application runs with any loaded backend:
      (lambda ()
        (lui:with-toolkit (toolkit)
          (lui:panel (lui:opt :padding (lui:units 1))
-           (when (lui:button :increment "Count")
+           (when (lui:button "Count")
              (incf count))
            (lui:label (format nil "Count: ~D" count))))))))
 ```
@@ -51,28 +51,57 @@ frame. For example, this entire application runs with any loaded backend:
 `panel` attaches its body as children; the layout macros `lui:row` and
 `lui:column` group children without painting a panel. Buttons return
 activation; fields, sliders, and checkboxes return the current value and a
-second value indicating a change. Store application values outside the draw
-function. The library keeps focus, capture, and caret state between frames.
+second value indicating a change, plus their resolved ID as the third value.
+Widget values are retained by default. `:default-value` initializes a value
+once; `:value` opts into application-owned state supplied every frame.
 
-`lui:searchable-combobox` is an editable text field. Store its returned string
-just as you would for `lui:text-field`. Focusing the field shows suggestions in
+```lisp
+(lui:run
+ (lambda ()
+   (let ((name (lui:text-field (lui:opt :default-value "Ada"))))
+     (when (lui:button "Greet")
+       (format t "Hello, ~A!~%" name)))))
+```
+
+For repeated controls, supply an instance key through `lui:opt :id`:
+
+```lisp
+(dotimes (i 10)
+  (lui:text-field (lui:opt :id i))
+  (lui:checkbox "Enabled" (lui:opt :id i :default-value t)))
+```
+
+Keys are combined with the call site, so the two controls can both use `i`.
+Use stable item keys rather than indices when items can move or be deleted.
+Wrap repeated groups or reusable drawing functions in `(lui:with-key key ...)`.
+IDs use `equal`; do not mutate compound keys after declaring them.
+
+Owned state is local to a UI context and is discarded when its widget is
+absent from a completed frame. Recompiling a call site creates a new identity.
+`lui:widget-id` resolves a unique declared key in the current key scope;
+ambiguous keys signal `lui:configuration-error`. Use a control's third return
+value when several call sites share a key. `lui:widget-key` extracts its declared
+key, `lui:focus-widget` requests focus, and `lui:reset-editor` resets owned text
+and its caret. Toolkit callbacks remain functions receiving resolved IDs;
+public control macros cannot be passed to `funcall` or `apply`.
+
+`lui:searchable-combobox` retains its editable string like `lui:text-field`.
+Supply `:value` when the application owns it. Focusing the field shows suggestions in
 an overlay, and typing filters them. Click a suggestion or highlight it with
 Up/Down and press Enter to complete the field. Enter without a highlight,
 Escape, and Tab keep the text you typed. `:max-results` limits suggestions.
 
 ```lisp
 (setf country
-      (lui:searchable-combobox :country country
-                               '("Canada" "Japan" "United States")
-                               (lui:opt :max-results 10)))
+      (lui:searchable-combobox '("Canada" "Japan" "United States") (lui:opt :id :country :value country :max-results 10)))
 ```
 
-Radio controls share one model value. Each `lui:radio` receives the current
-value and its own choice, then returns the updated value and a change flag:
+Radio controls can share one model value through `:value`. Each `lui:radio`
+receives its own choice, then returns the updated value and a change flag:
 
 ```lisp
-(setf size (lui:radio :small size :small "Small"))
-(setf size (lui:radio :large size :large "Large"))
+(setf size (lui:radio :small "Small" (lui:opt :id :small :value size)))
+(setf size (lui:radio :large "Large" (lui:opt :id :large :value size)))
 ```
 
 The public API is available through `lui:`. Optional systems add their API to
@@ -101,7 +130,7 @@ palette and toolkit changes. Applications can use the same presets:
 ```lisp
 (lui:with-toolkit (:qt)
   (lui:with-palette (:ocean)
-    (lui:button :save "Save")))
+    (lui:button "Save" (lui:opt :id :save))))
 ```
 
 `lui:available-palettes` returns a vector of preset names. `with-palette` also
@@ -123,7 +152,7 @@ of its controls from Motif:
 
 ```lisp
 (defun badge (id text &optional options)
-  (lui:button id text (append options (lui:opt :foreground "#105030"))))
+  (lui:button text (list* :id id (append options (lui:opt :foreground "#105030")))))
 
 (lui:register-toolkit :paper :parent :motif
                       :defaults (lui:opt :background "#fff9ea")
@@ -189,8 +218,8 @@ created in its scope, including nested scopes and mixed toolkits in one frame:
 (lui:with-toolkit (:motif)
   (lui:with-palette ((lui:make-palette :background "#202830" :foreground "#eeeeee"
                        :accent "#66bbee" :bevel-light "#708090"
-                       :bevel-dark "#101820")))
-    (lui:button :save "Save")))
+                       :bevel-dark "#101820"))
+    (lui:button "Save")))
 ```
 
 `lui:widget-color` reads a resolved role from a widget. Besides foreground,
@@ -789,7 +818,7 @@ can toggle it once; subsequent frames draw the debugger automatically:
 
 ```lisp
 (asdf:load-system "lui/debug")
-(when (lui:button :debug "Show debugger")
+(when (lui:button "Show debugger" (lui:opt :id :debug))
   (lui:set-debugger-enabled t))
 ```
 
@@ -985,7 +1014,7 @@ installed or visible to ASDF; install/register it before building. A compiled
 executable and passing Linux ABI checks do not establish a passing macOS runtime.
 
 
-Use `(lui:date-picker :appointment value)` for a date field. Click anywhere
+Use `(lui:date-picker)` for a date field with an owned value. Click anywhere
 in the field to open the calendar, or type a date as MM/DD/YYYY. The widget
 returns YYYY-MM-DD or NIL when cleared. The gallery’s Editing page includes
 an example.
@@ -1005,15 +1034,15 @@ on the table and `:column-span` on a cell; use NIL for default options.
   (lui:table-row ()
     (lui:label "Name")
     (lui:table-cell ()
-      (setf name (lui:text-field :name name)))))
+      (setf name (lui:text-field (lui:opt :id :name :value name))))))
 ```
 
 Columns use the widest content across rows. Extra width is shared equally,
 and narrow tables shrink columns proportionally before measuring row heights.
 Short rows can omit trailing cells. Row spanning is currently unsupported.
 
-Password fields use `(lui:text-field :password password
-(lui:opt :password-p t))`. Keep the returned actual string in your model.
+Password fields use `(lui:text-field (lui:opt :password-p t))`.
+Use `:value password` when your application model owns the string.
 Built-in rendering, selection copying, accessibility text, and debugger values
 show one `*` per character. This is display masking, not encrypted storage;
 custom painters receive the original widget value.
