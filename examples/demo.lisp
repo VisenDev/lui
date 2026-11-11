@@ -20,7 +20,7 @@
   (selection 1)
   (split 0.35)
   (alignment :start)
-  (manual-x 10) (manual-y 3) (manual-reserve t) (manual-clicks 0)
+  (manual-x 10) (manual-y 3) (manual-clicks 0)
   (opacity 0.6)
   (frost 12)
   (radius 12)
@@ -138,7 +138,6 @@
                    :height (lui:fit))))
       (when (lui:button "Manual button"
               (lui:opt :id :manual-button :position (lui:make-point :x x :y y)
-                       :reserve-space-p (gallery-manual-reserve g)
                        :width (lui:fixed (lui:units 18))
                        :height (lui:fit)
                        :background "#308cc6" :foreground "#ffffff"))
@@ -147,12 +146,11 @@
        (lui:opt :id :manual-editor :default-value "Manual editor"
                 :position (lui:make-point :x (+ x (lui:units 20))
                                           :y (+ y (lui:units 4)))
-                :reserve-space-p (gallery-manual-reserve g)
                 :width (lui:fixed (lui:units 18))
                 :height (lui:fit))))))
 
 (defun positioning-controls (g)
-  (lui:label "Move the manual widgets; automatic siblings avoid their bounds.")
+  (lui:label "Move the manual widgets; automatic siblings keep their positions.")
   (lui:label (format nil "Manual X ~D / Y ~D; clicks ~D"
                      (round (gallery-manual-x g))
                      (round (gallery-manual-y g)) (gallery-manual-clicks g)))
@@ -161,11 +159,9 @@
                             :minimum 0 :maximum 36 :step 1 :width (lui:grow)))
         (gallery-manual-y g)
         (lui:slider (lui:opt :id :manual-y :value (gallery-manual-y g)
-                            :minimum 0 :maximum 12 :step 1 :width (lui:grow)))
-        (gallery-manual-reserve g)
-        (lui:checkbox "Reserve manual space"
-          (lui:opt :id :manual-reserve :value (gallery-manual-reserve g))))
-  (lui:label "Turn reservation off to allow overlap. Positions use surface coordinates.")
+                            :minimum 0 :maximum 12 :step 1
+                            :width (lui:grow))))
+  (lui:label "Manual widgets can overlap. Use a layout container to reserve space.")
   (positioning-scene g))
 
 (defun layout-page (g)
@@ -308,7 +304,7 @@
                       (lui:panel (lui:opt :width (lui:grow) :height (lui:grow)
                                           :opacity 1 :radius 0 :frost 0
                                           :background color)))))
-                (lui:column (:reserve-space-p nil
+                (lui:column (:position :absolute
                              :offset-x (lui:units 1) :offset-y
                     (lui:units 1)
                          :width (lui:percent 0.95))

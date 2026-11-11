@@ -128,11 +128,11 @@ the change and report material limitations instead of claiming untested support.
   logical client-surface coordinates. Explicit positions remain fixed under
   ancestor scrolling but obey ancestor clips. `lui:parent-scroll-position`
   returns the current parent's retained offsets for explicit compensation.
-- `:reserve-space-p` defaults to T, independently of position. Absolute
-  rectangles displace automatic direct siblings forward along their row or
-  column; there is no wrapping/backtracking. Fixed/grow bounds may overflow.
-  NIL excludes a child from flow sizing and reservation. Table tracks retain
-  shared widths; put manually positioned widgets inside cells.
+- `:position :absolute` uses parent-relative offsets and scrolls with content.
+  Both manual positioning forms are outside normal flow: they do not affect
+  sibling positions or FIT container sizes. There is no obstacle avoidance.
+  Use an automatic container to reserve space explicitly. Offsets on automatic
+  widgets shift their drawing without changing their normal flow slot.
 - Horizontal sizing precedes width-dependent measurement and vertical layout.
   Percentages exclude padding and inter-child gaps. Fixed sizes and minimum
   bounds may overflow rather than silently shrink.
@@ -192,7 +192,7 @@ benchmark targets. Scripts discover optional dependency checkouts under
 | ECL browser | `make web-ecl-build` / `make web-ecl-demo`; see ECL/WebAssembly setup below for the matching host and wasm toolchain |
 | Browser tests | `make test PLATFORM=web` or, after building, `python3 tests/web.py`; requires Playwright and Chromium |
 | Docs | `make docs-pages`; `make test-docs` checks extraction, examples, and offline browser behavior |
-| Manual-only demo | `make manual-demo` (or `PLATFORM=x11`, `terminal`, etc.); all widgets use explicit positions and no reservations; heights fit measured content |
+| Manual-only demo | `make manual-demo` (or `PLATFORM=x11`, `terminal`, etc.); all widgets use explicit positions outside normal flow; heights fit measured content |
 | Native executable | `make demo PLATFORM=x11` (or another backend); `RUN_ARGS=--smoke-test` renders one frame and exits |
 | Terminal | `make test PLATFORM=terminal`; `python3 tests/terminal.py --lisp sbcl` runs POSIX PTY checks |
 | Terminal parity | `make test-terminal-parity`; requires historical commit `16f79dd`, compares reconstructed styled cells and I/O against current layout/widgets/examples |

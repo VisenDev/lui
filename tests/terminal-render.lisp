@@ -11,7 +11,7 @@
             ""
             (lui:opt
               :id :background
-              :reserve-space-p nil
+              :position :absolute
               :disabled-p t
               :width (fixed 10)
               :height (fixed 3)
@@ -21,7 +21,7 @@
                   3))))
              (overlay (opacity)
                (emit (make-element
-                      :id :overlay :reserve-space-p nil :width (fixed 10)
+                      :id :overlay :position :absolute :width (fixed 10)
                       :height (fixed 3)
                       :content (make-widget :kind :highlight :opacity opacity
                                             :accent "#ff8c00")))))
@@ -44,7 +44,7 @@
 (fn test-terminal-overlap ()
   (let ((context (make-terminal-context)) (expected nil))
     (flet ((front ()
-             (lui.glass:panel (lui:opt :reserve-space-p nil :width (fixed 20)
+             (lui.glass:panel (lui:opt :position :absolute :width (fixed 20)
                                        :height (fixed 8) :padding 1)
                (lui.glass:label (format nil "Front~%Second~%Third")))))
       (with-frame (context 20 8) (front))

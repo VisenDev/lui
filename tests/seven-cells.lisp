@@ -36,7 +36,7 @@
                                (lui.frame::context-ids context))))
         (assert (context-next-frame context))
         (frame)
-        (assert (not (element-reserve-space-p
+        (assert (eq :absolute (element-position
                   (gethash (lui:widget-id (cell-id 0) context)
                     (lui.frame::context-ids context)))))
         (assert (eq :cell (lui.widgets:widget-kind (widget-at 0))))

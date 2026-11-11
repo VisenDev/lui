@@ -447,7 +447,7 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
 (defmacro opt (&rest forms &key width height padding gap align cross-align
                              id direction column-gap column-span
                              clip-p scroll-p scrollbar-p scrollbar-width
-                             position reserve-space-p offset-x offset-y
+                             position offset-x offset-y
                              interactive-p keyboard-focus-p pointer-focus-p
                              foreground background palette radius frost
                              minimum maximum step
@@ -458,19 +458,18 @@ NIL roles inherit enclosing colors; the parent scope is restored on exit."
                              placeholder password-p max-results selected-p
                 text value default-value)
   "Build widget options, preserving order, explicit NIL, and omitted keys.
-:POSITION defaults to :AUTOMATIC. A MAKE-POINT places the widget in logical
-window/client-surface coordinates, unaffected by ancestor scrolling. Ancestor
-clipping still applies. PARENT-SCROLL-POSITION exposes the current parent offset.
-:RESERVE-SPACE-P defaults to T. Absolute rectangles displace intersecting
-siblings forward along their row or column, regardless of declaration order.
-There is no wrapping or backtracking; bounded containers may overflow. Padding
-is inside the reserved rectangle; GAP separates displaced siblings. NIL permits
-overlap and excludes the widget from flow sizing. Table tracks retain their
-shared widths; place positioned widgets inside a cell rather than moving cells."
+:POSITION defaults to :AUTOMATIC, which participates in row/column layout.
+:ABSOLUTE uses :OFFSET-X/Y from the parent's padded content origin and scrolls
+with its content. A MAKE-POINT instead fixes the widget at logical client-surface
+coordinates, unaffected by ancestor scrolling. Ancestor clipping still applies.
+Both manual forms are outside normal flow: siblings and FIT container sizes
+ignore them. Reserve space with an automatic container when needed.
+PARENT-SCROLL-POSITION exposes the current parent's retained scroll offsets.
+Offsets on automatic widgets shift their drawing without changing their slot."
   (declare (ignore width height padding gap align cross-align
                    id direction column-gap column-span
                    clip-p scroll-p scrollbar-p scrollbar-width
-                   position reserve-space-p offset-x offset-y interactive-p
+                   position offset-x offset-y interactive-p
                    keyboard-focus-p pointer-focus-p foreground background
                    palette radius frost minimum maximum step font-size
                    font-family
@@ -725,7 +724,7 @@ Owned state is discarded when this widget is absent from a completed frame."
            (declare-panel
             *toolkit*
             (append options
-                    (opt :id id :reserve-space-p nil :opacity 1 :scroll-p t
+                    (opt :id id :position :absolute :opacity 1 :scroll-p t
                          :scrollbar-p nil :clip-p t :interactive-p t
                          :keyboard-focus-p nil :padding (units 1))
                     (toolkit-defaults)))))

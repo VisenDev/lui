@@ -54,6 +54,8 @@
             (detail (element-box (node-with-id context :docs-detail))))
         (assert (> (box-height list) 20))
         (assert (>= (box-x detail) (+ (box-x list) (box-width list)))))
+      (activate '(:docs-guide :positioning))
+      (assert (has-label context "Manual positioning"))
       (activate '(:docs-guide :previews))
       (dolist (kind '(:label :button :tab :checkbox :slider :text-field
                      :cell :list-item :gauge :canvas :panel))

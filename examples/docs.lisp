@@ -38,6 +38,15 @@
         (incf count)))))"
       "Control macros generate stable call-site IDs. In loops use OPT :id with a stable item key (numbers are valid), or WITH-KEY around a reusable group. Keys are combined with the call site and enclosing scope. Index keys follow positions; stable item keys follow reordered items. Duplicate resolved IDs are errors. Removing a widget for a completed frame releases its state; recompiling its call site creates a fresh identity."
       "lui:frame-time returns this frame's clock snapshot. lui:request-frame schedules another redraw, optionally after a delay in seconds. Prefer requesting a deadline for timers over a busy loop; idle windows redraw at :min-fps (default 1). Set :max-fps (default 240) on lui:run to cap active rendering. Input wakes the window and explicit deadlines support animations.")
+    (:positioning "Manual positioning"
+      "Automatic widgets participate in row or column layout. Manual widgets do not change sibling positions or FIT container sizes. Their content is still measured, so a button can fit its text without automatic placement. Run make manual-demo for a standalone example."
+      "Use :position :absolute with :offset-x and :offset-y for coordinates relative to the immediate parent's padded content origin. This form moves with ancestor scrolling. Use :position (lui:make-point :x x :y y) for fixed logical client-surface coordinates. Both forms obey ancestor clipping; parent-scroll-position exposes the current parent's scroll offsets for explicit compensation."
+      "To reserve space, give an ordinary automatic container a size and put manual widgets inside it. Moving a manual child does not change that reserved space."
+      "(lui:column (:height (lui:fixed (lui:units 8)))
+  (lui:button \"Manual inside a reserved region\"
+    (lui:opt :position :absolute
+             :offset-x (lui:units 2) :offset-y (lui:units 1))))
+(lui:label \"I follow the reserved region\")")
     (:widgets "Controls and options"
       "Buttons return true when activated. Value controls return their value and a changed flag; their resolved ID is the third value. With OPT :value, assign the returned value back to your model. With :default-value or no value option, LUI retains it. Tabs, cells, and list items accept :selected-p for visible selection. Panels contain other declarations."
      "(lui:panel (lui:opt :padding (lui:units 1))
@@ -205,7 +214,7 @@
                   105))
                                (case (first guide)
                                  (:start "Start") (:debug "Debugger")
-                                 (:frames "Frames")
+                                 (:frames "Frames") (:positioning "Positioning")
                                  (:widgets "Controls") (:layout "Layout")
                                  (:toolkits "Toolkits") (:input "Input")
                                  (:backends "Backends"))

@@ -186,13 +186,11 @@
                 (list "Alignment" (format nil "main ~A; cross ~A"
                                           (element-align node)
                                           (element-cross-align node))))
-              (when (or (consp (element-position node))
-                        (not (element-reserve-space-p node))
+              (when (or (not (eq (element-position node) :automatic))
                         (not (zerop (element-offset-x node)))
                         (not (zerop (element-offset-y node))))
-                (list "Position" (format nil "~A; reserves ~A; offset ~A / ~A"
+                (list "Position" (format nil "~A; offset ~A / ~A"
                                          (element-position node)
-                                         (element-reserve-space-p node)
                                          (element-offset-x node)
                                          (element-offset-y node))))
               (when (or (element-clip-p node) (element-scroll-p node)
@@ -281,7 +279,7 @@
   "Declare a noninteractive overlay around the selected application's element."
   (when (and (plusp (box-width box)) (plusp (box-height box)))
     (emit (make-element
-           :id (id name) :reserve-space-p nil :offset-x (box-x box)
+           :id (id name) :position :absolute :offset-x (box-x box)
            :offset-y (box-y box) :width (fixed (box-width box))
            :height (fixed (box-height box))
            :content (make-widget :kind :highlight :style (lui:current-toolkit)
@@ -317,7 +315,7 @@
     ((state debugger-state) (width real) (step real) (index integer)
      (entry entry) (node element) (key list))
   "Declare one visible debugger tree row with indentation, collapse control, and selection."
-  (row (:reserve-space-p nil :offset-y (* index step)
+  (row (:position :absolute :offset-y (* index step)
                     :width (grow) :height (fixed
                                            step)
                     :gap (units 0.25f0) :cross-align
@@ -436,7 +434,7 @@
   (let ((size (units 1)))
     (emit (make-element
            :id (id :resize) :interactive-p t :pointer-focus-p t
-           :reserve-space-p nil
+           :position :absolute
            :offset-y (lui.frame:context-page-top *context*)
            :offset-x (max 0 (- (context-width *context*) width (/ size 2)))
            :width (fixed size) :height (fixed
@@ -557,7 +555,7 @@
   "Declare the debugger overlay, tree, resize controls, and optional details."
   (when (activated-p (id :close-details)) (close-details state))
   (lui:panel (lui:opt :id (id :debugger) :interactive-p t
-                      :keyboard-focus-p nil :reserve-space-p nil
+                      :keyboard-focus-p nil :position :absolute
                       :offset-y (lui.frame:context-page-top *context*)
                       :offset-x (- (context-width *context*) width)
                       :width (fixed width)

@@ -467,7 +467,7 @@ class WebTests(unittest.TestCase):
           (lui.frame:column (:width (lui.layout:fixed 240))
             (lui:label "Under the popup")
             (when (zerop *web-test-clicks*)
-              (when (lui:button "Dismiss" (lui:opt :id :popup :reserve-space-p nil :width (lui.layout:grow)))
+              (when (lui:button "Dismiss" (lui:opt :id :popup :position :absolute :width (lui.layout:grow)))
                 (incf *web-test-clicks*))))''')
         label = self.page.locator(host).get_by_text("Under the popup", exact=True)
         expect(label).to_have_count(0)
@@ -764,13 +764,10 @@ class WebTests(unittest.TestCase):
         self.frames()
         manual = self.widget(id=":MANUAL-BUTTON")
         automatic = self.widget(id="(:AUTOMATIC 0)")
-        self.assertGreaterEqual(automatic["y"], manual["y"] + manual["height"])
+        self.assertLess(automatic["y"], manual["y"])
         self.click_widget(id=":MANUAL-BUTTON")
         self.widget(text="Manual X 10 / Y 3; clicks 1")
         self.replace_text(":MANUAL-EDITOR", "Retained manual text")
-        self.click_widget(id=":MANUAL-RESERVE")
-        unreserved = self.widget(id="(:AUTOMATIC 0)")
-        self.assertLess(unreserved["y"], automatic["y"])
         slider = self.widget(id=":MANUAL-X")
         canvas = self.page.locator("main canvas").bounding_box()
         self.page.mouse.click(canvas["x"] + slider["x"] + slider["width"] * .8,
@@ -779,8 +776,7 @@ class WebTests(unittest.TestCase):
         moved = self.widget(id=":MANUAL-BUTTON")
         self.assertGreater(moved["x"], manual["x"])
         self.assertEqual(self.text_value(":MANUAL-EDITOR"), "Retained manual text")
-        self.click_widget(id=":MANUAL-RESERVE")
-        self.assertEqual(self.widget(id="(:AUTOMATIC 0)")["y"], unreserved["y"])
+        self.assertEqual(self.widget(id="(:AUTOMATIC 0)")["y"], automatic["y"])
         self.page.screenshot(path=str(ROOT / "build/manual-placement.png"))
 
     def test_gallery_persistence_and_toolkit_pixels(self):

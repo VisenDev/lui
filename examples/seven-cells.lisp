@@ -131,7 +131,7 @@
       :id text
       :width (lui:fixed width)
       :height (lui:fixed height)
-      :reserve-space-p nil
+      :position :absolute
       :offset-x x
       :offset-y y
       :disabled-p t
@@ -148,7 +148,7 @@
           :value (state-draft state)
           :width (lui:fixed width)
                                      :height (lui:fixed height)
-          :reserve-space-p nil
+          :position :absolute
           :offset-x x
           :offset-y y
           :radius 0
@@ -163,7 +163,7 @@
         :id (cell-id index)
         :width (lui:fixed width)
         :height (lui:fixed height)
-        :reserve-space-p nil
+        :position :absolute
         :offset-x x
         :offset-y y
                          :selected-p (= index (state-selected state))))))
@@ -252,7 +252,7 @@
               (lui:column (:width (lui:fixed (max 0 (- view-width header)))
                               :height (lui:fixed (max 0 (- view-height
                           height)))
-                              :reserve-space-p nil :offset-x (+ x header)
+                              :position :absolute :offset-x (+ x header)
                               :offset-y (+ y height) :clip-p t)
                 (do ((row first-row (1+ row))) ((>= row last-row))
                   (do ((column first-column (1+ column)))

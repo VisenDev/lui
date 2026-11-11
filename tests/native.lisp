@@ -737,7 +737,7 @@
                  (lui:text-field (lui:opt :id :field :value value))
                  (case cover
                    (:button
-                    (column (:reserve-space-p nil)
+                    (column (:position :absolute)
                        (when
                     (lui.glass:button
                       "Covered"
@@ -747,7 +747,7 @@
                                                       :height (fixed 50)))
                         (incf clicked))))
                    (:panel
-                    (lui.glass:panel (lui:opt :reserve-space-p nil
+                    (lui.glass:panel (lui:opt :position :absolute
                                             :width (fixed 150)
                                               :height (fixed 50)))))))
              (frame (&rest events)
@@ -932,7 +932,6 @@
             (lui:opt :width (fixed 80)
                      :position (if manual (make-point :x 20 :y 30)
                                    :automatic)
-                     :reserve-space-p (not manual)
                      :height (if manual (fit) (fixed 50))))))
       (setf position nil)
       (paint-frame renderer context)

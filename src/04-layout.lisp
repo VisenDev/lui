@@ -3,7 +3,6 @@
   (:export #:sizing-kind #:sizing-value #:sizing-minimum
            #:sizing-maximum
            #:make-point #:position-spec #:element-position
-           #:element-reserve-space-p
            #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
            #:fixed #:percent #:box #:box-x #:box-y
            #:box-width #:box-height #:box-right #:box-bottom #:make-box
@@ -33,8 +32,8 @@ keep compound IDs stable and do not mutate them after declaration."
 
 (deftype point () "An X/Y coordinate pair." '(cons real real))
 (deftype position-spec ()
-  "Automatic flow placement or an absolute X/Y pair in surface coordinates."
-  '(or (eql :automatic) point))
+  "Automatic flow, parent-relative absolute placement, or a fixed surface X/Y pair."
+  '(or (member :automatic :absolute) point))
 
 (fn (make-point point) (&key ((x real) 0) ((y real) 0))
   "Return an X/Y pair in logical window/client-surface coordinates."
@@ -101,7 +100,7 @@ keep compound IDs stable and do not mutate them after declaration."
 
 (defstruct element
   "One layout declaration with children, sizing, solved geometry, and clip state.
-Explicit positions are surface coordinates; offsets apply to automatic placement."
+Point positions are fixed surface coordinates. :ABSOLUTE uses parent-relative offsets."
   (id nil :type object-id)
   content
   (children (make-array 0 :element-type 'element :adjustable t :fill-pointer
@@ -133,10 +132,8 @@ Explicit positions are surface coordinates; offsets apply to automatic placement
   (scroll-y 0 :type real)
   (scroll-limit-y 0 :type real)
   popup-anchor popup-reveal
-  ;; Explicit positions do not scroll with ancestors. Padding is internal.
+  ;; Point positions stay fixed; :ABSOLUTE offsets scroll with the parent.
   (position :automatic :type position-spec)
-  ;; Reserve the actual rectangle for siblings; NIL permits overlaps.
-  (reserve-space-p t :type boolean)
   (offset-x 0 :type real)
   (offset-y 0 :type real))
 
@@ -195,11 +192,10 @@ This changes the solved dimension, not the sizing policy."
 
 (fn (flow-element-p boolean) ((node element))
   "Whether NODE consumes an automatic row/column slot."
-  (and (eq (element-position node) :automatic)
-       (element-reserve-space-p node)))
+  (eq (element-position node) :automatic))
 
 (fn (flow-children (vector element)) ((node element))
-  "Return NODE's automatic, space-reserving children in declaration order."
+  "Return NODE's automatic children in declaration order."
   (remove-if-not #'flow-element-p (element-children node)))
 
 (fn (content-size real) ((node element) (axis symbol))
@@ -208,7 +204,7 @@ This changes the solved dimension, not the sizing policy."
      (if (eq axis :x) (scroll-gutter node) 0)))
 
 (fn (total-child-gap real) ((node element))
-  "Return the total gap space between NODE's automatic, space-reserving children."
+  "Return the total gap space between NODE's automatic children."
   (* (element-gap node)
      (max 0 (1- (count-if #'flow-element-p
                               (element-children node))))))
@@ -442,94 +438,14 @@ Horizontal table layout uses the shared column widths measured earlier."
   "Return the start, center, or end offset within nonnegative spare SPACE."
   (* (max 0 space) (ecase alignment (:start 0) (:center 0.5f0) (:end 1))))
 
-(fn (boxes-overlap-p boolean) ((a box) (b box))
-  "Test positive-area rectangle intersection; touching edges are not overlap."
-  (and (< (box-x a) (box-right b)) (< (box-x b) (box-right a))
-       (< (box-y a) (box-bottom b)) (< (box-y b) (box-bottom a))
-       (plusp (box-width a)) (plusp (box-height a))
-       (plusp (box-width b)) (plusp (box-height b))))
-
-(fn (reserved-boxes (vector box)) ((node element))
-  "Collect absolute sibling obstacles before placing any automatic children."
-  (let ((boxes nil))
-    (do-children (child node)
-      (let ((position (element-position child)))
-        (when (and (consp position) (element-reserve-space-p child))
-          (push (make-box :x (car position) :y (cdr position)
-                          :width (box-width (element-box child))
-                          :height (box-height (element-box child))) boxes))))
-    (if boxes
-        (make-array (length boxes) :element-type 'box :initial-contents boxes)
-        #())))
-
-(fn (avoid-reserved-boxes real)
-    ((candidate box) (obstacles (vector box)) (row boolean) (gap real))
-  "Move CANDIDATE forward past intersecting obstacles; return displacement.
-Each pass moves beyond at least one obstacle, independent of declaration order."
-  (let ((start (if row (box-x candidate) (box-y candidate))))
-    (dotimes (pass (length obstacles))
-      (let ((moved nil))
-        (loop :for obstacle :across obstacles :do
-          (when (boxes-overlap-p candidate obstacle)
-            (if row (setf (box-x candidate) (+ (box-right obstacle) gap))
-                (setf (box-y candidate) (+ (box-bottom obstacle) gap)))
-            (setf moved t)))
-        (unless moved (return))))
-    (- (if row (box-x candidate) (box-y candidate)) start)))
-
-(fn (place-child real)
-    ((child element) (x real) (y real) (dx real) (dy real)
-     (obstacles (vector box)) (row boolean) (gap real))
-  "Assign CHILD's position and return additional flow space used by obstacles."
-  (let ((box (element-box child)) (position (element-position child)))
-    (cond
-      ((consp position)
-       (setf (box-x box) (car position) (box-y box) (cdr position)) 0)
-      (t
-       (setf (box-x box) (- x dx) (box-y box) (- y dy))
-       (let ((extra (if (flow-element-p child)
-                        (avoid-reserved-boxes box obstacles row gap) 0)))
-         (incf (box-x box) dx)
-         (incf (box-y box) dy)
-         extra)))))
-
-(fn (fit-reserved-content (values))
-    ((node element) (dx real) (dy real))
-  "Expand FIT containers to include reserved content, respecting size bounds."
-  (dolist (axis '(:x :y))
-    (let* ((rule (element-sizing-on-axis node axis))
-           (horizontal (eq axis :x))
-           (bounds (element-box node))
-           (origin (- (if horizontal (box-x bounds) (box-y bounds))
-                      (if horizontal dx dy)))
-           (extent (element-size-on-axis node axis)))
-      (when (eq (sizing-kind rule) :fit)
-        (do-children (child node)
-          (when (element-reserve-space-p child)
-            (let* ((box (element-box child))
-                   (scroll (if (consp (element-position child)) 0
-                               (if horizontal dx dy)))
-                   (edge (- (if horizontal (box-right box) (box-bottom box))
-                            scroll origin)))
-              (setf extent (max extent (+ edge (element-padding node)))))))
-        (setf (element-size-on-axis node axis)
-              (clamp-size-to-bounds rule extent)))))
-  (values))
-
-(fn (position-elements boolean)
-    ((node element) &optional ((dx real) 0) ((dy real) 0)
-     ((root-p boolean) nil))
-  "Place children without overlaps; return whether this subtree reserves positions."
+(fn (position-elements (values)) ((node element))
+  "Position descendants using solved sizes and alignment; manual children do not advance flow."
   (let* ((bounds (element-box node))
          (padding (element-padding node))
          (row (eq (element-direction node) :row))
          (axis (if row :x :y))
          (cross (if row :y :x))
          (available (content-size node cross))
-         (obstacles (reserved-boxes node))
-         (reserved (plusp (length obstacles)))
-         (dx (+ dx (element-scroll-x node)))
-         (dy (+ dy (element-scroll-y node)))
          (used (let ((size 0) (count 0))
                  (do-children (child node)
                    (when (flow-element-p child)
@@ -539,7 +455,8 @@ Each pass moves beyond at least one obstacle, independent of declaration order."
          (cursor (alignment-offset (element-align node)
                                    (- (content-size node axis) used))))
     (do-children (child node)
-      (let ((x (+ (box-x bounds) padding (element-offset-x child)))
+      (let ((box (element-box child))
+            (x (+ (box-x bounds) padding (element-offset-x child)))
             (y (+ (box-y bounds) padding (element-offset-y child))))
         (when (flow-element-p child)
           (let ((offset (alignment-offset (element-cross-align node)
@@ -547,24 +464,15 @@ Each pass moves beyond at least one obstacle, independent of declaration order."
                                              (element-size-on-axis child
                                                                    cross)))))
             (incf x (if row cursor offset))
-            (incf y (if row offset cursor))))
-        (incf cursor (place-child child x y dx dy obstacles row
-                                  (element-gap node)))
-        (unless (zerop (length (element-children child)))
-          (when (if (consp (element-position child))
-                    (position-elements child)
-                    (position-elements child dx dy))
-            (setf reserved t)))
-        (when (flow-element-p child)
+            (incf y (if row offset cursor)))
           (incf cursor (+ (element-size-on-axis child axis)
-                          (element-gap node))))))
-    (when (and reserved (not root-p)) (fit-reserved-content node dx dy))
-    reserved))
-
-(fn (has-absolute-position-p boolean) ((node element))
-  "Whether NODE's subtree includes a surface-positioned element."
-  (or (consp (element-position node))
-      (some #'has-absolute-position-p (element-children node))))
+                          (element-gap node))))
+        (let ((position (element-position child)))
+          (setf (box-x box) (if (consp position) (car position) x)
+                (box-y box) (if (consp position) (cdr position) y)))
+        (unless (zerop (length (element-children child)))
+          (position-elements child)))))
+  (values))
 
 (defvar *popup-viewport* nil
   "Visible page bounds used to constrain popups during SOLVE; NIL otherwise.")
@@ -585,17 +493,14 @@ With PAGE-TOP, HEIGHT is the minimum page height and popups stay in the viewport
   (resolve-child-sizes root :y)
   (setf (box-x (element-box root)) 0
         (box-y (element-box root)) 0)
-  (position-elements root 0 0 t)
+  (position-elements root)
   (let ((*popup-viewport* (when page-top
                             (make-box
                              :y (min page-top
                                      (- (element-size-on-axis root :y)
                                         height))
                              :width width :height height))))
-    (clip-elements root (element-box root) 0 0)
-    (when (has-absolute-position-p root)
-      (position-elements root 0 0 t)
-      (clip-elements root (element-box root) 0 0)))
+    (clip-elements root (element-box root) 0 0))
   root)
 
 (fn (intersect-boxes box) ((a box) (b box))

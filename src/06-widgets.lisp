@@ -186,7 +186,7 @@ An optional terminal-label callback overrides the standard kind-based label."
 (fn (declare-widget boolean)
     ((kind symbol) (style symbol) (id object-id) (text string) &key
      ((width sizing) (fit)) ((height sizing) (fit)) ((padding real) 0)
-     ((position position-spec) :automatic) ((reserve-space-p boolean) t)
+     ((position position-spec) :automatic)
      ((offset-x real) 0) ((offset-y real) 0)
      ((foreground string) "#ffffff") ((background string) "#303040")
      ((radius real) 12) ((frost real) 12) ((value t) nil) ((minimum real) 0)
@@ -225,7 +225,7 @@ Most applications should use the public LUI controls with LUI:OPT instead."
           :accessible-name accessible-name)))
     (emit (make-element
            :id id :content widget :width width :height height :padding padding
-           :position position :reserve-space-p reserve-space-p
+           :position position
            :offset-x offset-x :offset-y offset-y
            :interactive-p (and (not disabled-p)
                                (not (or (eq kind :label) (eq kind :gauge))))
@@ -659,7 +659,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
            (node (make-element
                   :id id :box box :clip (intersect-boxes box
                                                          (element-clip owner))
-                  :reserve-space-p nil :interactive-p t :pointer-focus-p t
+                  :position :absolute :interactive-p t :pointer-focus-p t
                   :content
                   (make-widget
                    :kind :scrollbar :style (widget-style widget)
