@@ -49,7 +49,10 @@
                   (context (make-render-context renderer)))
              (with-frame (context width height) (funcall draw))
              (pdf:with-document (:title title)
-               (pdf:with-page (:bounds (vector 0 0 width height))
+               (pdf:with-page
+                   (:bounds (make-array 4 :element-type 'real
+                                         :initial-contents
+                                         (list 0 0 width height)))
                  (pdf:translate 0 height)
                  (pdf:scale 1 -1)
                  (let ((rgba (color-components background)))

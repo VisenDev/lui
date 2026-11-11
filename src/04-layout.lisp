@@ -96,7 +96,7 @@ Floating children use offsets; interactive nodes participate in input routing."
   (column-span 1 :type (integer 1 *))
   (column-gap 0 :type real)
   ;; Intrinsic column widths shared by every row of a table.
-  tracks
+  (tracks nil :type (or null (vector real)))
   (gap 0 :type real)
   (padding 0 :type real)
   (align :start :type (member :start :center :end))
@@ -199,8 +199,9 @@ Measure single-column cells first, then spread spanning cells' deficits equally.
       (setf (element-gap row) gap)
       (setf count (max count (loop :for cell :across (element-children row)
                                    :sum (element-column-span cell)))))
-    (let ((tracks (make-array count :initial-element 0))
-          (spans (make-array (1+ count) :initial-element nil)))
+    (let ((tracks (make-array count :element-type 'real :initial-element 0))
+          (spans (make-array (1+ count) :element-type 'list
+                             :initial-element nil)))
       (do-children (row table)
         (loop :with start := 0 :for cell :across (element-children row)
               :for span := (element-column-span cell)

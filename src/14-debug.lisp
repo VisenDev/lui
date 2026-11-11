@@ -21,7 +21,8 @@
   (width nil :type (or null real)) (grab nil :type (or null real))
   (collapsed (make-hash-table :test 'equal) :type hash-table)
   (nodes (make-hash-table :test 'equal) :type hash-table)
-  (rows (make-array 0 :adjustable t :fill-pointer 0) :type vector))
+  (rows (make-array 0 :element-type 'entry :adjustable t :fill-pointer 0)
+        :type (vector entry)))
 (fn (id list) (name &optional key)
   "Construct a debugger-owned widget ID from NAME and optional KEY."
   (list
@@ -293,8 +294,8 @@
   (request-frame))
 
 (fn (reveal-selection real)
-    ((state debugger-state) (rows vector) (step (real 0 *)) (height real)
-     (offset real))
+    ((state debugger-state) (rows (vector entry)) (step (real 0 *))
+     (height real) (offset real))
   "Scroll the tree enough to reveal the selected debugger row."
   (when (debugger-state-reveal-selection-p state)
     (setf (debugger-state-reveal-selection-p state) nil)

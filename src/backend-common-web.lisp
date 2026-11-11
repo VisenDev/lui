@@ -626,6 +626,8 @@
   (:import-from #:jscl/ffi #:clbool #:jsstring #:new #:oget))
 (in-package #:lui.web)
 
+(defstruct dom-widget key element text style state geometry hidden-p)
+
 (defstruct web-app
   #+lui-ecl-web (ffi-owner nil :type list)
   host stage overlay canvas graphics renderer context callback cleanup
@@ -633,7 +635,9 @@
   scrollport (scroll-listener nil :type (or null function)) (viewport-offset
                                                              0)
   (scroll-delta 0) (velocity 0) (scroll-time 0)
-  (overlay-order #() :type vector) overlay-geometry overlay-cache
+  (overlay-order (make-array 0 :element-type 'dom-widget)
+                 :type (vector dom-widget))
+  overlay-geometry overlay-cache
   animation-frame deadline-timer events pending-p (alive-p t))
 
 (fn (page-scrollport t) (host)
@@ -832,8 +836,6 @@
           (setf (web-app-deadline-timer app)
                 (#j:setTimeout (lambda () (refresh app))
                                (ceiling (* delay 1000))))))))
-
-(defstruct dom-widget key element text style state geometry hidden-p)
 
 (defparameter *overlay-cache-limit* 32)
 
@@ -1378,7 +1380,8 @@
        #j"scroll" (web-app-scroll-listener app)))
     (funcall (web-app-cleanup app))
     (lui.font:close-font (renderer-font (web-app-renderer app)))
-    (setf (web-app-overlay-order app) #()
+    (setf (web-app-overlay-order app)
+          (make-array 0 :element-type 'dom-widget)
           (web-app-overlay-cache app) nil
           (web-app-overlay-geometry app) nil)
     ((oget (web-app-stage app) "remove"))

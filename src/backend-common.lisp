@@ -25,7 +25,8 @@
     "A browser font face with a Canvas context for measuring text."
     loader
     owner
-    (faces (make-array 4 :initial-element nil))
+    (faces (make-array 4 :element-type '(or null font) :initial-element nil)
+           :type (vector (or null font) 4))
     (size 16)
     (family :sans-serif)
     (weight :normal)
@@ -127,7 +128,8 @@
     "An open TrueType face, its pixel size, and cached glyph outlines."
     loader
     owner
-    (faces (make-array 4 :initial-element nil) :type simple-vector)
+    (faces (make-array 4 :element-type '(or null font) :initial-element nil)
+           :type (vector (or null font) 4))
     (size 16 :type real)
     (cache (make-hash-table) :type hash-table))
 

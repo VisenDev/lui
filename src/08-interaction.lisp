@@ -24,7 +24,8 @@
     (setf (gethash id (context-events *context*)) nil)))
 
 (fn (event-targets (vector t)) ()
-  "Return a vector of control IDs with unconsumed events in the current frame."
+  "Return a vector of control IDs with unconsumed events in the current frame.
+ID types are unrestricted and may differ between vector elements."
   (let ((ids nil))
     (maphash (lambda (id events) (when events (push id ids)))
              (context-events *context*))

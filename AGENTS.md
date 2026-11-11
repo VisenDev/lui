@@ -17,6 +17,8 @@ APIs and platform support; historical measurements are not current guarantees.
 - Use structures with typed slots and `lui.fn:fn` with explicit return types for
   implementation functions. Do not reintroduce `destruct*` or an alternate
   structure API; use standard `defstruct`.
+- Use precise vector element types in declarations and constructors. Keep T
+  only for genuinely heterogeneous contents, such as unrestricted widget IDs.
 - Collection APIs use vectors with declared element types: wrapped strings,
   events, layout children, contours, and colors. Configuration plists, control
   alists, Lisp forms, and internal pending-event queues can remain lists.

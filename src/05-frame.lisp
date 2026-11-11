@@ -44,6 +44,7 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
   (y 0 :type real))
 
 (defstruct scroll-motion
+  ;; IDs intentionally accept mixed types, including application-defined keys.
   (path #() :type (vector t))
   (remaining 0 :type real)
   (time 0 :type real)
@@ -354,7 +355,8 @@ Native key translators use this to interpret a key after a batched click or Tab.
       context))
 
 (fn (scroll-path (vector t)) ((context context) (x real) (y real))
-  "Collect scrollable ancestors under X/Y for nested wheel propagation."
+  "Collect scrollable ancestor IDs under X/Y for nested wheel propagation.
+IDs may mix symbols, numbers, strings, and compound or application-defined keys."
   ;; Follow the painted hit path, deepest scroller first.
   (let ((scrollers nil))
     (labels ((visit (node parents)
@@ -369,7 +371,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
                 scrollers)))
 
 (fn (scroll-along real) ((context context) (path (vector t)) (amount real))
-  "Apply a scroll delta along PATH and return the amount actually consumed."
+  "Apply a scroll delta along the heterogeneous ID PATH; return the amount consumed."
   ;; Bubble the unused portion outward, including during the animated tail.
   (let ((requested amount))
     (loop :for id :across path :do
@@ -443,7 +445,8 @@ Native key translators use this to interpret a key after a batched click or Tab.
   (setf (gethash id (context-activated context)) t))
 
 (fn (activated-ids (vector t)) (&optional ((context context) *context*))
-  "Return active widget IDs in input order, including repeated activations."
+  "Return active widget IDs in input order, including repeated activations.
+ID types are unrestricted and may differ between vector elements."
   (let ((ids (remove-if-not (lambda (id) (gethash id (context-activated
                                                       context)))
                             (context-activation-order context))))
