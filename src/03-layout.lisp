@@ -23,16 +23,24 @@
 (deftype contour () "A vector of ordered polygon points." '(vector point))
 (deftype contours () "A vector of polygon contours." '(vector contour))
 
-(defstruct (sizing (:constructor %sizing (kind value minimum maximum)))
+(defstruct sizing
   "Axis sizing policy with a kind, value, minimum, and optional maximum."
+  ;; :FIT measures content; :GROW shares remaining space; :FIXED and :PERCENT
+  ;; use VALUE. The FIT, GROW, FIXED, and PERCENT helpers check their inputs.
   (kind :fit :type (member :fit :grow :fixed :percent))
+  ;; Backend coordinates for :FIXED, a fraction in [0, 1] for :PERCENT,
+  ;; and unused (conventionally zero) for :FIT and :GROW.
   (value 0 :type real)
+  ;; Nonnegative lower bound in backend coordinates. For :FIXED, both bounds
+  ;; equal VALUE so the requested size cannot shrink or grow.
   (minimum 0 :type real)
+  ;; NIL means no upper bound; otherwise this must be at least MINIMUM.
   (maximum nil :type (or null real)))
 
 (fn (checked-size sizing) ((kind symbol) (value real) (minimum real) maximum)
   (assert (and (>= minimum 0) (or (null maximum) (>= maximum minimum))))
-  (%sizing kind value minimum maximum))
+  (make-sizing :kind kind :value value
+               :minimum minimum :maximum maximum))
 
 (fn (fit sizing) (&optional ((minimum real) 0) maximum)
   "Size to measured content, bounded by MINIMUM and optional MAXIMUM."
