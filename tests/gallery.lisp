@@ -80,7 +80,23 @@
       (frame (make-event :kind :activate :id :debugger-toggle))
       (assert (lui.debug:debugger-enabled-p context)))))
 
+(defun test-manual-demo ()
+  (let ((context (make-test-context))
+        (draw (lui.example.manual-demo:make-demo)) (*unit* 1))
+    (dolist (size '((80 24) (100 60)))
+      (with-frame (context (first size) (second size)) (funcall draw))
+      (let ((children (element-children (context-root context))))
+        (assert (= 10 (length children)))
+        (loop :for child :across children :do
+          (assert (consp (element-position child)))
+          (assert (not (element-reserve-space-p child)))
+          (assert (eq :fixed (sizing-kind (element-width child))))
+          (assert (eq :fixed (sizing-kind (element-height child))))))
+    (assert (visible-text-p context "Click me"))
+    (assert (visible-text-p context "Move me; text stays")))))
+
 (defun run-tests ()
+  (test-manual-demo)
   (test-independent-demos)
   (test-header-controls)
   (let ((context (make-test-context))

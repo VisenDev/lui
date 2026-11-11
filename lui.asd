@@ -71,8 +71,12 @@
                              (:file "seven")
                              (:file "demo")))))
 
+(defsystem "lui/manual-demo"
+  :depends-on ("lui/core")
+  :components ((:module "examples" :components ((:file "manual-demo")))))
+
 (defsystem "lui/tests"
-  :depends-on ("lui/demo")
+  :depends-on ("lui/demo" "lui/manual-demo")
   :serial t
   :components ((:module "tests"
                 :serial t

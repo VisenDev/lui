@@ -40,6 +40,7 @@
 (load "examples/seven-cells.lisp")
 (load "examples/seven.lisp")
 (load "examples/demo.lisp")
+(load "examples/manual-demo.lisp")
 (load "tests/gallery.lisp")
 (lui.tests.gallery:run-tests)
 
