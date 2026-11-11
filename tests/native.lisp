@@ -454,6 +454,43 @@
       (paint)
       (assert (member '("#ff5500" 1 2) calls :test #'equal)))))
 
+(defun test-pressed-control-painting (font)
+  ;; Exercise the real press frame, including strict BOOLEAN bevel callbacks.
+  (let* ((paint-count 0)
+         (renderer
+           (make-renderer
+            :font font :clip (constantly nil)
+            :polygons (lambda (&rest args)
+                        (declare (ignore args)) (incf paint-count))))
+         (context (make-render-context renderer)))
+    (dolist (style '(:qt :motif :macos :glass :garnet))
+      (dolist (kind '(:button :tab :checkbox))
+        (dolist (disabled '(nil t))
+          (dolist (value '(nil :selected))
+            (flet ((draw ()
+                     (lui.widgets:declare-widget
+                      kind style :control "Control" :value value
+                      :disabled-p disabled
+                      :width (fixed 160) :height (fixed 40))))
+              (with-frame (context 200 80) (draw))
+              (with-frame (context 200 80
+                           :events (list (make-event :kind :press
+                                          :button :primary :id :control
+                                          :x 10 :y 10)))
+                (draw))
+              (assert (eq (context-active context)
+                          (unless disabled :control)))
+              (setf paint-count 0)
+              (paint-frame renderer context)
+              (assert (plusp paint-count))
+              (with-frame (context 200 80
+                           :events (list (make-event :kind :release
+                                          :button :primary :id :control
+                                          :x 10 :y 10)))
+                (draw))
+              (assert (null (context-active context)))
+              (paint-frame renderer context))))))))
+
 (defun test-motif-states (font)
   (let* ((calls nil)
          (renderer
@@ -1085,6 +1122,7 @@
            (test-panel-painting font)
            (test-custom-toolkit font)
            (test-button-feedback font)
+           (test-pressed-control-painting font)
            (test-button-text-centering font)
            (test-motif-states font)
            (test-macos-surfaces font)

@@ -1306,7 +1306,7 @@
            1)
     (unless (or translucent (and flat (widget-value widget)))
       (funcall bevel renderer widget indicator
-               (or pressed (widget-value widget)) disabled))
+               (or pressed (not (null (widget-value widget)))) disabled))
     (when (widget-value widget)
       (funcall
        (renderer-polygons renderer)
@@ -1363,7 +1363,8 @@
         (unless (member kind '(:checkbox :radio))
           (funcall bevel renderer widget box
                    (or (eq kind :text-field)
-                       (and pressed (member kind '(:button :tab))))
+                       (and pressed
+                            (not (null (member kind '(:button :tab))))))
                    disabled))))
   (values))
 
