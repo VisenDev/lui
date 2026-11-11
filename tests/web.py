@@ -5,6 +5,8 @@ Run: python tests/web.py (requires Playwright and Chromium).
 """
 
 import functools
+import os
+import re
 import http.server
 from pathlib import Path
 import shutil
@@ -14,6 +16,7 @@ import unittest
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
+WEB_PAGE = os.environ.get("LUI_WEB_PAGE", "/examples/web.html")
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -45,7 +48,7 @@ class WebTests(unittest.TestCase):
         self.page = self.browser.new_page(viewport={"width": 900, "height": 700})
         self.errors = []
         self.page.on("pageerror", lambda error: self.errors.append(str(error)))
-        self.page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+        self.page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
         self.page.wait_for_function("""() => {
             const c = document.querySelector('main canvas');
             return c && c.luiApp && c.width > 0;
@@ -59,11 +62,11 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.errors, [])
 
     def lisp(self, source):
-        self.page.evaluate("source => { jscl.evaluateString(source); }",
+        self.page.evaluate("source => { (window.luiEvaluate || jscl.evaluateString)(source); }",
                            "(progn " + source + ")")
 
     def number(self, expression):
-        self.lisp(f'(setf (jscl/ffi:oget #j:window "testNumber") {expression})')
+        self.lisp(f'(setf (lui.js:property (lui.js:global "window") "testNumber") {expression})')
         return self.page.evaluate("window.testNumber")
 
     def frames(self):
@@ -74,9 +77,9 @@ class WebTests(unittest.TestCase):
         """Snapshot solved widget geometry and model values, never widget DOM."""
         self.page.evaluate("s => {window.testCanvas = document.querySelector(s+' canvas');}", host)
         self.lisp('''
-          (let* ((app (jscl/ffi:oget #j:window:testCanvas "luiApp"))
+          (let* ((app (lui.web::canvas-app (lui.js:property (lui.js:global "window") "testCanvas")))
                  (context (lui.web::web-app-context app))
-                 (result (jscl/ffi:new #j:Array)))
+                 (result (lui.js:new (lui.js:global "Array"))))
             (when (lui.frame:context-root context)
               (lui.layout:walk-elements (lui.frame:context-root context)
                 (lambda (node)
@@ -84,31 +87,30 @@ class WebTests(unittest.TestCase):
                         (box (lui.layout:element-box node))
                         (clip (lui.layout:element-clip node)))
                     (when (lui.widgets:widget-p widget)
-                      (let ((item (jscl/ffi:new #j:Object)))
+                      (let ((item (lui.js:new (lui.js:global "Object"))))
                         (setf
-                          (jscl/ffi:oget item "id")
-                          (jscl/ffi:jsstring
-                            (prin1-to-string (lui.layout:element-id node)))
-                          (jscl/ffi:oget item "kind")
-                          (jscl/ffi:jsstring (string-downcase
-                            (symbol-name (lui.widgets:widget-kind widget))))
-                          (jscl/ffi:oget item "text")
-                          (jscl/ffi:jsstring (lui.widgets:widget-text widget))
-                          (jscl/ffi:oget item "value")
-                          (jscl/ffi:jsstring (princ-to-string
-                            (lui.widgets:widget-value widget)))
-                          (jscl/ffi:oget item "x") (lui.layout:box-x box)
-                          (jscl/ffi:oget item "y") (lui.layout:box-y box)
-                          (jscl/ffi:oget item "width") (lui.layout:box-width box)
-                          (jscl/ffi:oget item "height") (lui.layout:box-height box)
-                          (jscl/ffi:oget item "clipX") (lui.layout:box-x clip)
-                          (jscl/ffi:oget item "clipY") (lui.layout:box-y clip)
-                          (jscl/ffi:oget item "clipWidth")
+                          (lui.js:property item "id")
+                          (prin1-to-string (lui.layout:element-id node))
+                          (lui.js:property item "kind")
+                          (string-downcase
+                            (symbol-name (lui.widgets:widget-kind widget)))
+                          (lui.js:property item "text")
+                          (lui.widgets:widget-text widget)
+                          (lui.js:property item "value")
+                          (princ-to-string
+                            (lui.widgets:widget-value widget))
+                          (lui.js:property item "x") (lui.layout:box-x box)
+                          (lui.js:property item "y") (lui.layout:box-y box)
+                          (lui.js:property item "width") (lui.layout:box-width box)
+                          (lui.js:property item "height") (lui.layout:box-height box)
+                          (lui.js:property item "clipX") (lui.layout:box-x clip)
+                          (lui.js:property item "clipY") (lui.layout:box-y clip)
+                          (lui.js:property item "clipWidth")
                           (lui.layout:box-width clip)
-                          (jscl/ffi:oget item "clipHeight")
+                          (lui.js:property item "clipHeight")
                           (lui.layout:box-height clip))
-                        ((jscl/ffi:oget result "push") item)))))))
-            (setf (jscl/ffi:oget #j:window "testNodes") result)))
+                        (lui.js:invoke result "push" item)))))))
+            (setf (lui.js:property (lui.js:global "window") "testNodes") result))
         ''')
         return self.page.evaluate("window.testNodes")
 
@@ -160,11 +162,11 @@ class WebTests(unittest.TestCase):
           (defvar *web-test-value* "original")
           (defvar *web-test-clicks* 0)
           (defvar *web-test-draws* 0)
-          (defvar *web-test-host* (#j:document:createElement #j"section"))
-          (setf (jscl/ffi:oget *web-test-host* "id") #j"test-host"
-                (jscl/ffi:oget *web-test-host* "style" "cssText")
-                #j"position:fixed;left:0;top:0;width:500px;height:300px;z-index:10")
-          (#j:document:body:appendChild *web-test-host*)
+          (defvar *web-test-host* (lui.js:invoke (lui.js:global "document") "createElement" "section"))
+          (setf (lui.js:property *web-test-host* "id") "test-host"
+                (lui.js:property *web-test-host* "style" "cssText")
+                "position:fixed;left:0;top:0;width:500px;height:300px;z-index:10")
+          (lui.js:invoke (lui.js:property (lui.js:global "document") "body") "appendChild" *web-test-host*)
           (defvar *web-test-app*
             (lui.web:mount *web-test-host*
               (lambda () (incf *web-test-draws*) {body}) {options}))
@@ -173,9 +175,9 @@ class WebTests(unittest.TestCase):
         return "#test-host"
 
     def focus_id(self, app="*web-test-app*"):
-        self.lisp(f'''(setf (jscl/ffi:oget #j:window "testFocus")
-          (jscl/ffi:jsstring (prin1-to-string
-            (lui.frame:context-focus (lui.web::web-app-context {app}))))))''')
+        self.lisp(f'''(setf (lui.js:property (lui.js:global "window") "testFocus")
+          (prin1-to-string
+            (lui.frame:context-focus (lui.web::web-app-context {app}))))''')
         return self.page.evaluate("window.testFocus")
 
     def test_font_caches_preserve_alternating_sizes(self):
@@ -186,7 +188,7 @@ class WebTests(unittest.TestCase):
                     (lines (lui:wrap-text font "alpha beta gamma" 100)))
                 (setf (lui:font-size font) 32)
                 (assert (> (lui:text-width font "alpha beta")
-                           (jscl/ffi:oget small "width")))
+                           (lui.js:property small "width")))
                 (lui:wrap-text font "alpha beta gamma" 100)
                 (setf (lui:font-size font) 16)
                 (assert (eq small (lui.font::measure-text font "alpha beta")))
@@ -246,7 +248,7 @@ class WebTests(unittest.TestCase):
                   (frame 60) (frame 60)
                   (assert (= calls 6))))
               (setf (symbol-function 'lui.font:wrap-text) original)
-              (lui.font:close-font font))))
+              (lui.font:close-font font)))
         ''')
 
     def test_prepainted_page_scroll_does_not_redraw_twice(self):
@@ -257,19 +259,19 @@ class WebTests(unittest.TestCase):
                     is_mobile=True, has_touch=True, device_scale_factor=2)
                 page.on("pageerror", lambda error: self.errors.append(str(error)))
                 try:
-                    page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+                    page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
                     page.wait_for_function("document.querySelector('main canvas')?.luiApp")
                     ui = WebTests()
                     ui.page = page
                     style = ("position:fixed;top:0;left:0;width:300px;height:320px;overflow:auto"
                              if embedded else "width:100%")
                     ui.lisp(f'''
-                      (lui.web:unmount (jscl/ffi:oget
-                        (#j:document:querySelector #j"main canvas") "luiApp"))
-                      ((jscl/ffi:oget (#j:document:querySelector #j"main") "remove"))
-                      (defvar *scroll-host* (#j:document:createElement #j"main"))
-                      (setf (jscl/ffi:oget *scroll-host* "style" "cssText") #j"{style}")
-                      (#j:document:body:appendChild *scroll-host*)
+                      (lui.web:unmount (lui.web::canvas-app
+                        (lui.js:invoke (lui.js:global "document") "querySelector" "main canvas")))
+                      (lui.js:invoke (lui.js:invoke (lui.js:global "document") "querySelector" "main") "remove")
+                      (defvar *scroll-host* (lui.js:invoke (lui.js:global "document") "createElement" "main"))
+                      (setf (lui.js:property *scroll-host* "style" "cssText") "{style}")
+                      (lui.js:invoke (lui.js:property (lui.js:global "document") "body") "appendChild" *scroll-host*)
                       (defvar *scroll-draws* 0)
                       (defvar *scroll-app*
                         (lui.web:mount *scroll-host*
@@ -479,7 +481,7 @@ class WebTests(unittest.TestCase):
                                      device_scale_factor=2, is_mobile=True,
                                      has_touch=True)
         try:
-            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+            page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
             page.wait_for_function("""() => {
               const c=document.querySelector('main canvas');
               return c && c.luiApp && document.body.innerText.includes('Toolkit: Qt');
@@ -540,18 +542,18 @@ class WebTests(unittest.TestCase):
                     window.pendingFrames.splice(0).forEach(callback => raf(callback));
                 };
             })()""")
-            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+            page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
             page.wait_for_function("document.querySelector('main canvas')?.luiApp")
             ui = WebTests()
             ui.page = page
             ui.lisp('''
               (declaim (special lui.frame:*context* lui.frame:*parent* lui:*unit*))
-              (lui.web:unmount (jscl/ffi:oget
-                (#j:document:querySelector #j"main canvas") "luiApp"))
-              ((jscl/ffi:oget (#j:document:querySelector #j"main") "remove"))
+              (lui.web:unmount (lui.web::canvas-app
+                (lui.js:invoke (lui.js:global "document") "querySelector" "main canvas")))
+              (lui.js:invoke (lui.js:invoke (lui.js:global "document") "querySelector" "main") "remove")
               (defvar *web-test-clicks* -1)
-              (defvar *web-test-host* (#j:document:createElement #j"main"))
-              (#j:document:body:appendChild *web-test-host*)
+              (defvar *web-test-host* (lui.js:invoke (lui.js:global "document") "createElement" "main"))
+              (lui.js:invoke (lui.js:property (lui.js:global "document") "body") "appendChild" *web-test-host*)
               (defvar *web-test-app*
                 (lui.web:mount *web-test-host*
                   (lambda ()
@@ -614,17 +616,17 @@ class WebTests(unittest.TestCase):
                                      is_mobile=True, has_touch=True)
         page.on("pageerror", lambda error: self.errors.append(str(error)))
         try:
-            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+            page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
             page.wait_for_function("document.querySelector('main canvas')?.luiApp")
             ui = WebTests()
             ui.page = page
             ui.lisp('''
               (declaim (special lui.frame:*context* lui.frame:*parent* lui:*unit*))
-              (defvar *mobile-port* (#j:document:createElement #j"section"))
-              (setf (jscl/ffi:oget *mobile-port* "id") #j"mobile-port"
-                    (jscl/ffi:oget *mobile-port* "style" "cssText")
-                    #j"position:fixed;top:40px;left:0;width:300px;height:320px;overflow:auto")
-              (#j:document:body:appendChild *mobile-port*)
+              (defvar *mobile-port* (lui.js:invoke (lui.js:global "document") "createElement" "section"))
+              (setf (lui.js:property *mobile-port* "id") "mobile-port"
+                    (lui.js:property *mobile-port* "style" "cssText")
+                    "position:fixed;top:40px;left:0;width:300px;height:320px;overflow:auto")
+              (lui.js:invoke (lui.js:property (lui.js:global "document") "body") "appendChild" *mobile-port*)
               (lui.web:mount *mobile-port*
                 (lambda ()
                   (lui.frame:column (:width (lui.layout:grow))
@@ -665,7 +667,7 @@ class WebTests(unittest.TestCase):
                                      device_scale_factor=2, is_mobile=True,
                                      has_touch=True)
         try:
-            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+            page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
             page.wait_for_function("""() => {
               const c=document.querySelector('main canvas');
               return c && c.luiApp && c.width > 0 &&
@@ -747,17 +749,19 @@ class WebTests(unittest.TestCase):
         self.page.keyboard.insert_text("42")
         self.page.keyboard.press("Enter")
         self.frames()
-        self.widget(id=first, kind="cell", text="42")
+        self.assertEqual(float(self.widget(id=first, kind="cell")["text"]), 42)
 
         label = self.page.get_by_text("Selected: A0", exact=True)
         label.evaluate("el => getSelection().selectAllChildren(el)")
         self.page.mouse.move(*self.point(self.widget(id=":SEVEN-GRID")))
         self.page.mouse.wheel(0, 240)
         self.frames()
-        grid_offset = self.page.evaluate("""() => jscl.evaluateString(`
-          (let* ((app (jscl/ffi:oget (#j:document:querySelector #j"main canvas") "luiApp"))
+        grid_offset = self.number('''
+          (let* ((app (lui.web::canvas-app
+                       (lui.js:invoke (lui.js:global "document")
+                                      "querySelector" "main canvas")))
                  (ids (lui.frame::context-ids (lui.web::web-app-context app))))
-            (lui.layout:element-scroll-y (gethash :seven-grid ids)))`)""")
+            (lui.layout:element-scroll-y (gethash :seven-grid ids)))''')
         self.assertGreater(grid_offset, 0)
         self.assertEqual(self.page.evaluate("getSelection().toString()"), "Selected: A0")
 
@@ -862,7 +866,7 @@ class WebTests(unittest.TestCase):
         host = self.fixture()
         self.click_widget(id=":FIXTURE", host=host)
         sink = self.page.locator(host + " textarea")
-        expect(sink).to_have_attribute("aria-label", ":FIXTURE")
+        expect(sink).to_have_attribute("aria-label", re.compile(r"^:?FIXTURE$"))
         expect(sink).to_have_attribute("aria-valuetext", "original")
         self.replace_text(":FIXTURE", "Updated value", host)
         expect(sink).to_have_attribute("aria-valuetext", "Updated value")
@@ -985,7 +989,7 @@ class WebTests(unittest.TestCase):
         page = self.browser.new_page(viewport={"width": 640, "height": 480},
                                      device_scale_factor=2)
         try:
-            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
+            page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
             page.wait_for_function("""() => {
               const c=document.querySelector('main canvas');
               return c && c.width===c.clientWidth*2 && c.height===c.clientHeight*2;

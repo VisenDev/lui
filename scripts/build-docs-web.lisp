@@ -8,7 +8,7 @@
   (write-line "(lui.docs:main :backend :web)" out))
 
 (jscl:compile-application
- '("src/fn.lisp" "src/layout.lisp" "src/frame.lisp" "src/widgets.lisp"
+ '("src/fn.lisp" "src/web-js.lisp" "src/layout.lisp" "src/frame.lisp" "src/widgets.lisp"
    "src/app.lisp" "src/interaction.lisp"
    "src/glass.lisp" "src/motif.lisp" "src/desktop.lisp" "src/garnet.lisp"
    "src/text-wrap.lisp" "src/web-font.lisp" "src/draw.lisp" "src/text-selection.lisp" "src/paint-common.lisp"
@@ -19,7 +19,7 @@
 
 (let ((fs jscl::*fs*)
       (header
-        #j"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>LUI documentation</title><style>body{margin:0}</style></head><body><script>"))
+       #j"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>LUI documentation</title><style>body{margin:0}</style></head><body><script>"))
   (flet ((inline-script (path)
            (let ((source ((jscl/ffi:oget fs "readFileSync")
                           (jscl/ffi:jsstring path) #j"utf8")))

@@ -12,7 +12,7 @@ Cocoa. X11 uses one display connection for windowing and direct OpenGL rendering
 Load the library with `(asdf:load-system "lui")` to register the backends for
 your host. Use `lui/core` for the portable core with no external dependencies.
 Native graphical backends add CFFI, zpb-ttf, and system rendering libraries. Browser output uses
-JSCL and one high-DPI Canvas 2D surface per window. There is no application software pixel renderer; Vulkan remains future
+JSCL or experimental MiriCL and one high-DPI Canvas 2D surface per window. There is no application software pixel renderer; Vulkan remains future
 work.
 
 ## Layout and widgets
@@ -417,6 +417,34 @@ bound to localhost with `--directory build`. Open the printed root URL
 a directory listing. `PORT` defaults to 8000. Stop the server with Ctrl-C.
 `make web-build` only builds JavaScript. Browser tests additionally need
 Playwright and Chromium.
+
+MiriCL can run the same gallery, Canvas renderer, native text labels, and
+input handling. Build the runtime in your MiriCL checkout first, then use:
+
+```sh
+make web-build WEB_RUNTIME=miricl MIRICL_RUNTIME=/path/to/miricl
+make web-demo WEB_RUNTIME=miricl MIRICL_RUNTIME=/path/to/miricl PORT=8080
+make test PLATFORM=web WEB_RUNTIME=miricl MIRICL_RUNTIME=/path/to/miricl
+```
+
+`MIRICL_RUNTIME` defaults to `~/clone/miricl` and must contain `miricl.js`
+and `miricl.wasm`. `MIRICL` identifies the source checkout (also defaulting
+to `~/clone/miricl`) whose license is copied into the output. Building MiriCL
+itself requires its documented host Lisp and Wasmtime C API dependencies;
+LUI does not download them automatically.
+The application build needs Node.js with WasmGC and exception handling.
+Output goes to `build/miricl/`, with separate adapter, runtime, application
+FASL, and HTML files. Serve that directory over HTTP. The default JSCL build
+and standalone documentation remain unchanged.
+
+MiriCL support is experimental. Application FASLs currently execute through
+its Wasm interpreter; native application compilation is not enabled because
+fresh loading failed during package initialization in revision `6810609`.
+The existing web benchmark harness currently supports JSCL only.
+Browser engines must support WasmGC and Wasm exception handling.
+Ordinary LUI rendering does not require green
+threads or asynchronous filesystem access. The MiriCL runtime is distributed
+under LGPL-3.0-or-later; preserve its license when redistributing it.
 
 ## Install and run
 

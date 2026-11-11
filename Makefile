@@ -9,6 +9,11 @@ RUNNER ?=
 RUN_ARGS ?=
 PYTHON ?= python3
 JSCL ?= $(HOME)/clone/jscl
+MIRICL ?= $(HOME)/clone/miricl
+MIRICL_RUNTIME ?= $(MIRICL)
+WEB_RUNTIME ?= jscl
+export MIRICL MIRICL_RUNTIME
+WEB_DIRECTORY := $(if $(filter miricl,$(WEB_RUNTIME)),build/miricl,build)
 PORT ?= 8000
 BENCH_FRAMES ?= 240
 WARMUP ?= 30
@@ -49,7 +54,8 @@ help:
 	@echo 'make loc                  Report source line counts with cloc'
 	@echo 'make web-demo             Build and serve the browser demo at /'
 	@echo 'make terminal-demo        Build and run the terminal demo'
-	@echo 'make web-build            Build the JSCL browser demo'
+	@echo 'make web-build            Build the browser demo (WEB_RUNTIME=jscl|miricl)'
+	@echo 'MiriCL: MIRICL_RUNTIME points to built miricl.js and miricl.wasm'
 	@echo 'PLATFORM=terminal|x11|wayland|win32|cocoa|web (auto-detected by default)'
 	@echo 'Test-only platforms: core native gl. Options: SBCL, SBCL_FLAGS, JSCL, PYTHON'
 
@@ -123,14 +129,22 @@ test-macos:
 terminal-demo:
 	$(MAKE) --no-print-directory demo PLATFORM=terminal
 
+ifeq ($(WEB_RUNTIME),miricl)
+web-build:
+	node scripts/build-miricl.mjs
+else ifeq ($(WEB_RUNTIME),jscl)
 web-build: build/jscl.js
 	@mkdir -p build
 	node "$(JSCL)/dist/jscl-node.js" scripts/build-web.lisp
 	sed 's#../build/##g' examples/web.html > build/index.html
+else
+web-build:
+	@echo 'Unknown WEB_RUNTIME=$(WEB_RUNTIME); use jscl or miricl' >&2; exit 2
+endif
 
 web-demo: web-build
 	@echo 'Open http://localhost:$(PORT)/'
-	$(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 --directory build
+	$(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 --directory $(WEB_DIRECTORY)
 
 test benchmark: check-platform
 	@mkdir -p build/logs
@@ -157,12 +171,16 @@ test-terminal-parity:
 
 test-platform: check-platform
 ifeq ($(PLATFORM),web)
+ifeq ($(WEB_RUNTIME),miricl)
+	node tests/miricl.mjs
+else
 	@echo '[JSCL core] RUN'
 	node "$(JSCL)/dist/jscl-node.js" tests/run.lisp
 	@echo '[JSCL core] PASS'
+endif
 	$(MAKE) --no-print-directory web-build
 	@echo '[browser] RUN'
-	$(PYTHON) -u tests/web.py
+	LUI_WEB_PAGE=/$(WEB_DIRECTORY)/index.html $(PYTHON) -u tests/web.py
 	@echo '[browser] PASS'
 else
 	$(MAKE) --no-print-directory test-core
@@ -209,6 +227,7 @@ loc:
 
 benchmark-platform: check-platform
 ifeq ($(PLATFORM),web)
+	@test "$(WEB_RUNTIME)" = jscl || { echo "The web benchmark currently requires WEB_RUNTIME=jscl" >&2; exit 2; }
 	$(MAKE) --no-print-directory web-build
 	$(PYTHON) -u tests/benchmark-web.py
 else

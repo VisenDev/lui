@@ -4,7 +4,7 @@
 (in-package #:lui.build.web)
 
 (jscl:compile-application
- '("src/fn.lisp" "src/layout.lisp" "src/frame.lisp" "src/widgets.lisp"
+ '("src/fn.lisp" "src/web-js.lisp" "src/layout.lisp" "src/frame.lisp" "src/widgets.lisp"
    "src/app.lisp" "src/interaction.lisp"
    "src/glass.lisp" "src/motif.lisp" "src/desktop.lisp" "src/garnet.lisp"
    "src/text-wrap.lisp" "src/web-font.lisp" "src/draw.lisp" "src/text-selection.lisp" "src/paint-common.lisp"

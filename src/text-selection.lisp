@@ -67,13 +67,14 @@
       (loop :for line :across lines :do
         (when (< y (+ top (line-height font)))
           (let ((at (- x (selection-left font node area line))) (left 0)
-                #-jscl (previous nil)
-                #-jscl (scale (/ (font-size font)
+                #-(or jscl miricl) (previous nil)
+                #-(or jscl miricl) (scale (/ (font-size font)
                           (zpb-ttf:units/em (font-loader font)))))
             (dotimes (i (length line))
-              (let (#-jscl (char (char line i)))
-                (let ((right #+jscl (text-width font (subseq line 0 (1+ i)))
-                             #-jscl
+              (let (#-(or jscl miricl) (char (char line i)))
+                (let ((right #+(or jscl miricl)
+                             (text-width font (subseq line 0 (1+ i)))
+                             #-(or jscl miricl)
                              (+ left
                                 (* scale
                                    (+ (zpb-ttf:advance-width
@@ -86,7 +87,7 @@
                   (when (< at (/ (+ left right) 2))
                     (return-from selection-index (+ start i)))
                   (setf left right)
-                  #-jscl (setf previous char))))
+                  #-(or jscl miricl) (setf previous char))))
             (return-from selection-index (+ start (length line)))))
         (incf start (1+ (length line)))
         (incf top (line-height font))

@@ -31,7 +31,7 @@ class DocsWebTests(unittest.TestCase):
                 ui.frames()
                 ui.lisp('''
                   (let* ((context (lui.web::web-app-context
-                           (jscl/ffi:oget (#j:document:querySelector #j"main canvas") "luiApp")))
+                           (lui.web::canvas-app (#j:document:querySelector #j"main canvas"))))
                          (ids (lui.frame::context-ids context)) (rows 0))
                     (dolist (name '(:debugger :resize))
                       (let ((box (lui.layout:element-box

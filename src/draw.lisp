@@ -81,9 +81,13 @@
                         :for angle := (* (+ base (* i 11.25f0)) (/ pi 180))
                         :collect
                         (cons (+ cx (* r #-jscl (cos angle)
-                                         #+jscl (#j:Math:cos angle)))
+                                         #+jscl (lui.js:invoke
+                                                  (lui.js:global "Math")
+                                                  "cos" angle)))
                               (+ cy (* r #-jscl (sin angle)
-                                         #+jscl (#j:Math:sin angle)))))))))
+                                         #+jscl (lui.js:invoke
+                                                  (lui.js:global "Math")
+                                                  "sin" angle)))))))))
 
 (fn (trapezoids null) ((contours contours) (emit function))
   "Convert contours into nonzero-winding trapezoids for native triangle APIs."
@@ -182,8 +186,9 @@
     (if (renderer-text renderer)
         (funcall (renderer-text renderer) (renderer-font renderer)
                  text x y color)
-        #+jscl (error "The browser renderer requires a text drawing callback.")
-        #-jscl
+        #+(or jscl miricl)
+        (error "The browser renderer requires a text drawing callback.")
+        #-(or jscl miricl)
         (let* ((font (renderer-font renderer))
                (scale (/ (font-size font) (zpb-ttf:units/em (font-loader font))))
                (cursor x)

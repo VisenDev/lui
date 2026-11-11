@@ -108,8 +108,7 @@ def nodes(page):
             (lui.layout:walk-elements
              (lui.frame:context-root
               (lui.web::web-app-context
-               (jscl/ffi:oget (#j:document:querySelector #j"main canvas")
-                              "luiApp")))
+               (lui.web::canvas-app (#j:document:querySelector #j"main canvas"))))
              (lambda (node)
                (let ((widget (lui.layout:element-content node))
                      (box (lui.layout:element-box node))
@@ -151,7 +150,7 @@ def has_text(page, text):
 def cells_view(page):
     return page.evaluate(r'''() => jscl.evaluateString(`
       (let* ((context (lui.web::web-app-context
-                        (jscl/ffi:oget (#j:document:querySelector #j"main canvas") "luiApp")))
+                        (lui.web::canvas-app (#j:document:querySelector #j"main canvas"))))
              (grid (gethash :seven-grid (lui.frame::context-ids context)))
              (box (lui.layout:element-box grid))
              (result (jscl/ffi:new #j:Object)))

@@ -1,5 +1,6 @@
 (defpackage #:lui.font
   (:use #:cl #:lui.fn)
+  (:import-from #:lui.js #:property #:invoke #:global)
   (:export #:font #:open-font #:close-font #:font-size #:font-loader
            #:text-width #:line-height #:baseline #:wrap-text #:glyph-polygons
            #:*font-path* #:*font-paths* #:*font-directories*
@@ -8,8 +9,8 @@
 (in-package #:lui.font)
 
 (lui::expose-api font open-font close-font font-size text-width line-height
-  baseline wrap-text glyph-polygons *font-path* *font-paths*
-  *font-directories* *font-names* font-face)
+                 baseline wrap-text glyph-polygons *font-path* *font-paths*
+                 *font-directories* *font-names* font-face)
 
 (defvar *font-path* nil)
 (defvar *font-paths* nil)
@@ -17,23 +18,19 @@
 (defvar *font-names* nil)
 
 (defstruct font
-  "A browser font face with a Canvas context for measuring text."
-  loader
-  owner
+  "A browser font face with a Canvas context for measuring text." loader owner
   (faces (make-array 4 :initial-element nil))
   (size 16)
   (family :sans-serif)
-  (weight :normal)
-  css-value css-size
+  (weight :normal) css-value css-size
   (metrics (make-hash-table :test 'equal))
   (wrapped (make-hash-table :test 'equal)))
 
 (fn (open-font font) (&optional path ((size real) 16))
   "Create a browser font at SIZE; PATH is accepted for API compatibility."
   (declare (ignore path))
-  (let ((canvas (#j:document:createElement #j"canvas")))
-    (make-font :loader ((jscl/ffi:oget canvas "getContext") #j"2d")
-               :size size)))
+  (let ((canvas (invoke (global "document") "createElement" "canvas")))
+    (make-font :loader (invoke canvas "getContext" "2d") :size size)))
 
 (fn (close-font null) ((font font))
   (dotimes (index (length (font-faces font)))
@@ -60,7 +57,7 @@
           (font-css-value font)
           (format nil "~A ~Apx ~A"
                   (if (eq (font-weight font) :bold) "bold" "normal")
-                  (jscl/ffi:clstring (#j:String (font-size font)))
+                  (invoke (global) "String" (font-size font))
                   (if (eq (font-family font) :monospace)
                       "monospace" "sans-serif"))))
   (font-css-value font))
@@ -72,24 +69,22 @@
     (or (gethash key cache)
         (let ((context (font-loader font)))
           (when (>= (hash-table-count cache) 2048) (clrhash cache))
-          (setf (jscl/ffi:oget context "font") (jscl/ffi:jsstring css))
+          (setf (property context "font") css)
           (setf (gethash key cache)
-                ((jscl/ffi:oget context "measureText")
-                 (jscl/ffi:jsstring text)))))))
+                (invoke context "measureText" text))))))
 
 (fn (text-width real) ((font font) (text string))
-  (jscl/ffi:oget (measure-text font text) "width"))
+  (property (measure-text font text) "width"))
 
 (fn (baseline real) ((font font))
-  (let ((ascent (jscl/ffi:oget (measure-text font "Mg")
-                                "fontBoundingBoxAscent")))
+  (let ((ascent (property (measure-text font "Mg") "fontBoundingBoxAscent")))
     (if (and (numberp ascent) (plusp ascent))
         ascent (* (font-size font) 0.8f0))))
 
 (fn (line-height real) ((font font))
   (let* ((metrics (measure-text font "Mg"))
-         (ascent (jscl/ffi:oget metrics "fontBoundingBoxAscent"))
-         (descent (jscl/ffi:oget metrics "fontBoundingBoxDescent")))
+         (ascent (property metrics "fontBoundingBoxAscent"))
+         (descent (property metrics "fontBoundingBoxDescent")))
     (if (and (numberp ascent) (numberp descent)
              (plusp (+ ascent descent)))
         (max (* (font-size font) 1.2f0) (+ ascent descent))
@@ -102,11 +97,12 @@
 (fn (uncached-wrap-text (vector string)) ((font font) (text string) width)
   "Split TEXT into lines at newlines and spaces; NIL width preserves explicit breaks."
   (lui.text:wrap-lines text width
-                      (lambda (text start end)
-                        (text-width font (subseq text start end)))))
+                       (lambda (text start end)
+                         (text-width font (subseq text start end)))))
 
 
-(fn (wrap-text (vector string)) ((font font) (text string) (width (or null real)))
+(fn (wrap-text (vector string)) ((font font) (text string) (width (or null
+                                                                      real)))
   (let ((cache (font-wrapped font))
         (key (list (font-size font) text width)))
     (cond ((gethash key cache))
