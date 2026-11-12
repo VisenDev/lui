@@ -1,11 +1,5 @@
 (defpackage #:lui.font
   (:use #:cl #:lui.fn #:lui.layout)
-  (:import-from #:lui
-                #:font #:open-font #:close-font #:font-size #:text-width
-                #:line-height
-                #:baseline #:wrap-text #:glyph-polygons #:*font-path*
-                #:*font-paths*
-                #:*font-directories* #:*font-names* #:font-face)
   (:export #:font #:open-font #:close-font #:font-size #:font-loader
            #:text-width #:line-height #:baseline #:wrap-text #:glyph-polygons
            #:*font-path* #:*font-paths* #:*font-directories*
@@ -299,19 +293,6 @@
 
 (defpackage #:lui.draw
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui.font)
-  (:import-from #:lui
-                #:renderer #:renderer-font #:renderer-polygons #:renderer-clip
-                #:renderer-backdrop-effect #:renderer-text #:geometry
-                #:make-geometry
-                #:geometry-left #:geometry-top #:geometry-right
-                #:geometry-bottom
-                #:geometry-min-width #:geometry-min-height #:geometry-center-x
-                #:geometry-center-y #:geometry-offset-x #:geometry-offset-y
-                #:geometry-text-p #:geometry-value-p #:widget-geometry
-                #:text-box
-                #:rounded-polygon #:color-components #:paint-text #:shape
-                #:outline
-                #:inset-box #:focused-p #:widget-font)
   (:export #:typed-vector #:renderer-patterns #:rectangle-path
            #:standard-geometry #:paint-widget-text #:paint-text-field
            #:paint-shared-widget #:paint-desktop-scrollbar
@@ -1254,6 +1235,8 @@
                              :height (box-height box))))
          (shape renderer fill radius (widget-accent widget) 1))
        (outline renderer box radius foreground 1 1))
+      ((member kind '(:hr :vr))
+       (shape renderer box 0 (widget-foreground widget) 1))
       ((eq kind :canvas) (paint-canvas renderer node))
       (t (funcall body renderer node)))
     (paint-focus-ring renderer node radius)))

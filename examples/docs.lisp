@@ -26,8 +26,8 @@
      "(asdf:load-system \"lui/debug\")
 ;; Inside an ordinary draw callback:
 (when (lui:button \"Show debugger\" (lui:opt :id :debug))
-  (lui:set-debugger-enabled t))"
-      "Call lui:set-debugger-enabled on an action. lui:debugger-enabled-p reads the current context; both APIs also accept an explicit context. Stable IDs preserve inspection across frames; anonymous nodes use position-based identity, and vanished selections are cleared.")
+  (lui.debug:set-debugger-enabled t))"
+      "Call lui.debug:set-debugger-enabled on an action. lui.debug:debugger-enabled-p reads the current context; both APIs also accept an explicit context. Stable IDs preserve inspection across frames; anonymous nodes use position-based identity, and vanished selections are cleared.")
     (:frames "Frames and state"
       "Widget values are retained by default. Use OPT :default-value to initialize a field, checkbox, slider, combobox, or date picker once. Use :value when your application model owns the value instead. A drawing function still declares the interface every frame; layout nodes remain frame-local."
      "(defun make-counter ()
@@ -68,11 +68,11 @@
   (lui:panel (lui:opt :width (lui:grow)
                        :height (lui:grow))
     (lui:label \"Content\")))"
-     "Container :padding reserves an inner content area. :gap separates children; :align controls the main axis and :cross-align controls the other axis. :clip-p clips children to the padded content area. :scroll-p adds scrolling with the same clipping rules."
+     "lui:spacer reserves empty space without painting. Use (lui:spacer (lui:opt :width (lui:grow))) in a row, or :height (lui:grow) in a column, to push siblings apart. Use fixed sizes for explicit spacing. (lui:hr) and (lui:vr) draw horizontal and vertical rules; their long axis grows, their thickness defaults to one backend coordinate, and :foreground overrides the palette border color. Container :padding reserves an inner content area. :gap separates children; :align controls the main axis and :cross-align controls the other axis. :clip-p clips children to the padded content area. :scroll-p adds scrolling with the same clipping rules."
      "Scrolling panels show a scrollbar by default. :scrollbar-p NIL hides it; :scrollbar-width customizes the reserved track width in backend coordinates. The default is 12 graphical pixels or one terminal cell. Drag the thumb to move continuously, or click the track above/below it to page by a viewport. Wheel scrolling supports momentum; nested scrollers pass unused motion to an ancestor."
      "A scrolling viewport needs a bounded size. Nested scrollers pass wheel input to an ancestor when they cannot scroll further. lui:previous-box exposes completed geometry; lui:scroll-position and scroll-to support application-controlled navigation. Virtualize very large lists instead of declaring every row.")
     (:toolkits "Toolkits"
-      "The lui package exposes the public API, including toolkit settings, layout, events, drawing, and optional backend helpers. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. macOS uses warm surfaces, rounded controls, subtle borders, and blue accents; Qt uses restrained raised desktop controls. Cycle palette to try Default, Light, Dark, Ocean, and Forest on the page and live samples. A window background remains opaque."
+      "The lui package contains application controls, layout, palettes, toolkit registration, and events. Specialized APIs live in lui.font (font configuration and metrics), lui.draw (custom painting and geometry), lui.debug (inspection), lui.terminal (snapshots), and lui.pdf (PDF output). Load their corresponding optional systems before calling them. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. macOS uses warm surfaces, rounded controls, subtle borders, and blue accents; Qt uses restrained raised desktop controls. Cycle palette to try Default, Light, Dark, Ocean, and Forest on the page and live samples. A window background remains opaque."
      "(lui:with-toolkit (:motif)
   (lui:button \"OK\" (lui:opt :id :ok)))
 (lui:with-toolkit (:garnet)
@@ -83,7 +83,7 @@
      "Tab and Shift-Tab move keyboard focus. Enter and Space activate a focused button, checkbox, or tab; Space inserts a space in an editor. Pointer clicks do not display a keyboard focus ring. Arrow keys navigate tabs."
      "When implementing a draggable control, handle :cancel by clearing its drag state. event-buttons reports the physical buttons on pointer motion when the backend knows them. Zero means all buttons are up, bit 0 means primary, bit 1 means secondary, and NIL means unknown."
      "Text editing uses Readline shortcuts: Ctrl-A/E move to the beginning/end, Ctrl-B/F move by character, Alt-B/F move by word, Ctrl-D deletes, Ctrl-H backspaces, Ctrl-K/U/W kill text, and Ctrl-Y yanks it. Ctrl-Shift-A or Command-A selects all where supported. Ctrl-D does not quit."
-     "Load the optional lui/debug system and call (lui:set-debugger-enabled t) on a toggle action in your drawing function to attach a debugger to the current context. It displays the completed application tree, bounds, clipping, sizing, style, and text. Call (lui:set-debugger-enabled nil) to close it. Debugger nodes are excluded from its own tree."
+     "Load the optional lui/debug system and call (lui.debug:set-debugger-enabled t) on a toggle action in your drawing function to attach a debugger to the current context. It displays the completed application tree, bounds, clipping, sizing, style, and text. Call (lui.debug:set-debugger-enabled nil) to close it. Debugger nodes are excluded from its own tree."
      "Clipboard and IME completeness vary by backend; full text shaping is not implemented. Native Wayland, X11, Windows, Cocoa, browser canvas, and raw terminal input use their own platform facilities. Check the project's current test matrix before assuming an untested platform configuration is verified.")
     (:backends "Backends and running"
      "Native: load lui/wayland or lui/x11 on Linux, lui/win32 on Windows, or lui/cocoa on macOS. X11 uses GLX and Wayland uses EGL with the shared OpenGL renderer; Windows and macOS use native drawing/compositing APIs. Fonts are loaded from the system. The offscreen OpenGL system also supports rendering tests."
@@ -328,7 +328,8 @@
     ("CHECKBOX" . :checkbox) ("SLIDER" . :slider)
     ("TEXT-FIELD" . :text-field) ("CELL" . :cell)
     ("LIST-ITEM" . :list-item) ("GAUGE" . :gauge) ("CANVAS" . :canvas)
-    ("PANEL" . :panel) ("ROW" . :row) ("COLUMN" . :column)))
+    ("PANEL" . :panel) ("ROW" . :row) ("COLUMN" . :column)
+    ("SPACER" . :spacer) ("HR" . :hr) ("VR" . :vr)))
 
 (defun canvas-preview (state)
   (let ((box (lui:previous-box :docs-preview-canvas)))
@@ -435,6 +436,17 @@
                  (min 1 (+ (browser-value state) 0.2))))
        (lui:request-frame)))
     (:canvas (canvas-preview state))
+    (:spacer
+     (lui:row (lui:opt :width (lui:grow))
+       (lui:label "Left")
+       (lui:spacer (lui:opt :width (lui:grow)))
+       (lui:label "Right")))
+    (:hr (lui:hr))
+    (:vr
+     (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1))
+       (lui:label "Before")
+       (lui:vr)
+       (lui:label "After")))
     (:panel
       (lui:panel (lui:opt :width (lui:grow) :padding (lui:units 1) :gap
             (lui:units 0.5))
@@ -516,8 +528,8 @@
                 "Open debugger"
                 (lui:opt
                   :id :docs-open-debug
-                  :disabled-p (lui:debugger-enabled-p)))
-             (lui:set-debugger-enabled t)))
+                  :disabled-p (lui.debug:debugger-enabled-p)))
+             (lui.debug:set-debugger-enabled t)))
          (dolist (paragraph (cddr guide))
            (lui:label paragraph
                       (lui:opt :width (lui:grow)
@@ -598,7 +610,7 @@
           (lui:request-frame))
           (when (lui:button "Show debugger" (lui:opt :id
                                               :docs-debug))
-          (lui:set-debugger-enabled t)))
+          (lui.debug:set-debugger-enabled t)))
       (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1) :cross-align
         :center)
           (lui:label (format nil "Palette: ~A" (string-capitalize (symbol-name

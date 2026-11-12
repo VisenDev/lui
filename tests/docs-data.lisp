@@ -117,14 +117,17 @@
         (dolist (name (cdr scope))
           (assert (entry entries (car scope) name) ()
                   "Stale public API entry ~A:~A." (car scope) name))))
-    (assert (every (lambda (item) (string= "lui" (getf item :package)))
-                   entries))
+    (dolist (name '("SPACER" "HR" "VR"))
+      (assert (entry entries "lui" name)))
+    (dolist (name '("RENDERER" "FONT" "SET-DEBUGGER-ENABLED"
+                    "RENDER-TERMINAL" "RENDER-PDF"))
+      (assert (null (entry entries "lui" name))))
     (assert (eq :macro (getf button :kind)))
     (assert (string= "(button text &optional options)"
                      (getf button :signature)))
     (assert (plusp (length (getf button :documentation))))
-    (dolist (pair '(("lui" "MOUNT") ("lui" "*FONT-PATH*")
-                    ("lui" "RENDERER-POLYGONS")
+    (dolist (pair '(("lui" "MOUNT") ("lui.font" "*FONT-PATH*")
+                    ("lui.draw" "RENDERER-POLYGONS")
                     ("lui" "REGISTER-TOOLKIT-RENDERING")))
       (assert (entry entries (first pair) (second pair))))
     (dolist (package '("lui.fn" "lui.widgets" "lui.gl"

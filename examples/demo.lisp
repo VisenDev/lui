@@ -168,6 +168,13 @@
 (defun layout-page (g)
   (positioning-controls g)
   (lui:label "Resize the window: percentages and grow share the space.")
+  (lui:hr)
+  (lui:row (lui:opt :width (lui:grow))
+    (lui:label "Left")
+    (lui:spacer (lui:opt :width (lui:grow)))
+    (lui:vr)
+    (lui:spacer (lui:opt :width (lui:fixed (lui:units 1))))
+    (lui:label "Right"))
   (setf (gallery-split g)
     (lui:slider
       (lui:opt
@@ -342,7 +349,7 @@
         (lui:button
           "Show debugger"
           (lui:opt :id :debugger-toggle :disabled-p (modal-p g)))
-        (lui:set-debugger-enabled t)))
+        (lui.debug:set-debugger-enabled t)))
     (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1) :cross-align
       :center)
       (lui:label (format nil "Palette: ~A" (string-capitalize (symbol-name

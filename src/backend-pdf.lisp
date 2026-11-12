@@ -1,7 +1,5 @@
 (defpackage #:lui.pdf
   (:use #:cl #:lui.fn #:lui.frame #:lui.layout #:lui.draw)
-  (:import-from #:lui
-                #:render-pdf #:*pdf-output*)
   (:export #:render-pdf #:*pdf-output*))
 
 (in-package #:lui.pdf)

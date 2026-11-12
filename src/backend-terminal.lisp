@@ -1,10 +1,6 @@
 (defpackage #:lui.terminal
   (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui)
   (:import-from #:uncursed #:character-width)
-  (:import-from #:lui
-                #:make-terminal-context #:render-terminal
-                #:terminal-text-width
-                #:text-lines #:cell-edge)
   (:export #:make-terminal-context #:render-terminal #:text-lines
            #:run-terminal #:character-width #:terminal-text-width
            #:cell-edge))
@@ -284,6 +280,9 @@
        (setf (uncursed::cell-string cell) (if horizontal "─" "│")
              (uncursed::cell-style cell) (terminal-paint-state-rail-style
                                           state)))
+      ((member kind '(:hr :vr))
+       (setf (uncursed::cell-string cell) (if (eq kind :hr) "─" "│")
+             (uncursed::cell-style cell) (terminal-paint-state-style state)))
       ((eq kind :highlight)
        (when (or (plusp (widget-opacity widget)) (= row y) (= row (1- bottom))
                  (= column x) (= column (1- right)))

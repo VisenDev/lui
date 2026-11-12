@@ -59,7 +59,7 @@
 
 (defun main (&optional (pathname #p"build/pdf-demo.pdf"))
   (ensure-directories-exist pathname)
-  (lui:render-pdf #'make-document pathname
+  (lui.pdf:render-pdf #'make-document pathname
                       :title "Fieldnotes weekly project brief"
                       :width 612 :height 792 :background "#f4f7fb"))
 

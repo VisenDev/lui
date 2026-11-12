@@ -1,10 +1,5 @@
 (defpackage #:lui.debug
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets)
-  (:import-from #:lui
-                #:set-debugger-enabled #:debugger-enabled-p #:debugger-state
-                #:make-debugger-state #:debugger-state-open-p
-                #:debugger-state-selected
-                #:debugger-state-width)
   (:export #:set-debugger-enabled #:debugger-enabled-p #:debugger-state
            #:make-debugger-state
            #:debugger-state-open-p

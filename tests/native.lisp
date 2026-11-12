@@ -1109,6 +1109,25 @@
         (assert (equalp points #((1 . 0) (2 . 0) (3 . 0)))))))
   (assert (zerop (length (lui.draw::typed-vector point)))))
 
+(defun test-rule-painting (font)
+  (dolist (toolkit '(:glass :motif :macos :qt :garnet))
+    (let* ((colors nil)
+           (renderer
+             (make-renderer
+              :font font
+              :polygons (lambda (contours color alpha)
+                          (declare (ignore contours alpha))
+                          (push color colors))
+              :clip (lambda (box) (declare (ignore box)))))
+           (context (make-render-context renderer)))
+      (lui:with-toolkit (toolkit)
+        (with-frame (context 100 50)
+          (lui:hr (lui:opt :foreground "#123456"))
+          (lui:spacer (lui:opt :height (fixed 4)))
+          (lui:vr (lui:opt :foreground "#654321"))))
+      (paint-frame renderer context)
+      (assert (equal '("#654321" "#123456") colors)))))
+
 (defun run-tests ()
   (test-typed-vector)
   (test-shared-wrapping)
@@ -1120,6 +1139,7 @@
   (let ((font (open-font)))
     (unwind-protect
          (progn
+           (test-rule-painting font)
            (test-password-presentation font)
            (test-winding)
            (test-outlines font)

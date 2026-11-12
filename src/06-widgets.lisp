@@ -113,7 +113,7 @@ An optional terminal-label callback overrides the standard kind-based label."
                       (value (widget-display-value widget)))
                   (case (widget-kind widget)
                     ((:label :list-item :cell) text)
-                    ((:panel :canvas) "")
+                    ((:panel :canvas :hr :vr) "")
                     (:gauge
                      (let ((filled (round (* 10 (min 1 (max 0 value))))))
                        (format nil "[~A~A] ~D%"
@@ -228,9 +228,13 @@ Most applications should use the public LUI controls with LUI:OPT instead."
            :position position
            :offset-x offset-x :offset-y offset-y
            :interactive-p (and (not disabled-p)
-                               (not (or (eq kind :label) (eq kind :gauge))))
+                               (not (member kind '(:label :gauge :hr :vr))))
            :pointer-focus-p (eq kind :text-field)
-           :measure (lambda (available) (funcall measure widget available))))
+           :measure (if (member kind '(:hr :vr))
+                        (lambda (available)
+                          (declare (ignore available)) (values 0 0))
+                        (lambda (available)
+                          (funcall measure widget available)))))
     (and (not disabled-p)
          (or (eq kind :button) (eq kind :tab)
              (eq kind :list-item) (eq kind :cell))

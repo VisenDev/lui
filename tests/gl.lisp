@@ -89,7 +89,7 @@
   ;; No built-in toolkit parent: the backdrop is an independent capability.
   (lui:register-toolkit :test-backdrop
     :geometry (lambda (widget)
-                (declare (ignore widget)) (lui:make-geometry))
+                (declare (ignore widget)) (lui.draw:make-geometry))
     :paint (lambda (target node)
              (let ((widget (element-content node)) (box (element-box node)))
                (funcall (renderer-backdrop-effect target)

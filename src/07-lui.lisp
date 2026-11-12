@@ -25,8 +25,8 @@
                 #:event-dragging-p)
   (:import-from #:lui.widgets
                 #:declare-widget #:widget-text)
-  ;; Public symbols are owned here; optional implementations import them.
-  ;; Loading a backend supplies its functions without mutating this package.
+  ;; Application controls and layout live here; specialized APIs are exported
+  ;; by their owning font, drawing, debugger, and backend packages.
   (:export
    #:lui-error #:configuration-error #:backend-error #:font-error
    #:frame-state-error #:error-operation #:error-setting #:error-value
@@ -34,23 +34,7 @@
    #:key-pressed-p #:text-input-event #:visible-span #:list-index
    #:reveal-rect #:take-events #:event-targets #:reset-editor #:edit-value
    #:*glass-defaults* #:*motif-defaults* #:*macos-defaults* #:*qt-defaults*
-   #:*garnet-defaults* #:set-debugger-enabled #:debugger-enabled-p
-   #:debugger-state #:make-debugger-state #:debugger-state-open-p
-   #:debugger-state-selected #:debugger-state-width #:font #:open-font
-   #:close-font #:font-size #:text-width #:line-height #:baseline
-   #:wrap-text #:glyph-polygons #:*font-path* #:*font-paths*
-   #:*font-directories* #:*font-names* #:font-face #:renderer
-   #:renderer-font #:renderer-polygons #:renderer-clip
-   #:renderer-backdrop-effect
-   #:renderer-text #:geometry #:make-geometry #:geometry-left
-   #:geometry-top #:geometry-right #:geometry-bottom #:geometry-min-width
-   #:geometry-min-height #:geometry-center-x #:geometry-center-y
-   #:geometry-offset-x #:geometry-offset-y #:geometry-text-p
-   #:geometry-value-p #:widget-geometry #:text-box #:rounded-polygon
-   #:color-components #:paint-text #:shape #:outline #:inset-box
-   #:focused-p #:widget-font #:render-pdf #:*pdf-output*
-   #:make-terminal-context #:render-terminal #:terminal-text-width
-   #:text-lines #:cell-edge #:mount #:unmount #:refresh
+   #:*garnet-defaults* #:mount #:unmount #:refresh
    #:position-mode #:object-id #:point #:contour #:contours
    #:sizing #:fit #:grow #:fixed
    #:percent #:box
@@ -86,7 +70,7 @@
    #:define-toolkit
    #:table #:table-row #:table-cell
     #:with-key #:widget-key #:widget-id #:focus-widget
-   #:opt #:panel #:label
+   #:opt #:panel #:label #:spacer #:hr #:vr
    #:button #:tab #:checkbox #:radio #:slider
    #:text-field #:cell #:list-item #:gauge #:canvas
    #:date-picker #:searchable-combobox
@@ -568,6 +552,29 @@ Offsets on automatic widgets shift their drawing without changing their slot."
 (define-control button (id text)
   "Return true on activation. OPT :id supplies an instance key; the ID is returned third."
   (apply #'declare-widget :button style id text (append options defaults)))
+
+(fn (spacer lui.layout:element) (&optional ((options list) nil))
+  "Reserve empty layout space using OPT options, without painting or focus.
+Use :width (grow) in a row or :height (grow) in a column to push siblings apart.
+Fixed dimensions reserve a specific amount; :padding adds space on every side.
+The default size is zero. For padding around children, use ROW or COLUMN."
+  (lui.frame:emit (apply #'lui.layout:make-element options)))
+
+(define-control hr (id)
+  "Draw a noninteractive horizontal rule, growing in width and one coordinate thick.
+OPT :height sets thickness; :width controls length. :foreground sets its color."
+  (apply #'declare-widget :hr style id ""
+         (append options (list :width (grow) :height (fixed 1)
+                               :foreground (palette-color palette :border))
+                 defaults)))
+
+(define-control vr (id)
+  "Draw a noninteractive vertical rule, growing in height and one coordinate thick.
+OPT :width sets thickness; :height controls length. :foreground sets its color."
+  (apply #'declare-widget :vr style id ""
+         (append options (list :width (fixed 1) :height (grow)
+                               :foreground (palette-color palette :border))
+                 defaults)))
 
 (fn (without-option list) ((key symbol) (options list))
   "Return an option plist without KEY and its associated value."

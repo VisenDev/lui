@@ -151,7 +151,7 @@ class WebTests(unittest.TestCase):
     def fixture(self, body=None, options=""):
         """Mount an isolated visible application; return its host selector."""
         body = body or '''
-          (lui.frame:column (:width (lui.layout:grow) :gap 8)
+          (lui.frame:column (lui:opt :width (lui.layout:grow) :gap 8)
             (setf *web-test-value*
               (lui.glass:text-field (lui:opt :id :fixture :value *web-test-value* :width (lui.layout:grow))))
             (when (lui.glass:button "Fixture push" (lui:opt :id :push))
@@ -181,18 +181,18 @@ class WebTests(unittest.TestCase):
 
     def test_font_caches_preserve_alternating_sizes(self):
         self.lisp('''
-          (let ((font (lui:open-font)))
+          (let ((font (lui.font:open-font)))
             (unwind-protect
               (let ((small (lui.font::measure-text font "alpha beta"))
-                    (lines (lui:wrap-text font "alpha beta gamma" 100)))
-                (setf (lui:font-size font) 32)
-                (assert (> (lui:text-width font "alpha beta")
+                    (lines (lui.font:wrap-text font "alpha beta gamma" 100)))
+                (setf (lui.font:font-size font) 32)
+                (assert (> (lui.font:text-width font "alpha beta")
                            (jscl/ffi:oget small "width")))
-                (lui:wrap-text font "alpha beta gamma" 100)
-                (setf (lui:font-size font) 16)
+                (lui.font:wrap-text font "alpha beta gamma" 100)
+                (setf (lui.font:font-size font) 16)
                 (assert (eq small (lui.font::measure-text font "alpha beta")))
-                (assert (eq lines (lui:wrap-text font "alpha beta gamma" 100))))
-              (lui:close-font font)))
+                (assert (eq lines (lui.font:wrap-text font "alpha beta gamma" 100))))
+              (lui.font:close-font font)))
         ''')
 
     def test_explicit_page_scroll_on_desktop(self):
@@ -402,7 +402,7 @@ class WebTests(unittest.TestCase):
 
     def test_native_label_selection_survives_frames_and_copies(self):
         host = self.fixture('''
-          (lui.frame:column (:width (lui.layout:grow) :gap 8)
+          (lui.frame:column (lui:opt :width (lui.layout:grow) :gap 8)
             (lui.glass:label "Selectable native label")
             (lui.glass:label "Read only and accessible"))''')
         label = self.page.get_by_text("Selectable native label", exact=True)
@@ -464,7 +464,7 @@ class WebTests(unittest.TestCase):
 
     def test_floating_control_covers_native_text(self):
         host = self.fixture('''
-          (lui.frame:column (:width (lui.layout:fixed 240))
+          (lui.frame:column (lui:opt :width (lui.layout:fixed 240))
             (lui:label "Under the popup")
             (when (zerop *web-test-clicks*)
               (when (lui:button "Dismiss" (lui:opt :id :popup :position :absolute :width (lui.layout:grow)))
@@ -555,7 +555,7 @@ class WebTests(unittest.TestCase):
               (defvar *web-test-app*
                 (lui.web:mount *web-test-host*
                   (lambda ()
-                    (lui.frame:column (:width (lui.layout:grow))
+                    (lui.frame:column (lui:opt :width (lui.layout:grow))
                       (dotimes (i 60)
                         (when (lui.glass:button (format nil "Row ~D" i) (lui:opt :id (list :row i) :height (lui.layout:fixed 48)
                                          :width (lui.layout:grow)))
@@ -625,7 +625,7 @@ class WebTests(unittest.TestCase):
               (#j:document:body:appendChild *mobile-port*)
               (lui.web:mount *mobile-port*
                 (lambda ()
-                  (lui.frame:column (:width (lui.layout:grow))
+                  (lui.frame:column (lui:opt :width (lui.layout:grow))
                     (dotimes (i 40)
                       (lui.glass:label (format nil "Embedded row ~D" i)
                         (lui:opt :width (lui.layout:grow) :height (lui.layout:fixed 48)))))))''')
@@ -966,7 +966,7 @@ class WebTests(unittest.TestCase):
 
     def test_scroll_hit_testing_and_wheel(self):
         host = self.fixture('''
-          (lui.frame:column (:id :scroll :width (lui.layout:grow)
+          (lui.frame:column (lui:opt :id :scroll :width (lui.layout:grow)
                             :height (lui.layout:fixed 280) :scroll-p t)
             (dotimes (i 30)
               (when (lui.glass:button (format nil "Row ~D" i) (lui:opt :id (list :row i) :height (lui.layout:fixed 32)

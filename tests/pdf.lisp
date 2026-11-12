@@ -5,7 +5,7 @@
 
 (defun run-tests ()
   (uiop:with-temporary-file (:pathname path :type "pdf")
-    (let ((lui:*pdf-output* path) (frames 0) (pdf:*compress-streams* nil))
+    (let ((lui.pdf:*pdf-output* path) (frames 0) (pdf:*compress-streams* nil))
       (assert (equal path
                 (lui:run (lambda () (incf frames) (lui:button "Save"
                                                     (lui:opt :id :save)))

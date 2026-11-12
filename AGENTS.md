@@ -35,8 +35,9 @@ in `AGENTS.md` and application documentation in docstrings and
   symbols. Qualify or explicitly import other external API symbols.
 - Side-effect-only functions declare `(values)` and end with `(values)`,
   including early function exits; reserve `null` for an actual NIL result.
-- Declare public API symbols in `lui`'s `defpackage`; implementation packages
-  import them explicitly. Do not mutate exports through private macros.
+- Declare application API symbols in `lui`'s `defpackage`. Specialized font,
+  drawing, debugger, terminal, and PDF APIs belong to their owning packages.
+  Do not mutate exports through private macros.
 - Access other LUI packages through exported symbols; declare shared internals
   in their owning package exports instead of using double-colon references.
 - Normally wrap Lisp code at 78 columns; use keyword LOOP clauses.
@@ -293,8 +294,10 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   `lui/terminal`, `lui/pdf`, `lui/gl`, `lui/x11`, `lui/wayland`, `lui/win32`, and
   `lui/cocoa`. `lui:available-backends` lists loaded backends; `lui:run :backend`
   chooses one. Width/height use backend coordinates; omission uses defaults.
-- Public application APIs use `lui:`; optional systems supply their functions
-  when loaded. Control macros cannot be passed to FUNCALL/APPLY. Toolkit
+- Core application APIs use `lui:`. Font, drawing, debugger, terminal, and PDF
+  helpers use `lui.font:`, `lui.draw:`, `lui.debug:`, `lui.terminal:`, and
+  `lui.pdf:` respectively; load the corresponding optional system first.
+  Control macros cannot be passed to FUNCALL/APPLY. Toolkit
   overrides remain functions receiving resolved IDs, positional arguments, and
   an options list. `lui:control` invokes a registered custom control.
 - Each control call site has a stable ID. Instance keys are combined with that
@@ -322,6 +325,10 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 - `row` and `column` take an options expression, like `panel` and `table`.
   Use `(lui:row (lui:opt :gap 1) ...)` or a stored options list; the expression
   is evaluated once.
+- `spacer` reserves empty space with OPT sizing and padding. Use `:width (grow)`
+  in rows or `:height (grow)` in columns. `hr` and `vr` are noninteractive rules:
+  the long axis grows, thickness defaults to one backend coordinate, and
+  `:foreground` overrides the captured palette border color.
 - Table columns use the widest content across rows. Extra width is shared;
   narrow tables shrink columns proportionally before row-height measurement.
   Short rows may omit trailing cells. `:column-gap` belongs to the table and
