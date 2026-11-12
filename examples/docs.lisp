@@ -72,13 +72,13 @@
      "Scrolling panels show a scrollbar by default. :scrollbar-p NIL hides it; :scrollbar-width customizes the reserved track width in backend coordinates. The default is 12 graphical pixels or one terminal cell. Drag the thumb to move continuously, or click the track above/below it to page by a viewport. Wheel scrolling supports momentum; nested scrollers pass unused motion to an ancestor."
      "A scrolling viewport needs a bounded size. Nested scrollers pass wheel input to an ancestor when they cannot scroll further. lui:previous-box exposes completed geometry; lui:scroll-position and scroll-to support application-controlled navigation. Virtualize very large lists instead of declaring every row.")
     (:toolkits "Toolkits"
-      "The lui package contains application controls, layout, palettes, toolkit registration, and events. Specialized APIs live in lui.font (font configuration and metrics), lui.draw (custom painting and geometry), lui.debug (inspection), lui.terminal (snapshots), and lui.pdf (PDF output). Load their corresponding optional systems before calling them. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. macOS uses warm surfaces, rounded controls, subtle borders, and blue accents; Qt uses restrained raised desktop controls. Cycle palette to try Default, Light, Dark, Ocean, and Forest on the page and live samples. A window background remains opaque."
+      "The lui package contains application controls, layout, palettes, toolkit registration, and events. Palette accessors live in lui.palette; toolkit registration, rendering policies, and resolved defaults live in lui.toolkit. Both are included in lui/core. Everyday palette construction, presets, and palette/toolkit scopes stay in lui. Built-in defaults belong to their own packages, such as lui.qt:*qt-defaults*. Other specialized APIs live in lui.font (font configuration and metrics), lui.draw (custom painting and geometry), lui.debug (inspection), lui.terminal (snapshots), and lui.pdf (PDF output); load the corresponding optional systems before calling them. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. macOS uses warm surfaces, rounded controls, subtle borders, and blue accents; Qt uses restrained raised desktop controls. Cycle palette to try Default, Light, Dark, Ocean, and Forest on the page and live samples. A window background remains opaque."
      "(lui:with-toolkit (:motif)
   (lui:button \"OK\" (lui:opt :id :ok)))
 (lui:with-toolkit (:garnet)
   (lui:label \"A different toolkit\"))"
-      "lui:with-toolkit chooses defaults and control implementations for a lexical drawing scope. Nested scopes restore the previous toolkit. Use lui:with-palette with :ocean to apply a built-in color theme without changing geometry. lui:available-palettes lists the presets. lui:current-toolkit returns the current name; lui:toolkit-defaults exposes its inherited options."
-      "Custom toolkits register defaults, a parent, control overrides, and shared geometry and painting callbacks. Use lui:define-toolkit or lui:register-toolkit; the API reference shows their exact signatures. Backend implementations may approximate optical effects differently: X11 and Wayland share the OpenGL renderer through GLX/EGL, while Cocoa uses whole-window material.")
+      "lui:with-toolkit chooses defaults and control implementations for a lexical drawing scope. Nested scopes restore the previous toolkit. Use lui:with-palette with :ocean to apply a built-in color theme without changing geometry. lui:available-palettes lists the presets. lui:current-toolkit returns the current name; lui.toolkit:toolkit-defaults exposes its inherited options."
+      "Custom toolkits register defaults, a parent, control overrides, and shared geometry and painting callbacks. Use lui.toolkit:define-toolkit or lui.toolkit:register-toolkit; the API reference shows their exact signatures. Backend implementations may approximate optical effects differently: X11 and Wayland share the OpenGL renderer through GLX/EGL, while Cocoa uses whole-window material.")
     (:input "Input and inspection"
      "Tab and Shift-Tab move keyboard focus. Enter and Space activate a focused button, checkbox, or tab; Space inserts a space in an editor. Pointer clicks do not display a keyboard focus ring. Arrow keys navigate tabs."
      "When implementing a draggable control, handle :cancel by clearing its drag state. event-buttons reports the physical buttons on pointer motion when the backend knows them. Zero means all buttons are up, bit 0 means primary, bit 1 means secondary, and NIL means unknown."
@@ -162,11 +162,11 @@
 
 (defun symbol-rows (state)
   (let* ((width (reference-width))
-         (key (list width (lui:current-toolkit) lui:*toolkit-revision*
+         (key (list width (lui:current-toolkit) lui.toolkit:*toolkit-revision*
             lui:*unit*
                     (lui.frame:context-text-mode-p lui.frame:*context*))))
     (unless (equal key (browser-row-key state))
-      (let* ((defaults (lui:toolkit-defaults))
+      (let* ((defaults (lui.toolkit:toolkit-defaults))
              (measure (lui.frame:context-measure lui.frame:*context*))
              (text-p (lui.frame:context-text-mode-p lui.frame:*context*))
              (inset (if text-p 0 24)) (gutter (if text-p 1 12))
@@ -588,7 +588,7 @@
    (lui:with-palette ((browser-palette state))
     (lui:panel (lui:opt :width (lui:grow) :height (lui:grow)
                         :background
-                        (let ((colors (lui:toolkit-palette)))
+                        (let ((colors (lui.toolkit:toolkit-palette)))
                             (getf colors :window-background (getf colors
                   :background)))
                         :opacity 1 :frost 0 :radius 0

@@ -176,7 +176,7 @@
          (wrap (symbol-function 'wrap-text))
          (wraps 0) (geometries 0) (inset 0) (value-p nil) (text-p t)
          (result nil))
-    (lui:register-toolkit
+    (lui.toolkit:register-toolkit
      :test-cache :parent :qt
      :geometry (lambda (widget)
                  (declare (ignore widget))
@@ -380,7 +380,7 @@
          (context (make-context
                    :measure (lambda (widget width)
                               (measure-widget renderer widget width)))))
-    (lui:register-toolkit
+    (lui.toolkit:register-toolkit
      :test-graphical
      :paint (lambda (target node)
               (push (widget-kind (element-content node)) painted)
@@ -395,7 +395,8 @@
                  (lambda (id text &rest options)
                    (apply #'declare-widget :badge (lui:current-toolkit)
                           id text options)))))
-    (lui:register-toolkit :test-graphical-child :parent :test-graphical)
+    (lui.toolkit:register-toolkit :test-graphical-child
+                                  :parent :test-graphical)
     (with-frame (context 200 100)
       (lui:with-toolkit (:test-graphical-child)
         (lui:control :badge :badge "Badge")))
@@ -891,8 +892,8 @@
                      paths))
       (assert (member '("2" "#202430") texts :test #'equal))
       (assert (member '("3" "#202430") texts :test #'equal))
-      (assert (find (getf (lui:toolkit-palette style) :selection) paths :key
-            #'second :test #'equal)))))
+      (assert (find (getf (lui.toolkit:toolkit-palette style) :selection)
+                    paths :key #'second :test #'equal)))))
 
 (defun test-debug-highlight (font)
   (dolist (style '(:glass :motif :garnet :macos :qt))
@@ -952,7 +953,7 @@
 
 (defun test-toolkit-geometry (font)
   ;; Asymmetric custom geometry must determine both wrapping and hit positions.
-  (lui:register-toolkit
+  (lui.toolkit:register-toolkit
    :test-geometry :parent :glass
    :geometry (lambda (widget)
                (declare (ignore widget))

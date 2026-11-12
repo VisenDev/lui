@@ -1,5 +1,6 @@
 (defpackage #:lui.debug
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets)
+  (:import-from #:lui.toolkit #:toolkit-defaults)
   (:export #:set-debugger-enabled #:debugger-enabled-p #:debugger-state
            #:make-debugger-state
            #:debugger-state-open-p
@@ -440,7 +441,7 @@
                            :value (/ width
                                      (max 1 (context-width *context*)))
                            :text "Debugger width"
-                           (lui:toolkit-defaults))))))
+                           (lui.toolkit:toolkit-defaults))))))
 
 (fn (details-height real) ((state debugger-state) (maximum (real 0 *)))
   "Resolve the selected-node details height within the debugger pane."

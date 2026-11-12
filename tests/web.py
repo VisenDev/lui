@@ -51,7 +51,7 @@ class WebTests(unittest.TestCase):
             return c && c.luiApp && c.width > 0;
         }""")
         self.lisp('''(declaim (special lui.frame:*context* lui.frame:*parent*
-          lui:*unit* lui::*toolkit* lui::*toolkit-definition*))''')
+          lui:*unit* lui.toolkit:*toolkit* lui.toolkit:*toolkit-definition*))''')
         self.frames()
 
     def tearDown(self):
@@ -317,7 +317,7 @@ class WebTests(unittest.TestCase):
         self.lisp('''
           (defvar *custom-label-paints* 0)
           (defvar *custom-label-measures* 0)
-          (lui:register-toolkit :test-canvas-labels :parent :glass
+          (lui.toolkit:register-toolkit :test-canvas-labels :parent :glass
             :paint (lambda (renderer node)
               (when (eq :label (lui.widgets:widget-kind
                                 (lui.layout:element-content node)))
@@ -328,7 +328,7 @@ class WebTests(unittest.TestCase):
               (declare (ignore widget))
               (incf *custom-label-measures*)
               (lui.draw:make-geometry :text-p nil :min-width 123 :min-height 31)))
-          (lui:register-toolkit :test-canvas-label-child
+          (lui.toolkit:register-toolkit :test-canvas-label-child
                                :parent :test-canvas-labels)
         ''')
         host = self.fixture('''
@@ -351,7 +351,7 @@ class WebTests(unittest.TestCase):
         self.assertEqual(color, [18, 52, 86, 255])
 
     def test_palette_and_geometry_reach_native_labels_and_patterns(self):
-        self.lisp('''(lui:register-toolkit :inset-labels :parent :glass
+        self.lisp('''(lui.toolkit:register-toolkit :inset-labels :parent :glass
           :geometry (lambda (widget) (declare (ignore widget))
                       (lui.draw:make-geometry :left 20 :right 8 :top 10 :bottom 4))
           :native-labels t)''')

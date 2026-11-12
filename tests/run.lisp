@@ -11,13 +11,15 @@
                 "src/04-layout.lisp"
                 "src/05-frame.lisp"
                 "src/06-widgets.lisp"
-                "src/07-lui.lisp"
-                "src/08-interaction.lisp"
-                "src/09-glass.lisp"
-                "src/10-motif.lisp"
-                "src/11-macos.lisp"
-                "src/12-qt.lisp"
-                "src/13-garnet.lisp"
+                "src/07-palette.lisp"
+                "src/08-toolkit.lisp"
+                "src/09-lui.lisp"
+                "src/10-interaction.lisp"
+                "src/11-glass.lisp"
+                "src/12-motif.lisp"
+                "src/13-macos.lisp"
+                "src/14-qt.lisp"
+                "src/15-garnet.lisp"
                 "tests/support.lisp"
                 "tests/core.lisp"))
   (load file))
@@ -32,7 +34,7 @@
 (lui.tests.interaction:run-tests)
 
 (load "examples/seven-model.lisp")
-(load "src/14-debug.lisp")
+(load "src/16-debug.lisp")
 (load "tests/debug.lisp")
 (lui.tests.debug:run-tests)
 

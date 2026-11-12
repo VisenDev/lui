@@ -330,7 +330,8 @@
 
 (defun draw-gallery (g)
   (lui:panel (lui:opt :id :window :width (lui:grow) :height (lui:grow)
-                      :background (let ((colors (lui:toolkit-palette)))
+                      :background (let ((colors
+                                          (lui.toolkit:toolkit-palette)))
                                     (getf colors :window-background (getf
               colors :background)))
                       :opacity 1 :radius 0 :frost 0

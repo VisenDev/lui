@@ -99,7 +99,8 @@
 
 (defun test-call-with-scopes ()
   (let ((toolkit (lui:current-toolkit))
-        (palette lui::*palette*) (scope lui.frame::*key-scope*))
+        (palette (lui.toolkit:toolkit-palette))
+        (scope lui.frame::*key-scope*))
     (assert
      (equal '(1 2)
             (multiple-value-list
@@ -119,7 +120,7 @@
              (lui:with-palette (:light)
                (lui:with-key :nested (throw 'scope-exit :escaped)))))))
     (assert (eq toolkit (lui:current-toolkit)))
-    (assert (eq palette lui::*palette*))
+    (assert (equal palette (lui.toolkit:toolkit-palette)))
     (assert (eq scope lui.frame::*key-scope*)))
   (let ((context (make-test-context)) (calls 0))
     (assert (eq (lui:call-with-frame context 20 10

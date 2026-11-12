@@ -190,7 +190,7 @@
 (defparameter *macro-defaults*
   '(:background "#123456" :foreground "#ffffff"))
 
-(lui:define-toolkit :test-modern *macro-defaults* modern-panel
+(lui.toolkit:define-toolkit :test-modern *macro-defaults* modern-panel
   modern-label modern-button)
 
 (defun test-toolkit-definitions ()
@@ -207,21 +207,23 @@
       (assert (eq :test-modern (lui.widgets:widget-style widget)))
       (assert (string= "#abcdef" (lui.widgets:widget-background widget)))
       (assert (= 11 (box-width (element-box node)))))
-    (loop for (key value) on *macro-defaults* by #'cddr
-          do (assert (equal value (getf (lui:toolkit-defaults :test-modern)
-              key))))))
+    (loop :for (key value) :on *macro-defaults* :by #'cddr
+          :do (assert (equal value
+                             (getf (lui.toolkit:toolkit-defaults :test-modern)
+                                   key))))))
 
 (defun test-palettes ()
   (assert (equalp (lui:available-palettes) #(:default :light :dark :ocean
           :forest)))
   (assert (lui:palette-p lui:+palette-default+))
-  (assert (equal (lui:palette-foreground lui:+palette-dark+) "#eeeeee"))
+  (assert (equal (lui.palette:palette-foreground lui:+palette-dark+)
+                 "#eeeeee"))
   (assert (handler-case (funcall (symbol-function 'lui::call-with-palette)
                      (list :accent "#123456") (constantly nil))
             (error () t)))
   ;; Resolve a provider once per control, while observing changes within a frame.
   (let ((reads 0) (color "#112233") (context (make-test-context)))
-    (lui:register-toolkit :palette-provider :parent :glass
+    (lui.toolkit:register-toolkit :palette-provider :parent :glass
       :defaults (lambda () (incf reads) (list :palette (list :cell-background
               color))))
     (with-frame (context 80 30)
@@ -236,13 +238,13 @@
                   (element-content (gethash (lui:widget-id (car entry)
                   context) (lui.frame::context-ids context)))
                       :background)))))
-  (lui:register-toolkit :palette-parent :parent :glass
+  (lui.toolkit:register-toolkit :palette-parent :parent :glass
                        :defaults '(:palette (:accent "#123456" :outline "#654321")))
-  (lui:register-toolkit :palette-child :parent :palette-parent
+  (lui.toolkit:register-toolkit :palette-child :parent :palette-parent
                        :defaults '(:palette (:background "#abcdef")))
-  (assert (equal "#123456" (getf (lui:toolkit-palette :palette-child)
+  (assert (equal "#123456" (getf (lui.toolkit:toolkit-palette :palette-child)
           :accent)))
-  (assert (equal "#abcdef" (getf (lui:toolkit-palette :palette-child)
+  (assert (equal "#abcdef" (getf (lui.toolkit:toolkit-palette :palette-child)
           :background)))
   (let ((context (make-test-context)))
     (with-frame (context 80 30)
@@ -272,19 +274,22 @@
       (assert (equal "#258bff" (color :unscoped :accent))))))
 
 (defun test-named-palette-scope ()
-  (let ((before (lui:toolkit-palette)))
+  (let ((before (lui.toolkit:toolkit-palette)))
     (loop :for name :across (lui:available-palettes)
           :for palette :in (list lui:+palette-default+ lui:+palette-light+
                                  lui:+palette-dark+ lui:+palette-ocean+
                                  lui:+palette-forest+)
           :do (assert
-               (equal (lui:with-palette (name) (lui:toolkit-palette))
-                      (lui:with-palette (palette) (lui:toolkit-palette)))))
+               (equal (lui:with-palette (name) (lui.toolkit:toolkit-palette))
+                      (lui:with-palette (palette)
+                        (lui.toolkit:toolkit-palette)))))
     (lui:with-palette (:dark)
       (lui:with-palette ((lui:make-palette :accent "#123456"))
-        (assert (equal "#123456" (getf (lui:toolkit-palette) :accent)))
-        (assert (equal "#eeeeee" (getf (lui:toolkit-palette) :foreground)))))
-    (assert (equal before (lui:toolkit-palette)))))
+        (assert (equal "#123456"
+                       (getf (lui.toolkit:toolkit-palette) :accent)))
+        (assert (equal "#eeeeee"
+                       (getf (lui.toolkit:toolkit-palette) :foreground)))))
+    (assert (equal before (lui.toolkit:toolkit-palette)))))
 
 (defun test-date-picker ()
   (assert (equalp #(2024 2 29) (lui::parse-picker-date "02/29/2024")))
@@ -309,7 +314,7 @@
           (record-activation context
             (lui:widget-id (list style :calendar) context))
           (lui.tests.support::draw-date-picker (lui:opt :id style :value "2026-11-06")))
-        (let* ((palette (lui:toolkit-defaults))
+        (let* ((palette (lui.toolkit:toolkit-defaults))
                (day (element-content
                       (gethash (lui:widget-id (list style :day 6) context)
                         (lui.frame::context-ids context)))))
@@ -562,7 +567,42 @@
         (assert (search (if options "Repeated control key" "call site")
                         (princ-to-string failure)))))))
 
+(defun test-styling-package-boundaries ()
+  (let ((readers 0))
+    (do-external-symbols (symbol :lui.palette)
+      (let ((name (symbol-name symbol)))
+        (when (and (<= 8 (length name))
+                   (string= "PALETTE-" (subseq name 0 8))
+                   (not (string= name "PALETTE-P")))
+          (incf readers)
+          (assert (fboundp symbol))
+          (assert (eq (symbol-package symbol) (find-package :lui.palette)))
+          (assert (not (eq :external
+                           (nth-value 1 (find-symbol name :lui))))))))
+    (assert (= 22 readers)))
+  (dolist (name '("REGISTER-TOOLKIT" "REGISTER-TOOLKIT-RENDERING"
+                  "TOOLKIT-PAINT" "TOOLKIT-GEOMETRY"
+                  "TOOLKIT-NATIVE-LABELS-P" "TOOLKIT-PALETTE"
+                  "TOOLKIT-DEFAULTS" "DEFINE-TOOLKIT" "*TOOLKIT-REVISION*"))
+    (multiple-value-bind (symbol status) (find-symbol name :lui.toolkit)
+      (assert (eq status :external))
+      (assert (eq (symbol-package symbol) (find-package :lui.toolkit)))
+      (assert (not (eq :external (nth-value 1 (find-symbol name :lui)))))))
+  (dolist (name '("WITH-PALETTE" "MAKE-PALETTE" "AVAILABLE-PALETTES"
+                  "+PALETTE-DARK+" "WITH-TOOLKIT" "CURRENT-TOOLKIT"))
+    (assert (eq :external (nth-value 1 (find-symbol name :lui)))))
+  (dolist (pair '((:lui.glass "*GLASS-DEFAULTS*")
+                  (:lui.motif "*MOTIF-DEFAULTS*")
+                  (:lui.macos "*MACOS-DEFAULTS*")
+                  (:lui.qt "*QT-DEFAULTS*")
+                  (:lui.garnet "*GARNET-DEFAULTS*")))
+    (let ((symbol (find-symbol (second pair) (first pair))))
+      (assert (boundp symbol))
+      (assert (eq (symbol-package symbol) (find-package (first pair))))
+      (assert (null (find-symbol (second pair) :lui))))))
+
 (defun run-tests ()
+  (test-styling-package-boundaries)
   (test-missing-widget-keys)
   (test-owned-widget-state)
   (test-keyed-widget-state)
@@ -629,7 +669,8 @@
             (assert (eq style (lui.widgets:widget-style (appearance id)))))
           (assert (eq :garnet
                       (lui.widgets:widget-style (appearance :nested))))
-          (assert (equal (getf (lui:toolkit-defaults style) :background)
+          (assert (equal (getf (lui.toolkit:toolkit-defaults style)
+                               :background)
                          (lui.widgets:widget-background (appearance :plain))))
           (assert (= 9 (box-width (element-box (node :sized)))))
           (assert (= 2 (box-height (element-box (node :sized)))))
@@ -645,8 +686,8 @@
           (assert (= 7 number))
           (assert (equal "edited" text)))))
     ;; An explicit NIL option overrides a true toolkit default.
-    (let ((lui:*glass-defaults*
-            (append '(:disabled-p t) lui:*glass-defaults*))
+    (let ((lui.glass:*glass-defaults*
+            (append '(:disabled-p t) lui.glass:*glass-defaults*))
           (context (make-test-context)))
       (with-frame (context 20 5)
         (lui:with-toolkit (:glass)
@@ -666,7 +707,7 @@
   (let ((received nil)
         (options (lui:opt :width (fixed 12)))
         (context (make-test-context)))
-    (lui:register-toolkit
+    (lui.toolkit:register-toolkit
      :test :parent :motif :defaults '(:accent "#123456")
      :controls
      (list (cons :button
@@ -674,8 +715,8 @@
                    (setf received (list id text opts))
                    (apply #'lui.widgets:declare-widget :button
                           (lui:current-toolkit) id text
-                          (append opts (lui:toolkit-defaults)))))))
-    (lui:register-toolkit :test-child :parent :test)
+                          (append opts (lui.toolkit:toolkit-defaults)))))))
+    (lui.toolkit:register-toolkit :test-child :parent :test)
     (with-frame (context 30 10)
       (lui:with-toolkit (:test)
         (assert (eq :test (lui:current-toolkit)))
@@ -686,9 +727,11 @@
     (assert (equal (list (lui:widget-key (first received)) (second received))
               '(:custom "Custom")))
     (assert (equal (third received) options))
-    (assert (equal "#123456" (getf (lui:toolkit-defaults :test) :accent)))
+    (assert (equal "#123456"
+                   (getf (lui.toolkit:toolkit-defaults :test) :accent)))
     (assert (equal "#b8b8b8"
-                   (getf (lui:toolkit-defaults :test-child) :background)))
+                   (getf (lui.toolkit:toolkit-defaults :test-child)
+                         :background)))
     (let ((widget (element-content
                     (gethash (lui:widget-id :custom context)
                       (lui.frame::context-ids context)))))

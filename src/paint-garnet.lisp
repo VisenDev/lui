@@ -247,5 +247,5 @@
       (otherwise nil))
     g))
 
-(lui:register-toolkit-rendering :garnet :paint #'paint-garnet-widget
+(lui.toolkit:register-toolkit-rendering :garnet :paint #'paint-garnet-widget
                                 :geometry #'garnet-geometry :native-labels t)

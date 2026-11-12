@@ -620,6 +620,7 @@
 
 (defpackage #:lui.web
   (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.draw)
+  (:import-from #:lui.toolkit #:toolkit-native-labels-p)
   (:import-from #:lui
                 #:mount #:unmount #:refresh)
   (:export #:mount #:unmount #:refresh)
@@ -920,7 +921,7 @@
                                                             :list-item
                                                             :checkbox :radio))
                                              (or (not (eq kind :label))
-                                                 (lui:toolkit-native-labels-p
+                                                 (toolkit-native-labels-p
                                                   (lui.widgets:widget-style
                                                    widget)))
                                              (not (lui.widgets:widget-painter

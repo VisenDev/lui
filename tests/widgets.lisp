@@ -603,7 +603,7 @@
           (assert (= x 3)) (assert (= y 4)))
         (draw))))
   (let ((context (make-test-context)))
-    (lui:register-toolkit :terminal-square :defaults '(:radius 0))
+    (lui.toolkit:register-toolkit :terminal-square :defaults '(:radius 0))
     (with-frame (context 20 10)
       (lui:with-toolkit (:terminal-square)
         (lui.tests.support::draw-button "Square" (lui:opt :id :square))

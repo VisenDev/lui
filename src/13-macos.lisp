@@ -1,8 +1,6 @@
 (defpackage #:lui.macos
   (:use #:cl)
-  (:import-from #:lui #:define-toolkit)
-  (:import-from #:lui
-                #:*macos-defaults*)
+  (:import-from #:lui.toolkit #:define-toolkit)
   (:export #:label #:button #:checkbox #:radio #:slider #:text-field #:panel
            #:tab
            #:canvas #:gauge #:list-item #:cell #:*macos-defaults*))

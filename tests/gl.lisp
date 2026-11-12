@@ -87,7 +87,7 @@
 
 (defun test-backdrop-frost (gpu renderer context)
   ;; No built-in toolkit parent: the backdrop is an independent capability.
-  (lui:register-toolkit :test-backdrop
+  (lui.toolkit:register-toolkit :test-backdrop
     :geometry (lambda (widget)
                 (declare (ignore widget)) (lui.draw:make-geometry))
     :paint (lambda (target node)

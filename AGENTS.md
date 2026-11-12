@@ -36,7 +36,9 @@ in `AGENTS.md` and application documentation in docstrings and
 - Side-effect-only functions declare `(values)` and end with `(values)`,
   including early function exits; reserve `null` for an actual NIL result.
 - Declare application API symbols in `lui`'s `defpackage`. Specialized font,
-  drawing, debugger, terminal, and PDF APIs belong to their owning packages.
+  drawing, palette inspection, toolkit extension, debugger, terminal, and PDF
+  APIs belong to their owning packages. Keep everyday palette construction,
+  presets, and palette/toolkit scopes available through `lui`.
   Do not mutate exports through private macros.
 - Access other LUI packages through exported symbols; declare shared internals
   in their owning package exports instead of using double-colon references.
@@ -62,7 +64,9 @@ the change and report material limitations instead of claiming untested support.
 ## Source organization
 
 - Keep portable source files numbered in dependency order (`01-fn.lisp`
-  through `14-debug.lisp`). The debugger remains an optional ASDF system.
+  through `16-debug.lisp`). Palette and toolkit support precede the application
+  facade in `07-palette.lisp`, `08-toolkit.lisp`, and `09-lui.lisp`.
+  The debugger remains an optional ASDF system.
 - Each core file owns one matching package. Ignore numeric prefixes and map
   package dots to filename hyphens. Tests use `lui.tests.` and gallery packages
   use `lui.example.`; script packages also follow their filenames.
@@ -300,6 +304,11 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   Control macros cannot be passed to FUNCALL/APPLY. Toolkit
   overrides remain functions receiving resolved IDs, positional arguments, and
   an options list. `lui:control` invokes a registered custom control.
+- Palette readers use `lui.palette:`. Toolkit registration, rendering policies,
+  resolved defaults, and revision tracking use `lui.toolkit:`. Built-in defaults
+  belong to their toolkit packages, such as `lui.qt:*qt-defaults*`.
+  `lui:make-palette`, palette presets, `lui:with-palette`, `lui:with-toolkit`,
+  and `lui:current-toolkit` remain everyday application APIs.
 - Each control call site has a stable ID. Instance keys are combined with that
   site, so different control sites may share a key. Use stable item keys rather
   than indices when rows can move. Repeated unkeyed sites or duplicate instance

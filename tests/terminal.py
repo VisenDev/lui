@@ -110,7 +110,7 @@ def script(error=False, debug=False):
 (test-panel-border :glass 0 "╭╮╰╯─│")
 (test-panel-border :motif 12 "++++-|")
 (test-panel-border :garnet 12 "++++-|")
-(lui:register-toolkit :terminal-border-test :parent :glass
+(lui.toolkit:register-toolkit :terminal-border-test :parent :glass
                      :defaults '(:terminal-border "┌┐└┘═║"))
 (dolist (radius '(0 14))
   (test-panel-border :terminal-border-test radius "┌┐└┘═║"))

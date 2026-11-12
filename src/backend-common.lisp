@@ -442,7 +442,7 @@
 
 (fn (widget-geometry geometry) ((widget widget))
   "Return the active toolkit's shared text geometry for WIDGET."
-  (funcall (or (lui:toolkit-geometry (widget-style widget))
+  (funcall (or (lui.toolkit:toolkit-geometry (widget-style widget))
                (error 'lui.conditions:configuration-error
                       :setting :geometry :value (widget-style widget)
                       :operation :widget-geometry
@@ -583,8 +583,8 @@
 (fn (paint-widget t) ((renderer renderer) (node element))
   "Dispatch widget painting to its explicit painter or its registered toolkit painter."
   (let* ((widget (element-content node))
-         (paint (or (widget-painter widget) (lui:toolkit-paint (widget-style
-                                                                widget))
+         (paint (or (widget-painter widget)
+                    (lui.toolkit:toolkit-paint (widget-style widget))
                     (error 'lui.conditions:configuration-error
                            :setting :painter :value (widget-style widget)
                            :operation :paint-widget
@@ -1416,7 +1416,7 @@
   "Register standard control painting with toolkit-specific surface callbacks."
   (let ((body (lambda (renderer node)
                 (paint-standard-body renderer node translucent bevel flat))))
-    (lui:register-toolkit-rendering
+    (lui.toolkit:register-toolkit-rendering
      name :geometry #'standard-geometry :native-labels t
      :paint (lambda (renderer node)
               (paint-shared-widget

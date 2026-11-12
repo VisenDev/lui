@@ -36,13 +36,15 @@
                              (:file "04-layout")
                              (:file "05-frame")
                              (:file "06-widgets")
-                             (:file "07-lui")
-                             (:file "08-interaction")
-                             (:file "09-glass")
-                             (:file "10-motif")
-                             (:file "11-macos")
-                             (:file "12-qt")
-                             (:file "13-garnet"))))
+                             (:file "07-palette")
+                             (:file "08-toolkit")
+                             (:file "09-lui")
+                             (:file "10-interaction")
+                             (:file "11-glass")
+                             (:file "12-motif")
+                             (:file "13-macos")
+                             (:file "14-qt")
+                             (:file "15-garnet"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
 
 (defsystem "lui"
@@ -58,7 +60,7 @@
 
 (defsystem "lui/debug"
   :depends-on ("lui/core")
-  :components ((:module "src" :components ((:file "14-debug")))))
+  :components ((:module "src" :components ((:file "16-debug")))))
 
 (defsystem "lui/demo"
   :depends-on ("lui/debug")

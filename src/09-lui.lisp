@@ -1,5 +1,15 @@
 (defpackage #:lui
   (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
+  (:import-from #:lui.palette
+                #:palette #:palette-p #:make-palette #:available-palettes
+                #:call-with-palette #:with-palette #:+palette-default+
+                #:+palette-light+ #:+palette-dark+ #:+palette-ocean+
+                #:+palette-forest+)
+  (:import-from #:lui.toolkit
+                #:register-toolkit #:toolkit-defaults #:define-toolkit
+                #:current-toolkit #:call-with-toolkit #:with-toolkit
+                #:control #:*toolkit* #:*toolkit-definition* #:find-toolkit
+                #:override #:without-option)
   (:import-from #:lui.conditions
                 #:lui-error #:configuration-error #:backend-error #:font-error
                 #:frame-state-error #:error-operation #:error-setting
@@ -28,54 +38,32 @@
   ;; Application controls and layout live here; specialized APIs are exported
   ;; by their owning font, drawing, debugger, and backend packages.
   (:export
-   #:lui-error #:configuration-error #:backend-error #:font-error
-   #:frame-state-error #:error-operation #:error-setting #:error-value
-   #:error-backend #:error-font-request
-   #:key-pressed-p #:text-input-event #:visible-span #:list-index
-   #:reveal-rect #:take-events #:event-targets #:reset-editor #:edit-value
-   #:*glass-defaults* #:*motif-defaults* #:*macos-defaults* #:*qt-defaults*
-   #:*garnet-defaults* #:mount #:unmount #:refresh
-   #:position-mode #:object-id #:point #:contour #:contours
-   #:sizing #:fit #:grow #:fixed
-   #:percent #:box
-   #:make-box #:box-x #:box-y #:box-width #:box-height #:element-box
-   #:element-content #:row #:column #:with-frame #:frame-time #:request-frame
-   #:previous-box #:parent-scroll-position
-   #:scroll-position #:scroll-to #:activated-p #:activated-ids
-   #:hovered-p #:event #:event-kind #:event-x #:event-y #:event-id
-   #:event-value #:event-key #:event-button #:event-buttons
-   #:event-clicks #:event-dragging-p #:declare-widget #:widget-text
-   #:run #:register-backend #:available-backends #:units #:*backend*
-   #:call-with-frame #:call-with-key #:call-with-toolkit #:call-with-palette
-   #:*unit* #:with-toolkit #:with-palette #:toolkit-palette
-   #:widget-color #:current-toolkit #:toolkit-defaults
-   #:available-palettes #:palette #:palette-p #:make-palette
-   #:palette-thumb
-   #:palette-control-background #:palette-background
-   #:palette-foreground
-   #:palette-accent #:palette-window-background #:palette-selection
-   #:palette-border #:palette-disabled #:palette-disabled-accent
-   #:palette-disabled-surface #:palette-disabled-bevel-light
-   #:palette-disabled-bevel-dark
-   #:palette-outline #:palette-light #:palette-shadow
-   #:palette-bevel-light #:palette-bevel-dark #:palette-track
-   #:palette-cell-background #:palette-cell-foreground
-   #:palette-on-accent
-   #:+palette-default+ #:+palette-light+ #:+palette-dark+
-   #:+palette-ocean+ #:+palette-forest+
-   #:register-toolkit
-   #:register-toolkit-rendering #:toolkit-paint #:toolkit-geometry
-   #:toolkit-native-labels-p
-   #:control
-   #:define-toolkit
-   #:table #:table-row #:table-cell
-    #:with-key #:widget-key #:widget-id #:focus-widget
-   #:opt #:panel #:label #:spacer #:hr #:vr
-   #:button #:tab #:checkbox #:radio #:slider
-   #:text-field #:cell #:list-item #:gauge #:canvas
-   #:date-picker #:searchable-combobox
-   #:*default-backend-function*
-   #:*toolkit-revision*))
+           #:lui-error #:configuration-error #:backend-error #:font-error
+           #:frame-state-error #:error-operation #:error-setting
+           #:error-value #:error-backend #:error-font-request
+           #:key-pressed-p #:text-input-event #:visible-span #:list-index
+           #:reveal-rect #:take-events #:event-targets #:reset-editor
+           #:edit-value #:mount #:unmount #:refresh #:position-mode
+           #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
+           #:fixed #:percent #:box #:make-box #:box-x #:box-y #:box-width
+           #:box-height #:element-box #:element-content #:row #:column
+           #:with-frame #:frame-time #:request-frame #:previous-box
+           #:parent-scroll-position #:scroll-position #:scroll-to
+           #:activated-p #:activated-ids #:hovered-p #:event #:event-kind
+           #:event-x #:event-y #:event-id #:event-value #:event-key
+           #:event-button #:event-buttons #:event-clicks #:event-dragging-p
+           #:declare-widget #:widget-text #:run #:register-backend
+           #:available-backends #:units #:*backend* #:call-with-frame
+           #:call-with-key #:call-with-toolkit #:call-with-palette #:*unit*
+           #:with-toolkit #:with-palette #:widget-color #:current-toolkit
+           #:available-palettes #:palette #:palette-p #:make-palette
+           #:+palette-default+ #:+palette-light+ #:+palette-dark+
+           #:+palette-ocean+ #:+palette-forest+ #:control #:table
+           #:table-row #:table-cell #:with-key #:widget-key #:widget-id
+           #:focus-widget #:opt #:panel #:label #:spacer #:hr #:vr #:button
+           #:tab #:checkbox #:radio #:slider #:text-field #:cell
+           #:list-item #:gauge #:canvas #:date-picker #:searchable-combobox
+           #:*default-backend-function*))
 (in-package #:lui)
 
 (defvar *backends* (make-hash-table :test 'eq))
@@ -128,305 +116,6 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
              :format-arguments (list name (available-backends))))
     (funcall runner draw :title title :width width :height height
              :interactive interactive)))
-
-(defvar *toolkit* :qt)
-(defvar *toolkit-definition* nil)
-(defvar *palette* nil)
-
-(defstruct (toolkit (:conc-name %toolkit-))
-  parent defaults controls (paint :inherit) (geometry :inherit)
-  (native-labels :inherit))
-(defvar *toolkits* (make-hash-table :test 'eq))
-
-(defvar *toolkit-revision* 0)
-
-(fn (find-toolkit toolkit) ((name symbol))
-  "Resolve a toolkit name or signal a CONFIGURATION-ERROR for an unknown name."
-  (or (gethash name *toolkits*) (error 'lui.conditions:configuration-error
-                                       :setting :toolkit :value name
-                                       :operation :find-toolkit
-                                       :format-control "Unknown toolkit ~S."
-                                       :format-arguments (list name))))
-
-(fn (rendering-option t) ((name symbol) (key symbol))
-  "Resolve an inherited toolkit rendering policy through its parent chain."
-  (let* ((entry (find-toolkit name))
-         (value (ecase key (:paint (%toolkit-paint entry))
-                       (:geometry (%toolkit-geometry entry))
-                       (:native-labels (%toolkit-native-labels entry)))))
-    (if (not (eq value :inherit)) value
-        (when (and (%toolkit-parent entry)
-                   (or (not (eq key :native-labels))
-                       (and (eq (%toolkit-paint entry) :inherit)
-                            (eq (%toolkit-geometry entry) :inherit))))
-          (rendering-option (%toolkit-parent entry) key)))))
-
-(fn (toolkit-paint (or null function)) ((name symbol))
-  "Return NAME's graphical painter, inherited through its parent, or NIL."
-  (rendering-option name :paint))
-
-(fn (toolkit-geometry (or null function)) ((name symbol))
-  "Return NAME's graphical geometry callback (widget -> geometry), inherited from its parent."
-  (rendering-option name :geometry))
-
-(fn (toolkit-native-labels-p boolean) ((name symbol))
-  "Return whether NAME delegates graphical labels to native text rendering."
-  (not (null (rendering-option name :native-labels))))
-
-(fn (register-toolkit-rendering symbol)
-    ((name symbol) &key ((paint (or null function)) nil
-                               paint-p)
-                     ((geometry (or null function)) nil
-                               geometry-p)
-                     ((native-labels boolean) nil
-                                    labels-p))
-  "Set graphical callbacks for registered NAME. Omitted keys retain their
-settings or inherit from :PARENT; explicit NIL disables the inherited setting."
-  (let ((entry (find-toolkit name)))
-    (when paint-p (check-type paint (or null function)))
-    (when geometry-p (check-type geometry (or null function)))
-    (when paint-p (setf (%toolkit-paint entry) paint))
-    (when geometry-p (setf (%toolkit-geometry entry) geometry))
-    (when labels-p (setf (%toolkit-native-labels entry)
-                     (not
-                       (null
-                         native-labels))))
-    (incf *toolkit-revision*))
-  name)
-
-(fn (register-toolkit symbol)
-    ((name symbol) &key ((parent symbol) nil)
-     ((defaults (or list function)) nil) ((controls list) nil)
-     ((paint (or null function)) nil paint-p)
-     ((geometry (or null function)) nil geometry-p)
-     ((native-labels boolean) nil labels-p))
-  "Register a toolkit. DEFAULTS is a plist or a zero-argument function.
-CONTROLS maps control names to functions taking the public arguments and options.
-PAINT, GEOMETRY and NATIVE-LABELS configure graphical rendering; omitted values
-inherit only from an explicit PARENT."
-  (loop :for ancestor := parent
-        :then (%toolkit-parent (find-toolkit ancestor))
-        :while ancestor :when (eq ancestor name)
-        :do (error 'lui.conditions:configuration-error
-                   :setting :toolkit :value name
-                   :operation :register-toolkit
-                   :format-control "Circular toolkit inheritance at ~S."
-                   :format-arguments (list name)))
-  (when paint-p (check-type paint (or null function)))
-  (when geometry-p (check-type geometry (or null function)))
-  (incf *toolkit-revision*)
-  (setf (gethash name *toolkits*)
-        (make-toolkit :parent parent :defaults defaults :controls controls
-                      :paint (if paint-p paint :inherit)
-                      :geometry (if geometry-p geometry :inherit)
-                      :native-labels (if labels-p (not (null native-labels))
-                                         :inherit)))
-  name)
-
-(fn (current-toolkit symbol) ()
-  "Return the toolkit name active in this drawing scope."
-  *toolkit*)
-
-(fn (defaults-of list) ((entry toolkit))
-  "Collect toolkit defaults, evaluating dynamic providers for this declaration."
-  (let* ((parent (%toolkit-parent entry))
-         (source (%toolkit-defaults entry))
-         (defaults (if (functionp source) (funcall source) source)))
-    (if parent (append defaults (defaults-of (find-toolkit parent)))
-        defaults)))
-
-(fn (resolve-palette list) ((defaults list))
-  "Resolve a palette object, provider, or registered palette name."
-  (labels ((colors (tail)
-             (cond ((null tail) lui.widgets:*base-palette*)
-                   ((eq (car tail) :palette) (append (cadr tail) (colors
-                                                                  (cddr
-                                                                   tail))))
-                   ((member (car tail) '(:foreground :background :accent))
-                    (list* (car tail) (cadr tail) (colors (cddr tail))))
-                   (t (colors (cddr tail))))))
-    (append *palette* (colors defaults))))
-
-(fn (toolkit-palette list) (&optional ((name symbol) *toolkit*))
-  "Return scoped semantic colors followed by NAME's inherited palette."
-  (resolve-palette (defaults-of (find-toolkit name))))
-
-(fn (toolkit-defaults (values list list))
-    (&optional ((name symbol) *toolkit*) ((kind symbol) nil))
-  "Return appearance defaults for KIND and the captured palette as a second value."
-  (let* ((defaults (defaults-of (find-toolkit name)))
-         (palette (copy-list (resolve-palette defaults))))
-    (values (list* :palette palette
-                   :foreground (lui.widgets:palette-color palette
-                                                           :foreground)
-                   :background
-                   (or
-                    (when (member kind '(:button :tab
-                                         :text-field))
-                      (lui.widgets:palette-color palette
-                                                  :control-background))
-                    (lui.widgets:palette-color palette
-                                                :background))
-                   :accent (lui.widgets:palette-color palette :accent)
-                   (without-option :palette defaults))
-            palette)))
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defstruct palette
-    "Semantic color overrides. NIL roles inherit the enclosing scope."
-    (control-background nil :type (or null string) :read-only t)
-    (background nil :type (or null string) :read-only t)
-    (foreground nil :type (or null string) :read-only t)
-    (accent nil :type (or null string) :read-only t)
-    (window-background nil :type (or null string) :read-only t)
-    (selection nil :type (or null string) :read-only t)
-    (border nil :type (or null string) :read-only t)
-    (disabled nil :type (or null string) :read-only t)
-    (disabled-accent nil :type (or null string) :read-only t)
-    (disabled-surface nil :type (or null string) :read-only t)
-    (disabled-bevel-light nil :type (or null string) :read-only t)
-    (disabled-bevel-dark nil :type (or null string) :read-only t)
-    (outline nil :type (or null string) :read-only t)
-    (light nil :type (or null string) :read-only t)
-    (shadow nil :type (or null string) :read-only t)
-    (bevel-light nil :type (or null string) :read-only t)
-    (bevel-dark nil :type (or null string) :read-only t)
-    (track nil :type (or null string) :read-only t)
-    (cell-background nil :type (or null string) :read-only t)
-    (cell-foreground nil :type (or null string) :read-only t)
-    (on-accent nil :type (or null string) :read-only t)
-    (thumb nil :type (or null string) :read-only t)))
-
-;; Preserve non-scalar constant identity when a source file or FASL is reloaded.
-(defconstant +palette-default+
-  (if (boundp '+palette-default+) (symbol-value '+palette-default+)
-      (make-palette))
-  "Built-in immutable palette for WITH-PALETTE.")
-(defconstant +palette-light+
-  (if (boundp '+palette-light+) (symbol-value '+palette-light+)
-      (make-palette :control-background "#ffffff" :background "#eeeeee"
-                    :foreground "#202124" :accent "#2563eb"
-                    :window-background "#e4e7eb" :selection "#dbeafe" :border
-                    "#808891"))
-  "Built-in immutable palette for WITH-PALETTE.")
-(defconstant +palette-dark+
-  (if (boundp '+palette-dark+) (symbol-value '+palette-dark+)
-      (make-palette :control-background "#424954" :background "#292d35"
-                    :foreground "#eeeeee" :accent "#79b8ff"
-                    :disabled "#89919d" :disabled-accent "#626c7a"
-                    :disabled-surface
-                    "#343a44"
-                    :disabled-bevel-light "#424954" :disabled-bevel-dark
-                    "#242830"
-                    :window-background "#1d2026" :selection "#34465e" :border
-                    "#78818f"
-                    :outline "#aab4c3" :light "#424954" :shadow "#111318"
-                    :bevel-light "#505866" :bevel-dark "#171a20" :track
-                    "#626c7a"
-                    :cell-background "#23272e" :cell-foreground "#eeeeee"
-                    :on-accent
-                    "#101820"))
-  "Built-in immutable palette for WITH-PALETTE.")
-(defconstant +palette-ocean+
-  (if (boundp '+palette-ocean+) (symbol-value '+palette-ocean+)
-      (make-palette :control-background "#f1fbfd" :background "#dceef3"
-                    :foreground "#123544" :accent "#087e9a"
-                    :window-background "#bfdce5" :selection "#b7e5ef" :border
-                    "#4c8696"
-                    :cell-background "#f1fbfd" :cell-foreground "#123544"))
-  "Built-in immutable palette for WITH-PALETTE.")
-(defconstant +palette-forest+
-  (if (boundp '+palette-forest+) (symbol-value '+palette-forest+)
-      (make-palette :control-background "#f5faf1" :background "#e4ecdf"
-                    :foreground "#243b28" :accent "#387348"
-                    :window-background "#cbdac4" :selection "#c5dfbd" :border
-                    "#6b8762"
-                    :cell-background "#f5faf1" :cell-foreground "#243b28"))
-  "Built-in immutable palette for WITH-PALETTE.")
-
-
-(defparameter *named-palettes*
-  (list (cons :default +palette-default+)
-        (cons :light +palette-light+)
-        (cons :dark +palette-dark+)
-        (cons :ocean +palette-ocean+)
-        (cons :forest +palette-forest+)))
-
-(fn (available-palettes (vector symbol)) ()
-  "Return the names accepted by WITH-PALETTE."
-  (map '(vector symbol) #'car *named-palettes*))
-
-(defparameter *palette-readers*
-  '((:control-background . palette-control-background)
-    (:background . palette-background)
-    (:foreground . palette-foreground) (:accent . palette-accent)
-    (:window-background . palette-window-background)
-    (:selection . palette-selection)
-    (:border . palette-border) (:disabled . palette-disabled)
-    (:disabled-accent . palette-disabled-accent)
-    (:disabled-surface . palette-disabled-surface)
-    (:disabled-bevel-light . palette-disabled-bevel-light)
-    (:disabled-bevel-dark . palette-disabled-bevel-dark)
-    (:outline . palette-outline)
-    (:light . palette-light) (:shadow . palette-shadow)
-    (:bevel-light . palette-bevel-light) (:bevel-dark . palette-bevel-dark)
-    (:track . palette-track) (:cell-background . palette-cell-background)
-    (:cell-foreground . palette-cell-foreground)
-    (:on-accent . palette-on-accent) (:thumb . palette-thumb))
-  "Palette roles and their standard structure readers.")
-
-(fn (palette-options list) ((palette palette))
-  "Translate non-NIL palette fields into widget options for the current toolkit."
-  (loop :for (role . reader) :in *palette-readers*
-        :for color := (funcall reader palette)
-        :when color :append (list role color)))
-
-(fn (call-with-palette (values &rest t))
-    ((palette (or palette symbol)) (draw function))
-  "Call DRAW with a resolved palette dynamically bound for declarations."
-  (let* ((value (etypecase palette
-                  (symbol (or (cdr (assoc palette *named-palettes*))
-                              (error 'lui.conditions:configuration-error
-                                     :setting :palette :value palette
-                                     :operation :call-with-palette
-                                     :format-control "Unknown palette ~S."
-                                     :format-arguments (list palette))))
-                  (palette palette)))
-         (*palette* (append (palette-options value) *palette*)))
-    (funcall draw)))
-
-(defmacro with-palette ((palette) &body body)
-  "Draw BODY with a PALETTE instance or a built-in name such as :DARK.
-NIL roles inherit enclosing colors; the parent scope is restored on exit."
-  `(call-with-palette ,palette (lambda () ,@body)))
-
-(fn (override (or null function)) ((kind symbol) (entry toolkit))
-  "Merge explicit widget options with defaults, preserving explicit NIL values."
-  (or (cdr (assoc kind (%toolkit-controls entry)))
-      (let ((parent (%toolkit-parent entry)))
-        (when parent (override kind (find-toolkit parent))))))
-
-(fn (control t) ((kind symbol) &rest (arguments list))
-  "Invoke a user-defined control from the current toolkit or its ancestors."
-  (apply (or (override kind (or *toolkit-definition*
-                                (find-toolkit *toolkit*)))
-             (error 'lui.conditions:configuration-error
-                    :setting :control :value kind
-                    :operation :control
-                    :format-control "No ~S control in toolkit ~S."
-                    :format-arguments (list kind *toolkit*)))
-         arguments))
-
-(fn (call-with-toolkit (values &rest t))
-    ((designator symbol) (draw function))
-  "Call DRAW with the named toolkit; restore enclosing bindings on exit."
-  (let* ((*toolkit* designator)
-         (*toolkit-definition* (find-toolkit *toolkit*)))
-    (funcall draw)))
-
-(defmacro with-toolkit ((designator) &body body)
-  "Draw BODY with the named toolkit; nested bindings restore on exit."
-  `(call-with-toolkit ,designator (lambda () ,@body)))
 
 (defmacro opt (&rest forms &key width height padding gap align cross-align
                              id direction column-gap column-span
@@ -576,14 +265,6 @@ OPT :width sets thickness; :height controls length. :foreground sets its color."
                                :foreground (palette-color palette :border))
                  defaults)))
 
-(fn (without-option list) ((key symbol) (options list))
-  "Return an option plist without KEY and its associated value."
-  (let ((result nil))
-    (do ((tail options (cddr tail))) ((null tail) (nreverse result))
-      (unless (eq (car tail) key)
-        (push (car tail) result)
-        (push (cadr tail) result)))))
-
 (fn (selectable boolean)
     ((kind symbol) (style symbol) (id object-id) (text string) (options list)
      (defaults list))
@@ -682,6 +363,8 @@ Owned state is discarded when this widget is absent from a completed frame."
   (apply #'declare-widget :canvas style id "" :value commands
          (append options defaults)))
 
+;; Toolkit-local convenience macros expand to the application controls above.
+;; The registry and this extension symbol are owned by LUI.TOOLKIT.
 (defmacro define-toolkit (name defaults panel-name &rest names)
   "Register NAME and define toolkit-local widget macros with the LUI signatures."
   (let ((functions '(label button tab checkbox radio slider text-field cell

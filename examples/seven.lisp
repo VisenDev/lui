@@ -350,7 +350,7 @@
   (lui:with-toolkit ((state-toolkit state))
     (lui:panel (lui:opt :id :seven-window :width (lui:grow) :height (lui:grow)
                         :background
-                        (let ((colors (lui:toolkit-palette)))
+                        (let ((colors (lui.toolkit:toolkit-palette)))
                           (getf colors :window-background
                                 (getf colors :background)))
                         :opacity 1 :radius 0 :frost 0
