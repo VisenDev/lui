@@ -729,15 +729,15 @@
                    :measure (lambda (widget width)
                               (measure-widget renderer widget width)))))
     (labels ((draw ()
-               (column (:width (grow) :height (grow))
+               (column (lui:opt :width (grow) :height (grow))
                  (dolist (id order)
-                   (column (:id id) (lui.glass:label text)))
+                   (column (lui:opt :id id) (lui.glass:label text)))
                  (when extra (lui.glass:label "Added"))
                  (setf value (lui.interaction:edit-value :field value))
                  (lui:text-field (lui:opt :id :field :value value))
                  (case cover
                    (:button
-                    (column (:position :absolute)
+                    (column (lui:opt :position :absolute)
                        (when
                     (lui.glass:button
                       "Covered"
@@ -828,7 +828,7 @@
                               (measure-widget renderer widget width)))))
     (labels ((frame (&rest events)
                (with-frame (context 400 200 :events events)
-                 (column (:width (fixed 100) :height (fixed 12)
+                 (column (lui:opt :width (fixed 100) :height (fixed 12)
                           :padding 2 :clip-p t)
                    (lui.glass:label "Clipped text selection")))
                (paint-frame renderer context)))

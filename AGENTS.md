@@ -319,6 +319,9 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 - Combobox Up/Down selects suggestions; Enter accepts a highlighted suggestion.
   Enter without a highlight, Escape, and Tab preserve typed text. Suggestions
   are overlays; `:max-results` bounds their count.
+- `row` and `column` take an options expression, like `panel` and `table`.
+  Use `(lui:row (lui:opt :gap 1) ...)` or a stored options list; the expression
+  is evaluated once.
 - Table columns use the widest content across rows. Extra width is shared;
   narrow tables shrink columns proportionally before row-height measurement.
   Short rows may omit trailing cells. `:column-gap` belongs to the table and

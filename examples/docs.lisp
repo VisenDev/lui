@@ -42,7 +42,7 @@
       "Automatic widgets participate in row or column layout. Manual widgets do not change sibling positions or FIT container sizes. Their content is still measured, so a button can fit its text without automatic placement. Run make manual-demo for a standalone example."
       "Use :position :absolute with :offset-x and :offset-y for coordinates relative to the immediate parent's padded content origin. This form moves with ancestor scrolling. Use :position :fixed with the same offsets for fixed logical client-surface coordinates. Both forms obey ancestor clipping; parent-scroll-position exposes the current parent's scroll offsets for explicit compensation."
       "To reserve space, give an ordinary automatic container a size and put manual widgets inside it. Moving a manual child does not change that reserved space."
-      "(lui:column (:height (lui:fixed (lui:units 8)))
+      "(lui:column (lui:opt :height (lui:fixed (lui:units 8)))
   (lui:button \"Manual inside a reserved region\"
     (lui:opt :position :absolute
              :offset-x (lui:units 2) :offset-y (lui:units 1))))
@@ -58,7 +58,7 @@
       "Canvas commands provide shared drawing primitives. A custom :painter takes the same renderer and layout element on the desktop and in the browser.")
     (:layout "Layout and scrolling"
      "Rows arrange children horizontally; columns arrange them vertically. A fixed size uses backend coordinates, grow distributes available space, and fit measures content. Use lui:units for spacing that adapts to terminal cells and graphical pixels."
-     "(lui:row (:width (lui:grow)
+     "(lui:row (lui:opt :width (lui:grow)
                 :height (lui:grow) :gap (lui:units 1))
   (lui:panel (lui:opt :id :navigation
                        :width (lui:fixed (lui:units 24))
@@ -391,7 +391,7 @@
             :width (lui:grow))))
      (lui:label (format nil "~D characters" (length (browser-text state)))))
     (:tab
-     (lui:row (:width (lui:grow) :gap (lui:units 0.5))
+     (lui:row (lui:opt :width (lui:grow) :gap (lui:units 0.5))
        (dolist (item '(:one :two))
           (when
             (lui:tab
@@ -446,12 +446,13 @@
        (lui:label (format nil "Panel actions: ~D"
                           (browser-panel-clicks state)))))
     (:row
-        (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
+        (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1) :cross-align
+          :center)
           (lui:label "Left" (lui:opt :width (lui:grow)))
           (lui:label "Center" (lui:opt :width (lui:grow)))
           (lui:label "Right" (lui:opt :width (lui:grow)))))
     (:column
-        (lui:column (:width (lui:grow) :gap (lui:units 0.5))
+        (lui:column (lui:opt :width (lui:grow) :gap (lui:units 0.5))
           (lui:label "First child")
           (lui:label "Second child")
           (lui:label "Third child")))))
@@ -497,7 +498,7 @@
          (lui:label (second guide)
                     (lui:opt :width (lui:grow) :font-weight :bold))
          (when (eq (browser-guide state) :toolkits)
-           (lui:row (:width (lui:grow) :gap (lui:units 0.5))
+           (lui:row (lui:opt :width (lui:grow) :gap (lui:units 0.5))
              (dolist (pair *toolkit-packages*)
                (let ((name (cdr pair)))
                  (when
@@ -564,7 +565,7 @@
   (lui:label (format nil "~D API entries" (length (browser-matches state)))))
 
 (defun references (state)
-  (lui:column (:width (lui:fixed (reference-width)) :height (lui:grow)
+  (lui:column (lui:opt :width (lui:fixed (reference-width)) :height (lui:grow)
                   :gap (lui:units 0.5))
     (search-reference state)
     (entry-list state (lui:grow))))
@@ -580,7 +581,8 @@
                   :background)))
                         :opacity 1 :frost 0 :radius 0
                         :padding (lui:units 1) :gap (lui:units 1))
-      (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
+      (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1) :cross-align
+        :center)
         (lui:label "LUI documentation"
                    (lui:opt :font-weight :bold :width (lui:grow)))
         (lui:label (ecase (browser-toolkit state)
@@ -597,7 +599,8 @@
           (when (lui:button "Show debugger" (lui:opt :id
                                               :docs-debug))
           (lui:set-debugger-enabled t)))
-      (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
+      (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1) :cross-align
+        :center)
           (lui:label (format nil "Palette: ~A" (string-capitalize (symbol-name
                     (browser-palette state)))))
           (when (lui:button "Cycle palette" (lui:opt :id
@@ -608,12 +611,14 @@
                           names)) (length names)))))
           (lui:request-frame)))
       (lui:label (lui.frame::frame-rate-label))
-      (lui:row (:width (lui:grow) :height (lui:grow) :gap (lui:units 1))
+      (lui:row (lui:opt :width (lui:grow) :height (lui:grow) :gap (lui:units
+        1))
         (navigation state)
           (if (>= (lui.frame:context-width lui.frame:*context*) (lui:units
                   80))
             (progn (references state) (detail state))
-            (lui:column (:width (lui:grow) :height (lui:grow) :gap (lui:units
+            (lui:column (lui:opt :width (lui:grow) :height (lui:grow) :gap
+              (lui:units
                     0.5))
               (search-reference state)
               (when

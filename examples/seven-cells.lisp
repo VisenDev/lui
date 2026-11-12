@@ -246,10 +246,12 @@
                               :height (if page-p (lui:fixed full-height)
                   (lui:grow))
                               :scroll-p t :radius 0 :frost 0 :opacity 1)
-            (lui:column (:width (lui:fixed full-width) :height (lui:fixed
+            (lui:column (lui:opt :width (lui:fixed full-width) :height
+              (lui:fixed
                     full-height))
               ;; This clip also prevents clicks passing through headers.
-              (lui:column (:width (lui:fixed (max 0 (- view-width header)))
+              (lui:column (lui:opt :width (lui:fixed (max 0 (- view-width
+                header)))
                               :height (lui:fixed (max 0 (- view-height
                           height)))
                               :position :absolute :offset-x (+ x header)

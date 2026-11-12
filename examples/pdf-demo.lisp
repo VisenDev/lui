@@ -8,7 +8,7 @@
 (in-package #:lui.pdf-demo)
 
 (defun make-document ()
-  (lui:column (:width (lui:grow) :gap (lui:units 2)
+  (lui:column (lui:opt :width (lui:grow) :gap (lui:units 2)
                      :padding (lui:units 4))
     (lui:panel (lui:opt :width (lui:grow) :padding (lui:units 3)
                         :opacity 1
@@ -21,7 +21,7 @@
                  (lui:opt :foreground "#c4d2df")))
     (lui:label "Three workstreams lead up to the November 18 release."
                (lui:opt :foreground "#18324b"))
-    (lui:row (:width (lui:grow) :gap (lui:units 2))
+    (lui:row (lui:opt :width (lui:grow) :gap (lui:units 2))
       (lui:panel (lui:opt :width (lui:grow) :padding (lui:units 2)
                           :gap (lui:units 1) :background "#ffffff" :opacity 1)
         (lui:label "64%" (lui:opt :foreground "#147d73"))

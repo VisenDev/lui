@@ -62,7 +62,7 @@
   (setf (gallery-enabled g)
     (lui:checkbox "Enabled" (lui:opt :id :enabled :value (gallery-enabled
             g))))
-  (lui:row (:gap (lui:units 1))
+  (lui:row (lui:opt :gap (lui:units 1))
     (when (lui:button "Say hello" (lui:opt :id :hello)) (incf (gallery-count
             g)))
     (when (lui:button "Reset" (lui:opt :id :reset)) (setf (gallery-count g)
@@ -83,7 +83,7 @@
               :accessible-name "Greeting")))))
     (lui:table-row ()
       (lui:label "Tone")
-      (lui:row (:gap (lui:units 0.5))
+      (lui:row (lui:opt :gap (lui:units 0.5))
         (setf (gallery-tone g)
           (lui:radio
             :casual
@@ -177,7 +177,7 @@
         :maximum 0.7
         :step 0.05
         :width (lui:grow))))
-  (lui:row (:id :split-panels :width (lui:grow) :gap (lui:units 1)
+  (lui:row (lui:opt :id :split-panels :width (lui:grow) :gap (lui:units 1)
             :height (lui:fit (lui:units 8)))
     (lui:panel (lui:opt :id :split-panel :width (lui:percent (gallery-split
               g))
@@ -266,7 +266,7 @@
               :opacity opacity
               :radius radius
               :frost frost))))
-      (lui:row (:width (lui:grow) :gap (lui:units 1))
+      (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1))
         (loop :for color :in '("#335d91" "#81456d" "#286e63")
               :for title :in '("Ocean" "Orchid" "Forest")
               :for id := (list :sample title)
@@ -297,15 +297,16 @@
             (progn
               (lui:label
                "Frost softens stripes; lower opacity reveals more backdrop.")
-              (lui:column (:width (lui:grow) :height (lui:fixed (lui:units
+              (lui:column (lui:opt :width (lui:grow) :height (lui:fixed
+                (lui:units
                       14)) :clip-p t)
-                (lui:row (:width (lui:grow) :height (lui:grow))
+                (lui:row (lui:opt :width (lui:grow) :height (lui:grow))
                   (dotimes (i 48)
                     (let ((color (if (evenp i) "#17304d" "#dbe7ed")))
                       (lui:panel (lui:opt :width (lui:grow) :height (lui:grow)
                                           :opacity 1 :radius 0 :frost 0
                                           :background color)))))
-                (lui:column (:position :absolute
+                (lui:column (lui:opt :position :absolute
                              :offset-x (lui:units 1) :offset-y
                     (lui:units 1)
                          :width (lui:percent 0.95))
@@ -327,7 +328,8 @@
               colors :background)))
                       :opacity 1 :radius 0 :frost 0
                       :padding (lui:units 1) :gap (lui:units 1))
-    (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
+    (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1) :cross-align
+      :center)
       (lui:label "LUI feature gallery"
                  (lui:opt :width (lui:grow)))
       (lui:label (ecase (gallery-toolkit g)
@@ -341,14 +343,15 @@
           "Show debugger"
           (lui:opt :id :debugger-toggle :disabled-p (modal-p g)))
         (lui:set-debugger-enabled t)))
-    (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
+    (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1) :cross-align
+      :center)
       (lui:label (format nil "Palette: ~A" (string-capitalize (symbol-name
                 (gallery-palette g)))))
       (lui:button
         "Cycle palette"
         (lui:opt :id :palette :disabled-p (modal-p g))))
     (lui:label (lui.frame::frame-rate-label))
-    (lui:row (:width (lui:grow) :gap (lui:units 1))
+    (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1))
       (dolist (page *pages*)
         (when
           (lui:tab

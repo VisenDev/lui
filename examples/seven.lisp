@@ -53,7 +53,7 @@
     next))
 
 (defun counter-page (state)
-  (lui:row (:gap (lui:units 1) :width (lui:grow) :cross-align :center)
+  (lui:row (lui:opt :gap (lui:units 1) :width (lui:grow) :cross-align :center)
     (lui:label (format nil "~D" (state-count state))
                (lui:opt :width (lui:grow)))
     (when (lui:button "Count" (lui:opt :id :seven-count))
@@ -61,8 +61,8 @@
       (lui:request-frame))))
 
 (defun temperature-page (state)
-  (lui:row (:gap (lui:units 1) :width (lui:grow))
-    (lui:column (:width (lui:grow) :gap (lui:units 1))
+  (lui:row (lui:opt :gap (lui:units 1) :width (lui:grow))
+    (lui:column (lui:opt :width (lui:grow) :gap (lui:units 1))
       (lui:label "Celsius")
       (let ((text (edit-field
                    :seven-celsius (state-celsius state)
@@ -74,7 +74,7 @@
           (let ((converted (lui.seven.model:temperature text :celsius)))
             (when converted
               (setf (state-fahrenheit state) (number-text converted)))))))
-    (lui:column (:width (lui:grow) :gap (lui:units 1))
+    (lui:column (lui:opt :width (lui:grow) :gap (lui:units 1))
       (lui:label "Fahrenheit")
       (let ((text (edit-field
                    :seven-fahrenheit (state-fahrenheit state)
@@ -92,7 +92,7 @@
     (lui:label "Enter a valid number to convert the other field.")))
 
 (defun flight-page (state)
-  (lui:row (:gap (lui:units 1) :width (lui:grow))
+  (lui:row (lui:opt :gap (lui:units 1) :width (lui:grow))
     (when
       (lui:tab
         "One-way flight"
@@ -160,7 +160,8 @@
               :width (lui:grow))))))
     (lui.seven.model:advance-timer timer (lui:frame-time) :duration duration
                    :reset (lui:activated-p :seven-reset))
-    (lui:row (:gap (lui:units 1) :width (lui:grow) :cross-align :center)
+    (lui:row (lui:opt :gap (lui:units 1) :width (lui:grow) :cross-align
+      :center)
       (lui:label "Elapsed time:")
       (lui:gauge
         (lui.seven.model:timer-fraction timer)
@@ -301,7 +302,7 @@
     (lui:label "Surname:")
     (setf (state-surname state)
           (edit-field :seven-surname (state-surname state)))
-    (lui:row (:gap (lui:units 1) :width (lui:grow))
+    (lui:row (lui:opt :gap (lui:units 1) :width (lui:grow))
       (lui:button "Create" (lui:opt :id :seven-create))
       (lui:button
         "Update"
@@ -323,7 +324,7 @@
 
 (defun draw-content (state)
   (dolist (tasks (list (subseq *tasks* 0 4) (subseq *tasks* 4)))
-    (lui:row (:width (lui:grow) :gap (lui:units 0.5))
+    (lui:row (lui:opt :width (lui:grow) :gap (lui:units 0.5))
       (dolist (task tasks)
         (when
           (lui:tab
@@ -354,7 +355,8 @@
                                 (getf colors :background)))
                         :opacity 1 :radius 0 :frost 0
                         :padding (lui:units 1) :gap (lui:units 1))
-      (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
+      (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1) :cross-align
+        :center)
         (lui:label "7GUIs" (lui:opt :width (lui:grow)))
         (when
           (lui:button

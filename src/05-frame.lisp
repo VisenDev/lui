@@ -781,12 +781,16 @@ An aborted drawing or layout invalidates geometry and clears frame state."
   `(call-with-frame ,context ,width ,height (lambda () ,@body)
                     :events ,events))
 
-(defmacro row ((&rest options) &body body)
-  "Lay out children declared by BODY horizontally, using element options."
-  `(let ((*parent* (emit (make-element :direction :row ,@options))))
+(defmacro row (options &body body)
+  "Lay out BODY horizontally using an OPTIONS expression, such as OPT.
+OPTIONS evaluates once to a list of element options."
+  `(let ((*parent* (emit
+                   (apply #'make-element :direction :row ,options))))
      ,@body))
 
-(defmacro column ((&rest options) &body body)
-  "Lay out children declared by BODY vertically, using element options."
-  `(let ((*parent* (emit (make-element :direction :column ,@options))))
+(defmacro column (options &body body)
+  "Lay out BODY vertically using an OPTIONS expression, such as OPT.
+OPTIONS evaluates once to a list of element options."
+  `(let ((*parent* (emit
+                   (apply #'make-element :direction :column ,options))))
      ,@body))

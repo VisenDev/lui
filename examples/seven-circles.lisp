@@ -90,7 +90,7 @@
         (lui.seven.model:circle-preview (state-model state) (/ diameter 2))
         (lui:request-frame)))
     (lui:label (format nil "Diameter: ~,1F" (state-diameter state)))
-    (lui:row (:gap (lui:units 1))
+    (lui:row (lui:opt :gap (lui:units 1))
       (when (lui:button "Apply" (lui:opt :id :circle-apply))
         (finish-adjust state t))
       (when (lui:button "Cancel" (lui:opt :id :circle-cancel))
@@ -107,7 +107,7 @@
     (finish-adjust state nil))
   (unless (modal-p state) (canvas-input state))
   (let ((model (state-model state)))
-    (lui:row (:gap (lui:units 1))
+    (lui:row (lui:opt :gap (lui:units 1))
       (when
         (lui:button
           "Undo"

@@ -150,7 +150,7 @@
 (fn (properties (values)) ((title string) (width real) &rest (pairs list))
   "Declare a titled group of property name/value rows within WIDTH."
   (let ((accent (getf (toolkit-defaults) :accent "#258bff")))
-    (row (:width (grow) :gap (units 0.5f0))
+    (row (opt :width (grow) :gap (units 0.5f0))
       (lui:label "—" (lui:opt :width (fixed (units 2)) :font-size 14
                               :foreground accent))
       (lui:label title (lui:opt :width (grow) :font-size 14 :font-weight :bold
@@ -315,7 +315,7 @@
     ((state debugger-state) (width real) (step real) (index integer)
      (entry entry) (node element) (key list))
   "Declare one visible debugger tree row with indentation, collapse control, and selection."
-  (row (:position :absolute :offset-y (* index step)
+  (row (opt :position :absolute :offset-y (* index step)
                     :width (grow) :height (fixed
                                            step)
                     :gap (units 0.25f0) :cross-align
@@ -376,7 +376,7 @@
            (first (max 0 (floor (min offset limit) step)))
            (end (min (length rows) (+ first (ceiling height step)
                                       1))))
-      (column (:width (grow) :height (fixed (* step (length rows))))
+      (column (opt :width (grow) :height (fixed (* step (length rows))))
         (loop :for index :from first :below end
               :for entry := (aref rows index)
               :for node := (entry-node entry)
@@ -527,10 +527,10 @@
 (fn (debugger-property-pane (values))
     ((node element) (width real) (height real))
   "Declare the selected node's property pane and its close control."
-  (column (:id (id :property-pane) :width (grow)
+  (column (opt :id (id :property-pane) :width (grow)
                :height (fixed height) :gap (units
                                             0.5f0))
-    (row (:width (grow) :gap (units 0.5f0)
+    (row (opt :width (grow) :gap (units 0.5f0)
                  :cross-align
                  :center)
       (lui:label "Properties" (lui:opt :width (grow)))
@@ -564,7 +564,7 @@
                       :padding (units 1) :gap (units 0.5f0) :opacity 1
                       :radius 0 :frost 0)
     (let ((header nil))
-      (row (:id (id :header) :width (grow) :gap (units 0.5f0))
+      (row (opt :id (id :header) :width (grow) :gap (units 0.5f0))
         (setf header *parent*)
         (lui:label "Layout debugger" (lui:opt :width (grow)))
         (when (lui:button "Close" (lui:opt :id (id :close)))

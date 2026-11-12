@@ -86,7 +86,7 @@
 (fn test-text-rendering ()
   (let ((context (make-terminal-context)))
     (with-frame (context 5 10)
-      (column (:width (grow))
+      (column (lui:opt :width (grow))
         (lui.glass:label "ab cd ef")
         (lui.glass:label "next")))
     (assert (search (format nil "ab cd~%ef   ~%next ")

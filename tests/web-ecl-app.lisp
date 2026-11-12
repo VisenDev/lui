@@ -46,7 +46,7 @@
 
 (defun draw-fixture ()
   (lui:with-toolkit (:qt)
-    (lui:column (:width (lui:grow) :gap 8)
+    (lui:column (lui:opt :width (lui:grow) :gap 8)
       (let ((value
             (lui:text-field
               (lui:opt

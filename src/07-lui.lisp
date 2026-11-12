@@ -973,7 +973,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     ((id object-id) (state picker-state) (year integer) (month integer)
      (months boolean))
   "Declare month/year navigation and update the picker state when activated."
-  (row (:width (lui.layout:grow))
+  (row (opt :width (lui.layout:grow))
     (when (calendar-item (list id :month-menu)
                          (format nil "~A ~4,'0D ▼"
                                  (aref *month-names* (1-
@@ -1000,7 +1000,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     ((id object-id) (state picker-state) (month integer))
   "Declare the month chooser and switch back to the day grid after selection."
   (dotimes (r 4)
-    (row (:width (lui.layout:grow))
+    (row (opt :width (lui.layout:grow))
       (dotimes (c 3)
         (let ((m (+ 1 (* r 3) c)))
           (when (calendar-item (list id :month m) (subseq (aref
@@ -1031,12 +1031,12 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
          state)
         (calendar-month-grid id state month)
         (let ((start (calendar-start year month)))
-          (row (:width (lui.layout:grow))
+          (row (opt :width (lui.layout:grow))
             (loop :for name :across "SMTWTFS" :do
-                  (row (:width width :align :center)
+                  (row (opt :width width :align :center)
                   (%label nil (string name) (opt :font-size 13)))))
           (dotimes (week 6)
-            (row (:width (lui.layout:grow))
+            (row (opt :width (lui.layout:grow))
               (dotimes (column 7)
                 (multiple-value-bind (y m day)
                     (calendar-day year month
@@ -1052,10 +1052,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                            (equalp (make-date-parts y m day) selected))
                       (return-from picker-calendar
                         (values (make-date-parts y m day) t))))))))))
-    (row (:width (lui.layout:grow))
+    (row (opt :width (lui.layout:grow))
       (when (calendar-item (list id :clear) "Clear" :foreground ink)
         (return-from picker-calendar (values nil t)))
-      (column (:width (lui.layout:grow)))
+      (column (opt :width (lui.layout:grow)))
       (when (calendar-item (list id :today) "Today" :foreground ink)
         (return-from picker-calendar (values (local-today) t))))
     (values nil nil)))
@@ -1146,7 +1146,7 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
       (setf (picker-state-value state) value
             (picker-state-draft state) (if date
                                        (picker-display date) (or value ""))))
-    (column (:id id :width (getf options :width (lui.layout:fit)))
+    (column (opt :id id :width (getf options :width (lui.layout:fit)))
       (panel (append (opt :id (list id :field) :interactive-p t
                           :keyboard-focus-p nil)
                      options (opt :direction :row :padding 1 :gap 0))

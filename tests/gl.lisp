@@ -98,7 +98,7 @@
                       (lui.widgets:widget-opacity widget)))))
   (labels ((contrast (frost opacity)
              (with-frame (context 720 520)
-               (column (:width (grow) :height (grow))
+               (column (lui:opt :width (grow) :height (grow))
                  (lui:with-toolkit (:test-backdrop)
                    (lui:panel
                     (lui:opt :position :absolute :offset-x 40 :offset-y 40
