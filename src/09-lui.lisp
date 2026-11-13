@@ -504,8 +504,7 @@ No timer is retained after the spinner disappears from the frame."
 
 (fn (discard-floating-popups (values)) ((context context))
   "Remove closed panes declared this frame, including their detached descendants."
-  (let ((removed (make-hash-table :test 'equal))
-        (path (context-floating-path context))
+  (let ((path (context-floating-path context))
         (kept nil))
     ;; Parents are declared first; their removal also invalidates child anchors.
     (dolist (pane (reverse (context-popups context)))
@@ -516,15 +515,9 @@ No timer is retained after the spinner disappears from the frame."
                            (not (find (first id) path :test #'equal)))))
         (if (or closed
                 (and anchor
-                     (or (gethash (%lui.layout:element-id anchor) removed)
-                         (not (gethash (%lui.layout:element-id anchor)
-                                       (context-ids context))))))
-            (%lui.layout:walk-elements pane
-              (lambda (node)
-                (let ((id (%lui.layout:element-id node)))
-                  (when id
-                    (setf (gethash id removed) t)
-                    (remhash id (context-ids context))))))
+                     (not (gethash (%lui.layout:element-id anchor)
+                                   (context-ids context)))))
+            (forget-floating-pane context pane)
 
             ;; else
             (push pane kept))))
@@ -575,7 +568,7 @@ No timer is retained after the spinner disappears from the frame."
                          (find id (floating-state-items state) :test #'equal)))
             :return state)))
 
-(fn (floating-group-ids (vector object-id))
+(fn (menu-group-ids (vector object-id))
     ((context context) (group object-id))
   "Collect enabled root menus in their declared order within GROUP."
   (let ((ids (make-array 0 :element-type 'object-id
@@ -592,20 +585,20 @@ No timer is retained after the spinner disappears from the frame."
               (vector-push-extend (floating-state-id state) ids))))))
     ids))
 
-(fn (cycle-floating-root boolean) ((context context) (step integer))
+(fn (cycle-root-menu boolean) ((context context) (step integer))
   "Move to an adjacent root menu in the same bar, wrapping past either end."
   (let* ((path (context-floating-path context))
          (root (when (plusp (length path))
                  (floating-state-for context (aref path 0))))
-         (ids (when root (floating-group-ids context
-                                             (floating-state-group root)))))
+         (ids (when root (menu-group-ids context
+                                         (floating-state-group root)))))
     (when (and ids (> (length ids) 1))
       (let* ((index (or (position (aref path 0) ids :test #'equal) 0))
              (next (aref ids (mod (+ index step) (length ids)))))
         (open-floating context (floating-state-for context next) :first))
       t)))
 
-(fn (navigate-floating-items (values))
+(fn (navigate-menu-items (values))
     ((context context) (state floating-state) (key symbol))
   "Move focus through a menu's enabled items and remember an edge for first open."
   (let* ((items (floating-state-items state))
@@ -638,39 +631,50 @@ No timer is retained after the spinner disappears from the frame."
     (close-floating context 0 nil))
   (values))
 
-(fn (floating-key-input boolean) ((context context) (key symbol))
-  "Consume menu navigation keys while leaving editable content's keys alone."
-  (let ((path (context-floating-path context))
-        (trigger (floating-state-for context (context-focus context)))
-        (owner (floating-owner context (context-focus context))))
-    ;; A focused closed trigger opens before the following input is routed.
-    (when (and trigger (member key '(:up :down :right))
-               (not (floating-open-p context (floating-state-id trigger))))
-      (open-floating context trigger (if (eq key :up) :last :first))
-      (return-from floating-key-input t))
-    (when (zerop (length path)) (return-from floating-key-input nil))
-    (when (eq key :escape)
-      (close-floating context (1- (length path)))
-      (return-from floating-key-input t))
+(fn (menu-key-input boolean)
+    ((context context) (key symbol) (trigger (or null floating-state)))
+  "Navigate an open menu without taking editing keys from embedded fields."
+  (let ((owner (floating-owner context (context-focus context)))
+        (depth (length (context-floating-path context))))
     (unless (and owner (floating-state-menu-p owner)
                  (not (text-field-focused-p context)))
-      (return-from floating-key-input nil))
+      (return-from menu-key-input nil))
 
     (case key
-      ((:up :down :home :end) (navigate-floating-items context owner key) t)
+      ((:up :down :home :end) (navigate-menu-items context owner key) t)
       (:left
-       (if (> (length path) 1)
-           (close-floating context (1- (length path)))
+       (if (> depth 1)
+           (close-floating context (1- depth))
            ;; else
-           (cycle-floating-root context -1))
+           (cycle-root-menu context -1))
        t)
       (:right
        (if (and trigger (floating-state-parent trigger))
            (open-floating context trigger :first)
            ;; else
-           (cycle-floating-root context 1))
+           (cycle-root-menu context 1))
        t)
       (otherwise nil))))
+
+(fn (floating-key-input boolean) ((context context) (key symbol))
+  "Handle shared expander opening/dismissal, then delegate menu navigation."
+  (let ((trigger (floating-state-for context (context-focus context)))
+        (depth (length (context-floating-path context))))
+    (cond
+      ;; All expanders can open from their focused trigger.
+      ((and trigger (member key '(:up :down :right))
+            (not (floating-open-p context (floating-state-id trigger))))
+       (open-floating context trigger (if (eq key :up) :last :first))
+       t)
+
+      ((zerop depth) nil)
+
+      ;; Escape closes one level even when the pane contains ordinary controls.
+      ((eq key :escape)
+       (close-floating context (1- depth))
+       t)
+
+      (t (menu-key-input context key trigger)))))
 
 (fn (floating-hit-p boolean) ((context context) (x real) (y real))
   "Whether a pointer is inside any open pane or its owning trigger."
