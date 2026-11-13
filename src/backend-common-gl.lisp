@@ -24,15 +24,30 @@
   `(cffi:foreign-funcall-pointer
     (cffi:foreign-symbol-pointer ,name :library 'egl) () ,@args))
 
+(defstruct gl-ink
+  "An immutable drawing command and its conservative physical scissor bounds."
+  (bounds (make-box) :type box)
+  (key nil :type list))
+
+(defstruct gl-backdrop
+  "A regional background texture and the drawing commands that produced it."
+  (texture 0 :type integer)
+  (sources (make-array 0 :element-type 'gl-ink) :type (vector gl-ink))
+  (revision 0 :type integer))
+
 (defstruct gpu
   "GL drawing resources and viewport dimensions for a current compatibility context."
   display surface context renderer
   (geometry (make-hash-table :test 'equalp) :type hash-table)
   (geometry-builds 0 :type integer)
   (program 0 :type integer)
-  (texture 0 :type integer)
-  (texture-width 0 :type integer)
-  (texture-height 0 :type integer)
+  (clip (make-box) :type box)
+  (ink (make-array 0 :element-type 'gl-ink :adjustable t :fill-pointer 0)
+       :type (vector gl-ink))
+  (backdrops (make-hash-table :test 'equal) :type hash-table)
+  (backdrop-bytes 0 :type integer)
+  (backdrop-revision 0 :type integer)
+  (backdrop-size nil :type list)
   (width 1 :type integer)
   (height 1 :type integer)
   (logical-width 1 :type real)
@@ -46,6 +61,7 @@ void main() { gl_Position = ftransform(); }")
   "#version 120
 uniform sampler2D backdrop;
 uniform vec2 resolution;
+uniform vec2 origin;
 uniform vec4 bounds;
 uniform float frost;
 uniform float pixelScale;
@@ -63,7 +79,7 @@ void main() {
   for (int x=-2; x<=2; ++x)
     for (int y=-2; y<=2; ++y)
       color += texture2D(backdrop,
-        (p+bend+vec2(float(x),float(y))*frost*0.25)
+        (p-origin+bend+vec2(float(x),float(y))*frost*0.25)
         /resolution).rgb;
   color /= 25.0;
   float luma = dot(color,vec3(0.2126,0.7152,0.0722));
@@ -174,9 +190,25 @@ void main() {
   (gl-geometry gpu contours)
   (values))
 
+(fn (record-ink (values)) ((gpu gpu) (key list))
+  "Record immutable drawing data so cached backgrounds detect content changes."
+  (let ((clip (gpu-clip gpu)))
+    (vector-push-extend
+     (make-gl-ink :bounds clip
+                  :key (list (box-x clip) (box-y clip)
+                             (box-width clip) (box-height clip) key))
+     (gpu-ink gpu)))
+  (values))
+
 (fn (gl-shape (values))
     ((gpu gpu) (contours contours) (color string) (alpha real))
   "Paint a rounded surface or outline using cached contour geometry."
+  (record-ink gpu
+              (list :shape
+                    (map 'list (lambda (contour)
+                                 (map 'list #'copy-list contour))
+                         contours)
+                    (copy-seq color) alpha))
   ;; Stipples reuse large contour batches in screen coordinates.
   ;; Submit them directly instead of copying thousands of points per frame.
   (when (> (length contours) 8)
@@ -207,6 +239,8 @@ void main() {
 (fn (gl-text (values)) ((gpu gpu) (font font) (text string)
                         (x real) (y real) (color string))
   "Paint font glyph outlines at the requested baseline and color."
+  (record-ink gpu (list :text (%font-loader font) (font-size font)
+                        (copy-seq text) x y (copy-seq color)))
   (let* ((loader (%font-loader font))
          (scale (float (/ (font-size font) (zpb-ttf:units/em loader)) 1.0f0))
          (advance 0)
@@ -247,6 +281,12 @@ void main() {
          (top (floor (box-y pixels)))
          (right (ceiling (box-right pixels)))
          (bottom (ceiling (box-bottom pixels))))
+    (setf (gpu-clip gpu)
+          (make-box :x left
+                    :y (min top (- (gpu-height gpu)
+                                   (max 0 (- bottom top))))
+                    :width (max 0 (- right left))
+                    :height (max 0 (- bottom top))))
     (call-gl "glScissor" :int left
              :int (max 0 (- (gpu-height gpu) bottom))
              :int (max 0 (- right left))
@@ -258,13 +298,11 @@ void main() {
   (call-gl "glGetUniformLocation" :uint (gpu-program gpu)
            :string name :int))
 
-(fn (gl-backdrop-effect (values))
-    ((gpu gpu) (box box) (radius real) (frost real))
-  "Sample and blur the existing framebuffer behind a rounded translucent surface."
-  (call-gl "glBindTexture" :uint #x0de1 :uint (gpu-texture gpu) :void)
+(fn (backdrop-area box) ((gpu gpu) (box box) (frost real))
+  "Bound the visible background and all refraction, blur, and bilinear samples."
   (let* ((w (gpu-width gpu))
          (h (gpu-height gpu))
-         (area (pixel-box gpu box))
+         (area (intersect-boxes (pixel-box gpu box) (gpu-clip gpu)))
          (scale (/ w (gpu-logical-width gpu)))
          ;; Refraction, the outer blur taps, and bilinear interpolation.
          (margin (ceiling (+ 2 (* scale (+ 3 (/ (abs frost) 2))))))
@@ -272,49 +310,123 @@ void main() {
          (top (max 0 (- (floor (box-y area)) margin)))
          (right (min w (+ (ceiling (box-right area))
                           margin)))
-         (bottom (min h (+ (ceiling (box-bottom area))
-                           margin)))
-         (y (- h bottom)))
-    (unless (and (< x right) (< top bottom))
+         (bottom (min h (+ (ceiling (box-bottom area)) margin))))
+    (make-box :x x :y top :width (max 0 (- right x))
+              :height (max 0 (- bottom top)))))
+
+(fn (clear-backdrops (values)) ((gpu gpu))
+  "Delete cached regional textures and their retained drawing dependencies."
+  (cffi:with-foreign-object (texture :uint)
+    (maphash (lambda (key entry)
+               (declare (ignore key))
+               (setf (cffi:mem-ref texture :uint) (gl-backdrop-texture entry))
+               (call-gl "glDeleteTextures" :int 1 :pointer texture :void))
+             (gpu-backdrops gpu)))
+  (clrhash (gpu-backdrops gpu))
+  (setf (gpu-backdrop-bytes gpu) 0)
+  (values))
+
+(fn (allocate-backdrop gl-backdrop) ((gpu gpu) (area box) (key list))
+  "Allocate a regional texture, bounding retained storage to 32 MiB or one region."
+  (let ((bytes (* 4 (box-width area) (box-height area)))
+        (entry (make-gl-backdrop)))
+    (when (or (>= (hash-table-count (gpu-backdrops gpu)) 128)
+              (> (+ (gpu-backdrop-bytes gpu) bytes) (* 32 1024 1024)))
+      (clear-backdrops gpu))
+    (cffi:with-foreign-object (texture :uint)
+      (call-gl "glGenTextures" :int 1 :pointer texture :void)
+      (setf (gl-backdrop-texture entry) (cffi:mem-ref texture :uint)))
+    (setf (gethash key (gpu-backdrops gpu)) entry)
+    (incf (gpu-backdrop-bytes gpu) bytes)
+    (call-gl "glBindTexture" :uint #x0de1
+             :uint (gl-backdrop-texture entry) :void)
+    (dolist (parameter '(#x2801 #x2800))
+      (call-gl "glTexParameteri" :uint #x0de1
+               :uint parameter :int #x2601 :void))
+    (dolist (parameter '(#x2802 #x2803))
+      (call-gl "glTexParameteri" :uint #x0de1
+               :uint parameter :int #x812f :void))
+    (call-gl "glTexImage2D" :uint #x0de1 :int 0 :int #x8058
+             :int (box-width area) :int (box-height area)
+             :int 0 :uint #x1908 :uint #x1401
+             :pointer (cffi:null-pointer) :void)
+    entry))
+
+(fn (backdrop-sources (vector gl-ink)) ((gpu gpu) (area box))
+  "Select earlier commands whose scissor can affect this background's samples."
+  (remove-if-not
+   (lambda (ink)
+     (let ((box (gl-ink-bounds ink)))
+       (and (< (box-x box) (box-right area))
+            (< (box-x area) (box-right box))
+            (< (box-y box) (box-bottom area))
+            (< (box-y area) (box-bottom box)))))
+   (gpu-ink gpu)))
+
+(fn (cached-backdrop gl-backdrop) ((gpu gpu) (area box))
+  "Copy a background only when its preceding drawing commands changed."
+  (let* ((key (list (box-x area) (box-y area)
+                    (box-width area) (box-height area)))
+         (entry (or (gethash key (gpu-backdrops gpu))
+                    (allocate-backdrop gpu area key)))
+         (sources (backdrop-sources gpu area))
+         (previous (gl-backdrop-sources entry)))
+    (call-gl "glBindTexture" :uint #x0de1
+             :uint (gl-backdrop-texture entry) :void)
+    ;; EQUAL is intentional: EQUALP would miss case-only text/color changes.
+    (unless (and (plusp (gl-backdrop-revision entry))
+                 (= (length sources) (length previous))
+                 (every (lambda (a b) (equal (gl-ink-key a) (gl-ink-key b)))
+                        sources previous))
+      (call-gl "glCopyTexSubImage2D" :uint #x0de1 :int 0 :int 0 :int 0
+               :int (box-x area) :int (- (gpu-height gpu) (box-bottom area))
+               :int (box-width area) :int (box-height area) :void)
+      (setf (gl-backdrop-sources entry) sources
+            (gl-backdrop-revision entry) (incf (gpu-backdrop-revision gpu))))
+    entry))
+
+(fn (gl-backdrop-effect (values))
+    ((gpu gpu) (box box) (radius real) (frost real))
+  "Sample and blur the existing framebuffer behind a rounded translucent surface."
+  (let ((area (backdrop-area gpu box frost)))
+    (unless (and (plusp (box-width area)) (plusp (box-height area)))
       (return-from gl-backdrop-effect (values)))
+    (let ((entry (cached-backdrop gpu area)))
+      (record-ink gpu (list :backdrop (gl-backdrop-revision entry)
+                            (box-x box) (box-y box) (box-width box)
+                            (box-height box) radius frost)))
 
-    ;; Resize the sampling texture only when the framebuffer size changed.
-    (unless (and (= w (gpu-texture-width gpu)) (= h (gpu-texture-height gpu)))
-      (call-gl "glTexImage2D" :uint #x0de1 :int 0 :int #x1908
-               :int w :int h :int 0 :uint #x1908 :uint #x1401
-               :pointer (cffi:null-pointer) :void)
-      (setf (gpu-texture-width gpu) w (gpu-texture-height gpu) h))
-
-    ;; Copy only the visible sampling rectangle, including the blur margin.
-    (call-gl "glCopyTexSubImage2D" :uint #x0de1 :int 0 :int x :int y
-             :int x :int y :int (- right x) :int (- bottom top) :void))
-
-  ;; Configure the blur shader in physical pixels, then paint its contour.
-  (call-gl "glUseProgram" :uint (gpu-program gpu) :void)
-  (unwind-protect
-       (progn
-         (call-gl "glUniform1i" :int (uniform gpu "backdrop")
-                  :int 0 :void)
-         (call-gl "glUniform2f" :int (uniform gpu "resolution")
-                  :float (float (gpu-width gpu) 1.0f0)
-                  :float (float (gpu-height gpu) 1.0f0) :void)
-         (let ((scale (/ (gpu-width gpu) (gpu-logical-width gpu))))
-           (call-gl "glUniform1f" :int (uniform gpu "pixelScale")
-                    :float (float scale 1.0f0) :void)
-           (call-gl "glUniform1f" :int (uniform gpu "frost")
-                    :float (float (* frost scale) 1.0f0) :void))
-         (let ((box (pixel-box gpu box)))
-           (call-gl "glUniform4f" :int (uniform gpu "bounds")
-                    :float (float (box-x box) 1.0f0)
-                    :float (float (- (gpu-height gpu) (box-y box)
-                                     (box-height box)) 1.0f0)
-                    :float (float (box-width box) 1.0f0)
-                    :float (float (box-height box) 1.0f0) :void))
-         (gl-polygons gpu (make-array 1 :element-type 'contour
+    ;; Configure the blur shader in physical pixels, then paint its contour.
+    (call-gl "glUseProgram" :uint (gpu-program gpu) :void)
+    (unwind-protect
+         (progn
+           (call-gl "glUniform1i" :int (uniform gpu "backdrop")
+                    :int 0 :void)
+           (call-gl "glUniform2f" :int (uniform gpu "resolution")
+                    :float (float (box-width area) 1.0f0)
+                    :float (float (box-height area) 1.0f0) :void)
+           (call-gl "glUniform2f" :int (uniform gpu "origin")
+                    :float (float (box-x area) 1.0f0)
+                    :float (float (- (gpu-height gpu) (box-bottom area))
+                                  1.0f0) :void)
+           (let ((scale (/ (gpu-width gpu) (gpu-logical-width gpu))))
+             (call-gl "glUniform1f" :int (uniform gpu "pixelScale")
+                      :float (float scale 1.0f0) :void)
+             (call-gl "glUniform1f" :int (uniform gpu "frost")
+                      :float (float (* frost scale) 1.0f0) :void))
+           (let ((box (pixel-box gpu box)))
+             (call-gl "glUniform4f" :int (uniform gpu "bounds")
+                      :float (float (box-x box) 1.0f0)
+                      :float (float (- (gpu-height gpu) (box-y box)
+                                       (box-height box)) 1.0f0)
+                      :float (float (box-width box) 1.0f0)
+                      :float (float (box-height box) 1.0f0) :void))
+           (gl-polygons gpu
+                        (make-array 1 :element-type 'contour
                                       :initial-element
-                                      (rounded-polygon box
-                                                       radius)) "#ffffff" 1))
-    (call-gl "glUseProgram" :uint 0 :void))
+                                      (rounded-polygon box radius))
+                        "#ffffff" 1))
+      (call-gl "glUseProgram" :uint 0 :void)))
   (values))
 
 (fn (egl-check t) (result (operation string))
@@ -331,17 +443,6 @@ void main() {
 (fn (initialize-gpu gpu) ((gpu gpu) (font font))
   "Initialize GPU's shared drawing state and renderer callbacks using FONT."
   (setf (gpu-program gpu) (make-program))
-  (cffi:with-foreign-object (texture :uint)
-    (call-gl "glGenTextures" :int 1 :pointer texture :void)
-    (setf (gpu-texture gpu) (cffi:mem-ref texture :uint)))
-  (call-gl "glBindTexture" :uint #x0de1
-           :uint (gpu-texture gpu) :void)
-  (dolist (parameter '(#x2801 #x2800))
-    (call-gl "glTexParameteri" :uint #x0de1
-             :uint parameter :int #x2601 :void))
-  (dolist (parameter '(#x2802 #x2803))
-    (call-gl "glTexParameteri" :uint #x0de1
-             :uint parameter :int #x812f :void))
   (setf (gpu-renderer gpu)
         (%make-renderer
          :font font
@@ -461,6 +562,12 @@ void main() {
 
 (fn (begin-gpu-frame (values)) ((gpu gpu))
   "Clear the back buffer and set the viewport, projection, clipping, and blending."
+  (let ((size (list (gpu-width gpu) (gpu-height gpu)
+                    (gpu-logical-width gpu) (gpu-logical-height gpu))))
+    (unless (equal size (gpu-backdrop-size gpu))
+      (clear-backdrops gpu)
+      (setf (gpu-backdrop-size gpu) size)))
+  (setf (fill-pointer (gpu-ink gpu)) 0)
   (call-gl "glViewport" :int 0 :int 0 :int (gpu-width gpu)
            :int (gpu-height gpu) :void)
   (call-gl "glDisable" :uint #x0c11 :void)
@@ -474,6 +581,8 @@ void main() {
   (call-gl "glBlendFuncSeparate" :uint #x0302 :uint #x0303
            :uint 1 :uint #x0303 :void)
   (call-gl "glEnable" :uint #x0c11 :void)
+  (gl-clip gpu (make-box :width (gpu-logical-width gpu)
+                         :height (gpu-logical-height gpu)))
   (call-gl "glMatrixMode" :uint #x1701 :void)
   (call-gl "glLoadIdentity" :void)
   (call-gl "glOrtho" :double 0.0d0
@@ -494,12 +603,9 @@ void main() {
 (fn (close-gpu (or null integer)) ((gpu gpu))
   "Release cached geometry, shader, and texture; also release an owned EGL context."
   (clear-geometry gpu)
+  (clear-backdrops gpu)
   (when (plusp (gpu-program gpu))
     (call-gl "glDeleteProgram" :uint (gpu-program gpu) :void))
-  (when (plusp (gpu-texture gpu))
-    (cffi:with-foreign-object (texture :uint)
-      (setf (cffi:mem-ref texture :uint) (gpu-texture gpu))
-      (call-gl "glDeleteTextures" :int 1 :pointer texture :void)))
   (when (gpu-display gpu)
     (call-egl "eglMakeCurrent" :pointer (gpu-display gpu)
               :pointer (cffi:null-pointer) :pointer (cffi:null-pointer)

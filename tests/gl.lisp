@@ -186,6 +186,121 @@
       (assert (< (red-at 46) 50))))
   (setf (gpu-logical-width gpu) 720 (gpu-logical-height gpu) 520))
 
+(defun frame-pixels ()
+  (let* ((count (* 720 520 4))
+         (pixels (make-array count :element-type '(unsigned-byte 8))))
+    (cffi:with-pointer-to-vector-data (data pixels)
+      (cffi:foreign-funcall "glReadPixels"
+                            :int 0 :int 0 :int 720 :int 520
+                            :uint #x1908 :uint #x1401 :pointer data :void))
+    pixels))
+
+(defun test-backdrop-cache (gpu renderer)
+  (let ((text (copy-seq "CASE"))
+        (color (copy-seq "#20c040"))
+        (contours (vector (vector (cons 35 40) (cons 180 40)
+                                  (cons 180 85) (cons 35 85))))
+        (extra t)
+        (clip-width 240))
+    (labels ((scene ()
+               (begin-gpu-frame gpu)
+               (funcall (renderer-clip renderer)
+                        (make-box :width clip-width :height 130))
+               (when extra
+                 (funcall (renderer-polygons renderer) contours color 1))
+               (funcall (renderer-text renderer)
+                        (renderer-font renderer) text 40 70 "#ffffff")
+               (dolist (x '(30 400 185 60))
+                 (let ((box (make-box :x x :y 30 :width 160 :height 80)))
+                   (funcall (renderer-clip renderer)
+                            (intersect-boxes
+                             box (make-box :width 620 :height 85)))
+                   (funcall (renderer-backdrop-effect renderer) box 12 18)
+                   (shape renderer box 12 "#405080" 0.3)))
+               (frame-pixels))
+             (check ()
+               ;; Every warmed frame must match the same scene with no history.
+               (let ((cached (scene)))
+                 (%lui.gl::clear-backdrops gpu)
+                 (assert (equalp cached (scene)))
+                 (let ((revision (%lui.gl::gpu-backdrop-revision gpu)))
+                   (assert (equalp cached (scene)))
+                   (assert (= revision
+                              (%lui.gl::gpu-backdrop-revision gpu))))
+                 ;; Regional texture coordinates must preserve the original
+                 ;; full-frame sampling, apart from one channel's rounding bit.
+                 (let ((area (symbol-function '%lui.gl::backdrop-area)))
+                   (unwind-protect
+                        (progn
+                          (setf (symbol-function '%lui.gl::backdrop-area)
+                                (lambda (target box frost)
+                                  (declare (ignore box frost))
+                                  (make-box :width (gpu-width target)
+                                            :height (gpu-height target))))
+                          (assert (every (lambda (a b) (<= (abs (- a b)) 1))
+                                         cached (scene))))
+                     (setf (symbol-function '%lui.gl::backdrop-area)
+                           area))))))
+      (check)
+      ;; Mutate the same input objects to catch aliases in retained cache keys.
+      (setf (char text 0) #\c)
+      (check)
+      (setf (char color 1) #\e)
+      (check)
+      (incf (car (aref (aref contours 0) 0)) 15)
+      (check)
+      (setf extra nil)
+      (check)
+      (setf clip-width 110)
+      (check)
+      (setf (gpu-logical-width gpu) 480
+            (gpu-logical-height gpu) (/ 1040 3))
+      (check)
+      (setf (gpu-width gpu) 360 (gpu-height gpu) 260)
+      (check)
+      (setf (gpu-width gpu) 720 (gpu-height gpu) 520
+            (gpu-logical-width gpu) 720 (gpu-logical-height gpu) 520)
+      (check)))
+  (format t "Cached backdrops match fresh text, geometry, clip and resize draws.~%"))
+
+(defun test-backdrop-cache-bounds (gpu)
+  (%lui.gl::clear-backdrops gpu)
+  (let ((area (make-box :width 512 :height 512)))
+    ;; Each region is 1 MiB; exceeding the budget must release old textures.
+    (dotimes (index 33)
+      (%lui.gl::allocate-backdrop gpu area (list index)))
+    (assert (<= (%lui.gl::gpu-backdrop-bytes gpu) (* 32 1024 1024))))
+  (let ((textures
+          (loop :for entry :being :the :hash-values
+                  :of (%lui.gl::gpu-backdrops gpu)
+                :collect (%lui.gl::gl-backdrop-texture entry))))
+    (%lui.gl::clear-backdrops gpu)
+    (dolist (texture textures)
+      (assert (zerop (cffi:foreign-funcall "glIsTexture"
+                                         :uint texture :unsigned-char)))))
+  (assert (zerop (%lui.gl::gpu-backdrop-bytes gpu)))
+  (assert (zerop (hash-table-count (%lui.gl::gpu-backdrops gpu))))
+  (format t "Backdrop texture storage is bounded and released.~%"))
+
+(defun test-gallery-backdrop-cache (gpu renderer context gallery)
+  (setf (%lui.example.demo::gallery-toolkit gallery) :glass)
+  (dolist (page '(:controls :editing :layout :scroll :styles :menus))
+    (setf (%lui.example.demo::gallery-page gallery) page)
+    (dolist (point '((20 120) (180 120) (100 210) (500 210)))
+      (with-frame (context 720 520
+                   :events (vector (make-event :kind :move
+                                                :x (first point)
+                                                :y (second point))))
+        (%lui.example.demo:draw gallery))
+      (begin-gpu-frame gpu)
+      (%paint-frame renderer context)
+      (let ((expected (frame-pixels)))
+        (%lui.gl::clear-backdrops gpu)
+        (begin-gpu-frame gpu)
+        (%paint-frame renderer context)
+        (assert (equalp expected (frame-pixels))))))
+  (format t "Glass gallery pages match cached and fresh rendering.~%"))
+
 (let* ((font (open-font))
        (gpu (open-gpu nil nil font 720 520))
        (renderer (gpu-renderer gpu))
@@ -199,6 +314,9 @@
          (test-opaque-compositing gpu renderer context)
          (test-fractional-resolution gpu renderer)
          (test-backdrop-frost gpu renderer context)
+         (test-backdrop-cache gpu renderer)
+         (test-backdrop-cache-bounds gpu)
+         (test-gallery-backdrop-cache gpu renderer context gallery)
          (test-translated-geometry-cache gpu renderer)
          (with-frame (context 720 520) (%lui.example.demo:draw gallery))
          (begin-gpu-frame gpu)
