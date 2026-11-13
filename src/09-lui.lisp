@@ -461,6 +461,7 @@ No timer is retained after the spinner disappears from the frame."
   (menu-p nil :type boolean)
   (hover-p nil :type boolean)
   (hover-open-p nil :type boolean)
+  (opened-by-hover-p nil :type boolean)
   (last-open-p nil :type boolean)
   (focus-edge nil :type (member nil :first :last))
   (items #() :type (vector object-id)))
@@ -526,11 +527,14 @@ No timer is retained after the spinner disappears from the frame."
 
 (fn (open-floating (values))
     ((context context) (state floating-state)
-     &optional ((edge (member nil :first :last)) nil))
+     &optional ((edge (member nil :first :last)) nil)
+     ((hover boolean) nil))
   "Open STATE, replacing its siblings and descendants, and request initial focus."
   (let ((depth (floating-depth context state))
         (old (context-floating-path context)))
     (unless depth (return-from open-floating (values)))
+    (unless (floating-open-p context (floating-state-id state))
+      (setf (floating-state-opened-by-hover-p state) hover))
     (let ((path (make-array (1+ depth) :element-type 'object-id
                                       :initial-element nil)))
       (replace path old :end1 depth :end2 depth)
@@ -676,9 +680,12 @@ No timer is retained after the spinner disappears from the frame."
 
       (t (menu-key-input context key trigger)))))
 
-(fn (floating-hit-p boolean) ((context context) (x real) (y real))
+(fn (floating-hit-p boolean)
+    ((context context) (x real) (y real)
+     &optional ((depth integer) 0))
   "Whether a pointer is inside any open pane or its owning trigger."
-  (loop :for id :across (context-floating-path context)
+  (loop :for i :from depth :below (length (context-floating-path context))
+        :for id = (aref (context-floating-path context) i)
         :thereis
         (some (lambda (key)
                 (let ((node (gethash key (context-ids context))))
@@ -687,15 +694,28 @@ No timer is retained after the spinner disappears from the frame."
                         (%lui.layout:element-clip node) x y))))
               (list id (floating-popup-id id)))))
 
+(fn (dismiss-hovered-floating (values))
+    ((context context) (event event))
+  "Close hover-opened panes once the pointer leaves their trigger and descendants."
+  (loop :for i :below (length (context-floating-path context))
+        :for state = (floating-state-for
+                      context (aref (context-floating-path context) i))
+        :when (and state (floating-state-opened-by-hover-p state)
+                   (not (floating-hit-p context
+                                        (event-x event) (event-y event) i)))
+          :do (close-floating context i nil) (return))
+  (values))
+
 (fn (floating-pointer-move (values)) ((context context) (event event))
   "Switch open menus on hover and keep focus aligned with the pointed item."
+  (dismiss-hovered-floating context event)
   (let* ((id (%lui.frame:hit context (event-x event) (event-y event)))
          (trigger (floating-state-for context id))
          (owner (floating-owner context id)))
     (cond
       ((and trigger (floating-state-hover-open-p trigger)
             (not (equal id (context-hover context))))
-       (open-floating context trigger))
+       (open-floating context trigger nil t))
 
       ((and owner (floating-state-menu-p owner)
             (not (equal id (floating-state-id owner))))
@@ -852,7 +872,7 @@ No timer is retained after the spinner disappears from the frame."
 
         ((and hover (not (floating-state-hover-p state))
               (floating-state-hover-open-p state))
-         (open-floating *context* state))))
+         (open-floating *context* state nil t))))
     (setf (floating-state-hover-p state) hover)
 
     ;; Declare children only while their trigger belongs to the open path.
@@ -875,8 +895,9 @@ No timer is retained after the spinner disappears from the frame."
 (defmacro floating-expander (text options &body body)
   "Show BODY in a floating pane when its caption is activated.
 Nested expanders open beside their parent. OPT :open-on-hover-p also enables
-hover opening; :popup-width and :popup-height constrain the pane. BODY IDs are
-scoped to this expander. Return open state, changed flag, and resolved ID."
+hover opening and closing when the pointer leaves the trigger and popup chain.
+:popup-width and :popup-height constrain the pane. BODY IDs are scoped to this
+expander. Return open state, changed flag, and resolved ID."
   `(invoke-floating ',(gensym "EXPANDER") ,text ,options
                     (lambda () ,@body) nil))
 
@@ -889,21 +910,27 @@ and return values match FLOATING-EXPANDER; hover opening defaults to true."
 
 (fn (invoke-menu-bar (values))
     ((site symbol) (options list) (draw function))
-  "Group root menus in a plain row with stable identity and keyboard cycling."
+  "Group root menus with toolkit-defined framing and keyboard cycling."
   (let* ((id (call-site-id site options))
          (*menu-bar* id)
-         ;; A panel bevel would be obscured by the flush menu triggers.
-         (*parent* (%lui.frame:emit
-                    (apply #'%lui.layout:make-element
-                           :id id :direction :row
-                           (append (widget-options options)
-                                   (opt :width (grow) :padding 0 :gap 0))))))
+         (defaults (toolkit-defaults %*toolkit* :menu-bar))
+         (border (getf defaults :border-p))
+         (appearance (lui.toolkit:%without-option :border-p defaults))
+         (layout (append (list :id id :direction :row)
+                         (widget-options options)
+                         (when border appearance)
+                         (opt :width (grow) :padding 0 :gap 0)))
+         (*parent* (if border
+                       (declare-panel %*toolkit* layout)
+                       ;; else
+                       (%lui.frame:emit
+                        (apply #'%lui.layout:make-element layout)))))
     (call-with-key id draw))
   (values))
 
 (defmacro menu-bar (options &body body)
-  "Lay out root menus in a borderless row, accepting the same options as ROW.
-Left/Right cycle enabled menus in this bar. Use PANEL around it for a border."
+  "Lay out root menus in a row with toolkit-defined framing (beveled in Motif).
+Accept ROW options. Left/Right cycle enabled menus in this bar."
   `(invoke-menu-bar ',(gensym "MENU-BAR") ,options (lambda () ,@body)))
 
 (fn (%menu-item boolean) ((id object-id) (text string)

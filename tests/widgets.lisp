@@ -521,6 +521,15 @@
                      (gethash (lui:widget-id :test-menu-bar context)
                               (context-ids context)))))
 
+      ;; Motif uses a panel with an inset that protects its bevel.
+      (lui:with-toolkit (:motif) (frame))
+      (let ((bar (gethash (lui:widget-id :test-menu-bar context)
+                          (context-ids context))))
+        (assert (eq :panel (%lui.widgets:widget-kind
+                            (element-content bar))))
+        (assert (= 2 (element-padding bar))))
+      (frame)
+
       ;; Keyboard opening focuses the first enabled row and skips disabled rows.
       (setf (context-focus context) (gethash :file ids))
       (key :down)
@@ -575,6 +584,30 @@
       (frame (make-event :kind :tab))
       (assert (= 0 (depth)))
       (assert (equal (context-focus context) (gethash :after ids)))
+
+      ;; Hover opening survives entry into the popup, but closes on exit.
+      (setf disabled nil)
+      (frame)
+      (let* ((node (gethash (gethash :edit ids) (context-ids context)))
+             (box (element-box node)))
+        (frame (make-event :kind :move :x (+ (box-x box) 1)
+                           :y (+ (box-y box) 0.5))))
+      (assert (= 1 (depth)))
+      (let* ((pane (gethash (list (gethash :edit ids) :floating-popup)
+                            (context-ids context)))
+             (box (element-box pane)))
+        (frame (make-event :kind :move :x (+ (box-x box) 1)
+                           :y (+ (box-y box) 1))))
+      (assert (= 1 (depth)))
+      (frame (make-event :kind :move :x 59 :y 19))
+      (assert (= 0 (depth)))
+
+      ;; Keyboard opening must not acquire hover-only dismissal behavior.
+      (setf (context-focus context) (gethash :edit ids))
+      (key :down)
+      (frame (make-event :kind :move :x 58 :y 18))
+      (assert (= 1 (depth)))
+      (key :escape)
 
       ;; Root arrows cycle within the same bar once the sibling is enabled.
       (setf disabled nil)

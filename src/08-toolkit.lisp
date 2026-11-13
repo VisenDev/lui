@@ -136,23 +136,24 @@ inherit only from an explicit PARENT."
 
 (fn (toolkit-defaults (values list list))
     (&optional ((name symbol) %*toolkit*) ((kind symbol) nil))
-  "Return appearance defaults for KIND and the captured palette as a second value."
+  "Return appearance defaults for KIND and the captured palette as a second value.
+For :MENU-BAR, prepend the toolkit's :menu-bar-options plist, including
+:border-p and padding for its optional panel frame."
   (let* ((defaults (defaults-of (%find-toolkit name)))
          (palette (copy-list (%resolve-palette defaults))))
-    (values (list* :palette palette
-                   :foreground (%lui.widgets:palette-color palette
-                                                           :foreground)
-                   :background
-                   (or
-                    (when (member kind '(:button :tab
-                                         :text-field))
-                      (%lui.widgets:palette-color palette
-                                                  :control-background))
-                    (%lui.widgets:palette-color palette
-                                                :background))
-                   :accent (%lui.widgets:palette-color palette :accent)
-                   (%without-option :palette defaults))
-            palette)))
+    (values
+     (append
+      (when (eq kind :menu-bar) (getf defaults :menu-bar-options))
+      (list* :palette palette
+             :foreground (%lui.widgets:palette-color palette :foreground)
+             :background
+             (or (when (member kind '(:button :tab :text-field))
+                   (%lui.widgets:palette-color palette :control-background))
+                 (%lui.widgets:palette-color palette :background))
+             :accent (%lui.widgets:palette-color palette :accent)
+             (%without-option :menu-bar-options
+                              (%without-option :palette defaults))))
+     palette)))
 
 (fn (%override (or null function)) ((kind symbol) (entry toolkit))
   "Merge explicit widget options with defaults, preserving explicit NIL values."

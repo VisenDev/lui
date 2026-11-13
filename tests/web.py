@@ -762,6 +762,8 @@ class WebTests(unittest.TestCase):
     def test_floating_menus_and_spinner(self):
         self.click_widget(text="Menus", kind="tab")
         self.widget(text="Settings ▾", kind="button")
+        self.click_widget(text="Cycle toolkit")
+        self.click_widget(text="Cycle toolkit")
         self.page.screenshot(path=str(ROOT / "build/menu-bar.png"))
         expect(self.page.get_by_role("status", name="Loading")).to_have_count(1)
         phases = set()
@@ -783,6 +785,17 @@ class WebTests(unittest.TestCase):
         self.click_widget(text="Export PDF", kind="list-item")
         self.widget(text="Export PDF selected", kind="label")
         self.assertFalse(any(n["text"] == "Export PDF" for n in self.nodes()))
+
+        # Hover-opened chains close below and to either side, not just above.
+        for position in ((890, 690), (1, 350), (890, 350)):
+            self.hover_widget(id=":DEMO-FILE-MENU")
+            self.hover_widget(id=":DEMO-EXPORT-MENU")
+            self.hover_widget(text="Export PDF", kind="list-item")
+            self.page.mouse.move(*position)
+            self.frames()
+            expect(self.page.get_by_role("button", name="File", exact=True)
+                   ).to_have_attribute("aria-expanded", "false")
+            self.assertFalse(any(n["text"] == "Export PDF" for n in self.nodes()))
 
         # Ordinary value controls inside an expander leave it open.
         self.click_widget(id=":DEMO-SETTINGS")

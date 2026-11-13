@@ -375,11 +375,16 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   Canvas uses clipped blur; GL adds approximate edge refraction; Win32 uses
   filtered blur without refraction; Cocoa's AppKit fallback uses tint only.
 - `spinner` schedules animation only while declared; `:disabled-p` pauses it.
-  `menu-bar` is a borderless row. `menu` opens on click/hover and nests beside
+  `menu-bar` uses toolkit framing: Motif has an inset beveled panel;
+  other built-ins use a borderless row. `menu` opens on click/hover and nests beside
   its parent; `menu-item` actions dismiss the chain. `floating-expander` accepts
   arbitrary controls, with optional hover opening and constrained popup sizes.
   Child IDs are scoped to their expander. Escape closes one level, arrow keys
-  navigate menus, and Tab or outside presses dismiss them.
+  navigate menus, and Tab or outside presses dismiss them. Hover-opened panes
+  close when the pointer leaves their trigger and popup descendants; click-
+  and keyboard-opened panes remain open until explicitly dismissed.
+  Toolkit defaults may set `:menu-bar-options` to a plist with `:border-p`
+  and layout/appearance options (Motif uses `:border-p t :padding 2`).
 - The gallery covers Controls, Editing, Layout, Scroll, Styles, Menus, and all 7GUIs.
   Its A0:Z99 sheet uses a safe formula parser and incremental dependencies.
   FPS includes pacing; layout time is a 30-frame rolling average including
