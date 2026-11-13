@@ -386,6 +386,14 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   measurement but excluding construction, painting, presentation, and pacing.
   `1000 / layout-ms` is only a layout throughput ceiling.
 
+### Future navigation work
+
+- Explore text-based keyboard navigation inspired by Motif mnemonics:
+  underline a letter in menu labels, use Alt+letter to open a top-level menu,
+  and use mnemonic letters within an open menu. The user requested pursuing
+  this in the future; exact API, scope beyond menus, and backend behavior
+  remain to be designed. This is planned work, not a current capability.
+
 ### Editing and debugger behavior
 
 Readline-style editing is shared across backends: Ctrl-A/E moves to line ends,
