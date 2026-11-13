@@ -130,6 +130,25 @@
                                                     0 column)))))))))
 
 (fn run-tests ()
+  (let ((context (make-terminal-context))
+        (trigger nil))
+    (flet ((draw ()
+             (lui:spinner (lui:opt :disabled-p t))
+             (setf trigger
+                   (nth-value 2
+                     (lui:menu "File" nil
+                       (lui:menu-item "Open document"))))))
+      (with-frame (context 30 8) (draw))
+      (assert (search "|" (render-terminal context)))
+      (setf (context-focus context) trigger)
+      (with-frame (context 30 8 :events
+                           (list (make-event :kind :key :key :down)))
+        (draw))
+      (assert (search "Open document" (render-terminal context)))
+      (with-frame (context 30 8 :events
+                           (list (make-event :kind :key :key :escape)))
+        (draw))
+      (assert (not (search "Open document" (render-terminal context))))))
   (let ((context (make-terminal-context)))
     (with-frame (context 8 4)
       (lui:hr)

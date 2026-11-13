@@ -3,6 +3,7 @@
   (:export #:*min-fps* #:*max-fps* #:contains-p #:context-after-layout
            #:context-ids #:context-page-height-p #:context-page-top
            #:context-pointer-press #:context-popups
+           #:context-popup-input #:context-floating-path #:focus-next
            #:context-requested-page-top #:context-viewport-height
            #:frame-wait #:hit #:limit-frame-rate #:memoized
            #:pointer-cancel-p
@@ -79,6 +80,8 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (root nil :type (or null element))
   (text-mode-p nil :type boolean)
   popups
+  (popup-input nil :type (or null function))
+  (floating-path #() :type (vector object-id))
   pointer-press
   overlay-state
   (overlay nil :type (or null function))
@@ -224,6 +227,18 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
       table))
   (values))
 
+(fn (prune-floating-path (values)) ((context context))
+  "Close floating descendants when an owning trigger disappears or is disabled."
+  (let* ((path (context-floating-path context))
+         (missing
+           (position-if-not
+            (lambda (id)
+              (let ((node (gethash id (context-ids context))))
+                (and node (element-interactive-p node))))
+            path)))
+    (when missing (setf (context-floating-path context) (subseq path 0 missing))))
+  (values))
+
 (fn (memoized t) ((key list) (compute function))
   "Reuse a frame-local value for KEY, computing it with FUNCTION on a cache miss."
   ;; Compare call slots, not hashes. Reordering only causes cache misses.
@@ -336,14 +351,16 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
     found))
 
 (fn (focus-next object-id)
-    ((context context) &optional ((backward boolean) nil))
+    ((context context) &optional ((backward boolean) nil)
+     ((skip (or null function)) nil))
   "Advance keyboard focus through eligible elements in declaration order."
   (let ((ids nil))
     (when (context-root context)
       (walk-elements (context-root context)
                      (lambda (node)
                        (when (and (element-interactive-p node)
-                                  (element-keyboard-focus-p node))
+                                  (element-keyboard-focus-p node)
+                                  (not (and skip (funcall skip node))))
                          (push (element-id node) ids)))))
     (setf ids (if backward ids (nreverse ids))
           (context-focus context)
@@ -572,6 +589,12 @@ ID types are unrestricted and may differ between vector elements."
   (when (event-id event)
     (setf event (copy-event event)
       (event-id event) (widget-id (event-id event) context)))
+  ;; Open popups may consume navigation before normal focus and activation.
+  (when (context-popup-input context)
+    (let ((routed (funcall (context-popup-input context)
+                           context event resized)))
+      (unless routed (return-from route-frame-event (values)))
+      (setf event routed)))
   (let ((target (or (and (member (event-kind event) '(:press :release))
                          (event-id event))
                     (unless resized
@@ -767,6 +790,7 @@ Clear focus/hover for removed controls and return the completed root element."
 
   ;; Retain only current widget values and solved scroll positions.
   (prune-widget-values context)
+  (prune-floating-path context)
   (clrhash (context-scroll context))
   (walk-elements
    (context-root context)
@@ -809,6 +833,7 @@ An aborted drawing or layout invalidates geometry and clears frame state."
                 (context-pending-memo context) #()
                 (context-building-p context) nil
                 (context-previous-root context) nil
+                (context-floating-path context) #()
                 (context-hover context) nil
                 (context-focus-visible-p context) nil
                 (context-active context) nil

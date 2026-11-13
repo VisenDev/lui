@@ -374,7 +374,13 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   Terminal button delimiters follow widget radius. Backdrop rendering differs:
   Canvas uses clipped blur; GL adds approximate edge refraction; Win32 uses
   filtered blur without refraction; Cocoa's AppKit fallback uses tint only.
-- The gallery covers Controls, Editing, Layout, Scroll, Styles, and all 7GUIs.
+- `spinner` schedules animation only while declared; `:disabled-p` pauses it.
+  `menu-bar` is a borderless row. `menu` opens on click/hover and nests beside
+  its parent; `menu-item` actions dismiss the chain. `floating-expander` accepts
+  arbitrary controls, with optional hover opening and constrained popup sizes.
+  Child IDs are scoped to their expander. Escape closes one level, arrow keys
+  navigate menus, and Tab or outside presses dismiss them.
+- The gallery covers Controls, Editing, Layout, Scroll, Styles, Menus, and all 7GUIs.
   Its A0:Z99 sheet uses a safe formula parser and incremental dependencies.
   FPS includes pacing; layout time is a 30-frame rolling average including
   measurement but excluding construction, painting, presentation, and pacing.
@@ -481,8 +487,8 @@ without JavaScript generation or Lisp text parsing. Set
 ### Additional performance workflows
 
 - Default benchmark dimensions: native/GL 720×520, web 900×700, core/terminal
-  100×40 cells. The general 240-frame/30-warmup default spans 60 cases; require
-  at least 60 measured frames and nonnegative warmup. Per-case results include
+  100×40 cells. The native/core 240-frame/30-warmup default spans 65 cases; require
+  at least one measured frame per selected case and nonnegative warmup. Per-case results include
   mean, median, p95, maximum, and FPS.
 - `make benchmark-web-parity` compares existing JSCL/ECL builds with matching
   viewports and steady redraws. BENCH_FRAMES/WARMUP are per case for this target,

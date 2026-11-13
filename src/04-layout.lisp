@@ -11,6 +11,7 @@
            #:element-measure #:element-width #:element-height
            #:element-padding
            #:element-popup-anchor #:element-popup-reveal #:element-direction
+           #:element-popup-side #:element-popup-content-width-p
            #:element-gap #:element-align
            #:element-cross-align #:element-pointer-focus-p
            #:element-interactive-p #:element-keyboard-focus-p
@@ -128,6 +129,8 @@ Offsets use surface coordinates for :FIXED and parent coordinates otherwise."
   (scroll-y 0 :type real)
   (scroll-limit-y 0 :type real)
   popup-anchor popup-reveal
+  (popup-side :below :type (member :below :right))
+  (popup-content-width-p nil :type boolean)
   ;; :FIXED ignores ancestor scroll; :ABSOLUTE scrolls with the parent.
   (position :automatic :type position-mode)
   (offset-x 0 :type real)
@@ -286,9 +289,11 @@ already resolved content width."
       ((eq (sizing-kind rule) :fixed)
        (setf (element-size-on-axis node axis)
              (sizing-value rule)))
+
       ((eq (sizing-kind rule) :percent)
        (setf (element-size-on-axis node axis)
              0))
+
       (t
        (let ((content 0)
              (count 0)
@@ -387,8 +392,11 @@ case applies. Update solved dimensions on AXIS in place."
          (natural (reduce #'+ tracks :initial-value 0))
          (scale (if (plusp natural) (min 1 (/ space natural)) 1))
          (extra (/ (max 0 (- space natural)) (max 1 count))))
+    ;; Every row uses the same tracks, scaled to the available content width.
     (do-children (row node)
       (setf (element-size-on-axis row :x) width)
+
+      ;; A spanning cell includes its tracks and the gaps between them.
       (loop :with start := 0 :for cell :across (element-children row)
             :for span := (element-column-span cell)
             :for end := (+ start span)
@@ -403,6 +411,7 @@ case applies. Update solved dimensions on AXIS in place."
 (fn (resolve-independent-size (values))
     ((child element) (axis symbol) (available real))
   "Size independently positioned CHILD and constrain popup width to its anchor and available space."
+  ;; Manual children resolve against the parent's available size, outside flow.
   (unless (flow-element-p child)
     (let ((rule (element-sizing-on-axis child axis)))
       (case (sizing-kind rule)
@@ -413,14 +422,21 @@ case applies. Update solved dimensions on AXIS in place."
          (setf (element-size-on-axis child axis)
                (clamp-size-to-bounds rule available)))
         (otherwise nil))))
+
+  ;; Popups use their anchor width unless content sizing or a fixed width wins.
   (when (and (element-popup-anchor child) (eq axis :x))
     (setf (element-size-on-axis child :x)
           (min available
                (if (eq :fixed (sizing-kind (element-width child)))
                    (sizing-value (element-width child))
                    ;; else
-                   (element-size-on-axis (element-popup-anchor child)
-                                         :x)))))
+                   (let ((anchor-width
+                           (element-size-on-axis
+                            (element-popup-anchor child) :x)))
+                     (if (element-popup-content-width-p child)
+                         (max anchor-width (element-size-on-axis child :x))
+                         ;; else
+                         anchor-width))))))
   (values))
 
 (fn (resolve-flow-size (values))
@@ -546,16 +562,24 @@ Horizontal table layout uses the shared column widths measured earlier."
 Update boxes, padded clipping rectangles, and bounded scroll offsets in place.
 With PAGE-TOP, HEIGHT is the minimum page height and popups stay in the viewport."
   (assert (and (>= width 0) (>= height 0)))
+
+  ;; Resolve widths first: wrapped text needs its final width to measure height.
   (measure-intrinsic-size root :x)
   (setf (element-size-on-axis root :x) width)
   (resolve-child-sizes root :x)
+
+  ;; Page layouts can grow vertically; bounded layouts keep the supplied height.
   (measure-intrinsic-size root :y)
   (setf (element-size-on-axis root :y)
         (if page-top (max height (element-size-on-axis root :y)) height))
   (resolve-child-sizes root :y)
+
+  ;; Assign positions before clipping or applying retained scroll offsets.
   (setf (box-x (element-box root)) 0
         (box-y (element-box root)) 0)
   (position-elements root)
+
+  ;; Floating panes stay in the visible viewport even when the page is taller.
   (let ((*popup-viewport* (when page-top
                             (make-box
                              :y (min page-top
@@ -577,36 +601,66 @@ With PAGE-TOP, HEIGHT is the minimum page height and popups stay in the viewport
                                      (box-bottom b))
                                 y)))))
 
-(fn (position-popup (or null real)) ((popup element) (viewport box))
-  "Position and constrain POPUP around its clipped anchor within VIEWPORT.
-Prefer below the anchor unless above has more room; reveal the requested row
-by adjusting the popup scroll offset when necessary."
-  ;; The anchor has already been positioned and clipped by its scroll parents.
-  (let* ((anchor-clip (element-clip (element-popup-anchor popup)))
-         (anchor (if *popup-viewport* (intersect-boxes anchor-clip viewport)
-                     ;; else
-                     anchor-clip))
-         (box (element-box popup))
-         (above (max 0 (- (box-y anchor) (box-y viewport))))
+(fn (place-dropdown-box (values)) ((box box) (anchor box) (viewport box))
+  "Place a dropdown below its anchor, or above when that side has more room."
+  (let* ((above (max 0 (- (box-y anchor) (box-y viewport))))
          (top (box-bottom anchor))
          (below (max 0 (- (box-bottom viewport) top)))
          (up (and (> (box-height box) below) (> above below))))
-    (setf (box-height box)
-          (if (and (plusp (box-height anchor)) (plusp (box-width anchor)))
-              (min (box-height box) (if up above below))
-              ;; else
-              0)
-          (box-x box) (min (box-x anchor) (- (box-width viewport) (box-width
-                                                                   box)))
-          (box-y box) (if up (- (box-y anchor) (box-height box)) top))
-    (position-elements popup)
+    (setf (box-height box) (min (box-height box) (if up above below))
+          (box-x box) (box-x anchor)
+          (box-y box) (if up (- (box-y anchor) (box-height box)) top)))
+  (values))
+
+(fn (place-submenu-box (values)) ((box box) (anchor box) (viewport box))
+  "Place a submenu beside its anchor, flipping left when space is tighter right."
+  (let* ((right (- (box-right viewport) (box-right anchor)))
+         (left (- (box-x anchor) (box-x viewport)))
+         (flip (and (> (box-width box) right) (> left right))))
+    (setf (box-height box) (min (box-height box) (box-height viewport))
+          (box-x box) (if flip
+                         (- (box-x anchor) (box-width box))
+                         ;; else
+                         (box-right anchor))
+          (box-y box) (max (box-y viewport)
+                           (min (box-y anchor)
+                                (- (box-bottom viewport) (box-height box))))))
+  (values))
+
+(fn (reveal-popup-row (values)) ((popup element))
+  "Scroll a popup's requested row into its current content viewport."
+  (let ((box (element-box popup)))
     (when (element-popup-reveal popup)
       (let* ((row (element-box (element-popup-reveal popup)))
              (top (- (box-y row) (box-y box) (element-padding popup)))
              (page (- (box-height box) (* 2 (element-padding popup)))))
         (setf (element-scroll-y popup)
               (max 0 (min top (max (element-scroll-y popup)
-                                   (- (+ top (box-height row)) page)))))))))
+                                   (- (+ top (box-height row)) page))))))))
+  (values))
+
+(fn (position-popup (values)) ((popup element) (viewport box))
+  "Position a dropdown or submenu around its clipped anchor within VIEWPORT."
+  (let* ((anchor-clip (element-clip (element-popup-anchor popup)))
+         (anchor (if *popup-viewport* (intersect-boxes anchor-clip viewport)
+                     ;; else
+                     anchor-clip))
+         (box (element-box popup)))
+    ;; Anchors have already been clipped by their scroll parents.
+    (if (eq (element-popup-side popup) :right)
+        (place-submenu-box box anchor viewport)
+        ;; else
+        (place-dropdown-box box anchor viewport))
+    (unless (and (plusp (box-height anchor)) (plusp (box-width anchor)))
+      (setf (box-height box) 0))
+    (setf (box-x box)
+          (max (box-x viewport)
+               (min (box-x box) (- (box-right viewport) (box-width box)))))
+
+    ;; Position content only after choosing the popup's final side and size.
+    (position-elements popup)
+    (reveal-popup-row popup))
+  (values))
 
 (fn (clip-content-box box) ((node element) (clipping boolean))
   "Return the padded clipping area, reusing NODE's box when no inset is needed."

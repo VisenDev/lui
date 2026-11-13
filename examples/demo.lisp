@@ -27,13 +27,15 @@
   (preview "Ocean")
   (preview-color "#335d91")
   (preview-count 0)
+  (menu-action "Choose a menu action")
   (filtered-items nil)
   (last-filter nil))
 
 (defparameter *toolkits* '(:glass :motif :garnet :macos :qt))
 (defparameter *pages*
   '((:controls "Controls") (:editing "Editing") (:layout "Layout")
-    (:scroll "Scroll") (:styles "Styles") (:seven "7GUIs")))
+    (:scroll "Scroll") (:styles "Styles") (:menus "Menus")
+    (:seven "7GUIs")))
 
 (defparameter *items*
   (coerce (loop :for i :from 1 :to 60
@@ -164,6 +166,33 @@
                             :width (lui:grow))))
   (lui:label "Manual widgets can overlap. Use a layout container to reserve space.")
   (positioning-scene g))
+
+(defun floating-controls (g)
+  "Demonstrate nested action menus and arbitrary floating content."
+  (lui:menu-bar (lui:opt :id :demo-menu-bar)
+    (lui:menu "File" (lui:opt :id :demo-file-menu)
+      (when (lui:menu-item "New document")
+        (setf (gallery-menu-action g) "New document selected"))
+      (lui:menu "Export" (lui:opt :id :demo-export-menu)
+        (when (lui:menu-item "Export PDF")
+          (setf (gallery-menu-action g) "Export PDF selected"))
+        (when (lui:menu-item "Export image")
+          (setf (gallery-menu-action g) "Export image selected")))
+      (lui:hr)
+      (lui:menu-item "Unavailable" (lui:opt :disabled-p t)))
+    (lui:menu "Edit" (lui:opt :id :demo-edit-menu)
+      (when (lui:menu-item "Reset message")
+        (setf (gallery-menu-action g) "Choose a menu action"))))
+  (lui:label (gallery-menu-action g))
+  (lui:floating-expander "Settings" (lui:opt :id :demo-settings)
+    (lui:label "Floating content can contain ordinary controls.")
+    (setf (gallery-enabled g)
+          (lui:checkbox "Enabled" (lui:opt :value (gallery-enabled g))))
+    (lui:floating-expander "More" nil
+      (lui:label "A nested floating pane")))
+  (lui:row nil
+    (lui:spinner (lui:opt :id :demo-spinner))
+    (lui:label "Loading")))
 
 (defun layout-page (g)
   (positioning-controls g)
@@ -380,6 +409,7 @@
         (:layout (layout-page g))
         (:scroll (scroll-page g))
         (:styles (styles-page g))
+        (:menus (floating-controls g))
         (:seven
          (%lui.example.seven:draw-content (gallery-seven g)))))))
 

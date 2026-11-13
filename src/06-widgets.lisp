@@ -14,6 +14,7 @@
            #:widget-font-size #:widget-font-family #:widget-font-weight
            #:widget-opacity #:widget-accent
            #:widget-disabled-p #:widget-orientation #:widget-accessible-name
+           #:widget-popup-kind #:widget-expanded-p
            #:widget-painter
            #:edit-state #:edit-state-cursor
            #:edit-state-anchor #:make-edit-state #:edit-text #:readline-key
@@ -58,6 +59,8 @@
   (center-text-p nil :type boolean)
   (orientation :vertical :type (member :vertical :horizontal))
   (accessible-name nil :type (or null string))
+  (popup-kind nil :type (member nil :menu :dialog))
+  (expanded-p nil :type boolean)
   value
   (password-p nil :type boolean)
   (minimum 0 :type real)
@@ -114,6 +117,7 @@
       ;; Plain text and controls that paint their own contents.
       ((:label :list-item :cell) text)
       ((:panel :canvas :hr :vr) "")
+      (:spinner (string (char "|/-\\|/-\\" value)))
 
       ;; Numeric values have a compact textual indicator.
       (:gauge
@@ -224,6 +228,8 @@ An optional terminal-label callback overrides the standard kind-based label."
      ((terminal-label (or null function)) nil)
      ((terminal-border (or null (string 6))) nil)
      ((accessible-name (or null string)) nil) ((icon symbol) nil)
+     ((popup-kind (member nil :menu :dialog)) nil)
+     ((expanded-p boolean) nil)
      ((center-text-p boolean) nil) ((password-p boolean) nil)
      ((palette list) *base-palette*))
   "Declare a low-level widget in the current frame using STYLE and stable ID.
@@ -253,6 +259,7 @@ Most applications should use the public LUI controls with lui:OPT instead."
           terminal-label
           :password-p (not (null password-p))
           :terminal-border terminal-border
+          :popup-kind popup-kind :expanded-p expanded-p
           :accessible-name accessible-name)))
 
     ;; Attach measurement and input policies to the frame-local element.
@@ -261,9 +268,10 @@ Most applications should use the public LUI controls with lui:OPT instead."
            :position position
            :offset-x offset-x :offset-y offset-y
            :interactive-p (and (not disabled-p)
-                               (not (member kind '(:label :gauge :hr :vr))))
+                               (not (member kind
+                                            '(:label :gauge :spinner :hr :vr))))
            :pointer-focus-p (eq kind :text-field)
-           :measure (if (member kind '(:hr :vr))
+           :measure (if (member kind '(:hr :vr :spinner))
                         (lambda (available)
                           (declare (ignore available)) (values 0 0))
 

@@ -56,6 +56,16 @@
   (lui:button \"Save\" (lui:opt :id :save :disabled-p (not enabled))))"
       "Pass optional styling/layout settings in one explicit lui:opt form. An omitted option inherits the toolkit default; an explicit NIL remains an explicit value. Common settings include :width, :height, :padding, :foreground, :background, :font-size, and :disabled-p."
       "Canvas commands provide shared drawing primitives. A custom :painter takes the same renderer and layout element on the desktop and in the browser.")
+    (:menus "Menus and floating content"
+      "MENU-BAR groups root menus. MENU opens on click or hover and may contain MENU-ITEM actions, separators, or nested menus. Selecting an action closes the chain. Disabled items are skipped by keyboard navigation."
+      "(lui:menu-bar nil
+  (lui:menu \"File\" nil
+    (when (lui:menu-item \"New\") (new-document))
+    (lui:menu \"Export\" nil
+      (when (lui:menu-item \"PDF\") (export-pdf)))))"
+      "Up/Down and Home/End move among enabled items. Right opens a submenu; Left returns to its parent or changes the root menu. Escape closes one level. Tab leaves the menu, and clicking outside dismisses it."
+      "FLOATING-EXPANDER accepts arbitrary content, including value controls that stay open while edited. Nest expanders to open child panes beside their parent. Set :open-on-hover-p to enable hover opening; :popup-width and :popup-height constrain the pane. The body is evaluated only while open, with its IDs scoped to the trigger. Menus and expanders return open state, changed flag, and resolved ID."
+      "SPINNER is a noninteractive loading indicator. Declare it while work is pending; it schedules its own animation frames. :disabled-p pauses it, and removing it stops its redraw requests. Use :foreground, :width, and :height to customize it.")
     (:layout "Layout and scrolling"
      "Rows arrange children horizontally; columns arrange them vertically. A fixed size uses backend coordinates, grow distributes available space, and fit measures content. Use lui:units for spacing that adapts to terminal cells and graphical pixels."
      "(lui:row (lui:opt :width (lui:grow)
@@ -216,8 +226,12 @@
                                  (:start "Start") (:debug "Debugger")
                                  (:frames "Frames") (:positioning "Positioning")
                                  (:widgets "Controls") (:layout "Layout")
+                                 (:menus "Menus")
                                  (:toolkits "Toolkits") (:input "Input")
-                                 (:backends "Backends"))
+                                 (:backends "Backends")
+                                 (otherwise (second guide)))
+
+                               ;; else
                                (second guide))
           (lui:opt
             :id (list :docs-guide (first guide))
@@ -330,7 +344,9 @@
     ("TEXT-FIELD" . :text-field) ("CELL" . :cell)
     ("LIST-ITEM" . :list-item) ("GAUGE" . :gauge) ("CANVAS" . :canvas)
     ("PANEL" . :panel) ("ROW" . :row) ("COLUMN" . :column)
-    ("SPACER" . :spacer) ("HR" . :hr) ("VR" . :vr)))
+    ("SPACER" . :spacer) ("HR" . :hr) ("VR" . :vr)
+    ("SPINNER" . :spinner) ("MENU" . :menu) ("MENU-BAR" . :menu)
+    ("MENU-ITEM" . :menu) ("FLOATING-EXPANDER" . :floating-expander)))
 
 (defun canvas-preview (state)
   (let ((box (lui:previous-box :docs-preview-canvas)))
@@ -436,6 +452,27 @@
              (if (>= (browser-value state) 1) 0
                  (min 1 (+ (browser-value state) 0.2))))
        (lui:request-frame)))
+    (:spinner
+     (lui:row nil
+       (lui:spinner)
+       (lui:label "Loading")))
+    (:menu
+     (lui:menu-bar nil
+       (lui:menu "File" nil
+         (when (lui:menu-item "New") (incf (browser-value state)))
+         (lui:menu "Export" nil
+           (when (lui:menu-item "PDF") (incf (browser-value state)))))
+       (lui:menu "Edit" nil
+         (lui:menu-item "Unavailable" (lui:opt :disabled-p t))))
+     (lui:label (format nil "Actions: ~D" (round (browser-value state)))))
+    (:floating-expander
+     (lui:floating-expander "Options" nil
+       (lui:label "Ordinary controls in a floating pane")
+       (setf (browser-value state)
+             (lui:slider (lui:opt :value (browser-value state)
+                                  :width (lui:fixed (lui:units 20)))))
+       (lui:floating-expander "More options" nil
+         (lui:label "Nested floating content"))))
     (:canvas (canvas-preview state))
     (:spacer
      (lui:row (lui:opt :width (lui:grow))
@@ -506,7 +543,10 @@
       ((eq (browser-guide state) :previews)
        (lui:label "Interactive widgets and containers"
                   (lui:opt :width (lui:grow) :font-weight :bold))
-       (dolist (pair *preview-kinds*) (preview state (cdr pair))))
+       ;; Related API entries share one example in the combined gallery.
+       (dolist (kind (remove-duplicates (mapcar #'cdr *preview-kinds*)
+                                        :from-end t))
+         (preview state kind)))
       ((browser-guide state)
        (let ((guide (assoc (browser-guide state) *guides*)))
          (lui:label (second guide)

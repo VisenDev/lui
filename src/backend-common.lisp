@@ -1278,6 +1278,49 @@
                                         foreground))
   (values))
 
+(fn (paint-spinner (values)) ((renderer renderer) (widget widget) (box box))
+  "Paint eight fading dots around the loading indicator's center."
+  (let* ((size (min (box-width box) (box-height box)))
+         (diameter (* size 0.18f0))
+         (orbit (* size 0.35f0))
+         (center-x (+ (box-x box) (/ (box-width box) 2)))
+         (center-y (+ (box-y box) (/ (box-height box) 2)))
+         (phase (widget-value widget))
+         (color (if (widget-disabled-p widget)
+                    (widget-color widget :disabled)
+                    ;; else
+                    (widget-foreground widget))))
+    ;; The leading dot is opaque; older positions fade along the ring.
+    (when (plusp size)
+      (dotimes (i 8)
+        (let* ((dx (aref #(1.0f0 0.707107f0 0.0f0 -0.707107f0
+                           -1.0f0 -0.707107f0 0.0f0 0.707107f0) i))
+               (dy (aref #(0.0f0 0.707107f0 1.0f0 0.707107f0
+                           0.0f0 -0.707107f0 -1.0f0 -0.707107f0) i))
+               (x (- (+ center-x (* orbit dx)) (/ diameter 2)))
+               (y (- (+ center-y (* orbit dy)) (/ diameter 2)))
+               (opacity (- 1 (* 0.11f0 (mod (- phase i) 8)))))
+          (shape renderer
+                 (make-box :x x :y y :width diameter :height diameter)
+                 (/ diameter 2) color opacity)))))
+  (values))
+
+(fn (paint-splitter t) ((renderer renderer) (node element))
+  "Paint the centered resize rail with pointer-hover feedback."
+  (let* ((widget (element-content node))
+         (box (element-box node))
+         (rail (if (eq (widget-orientation widget) :horizontal)
+                   (make-box :x (box-x box) :width (box-width box)
+                             :y (+ (box-y box) (/ (box-height box) 2) -1)
+                             :height 2)
+
+                   ;; else
+                   (make-box :x (+ (box-x box) (/ (box-width box) 2) -1)
+                             :y (box-y box) :width 2
+                             :height (box-height box)))))
+    (shape renderer rail 0 (widget-accent widget)
+           (if (hovered-p (element-id node)) 1 0.5f0))))
+
 (fn (%paint-shared-widget t) ((renderer renderer) (node element) (radius real)
                              (shadow real)
                              (scrollbar function) (body function))
@@ -1286,9 +1329,6 @@
          (box (element-box node))
          (kind (widget-kind widget))
          (disabled (widget-disabled-p widget))
-         (pressed (and (not disabled) (hovered-p (element-id node))
-                       (equal (element-id node)
-                              (context-active *context*))))
          (foreground (if disabled (widget-color widget :disabled)
                          ;; else
                          (widget-foreground widget))))
@@ -1297,18 +1337,7 @@
     (cond
       ((eq kind :cell) (paint-cell renderer node))
       ((eq kind :scrollbar) (funcall scrollbar renderer node))
-      ((eq kind :splitter)
-       (shape renderer
-              (if (eq (widget-orientation widget) :horizontal)
-                  (make-box :x (box-x box) :width (box-width box)
-                            :y (+ (box-y box) (/ (box-height box) 2) -1)
-                            :height 2)
-
-                  ;; else
-                  (make-box :x (+ (box-x box) (/ (box-width box) 2) -1)
-                            :y (box-y box) :width 2 :height (box-height box)))
-              0 (widget-accent widget)
-              (if (or pressed (hovered-p (element-id node))) 1 0.5f0)))
+      ((eq kind :splitter) (paint-splitter renderer node))
       ((eq kind :highlight)
        (shape renderer box 0 (widget-accent widget)
               (widget-opacity widget))
@@ -1329,6 +1358,7 @@
        (outline renderer box radius foreground 1 1))
       ((member kind '(:hr :vr))
        (shape renderer box 0 (widget-foreground widget) 1))
+      ((eq kind :spinner) (paint-spinner renderer widget box))
       ((eq kind :canvas) (paint-canvas renderer node))
       (t (funcall body renderer node)))
 

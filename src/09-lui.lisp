@@ -62,7 +62,9 @@
            #:table-row #:table-cell #:with-key #:widget-key #:widget-id
            #:focus-widget #:opt #:panel #:label #:spacer #:hr #:vr #:button
            #:tab #:checkbox #:radio #:slider #:text-field #:cell
-           #:list-item #:gauge #:canvas #:date-picker #:searchable-combobox
+           #:list-item #:gauge #:spinner #:canvas #:date-picker
+           #:searchable-combobox
+           #:menu-bar #:menu #:menu-item #:floating-expander
            #:%*default-backend-function*))
 (in-package #:lui)
 
@@ -130,6 +132,7 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
                              painter terminal-label terminal-border
                              accessible-name
                              placeholder password-p max-results selected-p
+                             open-on-hover-p popup-width popup-height
                 text value default-value)
   "Build widget options, preserving order, explicit NIL, and omitted keys.
 :POSITION defaults to :AUTOMATIC, which participates in row/column layout.
@@ -150,6 +153,7 @@ Offsets on automatic widgets shift their drawing without changing their slot."
                    font-weight opacity accent disabled-p painter
                    terminal-label terminal-border accessible-name
              placeholder password-p max-results selected-p text
+             open-on-hover-p popup-width popup-height
              value default-value))
   `(list ,@forms))
 
@@ -363,6 +367,23 @@ Owned state is discarded when this widget is absent from a completed frame."
   (apply #'declare-widget :gauge style id "" :value (max 0 (min 1 fraction))
          (append options defaults)))
 
+(define-control spinner (id)
+  "Display an animated, noninteractive loading indicator while declared.
+OPT :width and :height set its size; :foreground sets its color. The default
+is two spacing units square, or one terminal cell. :disabled-p pauses it.
+No timer is retained after the spinner disappears from the frame."
+  (let* ((disabled (getf options :disabled-p))
+         (size (if (context-text-mode-p *context*) 1 (units 2)))
+         (phase (if disabled 0 (mod (floor (* 10 (frame-time))) 8))))
+    ;; Schedule only the next animation step; absence stops future requests.
+    (unless disabled (request-frame 0.1f0))
+    (apply #'declare-widget :spinner style id "" :value phase
+           (append options
+                   (list :width (fixed size) :height (fixed size)
+                         :foreground (palette-color palette :accent)
+                         :accessible-name "Loading")
+                   defaults))))
+
 (define-control canvas (id commands)
   "Display circle commands (kind x y radius stroke fill) in local coordinates."
   (apply #'declare-widget :canvas style id "" :value commands
@@ -414,7 +435,9 @@ Owned state is discarded when this widget is absent from a completed frame."
                 (nreverse matches))))
 
 (fn (anchored-popup %lui.layout:element)
-    ((id object-id) (anchor %lui.layout:element) (options list))
+    ((id object-id) (anchor %lui.layout:element) (options list)
+     &key ((side (member :below :right)) :below)
+     ((content-width-p boolean) nil))
   "Declare a floating popup whose geometry is constrained to ANCHOR."
   (let ((*parent* (%lui.layout:make-element)))
     (let ((pane
@@ -425,9 +448,479 @@ Owned state is discarded when this widget is absent from a completed frame."
                          :scrollbar-p nil :clip-p t :interactive-p t
                          :keyboard-focus-p nil :padding (units 1))
                     (toolkit-defaults)))))
-      (setf (%lui.layout:element-popup-anchor pane) anchor)
+      (setf (%lui.layout:element-popup-anchor pane) anchor
+            (%lui.layout:element-popup-side pane) side
+            (%lui.layout:element-popup-content-width-p pane) content-width-p)
       (push pane (%lui.frame:context-popups *context*))
       pane)))
+
+(defstruct floating-state
+  (id nil :type object-id)
+  (parent nil :type object-id)
+  (group nil :type object-id)
+  (menu-p nil :type boolean)
+  (hover-p nil :type boolean)
+  (hover-open-p nil :type boolean)
+  (last-open-p nil :type boolean)
+  (focus-edge nil :type (member nil :first :last))
+  (items #() :type (vector object-id)))
+
+(defvar *floating-parent* nil)
+(defvar *menu-bar* nil)
+
+(fn (floating-state-for (or null floating-state))
+    ((context context) (id object-id))
+  "Find retained expander state without confusing it with another control kind."
+  (let ((state (gethash id (context-state context))))
+    (when (floating-state-p state) state)))
+
+(fn (floating-popup-id list) ((id object-id))
+  "Derive a stable popup identity from its trigger's resolved identity."
+  (list id :floating-popup))
+
+(fn (floating-depth (or null integer))
+    ((context context) (state floating-state))
+  "Return STATE's level when its parent is open, or NIL for a closed parent."
+  (if (floating-state-parent state)
+      (let ((parent (position (floating-state-parent state)
+                               (context-floating-path context) :test #'equal)))
+        (when parent (1+ parent)))
+
+      ;; else
+      0))
+
+(fn (floating-open-p boolean) ((context context) (id object-id))
+  "Whether ID owns one level of the active floating-content chain."
+  (not (null (position id (context-floating-path context) :test #'equal))))
+
+(fn (forget-floating-pane (values))
+    ((context context) (pane %lui.layout:element))
+  "Remove identities from a closed pane, including children declared after closing."
+  (%lui.layout:walk-elements pane
+    (lambda (node)
+      (when (%lui.layout:element-id node)
+        (remhash (%lui.layout:element-id node) (context-ids context)))))
+  (values))
+
+(fn (discard-floating-popups (values)) ((context context))
+  "Remove closed panes declared this frame, including their detached descendants."
+  (let ((removed (make-hash-table :test 'equal))
+        (path (context-floating-path context))
+        (kept nil))
+    ;; Parents are declared first; their removal also invalidates child anchors.
+    (dolist (pane (reverse (context-popups context)))
+      (let* ((id (%lui.layout:element-id pane))
+             (anchor (%lui.layout:element-popup-anchor pane))
+             (closed (and (consp id) (consp (cdr id))
+                           (eq (second id) :floating-popup)
+                           (not (find (first id) path :test #'equal)))))
+        (if (or closed
+                (and anchor
+                     (or (gethash (%lui.layout:element-id anchor) removed)
+                         (not (gethash (%lui.layout:element-id anchor)
+                                       (context-ids context))))))
+            (%lui.layout:walk-elements pane
+              (lambda (node)
+                (let ((id (%lui.layout:element-id node)))
+                  (when id
+                    (setf (gethash id removed) t)
+                    (remhash id (context-ids context))))))
+
+            ;; else
+            (push pane kept))))
+    (setf (context-popups context) kept))
+  (values))
+
+(fn (open-floating (values))
+    ((context context) (state floating-state)
+     &optional ((edge (member nil :first :last)) nil))
+  "Open STATE, replacing its siblings and descendants, and request initial focus."
+  (let ((depth (floating-depth context state))
+        (old (context-floating-path context)))
+    (unless depth (return-from open-floating (values)))
+    (let ((path (make-array (1+ depth) :element-type 'object-id
+                                      :initial-element nil)))
+      (replace path old :end1 depth :end2 depth)
+      (setf (aref path depth) (floating-state-id state)
+            (context-floating-path context) path
+            (floating-state-focus-edge state) edge
+            (context-focus context) (floating-state-id state)
+            (context-focus-visible-p context) (not (null edge))))
+    (discard-floating-popups context)
+    (request-frame))
+  (values))
+
+(fn (close-floating (values))
+    ((context context) (depth integer) &optional ((restore boolean) t))
+  "Close DEPTH and its descendants, optionally returning focus to its trigger."
+  (let ((path (context-floating-path context)))
+    (when (< depth (length path))
+      (when restore (setf (context-focus context) (aref path depth)))
+      (loop :for i :from depth :below (length path)
+            :for state = (floating-state-for context (aref path i))
+            :when state :do (setf (floating-state-focus-edge state) nil))
+      (setf (context-floating-path context) (subseq path 0 depth))
+      (discard-floating-popups context)
+      (request-frame)))
+  (values))
+
+(fn (floating-owner (or null floating-state))
+    ((context context) (id object-id))
+  "Find the deepest open pane that owns ID or uses it as its trigger."
+  (let ((path (context-floating-path context)))
+    (loop :for i :downfrom (1- (length path)) :to 0
+          :for state = (floating-state-for context (aref path i))
+          :when (and state
+                     (or (equal id (floating-state-id state))
+                         (find id (floating-state-items state) :test #'equal)))
+            :return state)))
+
+(fn (floating-group-ids (vector object-id))
+    ((context context) (group object-id))
+  "Collect enabled root menus in their declared order within GROUP."
+  (let ((ids (make-array 0 :element-type 'object-id
+                         :adjustable t :fill-pointer 0)))
+    (when (context-root context)
+      (%lui.layout:walk-elements (context-root context)
+        (lambda (node)
+          (let ((state (floating-state-for context
+                                          (%lui.layout:element-id node))))
+            (when (and state (floating-state-menu-p state)
+                       (null (floating-state-parent state))
+                       (equal group (floating-state-group state))
+                       (%lui.layout:element-interactive-p node))
+              (vector-push-extend (floating-state-id state) ids))))))
+    ids))
+
+(fn (cycle-floating-root boolean) ((context context) (step integer))
+  "Move to an adjacent root menu in the same bar, wrapping past either end."
+  (let* ((path (context-floating-path context))
+         (root (when (plusp (length path))
+                 (floating-state-for context (aref path 0))))
+         (ids (when root (floating-group-ids context
+                                             (floating-state-group root)))))
+    (when (and ids (> (length ids) 1))
+      (let* ((index (or (position (aref path 0) ids :test #'equal) 0))
+             (next (aref ids (mod (+ index step) (length ids)))))
+        (open-floating context (floating-state-for context next) :first))
+      t)))
+
+(fn (navigate-floating-items (values))
+    ((context context) (state floating-state) (key symbol))
+  "Move focus through a menu's enabled items and remember an edge for first open."
+  (let* ((items (floating-state-items state))
+         (count (length items))
+         (index (position (context-focus context) items :test #'equal)))
+    (if (zerop count)
+        (setf (floating-state-focus-edge state)
+              (if (member key '(:up :end)) :last :first))
+
+        ;; else
+        (let ((next (case key
+                      (:home 0) (:end (1- count))
+                      (:up (if index (mod (1- index) count) (1- count)))
+                      (otherwise (if index (mod (1+ index) count) 0)))))
+          (setf (context-focus context) (aref items next))))
+    (setf (context-focus-visible-p context) t)
+    (request-frame))
+  (values))
+
+(fn (tab-from-floating (values)) ((context context) (backward boolean))
+  "Leave the menu chain without tabbing into its soon-to-be-removed popup nodes."
+  (let* ((path (context-floating-path context))
+         (root (aref path 0)))
+    (setf (context-focus context) root
+          (context-focus-visible-p context) t)
+    (focus-next context backward
+      (lambda (node)
+        (let ((owner (floating-owner context (%lui.layout:element-id node))))
+          (and owner (not (equal root (%lui.layout:element-id node)))))))
+    (close-floating context 0 nil))
+  (values))
+
+(fn (floating-key-input boolean) ((context context) (key symbol))
+  "Consume menu navigation keys while leaving editable content's keys alone."
+  (let ((path (context-floating-path context))
+        (trigger (floating-state-for context (context-focus context)))
+        (owner (floating-owner context (context-focus context))))
+    ;; A focused closed trigger opens before the following input is routed.
+    (when (and trigger (member key '(:up :down :right))
+               (not (floating-open-p context (floating-state-id trigger))))
+      (open-floating context trigger (if (eq key :up) :last :first))
+      (return-from floating-key-input t))
+    (when (zerop (length path)) (return-from floating-key-input nil))
+    (when (eq key :escape)
+      (close-floating context (1- (length path)))
+      (return-from floating-key-input t))
+    (unless (and owner (floating-state-menu-p owner)
+                 (not (text-field-focused-p context)))
+      (return-from floating-key-input nil))
+
+    (case key
+      ((:up :down :home :end) (navigate-floating-items context owner key) t)
+      (:left
+       (if (> (length path) 1)
+           (close-floating context (1- (length path)))
+           ;; else
+           (cycle-floating-root context -1))
+       t)
+      (:right
+       (if (and trigger (floating-state-parent trigger))
+           (open-floating context trigger :first)
+           ;; else
+           (cycle-floating-root context 1))
+       t)
+      (otherwise nil))))
+
+(fn (floating-hit-p boolean) ((context context) (x real) (y real))
+  "Whether a pointer is inside any open pane or its owning trigger."
+  (loop :for id :across (context-floating-path context)
+        :thereis
+        (some (lambda (key)
+                (let ((node (gethash key (context-ids context))))
+                  (and node
+                       (%lui.frame:contains-p
+                        (%lui.layout:element-clip node) x y))))
+              (list id (floating-popup-id id)))))
+
+(fn (floating-pointer-move (values)) ((context context) (event event))
+  "Switch open menus on hover and keep focus aligned with the pointed item."
+  (let* ((id (%lui.frame:hit context (event-x event) (event-y event)))
+         (trigger (floating-state-for context id))
+         (owner (floating-owner context id)))
+    (cond
+      ((and trigger (floating-state-hover-open-p trigger)
+            (not (equal id (context-hover context))))
+       (open-floating context trigger))
+
+      ((and owner (floating-state-menu-p owner)
+            (not (equal id (floating-state-id owner))))
+       (let ((depth (position (floating-state-id owner)
+                              (context-floating-path context) :test #'equal)))
+         (close-floating context (1+ depth) nil))
+       (setf (context-focus context) id
+             (context-focus-visible-p context) nil))))
+  (values))
+
+(fn (floating-input (or null event))
+    ((context context) (event event) (resized boolean))
+  "Route floating-menu input before ordinary activation and focus processing."
+  (let ((*context* context))
+    (when (and (eq (event-kind event) :key)
+               (floating-key-input context (event-key event)))
+      (return-from floating-input nil))
+    (when (plusp (length (context-floating-path context)))
+      (case (event-kind event)
+        (:tab
+         (tab-from-floating context (eq (event-key event) :backward))
+         (return-from floating-input nil))
+        (:cancel (close-floating context 0))
+        (:press
+         (when (and (not resized)
+                    (not (floating-hit-p context
+                                          (event-x event) (event-y event))))
+           (close-floating context 0)))
+        (:move
+         (unless resized (floating-pointer-move context event)))
+        (otherwise nil))))
+  event)
+
+(fn (floating-control-options list) ((options list))
+  "Remove expander-only options before declaring its ordinary trigger control."
+  (loop :for (key value) :on (widget-options options) :by #'cddr
+        :unless (member key '(:open-on-hover-p :popup-width :popup-height))
+          :append (list key value)))
+
+(fn (floating-items (vector object-id)) ((pane %lui.layout:element))
+  "Collect enabled focusable content without entering detached child popups."
+  (let ((items (make-array 0 :element-type 'object-id
+                           :adjustable t :fill-pointer 0)))
+    (%lui.layout:walk-elements pane
+      (lambda (node)
+        (when (and (%lui.layout:element-interactive-p node)
+                   (%lui.layout:element-keyboard-focus-p node))
+          (vector-push-extend (%lui.layout:element-id node) items))))
+    items))
+
+(fn (finish-floating-pane (values))
+    ((state floating-state) (pane %lui.layout:element))
+  "Retain keyboard targets and reveal the focused item after declaring a pane."
+  (let ((items (floating-items pane))
+        (edge (floating-state-focus-edge state)))
+    (setf (floating-state-items state) items)
+    (when (and edge (plusp (length items)))
+      (setf (context-focus *context*)
+            (aref items (if (eq edge :last) (1- (length items)) 0))
+            (context-focus-visible-p *context*) t
+            (floating-state-focus-edge state) nil))
+
+    ;; Keyboard navigation must expose rows beyond a constrained popup height.
+    (when (find (context-focus *context*) items :test #'equal)
+      (setf (%lui.layout:element-popup-reveal pane)
+            (gethash (context-focus *context*) (context-ids *context*)))))
+  (values))
+
+(fn (draw-floating-pane (values))
+    ((state floating-state) (options list) (draw function))
+  "Declare floating content beside its trigger and scope its child identities."
+  (let* ((id (floating-state-id state))
+         (anchor (gethash id (context-ids *context*)))
+         (pane (anchored-popup
+                (floating-popup-id id) anchor
+                (opt :width (getf options :popup-width (fit))
+                     :height (getf options :popup-height (fit))
+                     :padding (if (context-text-mode-p *context*)
+                                  1
+                                  ;; else
+                                  (units 0.5f0))
+                     :gap 0)
+                :side (if (floating-state-parent state) :right :below)
+                :content-width-p t)))
+    ;; The popup is detached from normal flow, but owns its body's key scope.
+    (let ((*parent* pane)
+          (*floating-parent* id))
+      (call-with-key id draw))
+
+    (cond
+      ((floating-open-p *context* id)
+       (finish-floating-pane state pane))
+
+      ;; User code may keep declaring children after an action closes the pane.
+      (t
+       (forget-floating-pane *context* pane)
+       (discard-floating-popups *context*))))
+  (values))
+
+(fn (floating-trigger t)
+    ((state floating-state) (text string) (options list))
+  "Draw a regular toolkit control with popup state and an accessible caption."
+  (let* ((nested (not (null (floating-state-parent state))))
+         (menu (floating-state-menu-p state))
+         (id (floating-state-id state))
+         (open (floating-open-p *context* id))
+         (caption (cond (nested (concatenate 'string text " ▸"))
+                        (menu text)
+                        (t (concatenate 'string text " ▾"))))
+         (appearance
+           (append (floating-control-options options)
+                   (list :accessible-name text
+                         :popup-kind (if menu :menu :dialog)
+                         :expanded-p open)
+                   (when nested (list :width (grow))))))
+    (if (or menu nested)
+        (%list-item id caption (append (list :selected-p open) appearance))
+        ;; else
+        (%button id caption appearance))))
+
+(fn (invoke-floating (values boolean boolean object-id))
+    ((site symbol) (text string) (options list) (draw function) (menu boolean))
+  "Resolve an expander's state, declare its trigger, and conditionally draw its body."
+  (when (and *floating-parent*
+             (not (floating-open-p *context* *floating-parent*)))
+    (return-from invoke-floating (values nil nil nil)))
+  (let* ((id (call-site-id site options))
+         (state (or (floating-state-for *context* id)
+                    (make-floating-state :id id)))
+         (hover (hovered-p id))
+         (before (floating-state-last-open-p state))
+         (disabled (getf options :disabled-p)))
+    ;; Refresh the trigger's parent and opening policy for this frame.
+    (setf (gethash id (context-state *context*)) state
+          (context-popup-input *context*) #'floating-input
+          (floating-state-parent state) *floating-parent*
+          (floating-state-group state) *menu-bar*
+          (floating-state-menu-p state) menu
+          (floating-state-hover-open-p state)
+          (not (null (getf options :open-on-hover-p menu))))
+
+    ;; Activation toggles; a hover edge opens without repeatedly reopening.
+    (let ((activated (floating-trigger state text options)))
+      (cond
+        (disabled
+         (when (floating-open-p *context* id)
+           (close-floating *context* (floating-depth *context* state))))
+
+        (activated
+         (if (floating-open-p *context* id)
+             (close-floating *context* (floating-depth *context* state))
+             ;; else
+             (open-floating *context* state)))
+
+        ((and hover (not (floating-state-hover-p state))
+              (floating-state-hover-open-p state))
+         (open-floating *context* state))))
+    (setf (floating-state-hover-p state) hover)
+
+    ;; Declare children only while their trigger belongs to the open path.
+    (if (floating-open-p *context* id)
+        (draw-floating-pane state options draw)
+        ;; else
+        (setf (floating-state-items state) #()))
+
+    ;; Body actions may close the pane; publish its final state to the renderer.
+    (let* ((open (floating-open-p *context* id))
+           (node (gethash id (context-ids *context*)))
+           (widget (when node (element-content node))))
+      (when (widget-p widget)
+        (setf (widget-expanded-p widget) open)
+        (when (eq (widget-kind widget) :list-item)
+          (setf (widget-value widget) open)))
+      (setf (floating-state-last-open-p state) open)
+      (values open (not (eql open before)) id))))
+
+(defmacro floating-expander (text options &body body)
+  "Show BODY in a floating pane when its caption is activated.
+Nested expanders open beside their parent. OPT :open-on-hover-p also enables
+hover opening; :popup-width and :popup-height constrain the pane. BODY IDs are
+scoped to this expander. Return open state, changed flag, and resolved ID."
+  `(invoke-floating ',(gensym "EXPANDER") ,text ,options
+                    (lambda () ,@body) nil))
+
+(defmacro menu (text options &body body)
+  "Declare a click/hover dropdown menu; nested menus open beside their parent.
+Use MENU-ITEM for actions and MENU for submenus. Arrow keys navigate, Escape
+closes one level, and Tab or an outside click dismisses the chain. Options
+and return values match FLOATING-EXPANDER; hover opening defaults to true."
+  `(invoke-floating ',(gensym "MENU") ,text ,options (lambda () ,@body) t))
+
+(fn (invoke-menu-bar (values))
+    ((site symbol) (options list) (draw function))
+  "Group root menus in a plain row with stable identity and keyboard cycling."
+  (let* ((id (call-site-id site options))
+         (*menu-bar* id)
+         ;; A panel bevel would be obscured by the flush menu triggers.
+         (*parent* (%lui.frame:emit
+                    (apply #'%lui.layout:make-element
+                           :id id :direction :row
+                           (append (widget-options options)
+                                   (opt :width (grow) :padding 0 :gap 0))))))
+    (call-with-key id draw))
+  (values))
+
+(defmacro menu-bar (options &body body)
+  "Lay out root menus in a borderless row, accepting the same options as ROW.
+Left/Right cycle enabled menus in this bar. Use PANEL around it for a border."
+  `(invoke-menu-bar ',(gensym "MENU-BAR") ,options (lambda () ,@body)))
+
+(fn (%menu-item boolean) ((id object-id) (text string)
+                          &optional ((options list) nil))
+  "Declare an action inside floating content and dismiss its chain on activation."
+  (unless *floating-parent*
+    (error 'configuration-error :operation :menu-item :setting :parent
+           :value nil :format-control "MENU-ITEM requires a MENU or FLOATING-EXPANDER."))
+  (let ((activated
+          (%list-item id text
+                      (append options
+                              (opt :width (grow)
+                                   :selected-p (equal id
+                                                       (context-focus
+                                                        *context*)))))))
+    (when activated (close-floating *context* 0))
+    (not (null activated))))
+
+(define-widget menu-item (id text)
+  "Return true when this menu action is selected, then dismiss the menu chain.
+OPT :disabled-p disables it. The third return value is its resolved ID.")
 
 (fn (combobox-popup (values))
     ((id object-id) (matches (vector (cons integer string)))

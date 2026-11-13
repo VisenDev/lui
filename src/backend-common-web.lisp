@@ -971,7 +971,7 @@
                                         clip
                                         (and (member kind '(:cell :label
                                                             :button :tab
-                                                            :list-item
+                                                            :list-item :spinner
                                                             :checkbox :radio))
                                              (or (not (eq kind :label))
                                                  (toolkit-native-labels-p
@@ -1033,8 +1033,13 @@
                                                    left))))))
   (values))
 
-(fn (make-semantic-button t) ((app web-app) (node element) (kind symbol))
+(fn (make-semantic-control t) ((app web-app) (node element) (kind symbol))
   "Create an accessible native control that queues LUI activation for NODE."
+  ;; Loading indicators expose status without creating a focusable action.
+  (when (eq kind :spinner)
+    (let ((status (#j:document:createElement #j"span")))
+      ((oget status "setAttribute") #j"role" #j"status")
+      (return-from make-semantic-control status)))
   ;; The canvas keeps pointer capture and toolkit keyboard navigation. Native
   ;; button activation also lets assistive technology invoke the same action.
   (let ((button (#j:document:createElement #j"button"))
@@ -1104,7 +1109,7 @@
                                            (if (eq kind :label)
                                                (#j:document:createElement #j"span")
                                                ;; else
-                                               (make-semantic-button
+                                               (make-semantic-control
                                                 app node kind))))))
                 (remhash key old)
                 (when (dom-widget-hidden-p record)
@@ -1138,8 +1143,11 @@
 (fn (sync-semantic-state (values))
     ((record dom-widget) (widget %lui.widgets:widget) element (kind symbol))
   "Update native disabled and checked/pressed attributes only when widget state changes."
-  (let ((state (list (not (null (%lui.widgets:widget-value widget)))
-                     (%lui.widgets:widget-disabled-p widget))))
+  (let ((state (list (and (not (eq kind :spinner))
+                          (not (null (%lui.widgets:widget-value widget))))
+                     (%lui.widgets:widget-disabled-p widget)
+                     (%lui.widgets:widget-popup-kind widget)
+                     (%lui.widgets:widget-expanded-p widget))))
     (unless (equal state (dom-widget-state record))
       (setf (dom-widget-state record) state
             (oget element "disabled") (if (second state) #j:true
@@ -1148,7 +1156,19 @@
       (when (member kind '(:checkbox :radio :tab))
         ((oget element "setAttribute")
          (if (eq kind :tab) #j"aria-pressed" #j"aria-checked")
-         (if (first state) #j"true" #j"false")))))
+         (if (first state) #j"true" #j"false")))
+
+      ;; Trigger semantics follow the final open state, including body actions.
+      (cond
+        ((third state)
+            ((oget element "setAttribute") #j"aria-haspopup"
+             (jsstring (string-downcase (symbol-name (third state)))))
+            ((oget element "setAttribute") #j"aria-expanded"
+             (if (fourth state) #j"true" #j"false")))
+
+        (t
+            ((oget element "removeAttribute") #j"aria-haspopup")
+            ((oget element "removeAttribute") #j"aria-expanded")))))
   (values))
 
 (fn (sync-label-style (values))

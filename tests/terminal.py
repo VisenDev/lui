@@ -547,8 +547,8 @@ def exercise(lisp, path):
         assert match, terminal.output
         x, y = (int(value) for value in match.groups())
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        # Shift-Tab reaches 7GUIs; Left selects the preceding Styles tab.
-        terminal.send(b"\x1b[Z\x1b[D")
+        # Shift-Tab reaches 7GUIs; two Left presses pass Menus to Styles.
+        terminal.send(b"\x1b[Z\x1b[D\x1b[D")
         terminal.until_visible(b"Customize the active toolkit")
         terminal.send(b"\x1b[H")
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())

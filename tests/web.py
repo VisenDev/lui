@@ -759,6 +759,39 @@ class WebTests(unittest.TestCase):
         self.assertGreater(grid_offset, 0)
         self.assertEqual(self.page.evaluate("getSelection().toString()"), "Selected: A0")
 
+    def test_floating_menus_and_spinner(self):
+        self.click_widget(text="Menus", kind="tab")
+        self.widget(text="Settings ▾", kind="button")
+        self.page.screenshot(path=str(ROOT / "build/menu-bar.png"))
+        expect(self.page.get_by_role("status", name="Loading")).to_have_count(1)
+        phases = set()
+        for _ in range(4):
+            phases.add(self.widget(id=":DEMO-SPINNER")["value"])
+            self.page.wait_for_timeout(120)
+        self.assertGreater(len(phases), 1)
+
+        # Hover opens the root and then a submenu beside its trigger.
+        self.hover_widget(id=":DEMO-FILE-MENU")
+        expect(self.page.get_by_role("button", name="File", exact=True)
+               ).to_have_attribute("aria-expanded", "true")
+        self.hover_widget(id=":DEMO-EXPORT-MENU")
+        self.widget(text="Export ▸", kind="list-item")
+        trigger = self.widget(id=":DEMO-EXPORT-MENU")
+        action = self.widget(text="Export PDF", kind="list-item")
+        self.assertGreaterEqual(action["x"], trigger["x"] + trigger["width"])
+        self.page.screenshot(path=str(ROOT / "build/menu-submenu.png"))
+        self.click_widget(text="Export PDF", kind="list-item")
+        self.widget(text="Export PDF selected", kind="label")
+        self.assertFalse(any(n["text"] == "Export PDF" for n in self.nodes()))
+
+        # Ordinary value controls inside an expander leave it open.
+        self.click_widget(id=":DEMO-SETTINGS")
+        self.click_widget(text="Enabled", kind="checkbox")
+        self.widget(text="Floating content can contain ordinary controls.")
+        self.page.keyboard.press("Escape")
+        self.frames()
+        self.assertFalse(any(n["text"] == "Enabled" for n in self.nodes()))
+
     def test_manual_widget_placement(self):
         self.click_widget(text="Layout", kind="tab")
         self.frames()

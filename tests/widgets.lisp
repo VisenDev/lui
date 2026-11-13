@@ -456,7 +456,179 @@
       (assert (not (element-interactive-p horizontal)))
       (assert (not (element-interactive-p vertical))))))
 
+(defun test-spinner ()
+  (let ((context (make-test-context))
+        (sample 0))
+    (flet ((draw (visible disabled)
+             (with-frame (context 20 10)
+               (setf sample (lui:frame-time))
+               (when visible
+                 (lui:spinner (lui:opt :id :loading
+                                       :disabled-p disabled))))))
+      (draw t nil)
+      (let* ((id (lui:widget-id :loading context))
+             (node (gethash id (context-ids context)))
+             (widget (element-content node)))
+        (assert (= 1 (box-width (element-box node))))
+        (assert (= 1 (box-height (element-box node))))
+        (assert (not (element-interactive-p node)))
+        (assert (<= 0 (%lui.widgets:widget-value widget) 7))
+        (assert (= 1 (length (%lui.widgets:widget-terminal-text widget))))
+        (assert (< sample (context-next-frame context) (+ sample 0.11))))
+
+      ;; Pausing or removing the spinner must stop animation deadlines.
+      (draw t t)
+      (assert (null (context-next-frame context)))
+      (draw nil nil)
+      (assert (null (context-next-frame context))))))
+
+(defun test-floating-menus ()
+  (let ((context (make-test-context))
+        (ids (make-hash-table))
+        (actions 0)
+        (disabled nil))
+    (labels ((remember (key id) (setf (gethash key ids) id))
+             (draw ()
+               (lui:menu-bar (lui:opt :id :test-menu-bar)
+                 (remember :file
+                   (nth-value 2
+                     (lui:menu "File" (lui:opt :open-on-hover-p nil)
+                       (remember :first
+                         (nth-value 2 (lui:menu-item "First")))
+                       (lui:menu-item "Disabled" (lui:opt :disabled-p t))
+                       (remember :sub
+                         (nth-value 2
+                           (lui:menu "Sub" nil
+                             (multiple-value-bind (activated changed id)
+                                 (lui:menu-item "Action")
+                               (declare (ignore changed))
+                               (remember :action id)
+                               (when activated (incf actions)))
+                             (lui:menu-item "After action")))))))
+                 (remember :edit
+                   (nth-value 2
+                     (lui:menu "Edit" (lui:opt :disabled-p disabled)
+                       (lui:menu-item "Copy")))))
+               (remember :after (nth-value 2 (lui:button "After"))))
+             (frame (&rest events)
+               (with-frame (context 60 20 :events events) (draw)))
+             (key (key) (frame (make-event :kind :key :key key)))
+             (depth () (length (context-floating-path context))))
+      (frame)
+      (assert (= 0 (depth)))
+      ;; Flush triggers must not obscure part of a panel bevel behind the bar.
+      (assert (null (element-content
+                     (gethash (lui:widget-id :test-menu-bar context)
+                              (context-ids context)))))
+
+      ;; Keyboard opening focuses the first enabled row and skips disabled rows.
+      (setf (context-focus context) (gethash :file ids))
+      (key :down)
+      (assert (= 1 (depth)))
+      (assert (equal (context-focus context) (gethash :first ids)))
+      (key :down)
+      (assert (equal (context-focus context) (gethash :sub ids)))
+      (key :right)
+      (assert (= 2 (depth)))
+
+      ;; Escape restores each parent trigger, then closes the root menu.
+      (key :escape)
+      (assert (= 1 (depth)))
+      (assert (equal (context-focus context) (gethash :sub ids)))
+      (key :escape)
+      (assert (= 0 (depth)))
+      (assert (equal (context-focus context) (gethash :file ids)))
+
+      ;; A disabled sibling must not dismiss the currently open menu.
+      (setf disabled t)
+      (key :down)
+      (assert (= 1 (depth)))
+      (frame (make-event :kind :press :x 59 :y 19))
+      (assert (= 0 (depth)))
+      (assert (= 0 actions))
+
+      ;; Activating a nested action closes the whole chain exactly once.
+      (setf (context-focus context) (gethash :file ids))
+      (key :down)
+      (key :end)
+      (key :right)
+      (assert (equal (context-focus context) (gethash :action ids)))
+      (frame (make-event :kind :activate :id (gethash :action ids)))
+      (assert (= 1 actions))
+      (assert (= 0 (depth)))
+      ;; Remaining body forms must not leave identities for detached children.
+      (let ((visible-ids (make-hash-table :test 'equal)))
+        (walk-elements (context-root context)
+          (lambda (node)
+            (when (element-id node)
+              (setf (gethash (element-id node) visible-ids) t))))
+        (maphash (lambda (id node)
+                   (declare (ignore node))
+                   (assert (gethash id visible-ids)))
+                 (context-ids context)))
+      (frame)
+      (assert (= 1 actions))
+
+      ;; Tab leaves the popup rather than visiting its detached rows.
+      (setf (context-focus context) (gethash :file ids))
+      (key :down)
+      (frame (make-event :kind :tab))
+      (assert (= 0 (depth)))
+      (assert (equal (context-focus context) (gethash :after ids)))
+
+      ;; Root arrows cycle within the same bar once the sibling is enabled.
+      (setf disabled nil)
+      (frame)
+      (setf (context-focus context) (gethash :file ids))
+      (key :down)
+      (key :right)
+      (assert (equal (aref (context-floating-path context) 0)
+                     (gethash :edit ids)))
+      (key :left)
+      (assert (equal (aref (context-floating-path context) 0)
+                     (gethash :file ids))))))
+
+(defun test-floating-placement ()
+  (let ((context (make-test-context))
+        (root nil)
+        (child nil)
+        (item nil))
+    (labels ((draw ()
+               (setf root
+                     (nth-value 2
+                       (lui:menu "Root"
+                           (lui:opt :position :absolute :offset-x 38
+                                    :width (fixed 10)
+                                    :popup-width (fixed 20))
+                         (setf child
+                               (nth-value 2
+                                 (lui:menu "Child"
+                                     (lui:opt :popup-width (fixed 20))
+                                   (setf item
+                                         (nth-value 2
+                                           (lui:menu-item "Action"))))))))))
+             (frame (&rest events)
+               (with-frame (context 60 12 :events events) (draw)))
+             (box (id) (element-box (gethash id (context-ids context)))))
+      (frame)
+      (frame (make-event :kind :activate :id root))
+      (frame (make-event :kind :activate :id child))
+
+      ;; Near the right edge, the submenu flips left and stays in the viewport.
+      (assert (< (box-x (box item)) (box-x (box child))))
+      (assert (<= 0 (box-x (box item))))
+      (assert (<= (box-right (box item)) 60))
+      (assert (<= 0 (box-y (box item))))
+      (assert (<= (box-bottom (box item)) 12))
+
+      ;; Removing the entire declaration drops both levels of retained state.
+      (with-frame (context 60 12) (lui:label "Replaced"))
+      (assert (zerop (length (context-floating-path context)))))))
+
 (defun run-tests ()
+  (test-floating-placement)
+  (test-floating-menus)
+  (test-spinner)
   (test-spacing-controls)
   (test-container-options)
   (test-password)

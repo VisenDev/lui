@@ -1129,6 +1129,25 @@
       (%paint-frame renderer context)
       (assert (equal '("#654321" "#123456") colors)))))
 
+(defun test-spinner-painting (font)
+  (dolist (toolkit '(:glass :motif :macos :qt :garnet))
+    (let* ((opacities nil)
+           (renderer
+             (%make-renderer
+              :font font
+              :polygons (lambda (contours color alpha)
+                          (assert (plusp (length contours)))
+                          (assert (string= color "#123456"))
+                          (push alpha opacities))
+              :clip (lambda (box) (declare (ignore box)))))
+           (context (%make-render-context renderer)))
+      (lui:with-toolkit (toolkit)
+        (with-frame (context 100 50)
+          (lui:spinner (lui:opt :foreground "#123456"))))
+      (%paint-frame renderer context)
+      (assert (= 8 (length opacities)))
+      (assert (= 8 (length (remove-duplicates opacities :test #'=)))))))
+
 (defun run-tests ()
   (test-typed-vector)
   (test-shared-wrapping)
@@ -1141,6 +1160,7 @@
     (unwind-protect
          (progn
            (test-rule-painting font)
+           (test-spinner-painting font)
            (test-password-presentation font)
            (test-winding)
            (test-outlines font)
