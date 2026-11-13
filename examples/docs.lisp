@@ -57,12 +57,13 @@
       "Pass optional styling/layout settings in one explicit lui:opt form. An omitted option inherits the toolkit default; an explicit NIL remains an explicit value. Common settings include :width, :height, :padding, :foreground, :background, :font-size, and :disabled-p."
       "Canvas commands provide shared drawing primitives. A custom :painter takes the same renderer and layout element on the desktop and in the browser.")
     (:menus "Menus and floating content"
-      "MENU-BAR groups root menus. MENU opens on click or hover and may contain MENU-ITEM actions, separators, or nested menus. Selecting an action closes the chain. Disabled items are skipped by keyboard navigation."
+      "MENU-BAR groups root menus and direct MENU-ITEM actions. Direct actions use compact menu styling with hover feedback and activate like buttons. MENU opens on click or hover and may contain MENU-ITEM actions, separators, or nested menus. Selecting an action closes the chain. Disabled items are skipped by keyboard navigation."
       "(lui:menu-bar nil
   (lui:menu \"File\" nil
     (when (lui:menu-item \"New\") (new-document))
     (lui:menu \"Export\" nil
-      (when (lui:menu-item \"PDF\") (export-pdf)))))"
+      (when (lui:menu-item \"PDF\") (export-pdf))))
+  (when (lui:menu-item \"Customers\") (show-customers)))"
       "Up/Down and Home/End move among enabled items. Right opens a submenu; Left returns to its parent or changes the root menu. Escape closes one level. Tab leaves the menu, and clicking outside dismisses it."
       "FLOATING-EXPANDER accepts arbitrary content, including value controls that stay open while edited. Nest expanders to open child panes beside their parent. Set :open-on-hover-p to enable hover opening; :popup-width and :popup-height constrain the pane. The body is evaluated only while open, with its IDs scoped to the trigger. Menus and expanders return open state, changed flag, and resolved ID."
       "SPINNER is a noninteractive loading indicator. Declare it while work is pending; it schedules its own animation frames. :disabled-p pauses it, and removing it stops its redraw requests. Use :foreground, :width, and :height to customize it.")
@@ -463,7 +464,8 @@
          (lui:menu "Export" nil
            (when (lui:menu-item "PDF") (incf (browser-value state)))))
        (lui:menu "Edit" nil
-         (lui:menu-item "Unavailable" (lui:opt :disabled-p t))))
+         (lui:menu-item "Unavailable" (lui:opt :disabled-p t)))
+       (when (lui:menu-item "Customers") (incf (browser-value state))))
      (lui:label (format nil "Actions: ~D" (round (browser-value state)))))
     (:floating-expander
      (lui:floating-expander "Options" nil

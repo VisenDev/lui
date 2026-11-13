@@ -797,6 +797,15 @@ class WebTests(unittest.TestCase):
                    ).to_have_attribute("aria-expanded", "false")
             self.assertFalse(any(n["text"] == "Export PDF" for n in self.nodes()))
 
+        # Direct bar actions use flat menu styling and activate without a popup.
+        action = self.widget(id=":DEMO-CUSTOMERS", kind="list-item")
+        self.assertLess(action["width"], 200)
+        self.hover_widget(id=":DEMO-CUSTOMERS")
+        self.page.screenshot(path=str(ROOT / "build/menu-bar-action-hover.png"))
+        self.click_widget(id=":DEMO-CUSTOMERS")
+        self.widget(text="Customers selected", kind="label")
+        self.assertFalse(any(n["text"] == "Export PDF" for n in self.nodes()))
+
         # Ordinary value controls inside an expander leave it open.
         self.click_widget(id=":DEMO-SETTINGS")
         self.click_widget(text="Enabled", kind="checkbox")

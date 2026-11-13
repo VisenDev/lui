@@ -377,7 +377,9 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 - `spinner` schedules animation only while declared; `:disabled-p` pauses it.
   `menu-bar` uses toolkit framing: Motif has an inset beveled panel;
   other built-ins use a borderless row. `menu` opens on click/hover and nests beside
-  its parent; `menu-item` actions dismiss the chain. `floating-expander` accepts
+  its parent; `menu-item` actions dismiss the chain. Direct `menu-item` children
+  of a menu bar are compact, hover-highlighted actions with button-style
+  activation; they do not open popups. `floating-expander` accepts
   arbitrary controls, with optional hover opening and constrained popup sizes.
   Child IDs are scoped to their expander. Escape closes one level, arrow keys
   navigate menus, and Tab or outside presses dismiss them. Hover-opened panes

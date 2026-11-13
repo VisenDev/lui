@@ -930,27 +930,32 @@ and return values match FLOATING-EXPANDER; hover opening defaults to true."
 
 (defmacro menu-bar (options &body body)
   "Lay out root menus in a row with toolkit-defined framing (beveled in Motif).
-Accept ROW options. Left/Right cycle enabled menus in this bar."
+Accept ROW options. Direct MENU-ITEM children act as compact action buttons.
+Left/Right cycle enabled menus in this bar."
   `(invoke-menu-bar ',(gensym "MENU-BAR") ,options (lambda () ,@body)))
 
 (fn (%menu-item boolean) ((id object-id) (text string)
                           &optional ((options list) nil))
-  "Declare an action inside floating content and dismiss its chain on activation."
-  (unless *floating-parent*
+  "Declare a menu action in a bar or floating pane and dismiss on activation."
+  (unless (or *floating-parent* *menu-bar*)
     (error 'configuration-error :operation :menu-item :setting :parent
-           :value nil :format-control "MENU-ITEM requires a MENU or FLOATING-EXPANDER."))
-  (let ((activated
-          (%list-item id text
-                      (append options
-                              (opt :width (grow)
-                                   :selected-p (equal id
-                                                       (context-focus
-                                                        *context*)))))))
+           :value nil :format-control
+           "MENU-ITEM requires a MENU-BAR, MENU, or FLOATING-EXPANDER."))
+  (let* ((selected (and *floating-parent*
+                        (equal id (context-focus *context*))))
+         (activated
+           (%list-item id text
+                       (append options
+                               (opt :width (if *floating-parent* (grow) (fit))
+                                    :selected-p selected)))))
     (when activated (close-floating *context* 0))
     (not (null activated))))
 
 (define-widget menu-item (id text)
   "Return true when this menu action is selected, then dismiss the menu chain.
+Use directly in MENU-BAR for a compact action with menu-style hover feedback,
+or inside MENU/FLOATING-EXPANDER for a popup action. Bar actions use intrinsic
+width and support button-style pointer and keyboard activation.
 OPT :disabled-p disables it. The third return value is its resolved ID.")
 
 (fn (combobox-popup (values))
