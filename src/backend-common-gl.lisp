@@ -467,6 +467,8 @@ void main() {
   (call-gl "glClearColor" :float 0.12f0 :float 0.14f0
            :float 0.19f0 :float 1.0f0 :void)
   (call-gl "glClear" :uint #x4000 :void)
+  ;; Glyphs and rounded borders are polygons; use available sample coverage.
+  (call-gl "glEnable" :uint #x809d :void)
   (call-gl "glEnable" :uint #x0be2 :void)
   ;; Keep the opaque destination alpha while blending translucent RGB overlays.
   (call-gl "glBlendFuncSeparate" :uint #x0302 :uint #x0303

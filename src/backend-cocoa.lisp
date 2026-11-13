@@ -613,14 +613,27 @@
       (message sb-alien:void pool "drain"))))
 
 (fn (pixel-format sb-sys:system-area-pointer) ()
-  "Request an accelerated double-buffered OpenGL pixel format."
+  "Request multisampled OpenGL, falling back to an unsampled pixel format."
   ;; Accelerated, double-buffered RGBA with a legacy compatibility profile.
-  (cffi:with-foreign-object (attrs :uint 7)
-    (loop :for value :in '(73 5 8 24 11 8 0) :for i :from 0
-          :do (setf (cffi:mem-aref attrs :uint i) value))
-    (message object
-             (message object (objc-class "NSOpenGLPixelFormat") "alloc")
-             "initWithAttributes:" object attrs)))
+  (cffi:with-foreign-object (attrs :uint 12)
+    (loop :for samples :in '(4 2 0)
+          :do (loop :for value :in
+                    (list 73 5 8 24 11 8 55 1 56 samples 59 0)
+                    :for i :from 0
+                    :do (setf (cffi:mem-aref attrs :uint i) value))
+              ;; SampleBuffers=55, Samples=56, Multisample=59.
+              ;; Terminate before these attributes for the unsampled fallback.
+              (when (zerop samples)
+                (setf (cffi:mem-aref attrs :uint 6) 0))
+              (let ((format
+                      (message object
+                               (message object
+                                        (objc-class "NSOpenGLPixelFormat")
+                                        "alloc")
+                               "initWithAttributes:" object attrs)))
+                (unless (null-object-p format)
+                  (return format)))
+          :finally (return (sb-sys:int-sap 0)))))
 
 (fn (paint-gl-view (values)) (view gl gpu context)
   "Paint and present the active frame through the view's OpenGL context."
