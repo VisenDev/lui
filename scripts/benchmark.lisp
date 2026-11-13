@@ -114,7 +114,9 @@
                    started now))
            (incf index)
            ;; Case selection and previous-sample storage are excluded.
-           (multiple-value-setq (bytes gc-time) (counters))
+           (multiple-value-bind (current-bytes current-gc-time) (counters)
+             (setf bytes current-bytes
+                   gc-time current-gc-time))
            (%lui.example.demo:draw *gallery*)))
        :backend (intern (string-upcase *platform*) :keyword)
        :min-fps 240 :max-fps 240

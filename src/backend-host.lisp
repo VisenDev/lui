@@ -11,6 +11,7 @@
           (handler-case
               (probe-file
                (if (uiop:absolute-pathname-p name) name
+                   ;; else
                    (merge-pathnames
                     name (uiop:ensure-directory-pathname directory))))
             (file-error () nil))))))

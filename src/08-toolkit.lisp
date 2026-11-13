@@ -47,6 +47,7 @@
                        (:geometry (%toolkit-geometry entry))
                        (:native-labels (%toolkit-native-labels entry)))))
     (if (not (eq value :inherit)) value
+        ;; else
         (when (and (%toolkit-parent entry)
                    (or (not (eq key :native-labels))
                        (and (eq (%toolkit-paint entry) :inherit)
@@ -112,6 +113,7 @@ inherit only from an explicit PARENT."
                       :paint (if paint-p paint :inherit)
                       :geometry (if geometry-p geometry :inherit)
                       :native-labels (if labels-p (not (null native-labels))
+                                         ;; else
                                          :inherit)))
   name)
 
@@ -125,6 +127,7 @@ inherit only from an explicit PARENT."
          (source (%toolkit-defaults entry))
          (defaults (if (functionp source) (funcall source) source)))
     (if parent (append defaults (defaults-of (%find-toolkit parent)))
+        ;; else
         defaults)))
 
 (fn (toolkit-palette list) (&optional ((name symbol) %*toolkit*))

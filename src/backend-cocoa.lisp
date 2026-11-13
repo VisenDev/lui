@@ -66,6 +66,7 @@
   (let ((function
          (if (and (eq result 'rect) (member :x86-64 *features*))
              "objc_msgSend_stret"
+             ;; else
              "objc_msgSend"))
         (types (loop :for type :in arguments :by #'cddr :collect type))
         (values (loop :for value :in (cdr arguments) :by #'cddr
@@ -432,11 +433,13 @@
        (message sb-alien:unsigned-short event "keyCode")
        (message sb-alien:unsigned-long event "modifierFlags")
        (if (null-object-p characters) ""
+           ;; else
            (or (message utf8-string characters "UTF8String") ""))
        (and *app* (%lui.widgets:text-field-focused-p
                    (cocoa-app-context *app*)))
        (let ((name (message object event "charactersIgnoringModifiers")))
          (if (null-object-p name) ""
+             ;; else
              (or (message utf8-string name "UTF8String") "")))
        (and *app* (%lui.widgets:activation-focused-p
                    (cocoa-app-context *app*)))))))
@@ -449,6 +452,8 @@
     ;; events. Query location/characters only for events belonging to this view.
     (unless (input-for-window-p type (message object event "window") window)
       (return-from cocoa-event nil))
+
+    ;; Handle leaving the view and keyboard events before reading coordinates.
     (when (= type 9)
       (setf (cocoa-app-pointer-x *app*) -1 (cocoa-app-pointer-y *app*) -1)
       (return-from cocoa-event
@@ -456,6 +461,8 @@
           (make-event :kind :move :x -1 :y -1 :buttons 0))))
     (when (= type 10)
       (return-from cocoa-event (cocoa-key-event event)))
+
+    ;; Convert window coordinates before translating wheel or pointer input.
     (let* ((location (message point event "locationInWindow"))
            (local (message point view "convertPoint:fromView:"
                            point location object (sb-sys:int-sap 0)))
@@ -469,10 +476,14 @@
             (make-event :kind :scroll :x x :y y
                         :scroll-mode (if lines-p :smooth :immediate)
                         :value (* (- delta) (if lines-p (units 2) 1))))
+
+          ;; else
           (make-event :kind (case type ((1 3) :press) ((2 4) :release)
                                   (otherwise :move))
                       :button (if (member type '(3 4 7))
-                                  :secondary :primary)
+                                  :secondary
+                                  ;; else
+                                  :primary)
                       :buttons
                       (setf (cocoa-app-buttons *app*)
                             (cocoa-pointer-buttons
@@ -664,6 +675,8 @@
              "setReleasedWhenClosed:" objc-bool 0)
     (when (null-object-p format)
       (warn "No accelerated Cocoa pixel format; using AppKit."))
+
+    ;; Choose the accelerated view only when a pixel format is available.
     (let* ((fast (not (null-object-p format)))
            (view (message object (view-class fast) "alloc")))
       (setf (cocoa-app-view *app*)
@@ -672,6 +685,8 @@
                  (message object view
                           "initWithFrame:pixelFormat:"
                           rect frame object format)
+
+                 ;; else
                  (message object view "initWithFrame:" rect
                           frame))
              "drawing view"))
@@ -679,6 +694,8 @@
         (message sb-alien:void (cocoa-app-view *app*)
                  "setWantsBestResolutionOpenGLSurface:"
                  objc-bool 1)))
+
+    ;; Attach tracking and transfer the finished view into the window.
     (install-pointer-tracking (cocoa-app-view *app*) frame)
     (message sb-alien:void (cocoa-app-window *app*)
              "setContentView:" object (cocoa-app-view *app*)))
@@ -698,6 +715,8 @@
                                  (objc-class "NSAutoreleasePool")
                                  "alloc")
                         "init")))
+
+          ;; Drain this frame's autoreleased native objects even on callback failure.
           (unwind-protect
                (let ((events (poll-cocoa-events application
                                                 view)))
@@ -705,6 +724,8 @@
                                        (cocoa-app-window *app*)
                                        "isVisible"))
                    (return context))
+
+                 ;; Rebuild against the current view dimensions after processing input.
                  (let* ((bounds (message rect view "bounds"))
                         (size (sb-alien:slot bounds 'size)))
                    (with-frame
@@ -716,6 +737,8 @@
                                 (cocoa-app-pointer-y *app*))
                  (message sb-alien:void application
                           "updateWindows")
+
+                 ;; Present through OpenGL or ask AppKit to draw its fallback view.
                  (cond (gpu
                         (paint-gl-view view gl gpu context))
                        (t
@@ -723,6 +746,8 @@
                                  "setNeedsDisplay:" objc-bool 1)
                         (message sb-alien:void view
                                  "displayIfNeeded")))
+
+                 ;; Surface callback failures before sleeping for the next frame.
                  (when (cocoa-app-error *app*)
                    (error (cocoa-app-error *app*)))
                  (when interactive
@@ -782,7 +807,9 @@
                                     "alloc")
                            "init"))
             (application nil)
-            (format nil) (gl nil) (gpu nil)
+            (format nil)
+            (gl nil)
+            (gpu nil)
             (font nil)
             (renderer nil)
             (context nil)
@@ -790,6 +817,8 @@
             (*unit* 8))
         (unwind-protect
              (progn
+
+               ;; Initialize shared application services and the portable drawing context.
                (setf application (message object (objc-class "NSApplication")
                                           "sharedApplication")
                      font (open-font)
@@ -802,12 +831,16 @@
                      (cocoa-app-context *app*) context)
                (message objc-bool application "setActivationPolicy:"
                         sb-alien:long 0)
+
+               ;; Create and show the native window before attaching its renderer.
                (setf format (pixel-format))
                (create-cocoa-window-view format width height)
                (show-cocoa-window title)
                (message sb-alien:void application "finishLaunching")
                (message sb-alien:void application "activateIgnoringOtherApps:"
                         objc-bool 1)
+
+               ;; Activate GPU rendering when the view has an accelerated pixel format.
                (unless (null-object-p format)
                  (setf gl (require-object
                            (message object (cocoa-app-view *app*)
@@ -818,6 +851,8 @@
                  (setf gpu (%lui.gl:attach-gpu font 1 1)
                        renderer (%lui.gl:gpu-renderer gpu)))
                (run-cocoa-frames draw application context gl gpu interactive))
+
+          ;; Release every owned native resource on both normal and error exits.
           (close-cocoa-window pool format gl gpu font)))))
 
 (fn (run-cocoa context) ((draw function) &rest options)

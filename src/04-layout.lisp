@@ -139,6 +139,8 @@ Offsets use surface coordinates for :FIXED and parent coordinates otherwise."
       (min (max 0 (element-scrollbar-width node))
            (max 0 (- (box-width (element-box node))
                      (* 2 (element-padding node)))))
+
+      ;; else
       0))
 
 (fn (append-child element) ((parent element) (child element))
@@ -148,7 +150,8 @@ Offsets use surface coordinates for :FIXED and parent coordinates otherwise."
 
 (defmacro do-children ((child node &optional result) &body body)
   "Evaluate BODY for each direct CHILD of NODE, then return RESULT."
-  (let ((children (gensym "CHILDREN")) (index (gensym "INDEX")))
+  (let ((children (gensym "CHILDREN"))
+        (index (gensym "INDEX")))
     `(let ((,children (element-children ,node)))
        (dotimes (,index (length ,children) ,result)
          (let ((,child (aref ,children ,index))) ,@body)))))
@@ -164,6 +167,7 @@ Offsets use surface coordinates for :FIXED and parent coordinates otherwise."
   "Return NODE's calculated box width for :X or height for :Y."
   (if (eq axis :x)
       (box-width (element-box node))
+      ;; else
       (box-height (element-box node))))
 
 (fn ((setf element-size-on-axis) real)
@@ -172,6 +176,7 @@ Offsets use surface coordinates for :FIXED and parent coordinates otherwise."
 This changes the solved dimension, not the sizing policy."
   (if (eq axis :x)
       (setf (box-width (element-box node)) value)
+      ;; else
       (setf (box-height (element-box node)) value)))
 
 (fn (element-sizing-on-axis sizing) ((node element) (axis symbol))
@@ -210,8 +215,11 @@ This changes the solved dimension, not the sizing policy."
 Measure single-column cells first, then spread spanning cells' deficits equally."
   ;; Track widths start with single-column cells. Spanning cells then add
   ;; any missing width equally to the columns they cover.
-  (let ((count 0) (gap (element-column-gap table)))
+  (let ((count 0)
+        (gap (element-column-gap table)))
     (assert (>= gap 0))
+
+    ;; Count logical columns, including spans, and share the row gap.
     (do-children (row table)
       (assert (eq (element-direction row) :row))
       (setf (element-gap row) gap)
@@ -220,6 +228,8 @@ Measure single-column cells first, then spread spanning cells' deficits equally.
     (let ((tracks (make-array count :element-type 'real :initial-element 0))
           (spans (make-array (1+ count) :element-type 'list
                              :initial-element nil)))
+
+      ;; Seed each track from cells that occupy only that column.
       (do-children (row table)
         (loop :with start := 0 :for cell :across (element-children row)
               :for span := (element-column-span cell)
@@ -227,11 +237,16 @@ Measure single-column cells first, then spread spanning cells' deficits equally.
               :do (if (= span 1)
                       (setf (aref tracks start)
                             (max (aref tracks start) width))
+
+                      ;; else
                       (push (cons start width) (aref spans span)))
               (incf start span)))
+
+      ;; Then spread each spanning cell's remaining deficit across its tracks.
       (loop :for span :from 2 :to count :do
             (dolist (entry (aref spans span))
-              (let* ((start (car entry)) (end (+ start span))
+              (let* ((start (car entry))
+                     (end (+ start span))
                      (used (+ (* gap (1- span))
                               (reduce #'+ tracks :start start :end end)))
                      (extra (/ (max 0 (- (cdr entry) used)) span)))
@@ -259,6 +274,8 @@ already resolved content width."
   (assert (and (>= (element-gap node) 0) (>= (element-padding node) 0)))
   (assert (or (not (element-measure node))
               (notany #'flow-element-p (element-children node))))
+
+  ;; Measure children first so container content can use their sizes.
   (do-children (child node)
     (measure-intrinsic-size child axis))
   (let ((rule (element-sizing-on-axis node axis))
@@ -273,15 +290,23 @@ already resolved content width."
        (setf (element-size-on-axis node axis)
              0))
       (t
-       (let ((content 0) (count 0) (along (main-axis-p node axis)))
+       (let ((content 0)
+             (count 0)
+             (along (main-axis-p node axis)))
+
+         ;; Leaves use their callback; containers combine only flow children.
          (if (element-measure node)
              (setf content (measure-leaf-size node axis))
+             ;; else
              (do-children (child node)
                (when (flow-element-p child)
                  (incf count)
                  (let ((size (element-size-on-axis child axis)))
                    (setf content (if along (+ content size)
+                                     ;; else
                                      (max content size)))))))
+
+         ;; Add padding, gaps, and scrollbar space before enforcing bounds.
          (setf (element-size-on-axis node axis)
                (clamp-size-to-bounds
                 rule
@@ -289,7 +314,9 @@ already resolved content width."
                    (if along (* (max 0 (1- count)) (element-gap node)) 0)
                    (if (and (eq axis :x) (element-scroll-p node)
                             (element-scrollbar-p node))
-                       (max 0 (element-scrollbar-width node)) 0)))))))))
+                       (max 0 (element-scrollbar-width node))
+                       ;; else
+                       0)))))))))
 
 (fn (distribute-space (values))
     ((children (vector element)) (axis symbol)
@@ -297,6 +324,8 @@ already resolved content width."
   "Add positive AMOUNT to the smallest children or remove a negative AMOUNT
 from the largest, respecting each child's size bounds. GROWING selects which
 case applies. Update solved dimensions on AXIS in place."
+
+  ;; Level the smallest growable or largest shrinkable children together.
   (loop :while (and (plusp (length children)) (> (abs amount) 0.0001f0))
         :do (let* ((level (reduce (if growing #'min #'max) children
                                   :key (lambda (child)
@@ -310,6 +339,8 @@ case applies. Update solved dimensions on AXIS in place."
                               (= (element-size-on-axis child axis) level))
                             children))
                    (step (/ (abs amount) (length group))))
+
+              ;; Stop this step at the next size level or the first size bound.
               (loop :for child :across others :do
                     (setf step
                           (min step
@@ -319,13 +350,18 @@ case applies. Update solved dimensions on AXIS in place."
                     (let* ((rule (element-sizing-on-axis child axis))
                            (limit (if growing
                                       (sizing-maximum rule)
+                                      ;; else
                                       (sizing-minimum rule))))
                       (when limit
                         (setf step (min step (abs (- limit level)))))))
+
+              ;; Apply the shared step and subtract the space it consumed.
               (loop :for child :across group :do
                     (setf (element-size-on-axis child axis)
                           (+ level (if growing step (- step)))))
               (incf amount (* (if growing -1 1) step (length group)))
+
+              ;; Bounded children leave the next round; redistribute among the rest.
               (setf children
                     (remove-if
                      (lambda (child)
@@ -334,6 +370,8 @@ case applies. Update solved dimensions on AXIS in place."
                              (and (sizing-maximum rule)
                                   (>= (element-size-on-axis child axis)
                                       (sizing-maximum rule)))
+
+                             ;; else
                              (<= (element-size-on-axis child axis)
                                  (sizing-minimum rule)))))
                      children))))
@@ -341,7 +379,8 @@ case applies. Update solved dimensions on AXIS in place."
 
 (fn (resolve-table-widths (values)) ((node element))
   "Fit shared column tracks to NODE and resolve the widths of spanning cells."
-  (let* ((tracks (element-tracks node)) (count (length tracks))
+  (let* ((tracks (element-tracks node))
+         (count (length tracks))
          (gap (element-column-gap node))
          (width (max 0 (content-size node :x)))
          (space (max 0 (- width (* gap (max 0 (1- count))))))
@@ -379,55 +418,75 @@ case applies. Update solved dimensions on AXIS in place."
           (min available
                (if (eq :fixed (sizing-kind (element-width child)))
                    (sizing-value (element-width child))
+                   ;; else
                    (element-size-on-axis (element-popup-anchor child)
                                          :x)))))
+  (values))
+
+(fn (resolve-flow-size (values))
+    ((child element) (axis symbol) (available real) (along boolean))
+  "Apply a flow child's percentage or cross-axis sizing rule."
+  (let* ((rule (element-sizing-on-axis child axis))
+         (kind (sizing-kind rule)))
+    (case kind
+      (:percent
+       (setf (element-size-on-axis child axis)
+             (* available (sizing-value rule))))
+
+      ((:fit :grow)
+       (unless along
+         (let ((size (if (eq kind :grow)
+                         available
+                         ;; else
+                         (min available (element-size-on-axis child axis)))))
+           (setf (element-size-on-axis child axis)
+                 (clamp-size-to-bounds rule size)))))
+      (otherwise nil)))
+  (values))
+
+(fn (distribute-child-space (values))
+    ((children (vector element)) (axis symbol) (available real))
+  "Share unused main-axis space, or shrink eligible children to absorb overflow."
+  (let* ((used (loop :for child :across children
+                    :sum (element-size-on-axis child axis)))
+         (remaining (- available used))
+         (growing (plusp remaining))
+         (eligible
+           (remove-if-not
+            (lambda (child)
+              (let ((kind (sizing-kind (element-sizing-on-axis child axis))))
+                (or (eq kind :grow) (and (not growing) (eq kind :fit)))))
+            children)))
+    (distribute-space eligible axis remaining growing))
   (values))
 
 (fn (resolve-child-sizes (values)) ((node element) (axis symbol))
   "Resolve descendant sizes on AXIS from NODE's already assigned size.
 Apply percentages, distribute remaining flow space, and size independently positioned children.
 Horizontal table layout uses the shared column widths measured earlier."
-  (cond
-    ((zerop (length (element-children node))) nil)
-    ((and (element-table-p node) (eq axis :x))
-     (resolve-table-widths node))
-    (t
-     (let* ((children (flow-children node))
-            (along (main-axis-p node axis))
-            (available (max 0 (- (content-size node axis)
-                                 (if along (total-child-gap node) 0)))))
-       (loop :for child :across children :do
-             (let ((rule (element-sizing-on-axis child axis)))
-               (case (sizing-kind rule)
-                 (:percent
-                  (setf (element-size-on-axis child axis)
-                        (* available (sizing-value rule))))
-                 ((:fit :grow)
-                  (unless along
-                    (setf (element-size-on-axis child axis)
-                          (clamp-size-to-bounds
-                           rule (if (eq (sizing-kind rule) :grow)
-                                    available
-                                    (min available (element-size-on-axis
-                                                    child axis)))))))
-                 (otherwise nil))))
-       (when (and along (not (element-scroll-p node)))
-         (let* ((remaining (- available
-                              (loop :for child :across children
-                                    :sum (element-size-on-axis child axis))))
-                (growing (plusp remaining)))
-           (distribute-space
-            (remove-if-not
-             (lambda (child)
-               (let ((kind (sizing-kind (element-sizing-on-axis child axis))))
-                 (or (eq kind :grow)
-                     (and (not growing) (eq kind :fit)))))
-             children)
-            axis remaining growing)))
-       (do-children (child node)
-         (resolve-independent-size child axis available)
-         (unless (zerop (length (element-children child)))
-           (resolve-child-sizes child axis))))))
+  (when (zerop (length (element-children node)))
+    (return-from resolve-child-sizes (values)))
+
+  ;; Tables solve horizontal sizes through their shared column measurements.
+  (when (and (element-table-p node) (eq axis :x))
+    (resolve-table-widths node)
+    (return-from resolve-child-sizes (values)))
+
+  (let* ((children (flow-children node))
+         (along (main-axis-p node axis))
+         (available (max 0 (- (content-size node axis)
+                              (if along (total-child-gap node) 0)))))
+    ;; Resolve individual rules before distributing the remaining space.
+    (loop :for child :across children
+          :do (resolve-flow-size child axis available along))
+    (when (and along (not (element-scroll-p node)))
+      (distribute-child-space children axis available))
+
+    ;; Manual children do not consume flow space, but still need solved sizes.
+    (do-children (child node)
+      (resolve-independent-size child axis available)
+      (unless (zerop (length (element-children child)))
+        (resolve-child-sizes child axis))))
   (values))
 
 (fn (alignment-offset real) ((alignment symbol) (space real))
@@ -436,13 +495,16 @@ Horizontal table layout uses the shared column widths measured earlier."
 
 (fn (position-elements (values)) ((node element))
   "Position descendants using solved sizes and alignment; manual children do not advance flow."
+
+  ;; Compute the flow origin from padding, used space, and alignment.
   (let* ((bounds (element-box node))
          (padding (element-padding node))
          (row (eq (element-direction node) :row))
          (axis (if row :x :y))
          (cross (if row :y :x))
          (available (content-size node cross))
-         (used (let ((size 0) (count 0))
+         (used (let ((size 0)
+                     (count 0))
                  (do-children (child node)
                    (when (flow-element-p child)
                      (incf size (element-size-on-axis child axis))
@@ -450,6 +512,8 @@ Horizontal table layout uses the shared column widths measured earlier."
                  (+ size (* (element-gap node) (max 0 (1- count))))))
          (cursor (alignment-offset (element-align node)
                                    (- (content-size node axis) used))))
+
+    ;; Advance the cursor only for automatic children; manual slots overlap.
     (do-children (child node)
       (let ((box (element-box child))
             (x (+ (box-x bounds) padding (element-offset-x child)))
@@ -463,6 +527,8 @@ Horizontal table layout uses the shared column widths measured earlier."
             (incf y (if row offset cursor)))
           (incf cursor (+ (element-size-on-axis child axis)
                           (element-gap node))))
+
+        ;; Fixed offsets use client coordinates instead of parent coordinates.
         (let ((fixed (eq (element-position child) :fixed)))
           (setf (box-x box) (if fixed (element-offset-x child) x)
                 (box-y box) (if fixed (element-offset-y child) y)))
@@ -518,6 +584,7 @@ by adjusting the popup scroll offset when necessary."
   ;; The anchor has already been positioned and clipped by its scroll parents.
   (let* ((anchor-clip (element-clip (element-popup-anchor popup)))
          (anchor (if *popup-viewport* (intersect-boxes anchor-clip viewport)
+                     ;; else
                      anchor-clip))
          (box (element-box popup))
          (above (max 0 (- (box-y anchor) (box-y viewport))))
@@ -526,7 +593,9 @@ by adjusting the popup scroll offset when necessary."
          (up (and (> (box-height box) below) (> above below))))
     (setf (box-height box)
           (if (and (plusp (box-height anchor)) (plusp (box-width anchor)))
-              (min (box-height box) (if up above below)) 0)
+              (min (box-height box) (if up above below))
+              ;; else
+              0)
           (box-x box) (min (box-x anchor) (- (box-width viewport) (box-width
                                                                    box)))
           (box-y box) (if up (- (box-y anchor) (box-height box)) top))
@@ -539,62 +608,74 @@ by adjusting the popup scroll offset when necessary."
               (max 0 (min top (max (element-scroll-y popup)
                                    (- (+ top (box-height row)) page)))))))))
 
+(fn (clip-content-box box) ((node element) (clipping boolean))
+  "Return the padded clipping area, reusing NODE's box when no inset is needed."
+  (let ((box (element-box node))
+        (padding (element-padding node))
+        (gutter (scroll-gutter node)))
+    (if (and clipping (or (plusp padding) (plusp gutter)))
+        (make-box :x (+ (box-x box) padding)
+                  :y (+ (box-y box) padding)
+                  :width (max 0 (- (box-width box) (* 2 padding) gutter))
+                  :height (max 0 (- (box-height box) (* 2 padding))))
+
+        ;; else
+        box)))
+
+(fn (clamp-scroll-offsets (values))
+    ((node element) (content box) (dx real) (dy real))
+  "Measure scrollable child extents and keep NODE's offsets within them."
+  (let* ((right (box-right content))
+         (bottom (box-bottom content))
+         (extent-x right)
+         (extent-y bottom))
+    ;; Fixed children stay in client coordinates and do not enlarge content.
+    (do-children (child node)
+      (unless (eq (element-position child) :fixed)
+        (setf extent-x (max extent-x (- (box-right (element-box child)) dx))
+              extent-y
+              (max extent-y (- (box-bottom (element-box child)) dy)))))
+
+    ;; Fractional line heights can put the last edge a few ULPs past its box.
+    (setf (element-scroll-limit-y node)
+          (if (< (- extent-y bottom) 1d-7) 0 (- extent-y bottom))
+          (element-scroll-x node)
+          (min (max 0 (element-scroll-x node)) (- extent-x right))
+          (element-scroll-y node)
+          (min (max 0 (element-scroll-y node))
+               (element-scroll-limit-y node))))
+  (values))
+
 (fn (clip-elements (values)) ((node element) (clip box) (dx real) (dy real))
   "Apply ancestor scroll offsets DX/DY and intersect NODE's box with CLIP.
 Position anchored popups, clamp scroll offsets to content extents, and recurse
 with the appropriate child clip and accumulated scroll offsets."
+  ;; Position this node before deriving its visible and content rectangles.
   (when (eq (element-position node) :fixed) (setf dx 0 dy 0))
-  (let ((box (element-box node))
-        (padding (element-padding node)))
-    (when (element-popup-anchor node) (position-popup node (or
-                                                            *popup-viewport*
-                                                            clip)))
+  (let ((box (element-box node)))
+    (when (element-popup-anchor node)
+      (position-popup node (or *popup-viewport* clip)))
     (decf (box-x box) dx)
     (decf (box-y box) dy)
     (setf (element-clip node) (intersect-boxes clip box))
     ;; Leaves have no content extent or descendants to clip. Scroll leaves
     ;; still pass through the normal path to reset their scroll limits.
-    (unless (and (zerop (length (element-children node)))
-                 (not (element-scroll-p node)))
-      (let* ((clipping (or (element-scroll-p node) (element-clip-p node)))
-             (content
-              (if (and clipping (or (plusp padding)
-                                    (plusp (scroll-gutter node))))
-                  (make-box :x (+ (box-x box) padding)
-                            :y (+ (box-y box) padding)
-                            :width (max 0 (- (box-width box) (* 2 padding)
-                                             (scroll-gutter node)))
-                            :height (max 0 (- (box-height box) (* 2
-                                                                  padding))))
-                  box))
-             (child-clip (cond ((not clipping) clip)
-                               ((eq content box) (element-clip node))
-                               (t (intersect-boxes clip content)))))
-        (when (element-scroll-p node)
-          (let* ((right (box-right content))
-                 (bottom (box-bottom content))
-                 (extent-x right) (extent-y bottom))
-            (do-children (child node)
-              (unless (eq (element-position child) :fixed)
-                (setf extent-x
-                    (max extent-x (- (box-right (element-box child))
-                                     dx))
-                    extent-y
-                    (max extent-y (- (box-bottom (element-box child))
-                                     dy)))))
-            ;; Fractional line heights can put the last edge a few ULPs
-            ;; beyond its container after repeated additions.
-            (setf (element-scroll-limit-y node)
-                  (if (< (- extent-y bottom) 1d-7) 0 (- extent-y bottom))
-                  (element-scroll-x node)
-                  (min (max 0 (element-scroll-x node)) (- extent-x right))
-                  (element-scroll-y node)
-                  (min (max 0 (element-scroll-y node))
-                       (element-scroll-limit-y node)))))
-        (do-children (child node)
-          (clip-elements child child-clip
-                         (+ dx (element-scroll-x node))
-                         (+ dy (element-scroll-y node)))))))
+    (when (and (zerop (length (element-children node)))
+               (not (element-scroll-p node)))
+      (return-from clip-elements (values)))
+
+    (let* ((clipping (or (element-scroll-p node) (element-clip-p node)))
+           (content (clip-content-box node clipping))
+           (child-clip (cond ((not clipping) clip)
+                             ((eq content box) (element-clip node))
+                             (t (intersect-boxes clip content)))))
+      ;; Clamp the parent before passing accumulated offsets to its children.
+      (when (element-scroll-p node)
+        (clamp-scroll-offsets node content dx dy))
+      (do-children (child node)
+        (clip-elements child child-clip
+                       (+ dx (element-scroll-x node))
+                       (+ dy (element-scroll-y node))))))
   (values))
 
 (fn (visible-elements (values)) ((root element) (function function))

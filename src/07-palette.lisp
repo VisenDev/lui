@@ -46,10 +46,12 @@
 ;; Preserve non-scalar constant identity when a source file or FASL is reloaded.
 (defconstant +palette-default+
   (if (boundp '+palette-default+) (symbol-value '+palette-default+)
+      ;; else
       (make-palette))
   "Built-in immutable palette for WITH-PALETTE.")
 (defconstant +palette-light+
   (if (boundp '+palette-light+) (symbol-value '+palette-light+)
+      ;; else
       (make-palette :control-background "#ffffff" :background "#eeeeee"
                     :foreground "#202124" :accent "#2563eb"
                     :window-background "#e4e7eb" :selection "#dbeafe" :border
@@ -57,6 +59,7 @@
   "Built-in immutable palette for WITH-PALETTE.")
 (defconstant +palette-dark+
   (if (boundp '+palette-dark+) (symbol-value '+palette-dark+)
+      ;; else
       (make-palette :control-background "#424954" :background "#292d35"
                     :foreground "#eeeeee" :accent "#79b8ff"
                     :disabled "#89919d" :disabled-accent "#626c7a"
@@ -75,6 +78,7 @@
   "Built-in immutable palette for WITH-PALETTE.")
 (defconstant +palette-ocean+
   (if (boundp '+palette-ocean+) (symbol-value '+palette-ocean+)
+      ;; else
       (make-palette :control-background "#f1fbfd" :background "#dceef3"
                     :foreground "#123544" :accent "#087e9a"
                     :window-background "#bfdce5" :selection "#b7e5ef" :border
@@ -83,6 +87,7 @@
   "Built-in immutable palette for WITH-PALETTE.")
 (defconstant +palette-forest+
   (if (boundp '+palette-forest+) (symbol-value '+palette-forest+)
+      ;; else
       (make-palette :control-background "#f5faf1" :background "#e4ecdf"
                     :foreground "#243b28" :accent "#387348"
                     :window-background "#cbdac4" :selection "#c5dfbd" :border

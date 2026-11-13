@@ -51,6 +51,10 @@ in `AGENTS.md` and application documentation in docstrings and
   branches with blank lines and brief intent comments, and label major steps.
   Reduce nesting by moving shared local bindings to an enclosing scope where
   their lifetime and evaluation order permit it.
+- Put each `let` and `let*` binding on its own line.
+- Mark multiline `if` else branches with `;; else` on a separate line. Add a
+  blank line before that comment when the then branch spans multiple lines.
+  Single-line ternary-style forms do not need an else comment.
 - Run `make lint` to normalize FN declarations and check strict Mallet rules,
   complexity, function length, and missing docstrings. Only `no-package-use`
   is disabled. Keep the defaults for all other rule thresholds.

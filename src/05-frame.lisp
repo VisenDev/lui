@@ -152,6 +152,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
              :format-control
              (if (eq key site)
                  "This control call site ran more than once in a frame. Supply a distinct (lui:opt :id key) for each instance, or wrap repeated groups in (lui:with-key key ...)."
+                 ;; else
                  "Repeated control key ~S at the same call site and key scope. Use distinct :id keys or WITH-KEY scopes for each instance.")
              :format-arguments (unless (eq key site) (list key))))
     id))
@@ -191,6 +192,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
 Opaque IDs pass through unchanged. A key shared by call sites is ambiguous;
 use the third value returned by a widget instead. IDs are local to CONTEXT."
   (if (or (resolved-widget-id-p key) (gethash key (context-ids context))) key
+    ;; else
     (or (lookup-widget-id key (context-ids context))
       (lookup-widget-id key (context-regions context)) key)))
 
@@ -228,15 +230,19 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
   ;; Keys snapshot top-level strings; compound IDs follow the stable-ID contract.
   (if (and (boundp '*context*) (context-building-p *context*))
       (let* ((pending (context-pending-memo *context*))
-             (previous (context-memo *context*)) (index (length pending))
+             (previous (context-memo *context*))
+             (index (length pending))
              (old (when (< index (length previous)) (aref previous index)))
              (entry (if (and old (equal key (memo-entry-key old))) old
+                        ;; else
                         (make-memo-entry
                          :key (mapcar (lambda (v)
                                         (if (stringp v) (copy-seq v) v)) key)
                          :value (funcall compute)))))
         (vector-push-extend entry pending)
         (memo-entry-value entry))
+
+      ;; else
       (funcall compute)))
 
 (fn (frame-time real) ()
@@ -261,6 +267,7 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
           (min (length samples) (1+ (frame-statistics-count stats)))))
   (if (null (frame-statistics-start stats))
       (setf (frame-statistics-start stats) now)
+      ;; else
       (let ((elapsed (- now (frame-statistics-start stats))))
         (incf (frame-statistics-frames stats))
         (when (>= elapsed 0.5f0)
@@ -276,6 +283,7 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
          (count (frame-statistics-count stats)))
     (if (zerop count)
         "FPS: measuring… · Layout: measuring…"
+        ;; else
         (format nil "~,1F FPS · ~,1F ms/frame (layout)"
                 (frame-statistics-fps stats)
                 (/ (frame-statistics-total-ms stats) count)))))
@@ -307,6 +315,7 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
     (setf (context-next-frame *context*)
           (if (context-next-frame *context*)
               (min deadline (context-next-frame *context*))
+              ;; else
               deadline))))
 
 (fn (contains-p boolean) ((bounds box) (x real) (y real))
@@ -365,6 +374,8 @@ Native key translators use this to interpret a key after a batched click or Tab.
                    (when (and node (element-pointer-focus-p node))
                      (setf (context-focus predicted) id)))) (otherwise nil)))
         predicted)
+
+      ;; else
       context))
 
 (fn (scroll-path (vector object-id)) ((context context) (x real) (y real))
@@ -375,7 +386,9 @@ IDs may mix symbols, numbers, strings, and compound or application-defined keys.
     (labels ((visit (node parents)
                (when (contains-p (element-clip node) x y)
                  (let ((path (if (element-scroll-p node)
-                                 (cons (element-id node) parents) parents)))
+                                 (cons (element-id node) parents)
+                                 ;; else
+                                 parents)))
                    (setf scrollers path)
                    (do-children (child node)
                      (visit child path))))))
@@ -409,6 +422,7 @@ IDs may mix symbols, numbers, strings, and compound or application-defined keys.
              ;; Exponential decay is independent of redraw frequency.
              (tail (* remaining (exp (/ (- elapsed) 0.07d0))))
              (step (if (< (abs tail) 0.05d0) remaining
+                       ;; else
                        (- remaining tail)))
              (used (scroll-along context (scroll-motion-path motion) step)))
         (decf (scroll-motion-remaining motion) used)
@@ -438,7 +452,9 @@ IDs may mix symbols, numbers, strings, and compound or application-defined keys.
                     (plusp (* amount (scroll-motion-remaining old)))
                     (<= (- now (scroll-motion-last-input old)) 0.15d0)))
               (level (if continuing
-                         (min 4 (1+ (scroll-motion-level old))) 1))
+                         (min 4 (1+ (scroll-motion-level old)))
+                         ;; else
+                         1))
               ;; Repeated wheel notches travel faster, with a bounded gain.
               ;; OS-provided inertia bypasses this path via :IMMEDIATE.
               (delta (* amount (+ 1 (* 0.35d0 (1- level))))))
@@ -447,6 +463,8 @@ IDs may mix symbols, numbers, strings, and compound or application-defined keys.
                    (+ (scroll-motion-remaining old) delta)
                    (scroll-motion-last-input old) now
                    (scroll-motion-level old) level)
+
+             ;; else
              (setf (context-scroll-motion context)
                    (make-scroll-motion :path path :remaining delta
                                        :time (- now (/ 1d0 60))
@@ -596,6 +614,7 @@ ID types are unrestricted and may differ between vector elements."
         (context-height context) (if (and (context-page-height-p context)
                                           (context-root context))
                                      (max height (context-height context))
+                                     ;; else
                                      height)
         (context-viewport-height context) height
         (context-root context) (make-element :width (grow) :height (grow))
@@ -609,6 +628,8 @@ clock, redraw deadline, declarations, and per-frame activation state."
   (assert (not (context-building-p context)))
   (resolve-frame-identities context)
   (assert (and (>= width 0) (>= height 0)))
+
+  ;; Start a fresh clock and route selection against completed geometry.
   (setf (context-time context)
         (/ (get-internal-real-time) internal-time-units-per-second)
         (context-next-frame context) nil)
@@ -616,7 +637,10 @@ clock, redraw deadline, declarations, and per-frame activation state."
     (if (and (= width (context-width context))
              (= height (context-viewport-height context)))
         (funcall (context-input-handler context) context events)
+        ;; else
         (setf (context-selection context) nil)))
+
+  ;; Discard transient input state before routing this batch of events.
   (setf (context-activation-order context) nil)
   (setf (context-pointer-press context) nil (context-popups context) nil)
   (clrhash (context-activated context))
@@ -706,11 +730,16 @@ Subtract these from an absolute POSITION to opt into parent scrolling."
 Clear focus/hover for removed controls and return the completed root element."
   (assert (context-building-p context))
   (resolve-frame-identities context)
+
+  ;; Append floating content and the debugger before solving the tree.
   (dolist (popup (nreverse (context-popups context)))
     (append-child (context-root context) popup))
   (when (context-overlay context)
-    (let ((*context* context) (*parent* (context-root context)))
+    (let ((*context* context)
+          (*parent* (context-root context)))
       (funcall (context-overlay context) (context-previous-root context))))
+
+  ;; Solve once, record timing, then run callbacks that require geometry.
   (let ((page-top (when (context-page-height-p context)
                     (context-page-top context)))
         (started (layout-clock)))
@@ -723,6 +752,8 @@ Clear focus/hover for removed controls and return the completed root element."
           (box-height (element-box (context-root context)))))
   (dolist (decorate (nreverse (context-after-layout context)))
     (funcall decorate))
+
+  ;; Removed or disabled controls must release focus, hover, and capture.
   (flet ((interactive-p (id)
            (let ((node (gethash id (context-ids context))))
              (and node (element-interactive-p node)))))
@@ -733,6 +764,8 @@ Clear focus/hover for removed controls and return the completed root element."
       (setf (context-hover context) nil))
     (unless (interactive-p (context-active context))
       (setf (context-active context) nil)))
+
+  ;; Retain only current widget values and solved scroll positions.
   (prune-widget-values context)
   (clrhash (context-scroll context))
   (walk-elements
@@ -745,7 +778,10 @@ Clear focus/hover for removed controls and return the completed root element."
     (when motion
       (if (gethash (aref (scroll-motion-path motion) 0) (context-ids context))
           (let ((*context* context)) (request-frame (/ 1 60)))
+          ;; else
           (setf (context-scroll-motion context) nil))))
+
+  ;; Publish this frame's memoized results and end the construction phase.
   (setf (context-building-p context) nil
         (context-memo context) (context-pending-memo context)
         (context-previous-root context) nil)
@@ -756,9 +792,11 @@ Clear focus/hover for removed controls and return the completed root element."
      &key ((events sequence) nil))
   "Dispatch EVENTS, call DRAW once, solve CONTEXT, and return its root.
 An aborted drawing or layout invalidates geometry and clears frame state."
-  (let ((*context* context) (*key-scope* nil))
+  (let ((*context* context)
+        (*key-scope* nil))
     (begin-frame context width height events)
-    (let ((*parent* (context-root context)) (complete nil))
+    (let ((*parent* (context-root context))
+          (complete nil))
       (unwind-protect
            (progn
              (funcall draw)

@@ -33,7 +33,10 @@
   (flet ((color (value)
            (if (stringp value)
                (and (= (length value) 7) (char= (char value 0) #\#)
-                    (parse-integer value :start 1 :radix 16)) value)))
+                    (parse-integer value :start 1 :radix 16))
+
+               ;; else
+               value)))
     (uncursed:make-style :fg (color foreground) :bg (color background)
                          :boldp bold :underlinep underline)))
 
@@ -49,10 +52,14 @@
          (prefix (if (and (plusp (length label))
                           (>= width (+ (terminal-text-width label)
                                        (length readout) 4)))
-                     (concatenate 'string label " ") ""))
+                     (concatenate 'string label " ")
+                     ;; else
+                     ""))
          (suffix (if (>= width (+ (terminal-text-width prefix) (length
                                                                 readout) 3))
-                     readout ""))
+                     readout
+                     ;; else
+                     ""))
          (length (max 1 (- width (terminal-text-width prefix) (length
                                                                suffix))))
          (position (round (* fraction (1- length))))
@@ -137,7 +144,10 @@
 (fn (paint-canvas (values)) ((cells array) (borders array)
                              (node element) (widget widget))
   "Translate custom canvas commands into terminal cells within the node's clip."
-  (let ((box (element-box node)) (clip (element-clip node)))
+  (let ((box (element-box node))
+        (clip (element-clip node)))
+
+    ;; Translate each canvas circle into terminal coordinates and cell styles.
     (dolist (command (widget-value widget))
       (destructuring-bind (kind cx cy radius stroke fill) command
         (assert (eq kind :circle))
@@ -150,6 +160,8 @@
               (fill-style (cell-style (or fill (widget-foreground widget))
                                       (or fill (widget-background widget))
                                       nil)))
+
+          ;; Visit only clipped cells near the circle; preserved borders win.
           (loop :for row :from (max 0 (cell-edge (box-y clip))
                                     (ceiling (- center-y extent 0.5f0)))
                 :below (min (array-dimension cells 0)
@@ -171,6 +183,8 @@
                                                 (<= (abs (- distance
                                                             radius))
                                                     0.6f0))))
+
+                                ;; Use an outline marker at the edge and a fill marker in the interior.
                                 (when (or edge
                                           (and fill (< distance radius)))
                                   (setf (uncursed::cell-string
@@ -180,6 +194,7 @@
                                         (uncursed::cell-style (aref cells row
                                                                     column))
                                         (if edge outline-style
+                                            ;; else
                                             fill-style))))))))))
   (values))
 
@@ -208,6 +223,7 @@
                       (hover (widget-accent widget))
                       (t (widget-foreground widget)))
                 (if filled (if cell-p "#e7effa" (widget-accent widget))
+                    ;; else
                     (or background (widget-background widget)))
                 (eq (widget-font-weight widget) :bold)
                 (and hover (not filled)))))
@@ -234,14 +250,18 @@
 (fn (terminal-paint-state terminal-paint-state)
     ((context context) (cells array) (node element))
   "Resolve a widget's terminal colors, padding, scrollbar, and splitter emphasis."
-  (let* ((widget (element-content node)) (box (element-box node))
-         (clip (element-clip node)) (padding (element-padding node))
+  (let* ((widget (element-content node))
+         (box (element-box node))
+         (clip (element-clip node))
+         (padding (element-padding node))
          (rail-style
           (when (eq (widget-kind widget) :splitter)
             (if (and (context-focus-visible-p context)
                      (equal (element-id node) (context-focus context)))
                 (cell-style (widget-background widget)
                             (widget-accent widget) t)
+
+                ;; else
                 (cell-style (widget-accent widget)
                             (widget-background widget) t)))))
     (make-terminal-paint-state
@@ -259,12 +279,16 @@
     ((state terminal-paint-state) cell border (row integer) (column integer))
   "Paint one background cell, preserving borders and special rail/highlight shapes."
   (let* ((widget (terminal-paint-state-widget state))
-         (kind (widget-kind widget)) (thumb (terminal-paint-state-thumb
+         (kind (widget-kind widget))
+         (thumb (terminal-paint-state-thumb
                                              state))
          (horizontal (eq (widget-orientation widget) :horizontal))
-         (x (terminal-paint-state-x state)) (y (terminal-paint-state-y state))
+         (x (terminal-paint-state-x state))
+         (y (terminal-paint-state-y state))
          (right (terminal-paint-state-right state))
          (bottom (terminal-paint-state-bottom state)))
+
+    ;; Scrollbar thumbs and rails may repaint their own existing border cells.
     (cond
       ((and thumb (or (not border)
                       (member (uncursed::cell-string cell) '("│" "|")
@@ -272,14 +296,19 @@
        (setf (uncursed::cell-string cell)
              (if (<= (cell-edge (box-y thumb)) row
                      (1- (cell-edge (box-bottom thumb))))
-                 "█" "│")
+                 "█"
+                 ;; else
+                 "│")
              (uncursed::cell-style cell) (terminal-paint-state-style state)))
       ((and (eq kind :splitter)
             (if horizontal (= row (floor (+ y bottom) 2))
+                ;; else
                 (= column (floor (+ x right) 2))))
        (setf (uncursed::cell-string cell) (if horizontal "─" "│")
              (uncursed::cell-style cell) (terminal-paint-state-rail-style
                                           state)))
+
+      ;; Rules and highlights have dedicated cell shapes or background treatment.
       ((member kind '(:hr :vr))
        (setf (uncursed::cell-string cell) (if (eq kind :hr) "─" "│")
              (uncursed::cell-style cell) (terminal-paint-state-style state)))
@@ -288,6 +317,8 @@
                  (= column x) (= column (1- right)))
          (setf (uncursed::cell-style cell)
                (cell-style "#000000" (widget-accent widget) t))))
+
+      ;; Ordinary backgrounds clear content while keeping inherited borders.
       ((not (or (member kind '(:label :splitter)) border))
        (setf (uncursed::cell-string cell) " "
              (uncursed::cell-style cell) (terminal-paint-state-style
@@ -298,11 +329,14 @@
     ((state terminal-paint-state) (cells array) (borders array))
   "Paint wrapped text without splitting wide characters or overwriting borders."
   (let* ((widget (terminal-paint-state-widget state))
-         (x (terminal-paint-state-x state)) (y (terminal-paint-state-y state))
+         (x (terminal-paint-state-x state))
+         (y (terminal-paint-state-y state))
          (right (terminal-paint-state-right state))
          (bottom (terminal-paint-state-bottom state))
-         (width (array-dimension cells 1)) (height (array-dimension cells 0))
-         (clip (terminal-paint-state-clip state)) (w (max 0 (- right x)))
+         (width (array-dimension cells 1))
+         (height (array-dimension cells 0))
+         (clip (terminal-paint-state-clip state))
+         (w (max 0 (- right x)))
          (text (case (widget-kind widget)
                  ((:highlight :splitter :scrollbar) "")
                  (:slider (slider-line widget w))
@@ -318,7 +352,9 @@
                                     row (max 1 size))
                                    (loop :for index
                                          :from (if (zerop size)
-                                                   (1- column) column)
+                                                   (1- column)
+                                                   ;; else
+                                                   column)
                                          :below (+ column size)
                                          :never (aref borders row index)))
                           (paint-character cells (terminal-paint-state-style
@@ -361,7 +397,8 @@
                    (error '%lui.conditions:frame-state-error
                           :operation :paint-terminal
                           :format-control "No completed frame.")))
-         (height (array-dimension cells 0)) (width (array-dimension cells 1))
+         (height (array-dimension cells 0))
+         (width (array-dimension cells 1))
          (*rect* (uncursed:make-rect :x 0 :y 0 :rows height :cols width))
          (borders (make-array (list height width) :initial-element nil)))
     (visible-elements root (lambda (node)
@@ -470,10 +507,10 @@
   (push (make-event :kind :key :key key) (input-events input))
   (values))
 
-(fn (slider-change (values)) ((input input) (context context) (event event))
-  "Translate terminal slider pointer input into a value-change event."
+(fn (pending-pointer-capture object-id) ((context context) (events list))
+  "Replay queued pointer transitions to find capture before the next event."
   (let ((capture (context-active context)))
-    (dolist (pending (reverse (rest (input-events input))))
+    (dolist (pending (reverse events))
       (case (event-kind pending)
         (:press
          (setf capture (or (event-id pending)
@@ -483,34 +520,46 @@
         (:move
          (when (and (event-buttons pending)
                     (not (logbitp 0 (event-buttons pending))))
-           (setf capture nil))) (otherwise nil)))
-    (let* ((press (eq (event-kind event) :press))
-           (id (if press (%lui.frame:hit context (event-x event)
-                                         (event-y event)) capture))
-           (target (gethash id (%lui.frame:context-ids context)))
-           (widget (when target (element-content target))))
-      ;; Preserve the topmost target even when a batch starts on a non-slider.
-      (when press (setf (event-id event) id))
-      (when (and (widget-p widget) (eq (widget-kind widget) :slider)
-                 (not (widget-disabled-p widget)))
-        (let* ((box (element-box target))
-               (padding (element-padding target))
-               (left (cell-edge (+ (box-x box) padding)))
-               (width (- (cell-edge (+ (box-x box) (box-width box)
-                                       (- padding))) left)))
-          (multiple-value-bind (line offset length)
-              (slider-line widget width)
-            (declare (ignore line))
-            (push (make-event
-                   :kind :change :id id
-                   :value (+ (widget-minimum widget)
-                             (* (- (widget-maximum widget)
-                                   (widget-minimum widget))
-                                (min 1 (max 0
-                                            (/ (- (floor (event-x event))
-                                                  left offset)
-                                               (max 1 (1- length))))))))
-                  (input-events input)))))))
+           (setf capture nil)))
+        (otherwise nil)))
+    capture))
+
+(fn (slider-pointer-value real) ((target element) (widget widget) (x real))
+  "Map a terminal pointer column onto the slider's displayed track."
+  (let* ((box (element-box target))
+         (padding (element-padding target))
+         (left (cell-edge (+ (box-x box) padding)))
+         (right (cell-edge (- (+ (box-x box) (box-width box)) padding)))
+         (minimum (widget-minimum widget))
+         (range (- (widget-maximum widget) minimum)))
+    (multiple-value-bind (line offset length)
+        (slider-line widget (- right left))
+      (declare (ignore line))
+      (let ((fraction (min 1 (max 0 (/ (- (floor x) left offset)
+                                      (max 1 (1- length)))))))
+        (+ minimum (* range fraction))))))
+
+(fn (slider-change (values)) ((input input) (context context) (event event))
+  "Translate terminal slider pointer input into a value-change event."
+  (let* ((capture (pending-pointer-capture
+                   context (rest (input-events input))))
+         (press (eq (event-kind event) :press))
+         (id (if press
+                 (%lui.frame:hit context (event-x event) (event-y event))
+                 ;; else
+                 capture))
+         (target (gethash id (%lui.frame:context-ids context)))
+         (widget (when target (element-content target))))
+    ;; Preserve the topmost target even when a batch starts on a non-slider.
+    (when press (setf (event-id event) id))
+
+    ;; Only an enabled slider turns pointer input into a numeric change.
+    (when (and (widget-p widget) (eq (widget-kind widget) :slider)
+               (not (widget-disabled-p widget)))
+      (push (make-event :kind :change :id id
+                        :value (slider-pointer-value
+                                target widget (event-x event)))
+            (input-events input))))
   (values))
 
 (fn (mouse-event (values))
@@ -529,6 +578,7 @@
            :button (if (eq button :right) :secondary :primary)
            :buttons (unless wheel
                       (if release 0
+                          ;; else
                           (case button (:left 1) (:middle 4) (:right 2)
                                 (otherwise 0))))
            :dragging-p (and move (eq button :left))
@@ -547,6 +597,7 @@
                    (member (widget-kind widget)
                            '(:button :checkbox :radio :tab :list-item :cell)))
               (make-event :kind :activate)
+              ;; else
               (make-event :kind :text :value (string kind)))
           (input-events input)))
   (values))
@@ -555,6 +606,7 @@
     (kind key)
   "Return the textual key name used by shared editor shortcut translation."
   (if (characterp kind) (string kind)
+      ;; else
       (and key (symbol-name key))))
 
 (fn (terminal-tab-p boolean)
@@ -605,7 +657,10 @@
                             (case key (:left :shift-left) (:right
                                                            :shift-right)
                                   (:home :shift-home) (:end :shift-end)
-                                  (otherwise key)) key)))
+                                  (otherwise key))
+
+                            ;; else
+                            key)))
       ((and (characterp kind) (not control) (not alt))
        (terminal-character-input input context kind))))
   (values))
@@ -627,6 +682,8 @@
   "Read available terminal input with TIMEOUT and retain incomplete sequences."
   (let ((end (+ (get-internal-real-time)
                 (* timeout internal-time-units-per-second))))
+
+    ;; Accumulate available bytes without blocking on an incomplete sequence.
     (loop
      (let ((chunk (with-output-to-string (stream)
                     (loop :for character := (read-char-no-hang
@@ -640,6 +697,8 @@
        ;; Emergency quit stays available even after a truncated control sequence.
        (when (or (find (code-char 3) chunk) (find (code-char 17) chunk))
          (setf (input-quit-p input) t))
+
+       ;; Decode complete sequences and retain the unfinished suffix for later.
        (loop :for size := (input-sequence-length (input-pending input))
              :while size
              :do (let ((*standard-input*
@@ -649,6 +708,8 @@
                    (setf (input-pending input)
                          (subseq (input-pending input) size)
                          (input-escape-time input) nil)))
+
+       ;; A lone Escape becomes a key only after the short ambiguity timeout.
        (when (string= (input-pending input) (string #\Escape))
          (let ((now (get-internal-real-time)))
            (cond ((and (input-escape-time input)
@@ -659,6 +720,8 @@
                         (input-escape-time input) nil))
                  ((null (input-escape-time input))
                   (setf (input-escape-time input) now)))))
+
+       ;; Stop for routed input, EOF, quit, or the frame's idle deadline.
        (when (or (input-events input) (input-quit-p input)
                  (>= (get-internal-real-time) end))
          (return))
@@ -680,10 +743,14 @@
   "Position the terminal cursor at the focused editor's visible caret."
   (let* ((node (focused-node context))
          (widget (and node (element-content node))))
+
+    ;; Only visible keyboard focus or an editor exposes terminal focus.
     (when (and (widget-p widget)
                (not (eq (widget-kind widget) :splitter))
                (or (context-focus-visible-p context)
                    (eq (widget-kind widget) :text-field)))
+
+      ;; Compute clipped text columns and the horizontal caret scroll offset.
       (let* ((box (element-box node))
              (clip (element-clip node))
              (padding (element-padding node))
@@ -702,6 +769,8 @@
                               (subseq (widget-display-value widget) 0
                                       (min (length (widget-value widget))
                                            (edit-state-cursor state)))))
+
+                         ;; else
                          0))
              (offset (max 0 (- cursor (max 1 (1- width)))))
              (text (if (eq (widget-kind widget) :slider)
@@ -710,6 +779,8 @@
                                           (+ (box-x box) (box-width box)
                                              (- padding)))
                                          origin)))
+
+                       ;; else
                        (widget-terminal-text widget))))
         (when (and (plusp width) (<= 0 y) (< y (context-height context))
                    (<= (cell-edge (box-y clip)) y)
@@ -723,6 +794,8 @@
                             uncursed:*default-style*))
             (uncursed:puts text (1+ y) (1+ x) (uncursed:screen-rect)
                            (uncursed:make-style :reversep t)))
+
+          ;; Place the hardware cursor only when the editor caret is inside the clip.
           (when field-p
             (let ((column (+ origin cursor (- offset))))
               (when (and (<= x column) (< column right))
@@ -774,6 +847,8 @@
 (fn (%run-terminal context)
     ((draw function) &key title width height (interactive t))
   "Run an interactive uncursed session with terminal restoration on every exit."
+
+  ;; Redirected streams and dumb terminals use the line-input fallback.
   (if (or (not interactive)
           (not (interactive-stream-p *standard-input*))
           (not (interactive-stream-p *standard-output*))
@@ -782,8 +857,13 @@
                        (string-equal term "dumb"))))
       (run-line-terminal draw :title title :width width :height height
                          :interactive interactive)
-      (let ((context (make-terminal-context)) (*unit* 1) (input (make-input))
-            (saved nil) (screen (make-instance 'terminal-screen)))
+
+      ;; else
+      (let ((context (make-terminal-context))
+            (*unit* 1)
+            (input (make-input))
+            (saved nil)
+            (screen (make-instance 'terminal-screen)))
         (unwind-protect
              (progn
                #+unix (terminfo:set-terminal (uiop:getenv "TERM"))
@@ -792,6 +872,8 @@
                (uncursed-sys:enable-alternate-screen)
                (uncursed:enable-mouse :hover t)
                (uncursed-sys:clear-screen)
+
+               ;; Build, display, and pace frames using the current terminal dimensions.
                (loop
                 (multiple-value-bind (columns rows) (terminal-size)
                   (let ((events (nreverse (input-events input))))
@@ -805,6 +887,8 @@
                 (wait-frame input context width height)
                 (when (input-quit-p input) (return context))
                 (%lui.frame:limit-frame-rate context)))
+
+          ;; Restore colors, mouse modes, cursor, and screen even after Lisp errors.
           (when saved
             (unwind-protect
                  (progn

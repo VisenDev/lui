@@ -7,8 +7,10 @@
      ((recessed boolean) nil) ((disabled boolean) nil))
   "Paint a raised or recessed Motif bevel around a surface."
   (let* ((light (if disabled (widget-color widget :disabled-bevel-light)
+                    ;; else
                     (widget-color widget :bevel-light)))
          (dark (if disabled (widget-color widget :disabled-bevel-dark)
+                   ;; else
                    (widget-color widget :bevel-dark)))
          (x (box-x box))
          (y (box-y box))
@@ -39,6 +41,8 @@
   (let* ((widget (element-content node))
          (foreground (if (widget-disabled-p widget) (widget-color widget
                                                                   :disabled)
+
+                         ;; else
                          (widget-foreground widget))))
     (shape renderer (element-box node) 0 foreground 0.15f0)
     (shape renderer (scrollbar-thumb node) 0 (widget-accent widget) 1)))

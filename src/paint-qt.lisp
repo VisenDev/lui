@@ -6,11 +6,15 @@
                   &optional ((recessed boolean) nil) ((disabled boolean) nil))
   "Paint a Qt-style raised or recessed surface."
   (let ((light (widget-color widget (if disabled :disabled-bevel-light
+                                        ;; else
                                         :bevel-light)))
         (dark (widget-color widget (if disabled :disabled-bevel-dark
+                                       ;; else
                                        :bevel-dark)))
-        (x (box-x box)) (y (box-y box))
-        (width (box-width box)) (height (box-height box)))
+        (x (box-x box))
+        (y (box-y box))
+        (width (box-width box))
+        (height (box-height box)))
     (outline renderer box 2 (widget-color widget :border) 1 1)
     (when (> (min width height) 4)
       (shape renderer (make-box :x (+ x 2) :y (+ y 1) :width (- width 4)

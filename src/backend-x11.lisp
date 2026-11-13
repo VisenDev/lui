@@ -247,8 +247,12 @@
         ((requestor selection target property time) event
          (:struct selection-request))
       (let ((destination (if (zerop property) target property)))
+
+        ;; Serve only the clipboard selection currently owned by this window.
         (when (and text (= selection (x-window-clipboard window)))
           (cond
+
+            ;; Advertise the text encodings accepted by the direct-transfer path.
             ((= target targets)
              (cffi:with-foreign-object (atoms :ulong 4)
                (loop :for atom :in (list targets utf8 text-atom 31)
@@ -256,6 +260,8 @@
                      :do (setf (cffi:mem-aref atoms :ulong index) atom))
                (change-property display requestor destination 4 32 0 atoms 4))
              (setf result destination))
+
+            ;; Encode text for the requested target, replacing non-Latin-1 characters.
             ((member target (list utf8 text-atom 31))
              (let ((legacy (= target 31)))
                (cffi:with-foreign-string
@@ -263,7 +269,10 @@
                     (if legacy
                         (map 'string (lambda (char)
                                        (if (< (char-code char) 256) char #\?))
-                             text) text)
+                             text)
+
+                        ;; else
+                        text)
                     :encoding (if legacy :iso-8859-1 :utf-8))
                  ;; Refuse an oversized direct transfer without an X error.
                  (when (< byte-size (- (* 4 (max-request-size display)) 64))
@@ -271,6 +280,8 @@
                                     (if legacy 31 utf8) 8 0
                                     bytes (1- byte-size))
                    (setf result destination)))))))
+
+        ;; Notify the requestor even when the target or transfer was rejected.
         (notify-selection display requestor selection target result time)))))
 
 (fn (key-input (or null event)) (event &optional context)
@@ -293,13 +304,19 @@
                    (#xff51 "ArrowLeft") (#xff53 "ArrowRight")
                    (#xff08 "Backspace")
                    (otherwise (if (<= 32 code 126)
-                                  (string (code-char code)) ""))))
+                                  (string (code-char code))
+                                  ;; else
+                                  ""))))
            (command (when text-p
                       (%lui.widgets:readline-key name :control control
                                                 :alt alt :shift shift))))
+
+      ;; Clipboard and editor commands take precedence over ordinary key input.
       (cond ((and control (not alt) (member code '(#x63 #x43)))
              (make-event :kind :key :key :copy))
             (command (make-event :kind :key :key command))
+
+            ;; Tab, activation, and navigation stay separate from text insertion.
             ((member code '(#xff09 #xfe20))
              (make-event :kind :tab
                          :key (when (or shift (= code #xfe20)) :backward)))
@@ -311,6 +328,8 @@
                              :key
                              (%lui.widgets:horizontal-selection-key key
                                (and text-p shift))))
+
+            ;; Unmodified printable input becomes text only after command routing.
             ((and (plusp length) (not control) (not alt))
              (make-event :kind :text :value
                          (cffi:foreign-string-to-lisp
@@ -333,8 +352,11 @@
                                   (:resize-vertical "ns-resize")
                                   (otherwise "default"))
                         :ulong)
+
+                       ;; else
                        0)))
               (if (plusp cursor) cursor
+                  ;; else
                   (create-font-cursor
                    (x-window-display window)
                    (case kind (:not-allowed 0) (:pointer 60)
@@ -348,6 +370,8 @@
                   (%lui.widgets:cursor-at
                    (x-window-context window)
                    (x-window-pointer-x window) (x-window-pointer-y window))
+
+                  ;; else
                   :default)))
     (unless (eq kind (x-window-cursor-kind window))
       (define-cursor (x-window-display window) (x-window-window window)
@@ -379,7 +403,9 @@
                       (otherwise :move))
               :button (if (and (member type '(4 5))
                                (= code 3))
-                          :secondary :primary)
+                          :secondary
+                          ;; else
+                          :primary)
               :buttons
               (unless (= type 7)
                 (let ((buttons (pointer-buttons state))
@@ -400,6 +426,8 @@
         (events nil)
         (quit nil))
     (cffi:with-foreign-object (event :long 24)
+
+      ;; Drain the native queue once, preserving arrival order for the frame.
       (loop :while (plusp (pending display))
             :do (next-event display event)
             (case (cffi:mem-ref event :int)
@@ -408,6 +436,8 @@
                      (x-window-pointer-y window) -1)
                (push (make-event :kind :move :x -1 :y -1) events))
               ((10 18) (push (make-event :kind :cancel :buttons 0) events))
+
+              ;; Predict focus from earlier queued pointer events before translating keys.
               (2
                (let* ((context (x-window-context window))
                       (predicted
@@ -419,6 +449,8 @@
                  (when input (push input events))))
               ((4 5 6 7)
                (setf events (pointer-input-events window event events)))
+
+              ;; Resize, clipboard ownership, and close requests update window state.
               (22
                (cffi:with-foreign-slots
                    ((width height) event (:struct configure-event))
@@ -434,6 +466,8 @@
                         delete)
                  (setf quit t)))
               (otherwise nil))))
+
+    ;; Publish a typed event vector and the independent close-request flag.
     (values (coerce (nreverse events) '(vector event)) quit)))
 
 (fn (glx-visual cffi:foreign-pointer) (display screen)
@@ -497,7 +531,8 @@
   (loop
    (multiple-value-bind (events quit) (read-events window delete)
      (when quit (return context))
-     (let ((w (x-window-width window)) (h (x-window-height window)))
+     (let ((w (x-window-width window))
+           (h (x-window-height window)))
        (setf (gpu-width gpu) w (gpu-height gpu) h
              (gpu-logical-width gpu) w (gpu-logical-height gpu) h)
        (with-frame (context w h :events events) (funcall draw)))
@@ -531,13 +566,19 @@
                                                                 t))
   "Run DRAW in an Xlib window using the shared OpenGL renderer via GLX."
   (let* ((display (open-display (cffi:null-pointer)))
-         (w (or width 720)) (h (or height 520))
+         (w (or width 720))
+         (h (or height 520))
          (window (make-x-window :display display :width w :height h))
-         (glx (cffi:null-pointer)) (font nil) (gpu nil) (*unit* 8))
+         (glx (cffi:null-pointer))
+         (font nil)
+         (gpu nil)
+         (*unit* 8))
     (when (cffi:null-pointer-p display) (error '%lui.conditions:backend-error
                                                :backend :x11
                                                :operation :run-x11
                                                :format-control "Cannot open X11 display."))
+
+    ;; Choose a matching visual and release its descriptor after window setup.
     (unwind-protect
          (let* ((screen (default-screen display))
                 (info (glx-visual display screen))
@@ -555,6 +596,8 @@
                     :operation :run-x11
                     :format-control
                     "Cannot activate the X11 OpenGL context."))
+
+           ;; Attach fonts and GPU resources, then register input and close handling.
            (setf font (open-font) gpu (attach-gpu font w h)
                  (x-window-clipboard window)
                  (intern-atom display "CLIPBOARD" 0))
@@ -565,12 +608,16 @@
              (setf (cffi:mem-ref atom :ulong) delete)
              (set-protocols display (x-window-window window) atom 1))
            (map-window display (x-window-window window))
+
+           ;; Share the live display and clipboard callback with the frame loop.
            (let ((context
                   (%make-render-context
                    (gpu-renderer gpu)
                    :copy (lambda (text) (copy-clipboard window text)))))
              (setf (x-window-context window) context)
              (draw-window window gpu context draw interactive delete)))
+
+      ;; Release the window, GL context, font, and display on every exit path.
       (close-x11-window window display glx gpu font))))
 
 (register-backend :x11 #'run-x11)

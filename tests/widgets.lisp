@@ -102,11 +102,13 @@
                  ;; The suggestions must escape the clipped, one-line container.
                  (column (lui:opt :width (fixed 24) :height (fixed 1) :clip-p
                    t)
-                   (multiple-value-setq (value changed)
+                   (multiple-value-bind (new-value changed-p)
                      (%lui.tests.support::draw-searchable-combobox
                       #("Alpha" "Beta" "Gamma" "Gamma")
                       (lui:opt :id :combo :value value :width (grow)
-                               :max-results 3 :disabled-p disabled))))
+                               :max-results 3 :disabled-p disabled))
+                     (setf value new-value
+                           changed changed-p)))
                  (%lui.tests.support::draw-button "Next" (lui:opt :id :next))))
              (node (id) (gethash (lui:widget-id id context)
                           (%lui.frame::context-ids context)))

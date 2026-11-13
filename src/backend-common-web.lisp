@@ -119,7 +119,9 @@
                                      event kind
                                      :buttons (oget event "buttons")
                                      :button (if (= 2 (oget event "button"))
-                                                 :secondary :primary)
+                                                 :secondary
+                                                 ;; else
+                                                 :primary)
                                      :clicks (max 1 (oget event "detail")))))
     (setf (oget (input-session-canvas session) "style" "cursor")
           (jsstring
@@ -153,6 +155,7 @@
     ((oget (input-session-sink session) "remove"))
     (if (eq (input-session-old-tab session) #j:null)
         ((oget (input-session-canvas session) "removeAttribute") #j"tabindex")
+        ;; else
         ((oget (input-session-canvas session) "setAttribute") #j"tabindex"
          (input-session-old-tab session)))
     (setf (oget (input-session-canvas session) "style"
@@ -276,69 +279,82 @@
              (>= (max (abs dx) (abs dy)) 8))
     (setf (input-session-touch-motion session)
           (if (and (input-session-scroll-page session) (> (abs dy) (abs dx)))
-              :pan :horizontal))
+              :pan
+              ;; else
+              :horizontal))
     (when (and (eq (input-session-touch-motion session) :pan)
                (not
                 (input-session-touch-native session)))
       (input-send session (make-event :kind :cancel :buttons 0))))
   (values))
 
+(fn (handle-touch-move t) ((session input-session) (event t))
+  "Resolve a touch gesture and route it to page panning or control dragging."
+  (let* ((x (oget event "clientX"))
+         (y (oget event "clientY"))
+         (dx (- x (car (input-session-touch-start session))))
+         (dy (- y (cdr (input-session-touch-start session))))
+         (selection (#j:window:getSelection))
+         (selecting (native-touch-selection-p session selection event)))
+    ;; Wait for a direction; native text selection takes precedence over drag.
+    (when selecting
+      (setf (input-session-touch-motion session) :selection))
+    (resolve-touch-direction session dx dy)
+
+    (case (input-session-touch-motion session)
+      (:pan
+       (input-stop event)
+       (let ((elapsed (- (oget event "timeStamp")
+                         (input-session-touch-time session)))
+             (distance (- (input-session-touch-y session) y)))
+         (when (plusp elapsed)
+           (setf (input-session-touch-velocity session) (/ distance elapsed)))
+         (funcall (input-session-scroll-page session) distance)))
+
+      (:horizontal
+       (unless (input-session-touch-native session)
+         (input-pointer-event session event :move)))
+      (otherwise nil))
+
+    ;; Keep the last resolved sample for the next movement and release fling.
+    (unless (eq (input-session-touch-motion session) :pending)
+      (setf (input-session-touch-y session) y
+            (input-session-touch-time session) (oget event "timeStamp")))))
+
 (fn (handle-browser-pointermove t)
     ((session input-session) event)
   "Handle the browser pointermove event for this input session."
-  (when (and (input-current-p session event)
-             (or (input-session-pointer session)
-                 (eq (oget event "target") (input-session-canvas session))))
-    (cond
-      ((input-session-touch-start session)
-       (let* ((x (oget event "clientX"))
-              (y (oget event "clientY"))
-              (dx (- x (car (input-session-touch-start session))))
-              (dy (- y (cdr (input-session-touch-start session))))
-              (selection (#j:window:getSelection))
-              (selecting (native-touch-selection-p session selection event)))
-         ;; Delay the shared drag until the gesture has a direction.
-         ;; A pan cancels the press, so lifting cannot activate it.
-         (when selecting (setf (input-session-touch-motion session)
-                               :selection))
-         (resolve-touch-direction session dx dy)
-         (case (input-session-touch-motion session)
-           (:pan
-            (input-stop event)
-            (let ((elapsed (- (oget event "timeStamp")
-                              (input-session-touch-time session))))
-              (when (plusp elapsed)
-                (setf (input-session-touch-velocity session)
-                      (/
-                       (-
-                        (input-session-touch-y session) y) elapsed))))
-            (funcall (input-session-scroll-page session)
-                     (-
-                      (input-session-touch-y session) y)))
-           (:horizontal
-            (unless (input-session-touch-native session) (input-pointer-event
-                                                          session event
-                                                          :move)))
-           (otherwise nil))
-         (unless (eq (input-session-touch-motion session) :pending)
-           (setf (input-session-touch-y session) y (input-session-touch-time
-                                                    session) (oget
-                                                    event "timeStamp")))))
-      (t (input-pointer-event session event :move)))))
+  (unless (and (input-current-p session event)
+               (or (input-session-pointer session)
+                   (eq (oget event "target") (input-session-canvas session))))
+    (return-from handle-browser-pointermove nil))
+
+  (if (input-session-touch-start session)
+      (handle-touch-move session event)
+      ;; else
+      (input-pointer-event session event :move)))
 
 (fn (handle-browser-pointerup t)
     ((session input-session) event)
   "Handle the browser pointerup event for this input session."
   (when (and (input-session-pointer session) (input-current-p session event))
+
+    ;; Finish a page pan with velocity only when its last sample is recent.
     (when (eq (input-session-touch-motion session) :pan)
       (funcall (input-session-scroll-page session) 0
                (if (< (- (oget event "timeStamp")
                          (input-session-touch-time session)) 100)
-                   (input-session-touch-velocity session) 0)))
+                   (input-session-touch-velocity session)
+                   ;; else
+                   0)))
+
+    ;; Native selection and page pans must not activate the pressed control.
     (unless (or (input-session-touch-native session)
                 (eq
                  (input-session-touch-motion session) :pan))
       (input-pointer-event session event :release))
+
+    ;; A tap focuses the editing sink without moving the browser page.
     (when (and (not (input-session-touch-native session))
                (not
                 (eq
@@ -352,7 +368,8 @@
                         (cdr
                          (input-session-touch-start session))
                         (oget event "clientY"))) 8))
-      (let ((input (pending-session-context session)) (position
+      (let ((input (pending-session-context session))
+            (position
                                                        (input-position-event
                                                         session event
                                                         :release)))
@@ -365,7 +382,10 @@
                                                                  (event-y
                                                                   position))))
                                      (input-session-sink session)
+                                     ;; else
                                      (input-session-canvas session)))))
+
+    ;; Clear gesture state before releasing native pointer capture.
     (setf (input-session-touch-start session) nil
           (input-session-touch-motion session) nil
           (input-session-touch-y session) nil
@@ -399,6 +419,7 @@
       (if (and (input-session-page-scroll-p session)
                (input-session-scroll-page session))
           (funcall (input-session-scroll-page session) pixels)
+          ;; else
           (input-send session (input-position-event session
                                                     event :scroll
                                                     :scroll-mode
@@ -409,7 +430,9 @@
                                                       (<
                                                        (abs
                                                         delta) 20))
-                                                     :immediate :smooth)
+                                                     :immediate
+                                                        ;; else
+                                                        :smooth)
                                                     :value pixels))))))
 
 (fn (browser-key-command symbol)
@@ -435,6 +458,8 @@
 (fn (handle-browser-keydown t)
     ((session input-session) event)
   "Handle the browser keydown event for this input session."
+
+  ;; Leave composition and keys from other DOM elements to the browser.
   (unless (or (not (or (eq (oget event "target")
                            (input-session-canvas session))
                        (eq (oget event "target") (input-session-sink
@@ -449,6 +474,8 @@
            (shift (input-flag event "shiftKey"))
            (input (pending-session-context session))
            (editing (text-field-focused-p input))
+
+           ;; Shift extends an editor selection instead of changing ordinary movement.
            (command
             (browser-key-command key editing meta control alt shift)))
       (cond
@@ -456,6 +483,8 @@
         ((and (or control meta) (not alt)
               (member (string-downcase key) '("c" "v" "x")
                       :test #'string=)))
+
+        ;; Route navigation and activation while suppressing duplicate DOM actions.
         ((string= key "Tab")
          (input-stop event)
          (input-send session (make-event :kind :tab
@@ -477,6 +506,8 @@
                                          (:home :shift-home)
                                          (:end :shift-end)
                                          (otherwise command))
+
+                                       ;; else
                                        command))))))))
 
 (fn (handle-browser-compositionstart t)
@@ -600,15 +631,22 @@
                        (or (widget-accessible-name widget)
                            (let ((text (widget-text widget)))
                              (if (plusp (length text)) text
+                           ;; else
                            (princ-to-string
                              (lui:widget-key (context-focus context))))))
+
+                       ;; else
                        "Canvas application"))
             (value (if (and widget (widget-p widget)
                             (eq (widget-kind widget) :text-field))
-                       (widget-display-value widget) "")))
+                       (widget-display-value widget)
+                       ;; else
+                       "")))
         (setf (oget sink "spellcheck")
               (if (and (widget-p widget) (widget-password-p widget))
-                  #j:false #j:true))
+                  #j:false
+                  ;; else
+                  #j:true))
         ((oget sink "setAttribute") #j"autocorrect" #j"off")
         ((oget sink "setAttribute") #j"autocapitalize" #j"off")
         ((oget sink "setAttribute") #j"aria-label"
@@ -654,6 +692,7 @@
   "Return the visible height of a scroll container in CSS pixels."
   (if (eq port #j:window)
       #j:window:innerHeight
+      ;; else
       (oget port "clientHeight")))
 
 (fn (page-offset real) (stage port)
@@ -662,6 +701,7 @@
               ((oget stage "getBoundingClientRect")) "top")))
     (if (eq port #j:window)
         (- top)
+        ;; else
         (- (+ (oget
                ((oget port "getBoundingClientRect")) "top")
               (oget port "clientTop"))
@@ -688,6 +728,8 @@
   (if stroke
       (setf (oget g "lineWidth") stroke
             (oget g "strokeStyle") (jsstring color))
+
+      ;; else
       (setf (oget g "fillStyle") (jsstring color)))
   (cond ((zerop radius)
          (if stroke
@@ -696,12 +738,15 @@
               (+ (box-y box) (/ stroke 2))
               (max 0 (- (box-width box) stroke))
               (max 0 (- (box-height box) stroke)))
+
+             ;; else
              ((oget g "fillRect") (box-x box) (box-y box)
               (box-width box) (box-height box))))
         (t
          (rounded-path g box radius (if stroke (/ stroke 2) 0))
          (if stroke
              ((oget g "stroke"))
+             ;; else
              ((oget g "fill"))))))
 
 (fn (canvas-polygons t) (g paths color alpha)
@@ -752,14 +797,16 @@
   (when (plusp frost)
     (let* ((scale #j:window:devicePixelRatio)
            (offset (oget canvas "luiViewportOffset"))
-           (x (max 0 (box-x box))) (y (max offset (box-y box)))
+           (x (max 0 (box-x box)))
+           (y (max offset (box-y box)))
            (w (max 0 (- (min (box-right box)
                              (/ (oget canvas "width") scale)) x)))
            (h (max 0 (- (min (box-bottom box)
                              (+ offset (/ (oget canvas "height")
                                           scale)))
                         y)))
-           (step (max 1 (/ frost 2))) (sw (max 1 (ceiling (/ w step))))
+           (step (max 1 (/ frost 2)))
+           (sw (max 1 (ceiling (/ w step))))
            (sh (max 1 (ceiling (/ h step)))))
       ;; Restrict the scratch bitmap to the visible artwork. The original
       ;; rounded surface still supplies the destination clip.
@@ -817,6 +864,7 @@
              (web-app-events app)
              (eq (event-kind (first (web-app-events app))) :move))
         (setf (first (web-app-events app)) event)
+        ;; else
         (push event (web-app-events app)))
     (refresh app)))
 
@@ -834,6 +882,7 @@
     (let ((delay (%lui.frame:frame-wait (web-app-context app))))
       (if (zerop delay)
           (refresh app)
+          ;; else
           (setf (web-app-deadline-timer app)
                 (#j:setTimeout (lambda () (refresh app))
                                (ceiling (* delay 1000))))))))
@@ -869,8 +918,10 @@
 
 (fn (overlay-region-visible-p t) ((scan overlay-scan) clip candidate)
   "Reuse unchanged visibility or update the scan's occlusion index."
-  (let* ((x (box-x clip)) (y (box-y clip))
-         (right (+ x (box-width clip))) (bottom (+ y (box-height clip)))
+  (let* ((x (box-x clip))
+         (y (box-y clip))
+         (right (+ x (box-width clip)))
+         (bottom (+ y (box-height clip)))
          (old (pop (overlay-scan-previous scan))))
     (cond ((and old (= x (overlay-region-x old))
                 (= y (overlay-region-y old))
@@ -899,7 +950,9 @@
 (fn (visit-overlay-node t) ((scan overlay-scan) node path interactive)
   "Walk children front to back and collect unoccluded native-label candidates."
   (let ((key (if (element-id node)
-                 (list :id (element-id node)) path))
+                 (list :id (element-id node))
+                 ;; else
+                 path))
         (children (element-children node))
         (clip (element-clip node))
         (widget (element-content node)))
@@ -944,10 +997,15 @@
 
 (fn (position-dom-widget (values)) ((record dom-widget) (box box) (clip box))
   "Update an overlay's position and clipping only when its geometry changes."
-  (let* ((x (box-x box)) (y (box-y box)) (w (box-width box)) (h (box-height
+  (let* ((x (box-x box))
+         (y (box-y box))
+         (w (box-width box))
+         (h (box-height
                                                                  box))
-         (left (- (box-x clip) x)) (top (- (box-y clip) y))
-         (right (- w left (box-width clip))) (bottom (- h top (box-height
+         (left (- (box-x clip) x))
+         (top (- (box-y clip) y))
+         (right (- w left (box-width clip)))
+         (bottom (- h top (box-height
                                                                clip)))
          (old (dom-widget-geometry record)))
     (destructuring-bind (&optional ox oy ow oh otop oright obottom oleft) old
@@ -967,6 +1025,7 @@
                        (eql left oleft))
             (setf (oget style "clipPath")
                   (if (= 0 top right bottom left) #j"none"
+                      ;; else
                       ((oget #j"inset(" "concat")
                        top #j"px " right #j"px " bottom #j"px " left
                        #j"px)"))))
@@ -978,7 +1037,8 @@
   "Create an accessible native control that queues LUI activation for NODE."
   ;; The canvas keeps pointer capture and toolkit keyboard navigation. Native
   ;; button activation also lets assistive technology invoke the same action.
-  (let ((button (#j:document:createElement #j"button")) (id (element-id
+  (let ((button (#j:document:createElement #j"button"))
+        (id (element-id
                                                              node)))
     (setf (oget button "type") #j"button"
           (oget button "tabIndex") -1
@@ -1020,14 +1080,20 @@
   (let ((order (web-app-overlay-order app)))
     (when (same-overlay-order-p order entries)
       (return-from reconcile-overlay order))
-    (let ((old (make-hash-table :test 'equal)) (layer (web-app-overlay app))
+    (let ((old (make-hash-table :test 'equal))
+          (layer (web-app-overlay app))
           (next (make-array 0 :element-type 'dom-widget :adjustable t
                             :fill-pointer 0))
-          (cache (web-app-overlay-cache app)) hidden)
+          (cache (web-app-overlay-cache app))
+          hidden)
+
+      ;; Index visible and cached records by stable key for reuse.
       (loop :for record :across order
             :do (setf (gethash (dom-widget-key record) old) record))
       (dolist (record cache) (setf (gethash (dom-widget-key record) old)
                                    record))
+
+      ;; Reuse existing DOM elements and create only newly appearing keys.
       (loop :for entry :across entries :do
             (destructuring-bind (node key interactive) entry
               (declare (ignore interactive))
@@ -1037,6 +1103,7 @@
                           (make-dom-widget :key key :element
                                            (if (eq kind :label)
                                                (#j:document:createElement #j"span")
+                                               ;; else
                                                (make-semantic-button
                                                 app node kind))))))
                 (remhash key old)
@@ -1057,6 +1124,8 @@
                    (loop :for record :in cache
                          :when (gethash (dom-widget-key record) old)
                          :collect record)))
+
+      ;; Bound the hidden cache, then reconcile the surviving DOM order.
       (loop :for record :in (nthcdr *overlay-cache-limit* hidden)
             :do ((oget (dom-widget-element record) "remove")))
       (when (nthcdr *overlay-cache-limit* hidden)
@@ -1074,6 +1143,7 @@
     (unless (equal state (dom-widget-state record))
       (setf (dom-widget-state record) state
             (oget element "disabled") (if (second state) #j:true
+                                          ;; else
                                           #j:false))
       (when (member kind '(:checkbox :radio :tab))
         ((oget element "setAttribute")
@@ -1090,7 +1160,9 @@
                                        widget))
           (style (oget element "style")))
       (setf (oget style "pointerEvents") (if interactive
-                                             #j"none" #j"auto")
+                                             #j"none"
+                                             ;; else
+                                             #j"auto")
             (oget style "font") (jsstring
                                  (lui.font:%font-css font))
             (oget style "lineHeight") (css-pixels
@@ -1100,7 +1172,9 @@
                                    widget))
             (oget style "textAlign")
             (if (and label (geometry-center-x (widget-geometry
-                                               widget))) #j"center" #j"left")
+                                               widget))) #j"center"
+                ;; else
+                #j"left")
             (dom-widget-style record) appearance)))
   (values))
 
@@ -1110,13 +1184,18 @@
                                                          app))))
          (records (reconcile-overlay app entries))
          (external (make-hash-table :test 'eq)))
+
+    ;; Pair each solved node with its retained DOM record.
     (loop :for (node key interactive) :across entries
           :for record :across records :do
-          (let* ((kind (car key)) (label (eq kind :label)) (widget
+          (let* ((kind (car key))
+                 (label (eq kind :label))
+                 (widget
                                                             (element-content
                                                              node))
                  (element (dom-widget-element record))
                  (text (if label (%lui.widgets:widget-text widget)
+                           ;; else
                            (or (%lui.widgets:widget-accessible-name widget)
                                (%lui.widgets:widget-text widget))))
                  (appearance (and label (list interactive
@@ -1130,22 +1209,32 @@
                                                widget)
                                               (geometry-center-x
                                                (widget-geometry widget))))))
+
+            ;; Initialize styling once, then update geometry and appearance separately.
             (unless (dom-widget-geometry record)
               (setf (oget element "style" "cssText")
                     (if label
                         #j"position:absolute;display:block;margin:0;padding:0;border:0;white-space:pre-wrap;overflow:hidden;user-select:text;-webkit-user-select:text;cursor:text"
+                        ;; else
                         #j"position:absolute;display:block;margin:0;padding:0;border:0;opacity:0;pointer-events:none;user-select:none")))
             (position-dom-widget record
                                  (if label (lui.draw:%selection-area
                                             (web-app-renderer app) node)
+
+                                     ;; else
                                      (element-box node)) (element-clip node))
             (sync-label-style app record widget element appearance
                               interactive label)
             (if label (setf (gethash node external) t)
+                ;; else
                 (sync-semantic-state record widget element kind))
+
+            ;; Only changed text touches the DOM, preserving native selections.
             (unless (equal text (dom-widget-text record))
               (if label (setf (oget element "textContent")
                               (jsstring text))
+
+                  ;; else
                   ((oget element "setAttribute") #j"aria-label"
                    (jsstring text)))
               (setf (dom-widget-text record) text))))
@@ -1176,26 +1265,48 @@
 (fn (resize-canvas-bitmap (values))
     (canvas (width real) (height real) (scale real))
   "Resize the physical canvas bitmap only when its scaled dimensions change."
-  (let ((w (round (* width scale))) (h (round (* height scale))))
+  (let ((w (round (* width scale)))
+        (h (round (* height scale))))
     (unless (= w (oget canvas "width"))
       (setf (oget canvas "width") w))
     (unless (= h (oget canvas "height"))
       (setf (oget canvas "height") h)))
   (values))
 
+(fn (update-page-viewport real)
+    ((app web-app) (height real) (origin real) (delta real))
+  "Size the page and record the canvas offset, returning the requested scroll."
+  (let* ((context (web-app-context app))
+         (canvas (web-app-canvas app))
+         (stage (web-app-stage app))
+         (page-height (context-height context))
+         (requested (shiftf (%lui.frame:context-requested-page-top context)
+                            nil)))
+    (when requested (setf delta (- requested origin)))
+    (let ((offset (max 0 (min (- page-height height) (+ origin delta)))))
+      (setf (web-app-viewport-offset app) offset
+            (oget canvas "luiViewportOffset") offset
+            (oget stage "style" "height") (css-pixels page-height)
+            (oget canvas "style" "height") (css-pixels height))))
+  delta)
+
 (fn (draw-frame t) ((app web-app))
   "Solve and paint APP's next frame, updating viewport geometry and native overlays."
-  (let* ((canvas (web-app-canvas app)) (g (web-app-graphics app))
-         (context (web-app-context app)) (*unit* 8)
+  (let* ((canvas (web-app-canvas app))
+         (g (web-app-graphics app))
+         (context (web-app-context app))
+         (*unit* 8)
          (width (oget canvas "clientWidth"))
          (port (web-app-scrollport app))
          (stage (web-app-stage app))
          (origin (if port (page-offset stage port) 0))
          (delta (if port (frame-scroll-delta app) 0))
          (height (if port (page-viewport-height port)
+                     ;; else
                      (oget canvas "clientHeight")))
          (scale #j:window:devicePixelRatio)
          (events (nreverse (shiftf (web-app-events app) nil))))
+    ;; Solve the frame against the current viewport and pending scroll input.
     (resize-canvas-bitmap canvas width height scale)
     (setf (%lui.frame:context-page-height-p context) (not (null port))
           (%lui.frame:context-page-top context)
@@ -1203,17 +1314,9 @@
     (with-frame (context width height :events events)
       (funcall (web-app-callback app)))
     (when port
-      (let ((page-height (context-height context))
-            (requested (shiftf (%lui.frame:context-requested-page-top context)
-                               nil)))
-        (when requested (setf delta (- requested origin)))
-        (let ((offset (max 0 (min (- page-height height) (+ origin delta)))))
-          (setf (web-app-viewport-offset app) offset
-                (oget canvas "luiViewportOffset") offset
-                (oget stage "style" "height") (css-pixels
-                                               page-height)
-                (oget canvas "style" "height") (css-pixels
-                                                height)))))
+      (setf delta (update-page-viewport app height origin delta)))
+
+    ;; Paint the new canvas and synchronize selectable native text together.
     ((oget g "setTransform") scale 0 0 scale 0 0)
     (setf (oget g "fillStyle") #j"#202432")
     ((oget g "fillRect") 0 0 width height)
@@ -1225,6 +1328,7 @@
                         (make-box :x 0 :y (web-app-viewport-offset app)
                                   :width width :height height)))
       ((oget g "restore")))
+
     ;; Commit the matching scroll position only after the pixels and DOM are ready.
     (when (and port (not (zerop delta)))
       (page-scroll-by port delta)
@@ -1260,9 +1364,12 @@
                         (draw-frame app)))))))
       (let* ((context (web-app-context app))
              (wait (if (context-root context)
-                       (%lui.frame:frame-wait context t) 0)))
+                       (%lui.frame:frame-wait context t)
+                       ;; else
+                       0)))
         (if (zerop wait)
             (enqueue)
+            ;; else
             (setf (web-app-deadline-timer app)
                   (#j:setTimeout #'enqueue (ceiling (* wait 1000)))))))))
 
@@ -1270,13 +1377,17 @@
   "Choose page scrolling for touch-first devices and a bounded viewport otherwise."
   (if (clbool
        (oget (#j:window:matchMedia #j"(pointer: coarse)") "matches"))
-      :page :viewport))
+      :page
+      ;; else
+      :viewport))
 
 (fn (mount-app-elements (values))
     ((app web-app) page-scroll-p)
   "Style and attach the application's stage, canvas, and native-label layer."
-  (let ((host (web-app-host app)) (stage (web-app-stage app))
-        (canvas (web-app-canvas app)) (labels (web-app-overlay app))
+  (let ((host (web-app-host app))
+        (stage (web-app-stage app))
+        (canvas (web-app-canvas app))
+        (labels (web-app-overlay app))
         (port (web-app-scrollport app)))
     (setf (oget canvas "style" "cssText")
           #j"display:block;width:100%;height:100%;touch-action:none"
@@ -1333,6 +1444,8 @@
                              port))
                        (resize (lambda (&rest ignored)
                                  (declare (ignore ignored)) (refresh app))))
+
+    ;; Attach canvas and overlay layers before installing shared input.
     (mount-app-elements app page-scroll-p)
     (setf (web-app-cleanup app)
           (%lui.web.input:install-input
@@ -1342,10 +1455,14 @@
                           (queue-page-scroll app delta speed)))
           (web-app-resize app) resize
           (web-app-observer app) (new #j:ResizeObserver resize))
+
+    ;; Observe host and scrollport changes that affect logical viewport size.
     ((oget (web-app-observer app) "observe") host)
     (when (and port (not (eq port #j:window)) (not (eq port host)))
       ((oget (web-app-observer app) "observe") port))
     (#j:window:addEventListener #j"resize" resize)
+
+    ;; Native scrolling redraws only when it differs from the prepainted offset.
     (when port
       (setf (web-app-scroll-listener app)
             (lambda (&rest ignored)

@@ -42,6 +42,7 @@
                       (anchor (or explicit anchor))
                       (path (if explicit nil path))
                       (key (if explicit (list :id explicit)
+                               ;; else
                                (list :path anchor (reverse path)))))
                  (setf (gethash key (debugger-state-nodes state)) node)
                  (when shown
@@ -68,7 +69,8 @@
 
 (fn (clipped-p boolean) ((node element))
   "Report whether a node's solved box is partly removed by its clip."
-  (let ((box (element-box node)) (clip (element-clip node)))
+  (let ((box (element-box node))
+        (clip (element-clip node)))
     (not (and (= (box-x box) (box-x clip)) (= (box-y box) (box-y clip))
               (= (box-width box) (box-width clip))
               (= (box-height box) (box-height clip))))))
@@ -88,13 +90,15 @@
   "Describe an element for its row in the debugger tree."
   (let* ((widget (element-content node))
          (kind (if (widget-p widget) (widget-kind widget)
+                   ;; else
                    (element-direction node)))
          (name (or (widget-key (element-id node))
                    (when (widget-p widget) (preview (widget-text widget)))
                    ""))
          (status (cond ((offscreen-p node) " [offscreen]")
                        ((clipped-p node) " [clipped]") (t "")))
-         (*print-level* 2) (*print-length* 4))
+         (*print-level* 2)
+         (*print-length* 4))
     (%lui.frame:memoized
      (list :caption kind name status *package* #-jscl *print-case*
            *print-base*
@@ -107,35 +111,48 @@
           (%lui.layout:sizing-value rule) (%lui.layout:sizing-minimum rule)
           (or (%lui.layout:sizing-maximum rule) "none")))
 
+(fn (property-atom t) ((value t))
+  "Keep short printable atoms and replace other objects in list previews."
+  (cond
+    ((stringp value) (subseq value 0 (min 32 (length value))))
+    ((or (null value) (numberp value) (symbolp value) (characterp value))
+     value)
+    (t :object)))
+
+(fn (list-property-text string) ((value cons))
+  "Preview a short flat list, bounding traversal even for circular lists."
+  (let ((items nil)
+        (tail value))
+    ;; JSCL ignores printer length limits, so bound traversal ourselves.
+    (dotimes (i 5)
+      (when (consp tail)
+        (push (car tail) items)
+        (setf tail (cdr tail))))
+
+    ;; Only a fully traversed, short, flat list is safe to show directly.
+    (if (and (null tail) (< (length items) 5) (every #'atom items))
+        (format nil "~S" (nreverse (mapcar #'property-atom items)))
+        ;; else
+        (format nil "List (~D~A items)" (length items) (if tail "+" "")))))
+
 (fn (property-text string) ((value t))
   "Convert a property value into text suitable for the debugger panel."
   (cond
     ((stringp value)
      (if (> (length value) 160)
-         (concatenate 'string (subseq value 0 160) "...") value))
+         (concatenate 'string (subseq value 0 160) "...")
+         ;; else
+         value))
+
     ((or (null value) (numberp value) (symbolp value) (characterp value))
      (format nil "~S" value))
-    ((consp value)
-     ;; Bound traversal before printing: JSCL ignores printer length limits.
-     (let ((items nil) (tail value))
-       (dotimes (i 5)
-         (when (consp tail) (push (car tail) items) (setf tail (cdr tail))))
-       (if (and (null tail) (< (length items) 5) (every #'atom items))
-           (format nil "~S" (nreverse
-                             (mapcar (lambda (item)
-                                       (if (stringp item)
-                                           (subseq item 0
-                                                   (min 32 (length item)))
-                                           (if (or (null item) (numberp item)
-                                                   (symbolp item)
-                                                   (characterp item)) item
-                                                   :object))) items)))
-           (format nil "List (~D~A items)" (length items)
-                   (if tail "+" "")))))
+
+    ((consp value) (list-property-text value))
     ((vectorp value) (format nil "Vector (~D items)" (length value)))
-    (t (let ((type (type-of value)))
-         (format nil "#<~A>" (if (symbolp type) (symbol-name type)
-                                 "Object"))))))
+
+    (t
+     (let ((type (type-of value)))
+       (format nil "#<~A>" (if (symbolp type) (symbol-name type) "Object"))))))
 
 (fn (flag-label string) ((pairs list) (empty string))
   "Format a boolean property as a concise enabled/disabled label."
@@ -156,6 +173,7 @@
       (let* ((stacked (< width (units 32)))
              (*parent* (emit (make-element :width (grow)
                                            :direction (if stacked :column
+                                                          ;; else
                                                           :row)
                                            :gap (if stacked 0 (units 1))))))
         (lui:label (concatenate 'string (first pair) ":")
@@ -234,7 +252,8 @@
 
 (fn (details (values)) ((node element) (width real))
   "Declare the selected element's layout, interaction, and widget properties."
-  (let* ((widget (element-content node)) (node-id (element-id node))
+  (let* ((widget (element-content node))
+         (node-id (element-id node))
          (container (plusp (length (element-children node))))
          (focused (and node-id (equal node-id (context-focus *context*)))))
     (lui:label (caption node)
@@ -262,6 +281,7 @@
                 (list "Kind" (format nil "~A; ~D children"
                                      (if (widget-p widget)
                                          (widget-kind widget)
+                                         ;; else
                                          (element-direction node))
                                      (length (element-children node))))
                 (list "Text" (if (widget-p widget) (widget-text widget) ""))
@@ -316,17 +336,23 @@
                                            step)
                     :gap (units 0.25f0) :cross-align
                     :center)
+
+    ;; Reserve indentation before the collapse control and row caption.
     (emit (make-element
            :width
            (fixed (min (/ width 3)
                        (units (* 2 (entry-depth
                                     entry)))))))
+
+    ;; Only branches can collapse; leaves reserve the same control width.
     (if (plusp (length (element-children node)))
       (when
         (lui:list-item
                (if (gethash key
                             (debugger-state-collapsed state))
-                   "+" "-")
+                   "+"
+                   ;; else
+                   "-")
           (lui:opt
             :id (id :collapse key)
             :width (fixed (units 3))
@@ -336,8 +362,12 @@
                 (not (gethash key
                               (debugger-state-collapsed state))))
           (request-frame))
+
+        ;; else
         (emit (make-element :width (fixed (units
                                            3)))))
+
+    ;; Selecting a new row reveals details; selecting it again closes them.
     (when
       (lui:list-item
         (caption node)
@@ -348,6 +378,7 @@
           :selected-p (equal key (debugger-state-selected state))))
       (if (equal key (debugger-state-selected state))
           (close-details state)
+          ;; else
           (setf (debugger-state-selected state) key
                 (debugger-state-reveal-selection-p
                  state) t))
@@ -363,6 +394,7 @@
            (step (units (if (context-text-mode-p *context*) 1 3)))
            (viewport (previous-box (id :tree)))
            (height (if viewport (box-height viewport)
+                       ;; else
                        (/ (%lui.frame:context-viewport-height
                            *context*) 2)))
            (offset (reveal-selection
@@ -389,7 +421,10 @@
          (width (min maximum (max minimum
                                   (if (debugger-state-width state)
                                       (units (debugger-state-width state))
+                                      ;; else
                                       (* window 0.4f0))))))
+
+    ;; Apply drag or keyboard resize input within the viewport bounds.
     (loop :for event :across (events-for (id :resize)) :do
           (when (or (eq (event-kind event) :cancel)
                     (and (eq (event-kind event) :move)
@@ -421,6 +456,8 @@
             (setf width (min maximum (max minimum width))
                   (debugger-state-width state) (/ width *unit*))
             (request-frame)))
+
+    ;; A lost pointer capture must not leave a stale drag offset.
     (unless (equal (context-active *context*) (id :resize))
       (setf (debugger-state-grab state) nil))
     width))
@@ -446,12 +483,18 @@
 (fn (details-height real) ((state debugger-state) (maximum (real 0 *)))
   "Resolve the selected-node details height within the debugger pane."
   (let* ((minimum (min maximum (units (if (context-text-mode-p *context*)
-                                          6 12))))
+                                          6
+                                          ;; else
+                                          12))))
          (height (min maximum
                       (max minimum (if (debugger-state-details-height state)
                                        (units (debugger-state-details-height
                                                state))
+
+                                       ;; else
                                        (* maximum 0.75f0))))))
+
+    ;; Resize from the saved grab position or from keyboard increments.
     (loop :for event :across (events-for (id :details-resize)) :do
           (when (or (eq (event-kind event) :cancel)
                     (and (eq (event-kind event) :move)
@@ -480,12 +523,17 @@
                  (:home (setf height maximum)) (:end (setf height 0))
                  (otherwise nil)))
               (otherwise nil))
+
+            ;; Dragging to the bottom dismisses details instead of leaving a sliver.
             (if (<= height (units 2))
                 (close-details state)
+                ;; else
                 (setf height (min maximum (max minimum height))
                       (debugger-state-details-height state) (/ height
                                                                *unit*)))
             (request-frame)))
+
+    ;; Clear the retained grab when another widget owns capture.
     (unless (equal (context-active *context*) (id :details-resize))
       (setf (debugger-state-details-grab state) nil))
     height))
@@ -507,7 +555,8 @@
 (fn (debugger-header-height real) ((header element) (width real))
   "Measure the fixed debugger heading area for viewport calculations."
   (let* ((children (element-children header))
-         (title (aref children 0)) (close (aref children 1))
+         (title (aref children 0))
+         (close (aref children 1))
          (title-padding (* 2 (element-padding title)))
          (close-padding (* 2 (element-padding close))))
     (multiple-value-bind (close-width close-height)
@@ -542,7 +591,9 @@
                         :scroll-p t :padding (units 1)
                         :gap (if (context-text-mode-p
                                   *context*)
-                                 0 (units 0.25f0))
+                                 0
+                                 ;; else
+                                 (units 0.25f0))
                         :opacity 1 :radius 0 :frost 0)
       (details node width)))
   (values))

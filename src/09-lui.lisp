@@ -101,7 +101,8 @@ MIN-FPS sets idle redraws per second. MAX-FPS caps input and animation frames.
 INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
   (assert (< 0 min-fps))
   (assert (<= min-fps max-fps))
-  (let* ((%lui.frame:*min-fps* min-fps) (%lui.frame:*max-fps* max-fps)
+  (let* ((%lui.frame:*min-fps* min-fps)
+         (%lui.frame:*max-fps* max-fps)
          (name (or backend
                    (and %*default-backend-function*
                         (funcall %*default-backend-function*))
@@ -173,6 +174,7 @@ Offsets on automatic widgets shift their drawing without changing their slot."
   "Resolve a controlled value or initialize retained state exactly once."
   (if (widget-option-p :value options)
       (getf options :value)
+      ;; else
       (multiple-value-bind (value present)
           (gethash id (context-values *context*))
         (if present value (getf options :default-value default)))))
@@ -227,6 +229,7 @@ Offsets on automatic widgets shift their drawing without changing their slot."
        (let* ((entry (or %*toolkit-definition* (%find-toolkit %*toolkit*)))
               (custom (%override ,kind entry)))
          (if custom (funcall custom ,@args options)
+             ;; else
              (let ((style %*toolkit*))
                (multiple-value-bind (defaults palette) (toolkit-defaults
                                                         %*toolkit* ,kind)
@@ -271,7 +274,9 @@ OPT :width sets thickness; :height controls length. :foreground sets its color."
   "Declare a selectable control and return whether it was activated."
   ;; Extract selection while removing its public option in one pass. Preserve
   ;; GETF's first-value rule, including an explicitly supplied NIL.
-  (let ((selected nil) (selected-seen nil) (appearance nil))
+  (let ((selected nil)
+        (selected-seen nil)
+        (appearance nil))
     (do ((tail options (cddr tail))) ((null tail))
       (cond ((eq (car tail) :selected-p)
              (unless selected-seen
@@ -395,7 +400,9 @@ Owned state is discarded when this widget is absent from a completed frame."
                                                        (limit (integer 1 *)))
   "Return source-index/label pairs matching QUERY, limited to LIMIT choices."
   ;; Keep the source index for IDs so filtering never retargets a pointer event.
-  (let ((index 0) (count 0) matches)
+  (let ((index 0)
+        (count 0)
+        matches)
     (block collect
       (map nil (lambda (choice)
                  (when (search query choice :test #'char-equal)
@@ -456,6 +463,7 @@ Owned state is discarded when this widget is absent from a completed frame."
   (when (plusp (length matches))
     (if (eq :down (event-key event))
         (min last (1+ (or index -1)))
+        ;; else
         (max 0 (1- (or index (1+ last)))))))
 
 (fn (combobox-completion (or null string))
@@ -464,41 +472,46 @@ Owned state is discarded when this widget is absent from a completed frame."
      (anchor %lui.layout:element))
   "Apply autocomplete navigation or selection to the combobox editor state."
   (let ((navigate (find-if #'completion-navigation-p events)))
-    (when (or navigate (combobox-state-open-p state))
-      (let* ((matches (combobox-matches (if (combobox-state-filter-p state)
-                                            text "")
-                                        choices limit))
-             (last (1- (length matches)))
-             (old (and (combobox-state-open-p state)
-                       (combobox-state-highlight state)))
-             (index (and (plusp (length matches)) old (min old last))))
-        (loop :for event :across events :do
-              (case (event-kind event)
-                (:key (case (event-key event)
-                        ((:up :down)
-                         (setf (combobox-state-open-p state) t
-                               index (completion-next-index matches index
-                                                            last event)))
-                        (:escape (setf (combobox-state-open-p state) nil))
-                        (otherwise nil)))
-                (:activate
-                 (when (combobox-state-open-p state)
-                   (setf (combobox-state-open-p state) nil)
-                   (return-from combobox-completion
-                     (and index (cdr (aref matches index))))))
-                (otherwise nil)))
-        (setf (combobox-state-highlight state) index)
-        (when (and (plusp (length matches)) (combobox-state-open-p state))
-          (let ((clicked (find-if
-                          (lambda (match) (activated-p (list id
-                                                             :choice
-                                                             (car
-                                                              match))))
-                          matches)))
-            (when clicked
-              (setf (combobox-state-open-p state) nil)
-              (return-from combobox-completion (cdr clicked))))
-          (combobox-popup id matches index anchor navigate)))))
+    (unless (or navigate (combobox-state-open-p state))
+      (return-from combobox-completion nil))
+
+    (let* ((filter (if (combobox-state-filter-p state) text ""))
+           (matches (combobox-matches filter choices limit))
+           (last (1- (length matches)))
+           (old (and (combobox-state-open-p state)
+                     (combobox-state-highlight state)))
+           (index (and (plusp (length matches)) old (min old last))))
+      ;; Apply keyboard input in order, committing only a highlighted match.
+      (loop :for event :across events :do
+        (case (event-kind event)
+          (:key
+           (case (event-key event)
+             ((:up :down)
+              (setf (combobox-state-open-p state) t
+                    index (completion-next-index matches index last event)))
+             (:escape (setf (combobox-state-open-p state) nil))
+             (otherwise nil)))
+
+          (:activate
+           (when (combobox-state-open-p state)
+             (setf (combobox-state-open-p state) nil)
+             (return-from combobox-completion
+               (and index (cdr (aref matches index))))))
+          (otherwise nil)))
+      (setf (combobox-state-highlight state) index)
+
+      ;; A dismissed or empty popup has no pointer selection to resolve.
+      (unless (and (plusp (length matches)) (combobox-state-open-p state))
+        (return-from combobox-completion nil))
+      (let ((clicked (find-if
+                      (lambda (match)
+                        (activated-p (list id :choice (car match))))
+                      matches)))
+        (when clicked
+          (setf (combobox-state-open-p state) nil)
+          (return-from combobox-completion (cdr clicked))))
+
+      (combobox-popup id matches index anchor navigate)))
   nil)
 
 (fn (%searchable-combobox (values t boolean))
@@ -523,6 +536,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
          (anchor (gethash id (%lui.frame:context-ids *context*)))
          (result (if (string= edited text) value edited)))
     (check-type limit (integer 1 *))
+
+    ;; Focus and typing decide whether suggestions open and filter.
     (cond ((not focused) (setf (combobox-state-open-p state) nil))
           ((or (not (combobox-state-focused-p state)) (find :press events
                                                             :key
@@ -537,6 +552,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                                                  (event-y
                                                                   press)))))
            (setf (combobox-state-open-p state) nil)))
+
+    ;; Remember focus for the next frame before resolving popup input.
     (setf (combobox-state-focused-p state) focused)
     (when (and focused (not (string= edited text)))
       (setf (combobox-state-open-p state) t (combobox-state-filter-p state) t
@@ -559,7 +576,11 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (if (= month 2)
       (if (and (zerop (mod year 4))
                (or (not (zerop (mod year 100))) (zerop (mod year 400))))
-          29 28)
+          29
+          ;; else
+          28)
+
+      ;; else
       (if (member month '(4 6 9 11)) 30 31)))
 
 (deftype date-parts () '(vector integer 3))
@@ -588,7 +609,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
 (fn (picker-display string) ((date (or null date-parts)))
   "Format a date value for display in the date picker text field."
   (if date (format nil "~2,'0D/~2,'0D/~4,'0D" (aref date 1) (aref date 2)
-                   (aref date 0)) ""))
+                   (aref date 0))
+
+      ;; else
+      ""))
 
 (fn (picker-value (or null string)) ((date (or null date-parts)))
   "Parse the picker's editable date text into its canonical date value."
@@ -672,16 +696,22 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
       (setf (picker-state-months-p state) (not months)))
     (dolist (step '(-1 1))
       (multiple-value-bind (y m) (shift-month year month (* step (if months
-                                                                     12 1)))
+                                                                     12
+                                                                     ;; else
+                                                                     1)))
         (when (calendar-item (list id (if (minusp step) :previous-month
+                                          ;; else
                                           :next-month))
                              (if (minusp step) "↑" "↓") :font-size 19
                              :center-text-p t
                              :width (%lui.layout:fixed (if
                                                        (context-text-mode-p
-                                                        *context*) 3 28))
+                                                        *context*) 3
+                                                           ;; else
+                                                           28))
                              :disabled-p (not (<= 1 y 9999))
                              :accessible-name (if months (if (minusp step) "Previous year" "Next year")
+                                                  ;; else
                                                   (if (minusp step) "Previous month" "Next month")))
           (setf (picker-state-year state) y (picker-state-month state) m)))))
   (values))
@@ -707,7 +737,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     ((id object-id) (state picker-state) (selected (or null date-parts)))
   "Return the selected date parts (or NIL for Clear) and an action flag."
   (calendar-arrow-focus id state)
-  (let* ((year (picker-state-year state)) (month (picker-state-month state))
+  (let* ((year (picker-state-year state))
+         (month (picker-state-month state))
          (months (picker-state-months-p state))
          (width (%lui.layout:percent (/ 1 7)))
          (palette (toolkit-defaults))
@@ -715,11 +746,16 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
          (muted (%lui.widgets:muted-ink
                  foreground (getf palette :background "#303040")))
          (ink (getf palette :accent foreground)))
+
+    ;; Header actions can change the year, month, or month-grid mode.
     (calendar-header id state year month months)
     (setf year (picker-state-year state) month (picker-state-month state))
+
+    ;; Draw either month choices or the six-week day grid.
     (if (picker-state-months-p
          state)
         (calendar-month-grid id state month)
+        ;; else
         (let ((start (calendar-start year month)))
           (row (opt :width (%lui.layout:grow))
             (loop :for name :across "SMTWTFS" :do
@@ -734,6 +770,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                   (let ((current (= m month)))
                     (when (calendar-item
                            (if current (list id :day day)
+                               ;; else
                                (list id :adjacent y m day))
                            (princ-to-string day) :width width :center-text-p t
                            :disabled-p (not (<= 1 y 9999))
@@ -742,6 +779,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                            (equalp (make-date-parts y m day) selected))
                       (return-from picker-calendar
                         (values (make-date-parts y m day) t))))))))))
+
+    ;; Footer actions clear the value or choose today without a day click.
     (row (opt :width (%lui.layout:grow))
       (when (calendar-item (list id :clear) "Clear" :foreground ink)
         (return-from picker-calendar (values nil t)))
@@ -783,13 +822,18 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
 (fn (calendar-popup (values (or null date-parts) boolean))
     ((id object-id) (state picker-state) (parts (or null date-parts)))
   "Declare the date-picker overlay and return a selected date and change flag."
-  (let ((trigger (list id :calendar)) (popup (list id :popup))
+  (let ((trigger (list id :calendar))
+        (popup (list id :popup))
         (focus (context-focus *context*))
         (terminal (context-text-mode-p *context*)))
+
+    ;; Resolve the field or icon action before considering dismissal.
     (calendar-trigger id state parts trigger terminal)
     (when (picker-state-open-p state)
       (let ((press (%lui.frame:context-pointer-press *context*))
             (bounds (previous-box popup)))
+
+        ;; Outside clicks, Escape, and focus leaving the picker close the popup.
         (cond ((and press bounds
                     (not (some (lambda (target) (find :press (events-for
                                                               target) :key
@@ -809,7 +853,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                (let ((*parent* (anchored-popup popup *parent*
                                                (opt :width (%lui.layout:fixed
                                                             (if terminal 32
+                                                                ;; else
                                                                 260))))))
+
+                 ;; A chosen date removes the overlay and returns focus to its trigger.
                  (multiple-value-bind (date action)
                      (picker-calendar id state
                                       (or
@@ -832,10 +879,16 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
                    (setf (gethash id (context-state *context*))
                          (make-picker-state))))
         (result value))
+
+    ;; An external model change replaces the editable draft.
     (unless (equal value (picker-state-value state))
       (setf (picker-state-value state) value
             (picker-state-draft state) (if date
-                                       (picker-display date) (or value ""))))
+                                       (picker-display date)
+                                           ;; else
+                                           (or value ""))))
+
+    ;; Keep incomplete typed text visible while preserving the model date.
     (column (opt :id id :width (getf options :width (%lui.layout:fit)))
       (panel (append (opt :id (list id :field) :interactive-p t
                           :keyboard-focus-p nil)
@@ -853,12 +906,16 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
                    (when parsed
                      (setf (picker-state-year state) (aref parsed 0)
                            (picker-state-month state) (aref parsed 1))))))
+
+             ;; Calendar choices replace both the model date and displayed draft.
              (multiple-value-bind (chosen action) (calendar-popup id state
                                                                   date)
                (when action
                  (setf date chosen result (picker-value chosen)
                        (picker-state-draft state) (picker-display chosen))
                  (request-frame)))))
+
+    ;; Publish a committed change and schedule any remaining popup work.
     (unless (equal result value)
       (setf (picker-state-draft state) (picker-display date)
             (picker-state-value state) result)

@@ -62,6 +62,7 @@ outside editing. Return an event or NIL; printable input remains text."
           ((and code (or (< code 32) (= code 127)))
            (when editing-p
              (let ((key (if (= code 127) :backspace
+                            ;; else
                             (%lui.widgets:readline-key
                              (string (code-char (+ code 64))) :control t))))
                (when key (make-event :kind :key :key key)))))
@@ -72,6 +73,8 @@ outside editing. Return an event or NIL; printable input remains text."
                                    text)))
              (when (plusp (length clean))
                (make-event :kind :text :value clean))))))
+
+      ;; else
       event))
 
 (fn (visible-span (values integer integer))
@@ -92,35 +95,45 @@ outside editing. Return an event or NIL; printable input remains text."
       (:down (min (1- count) (1+ index)))
       (:home 0) (:end (1- count)) (otherwise nil))))
 
+(fn (reveal-offset real)
+    ((start real) (size real) (offset real) (viewport real) (leading real))
+  "Choose the nearest nonnegative offset that exposes a span and its header."
+  (let ((near (- start leading))
+        (far (- (+ start size) viewport)))
+    (max 0 (min near (max offset far)))))
+
+(fn (reveal-page-rect (values))
+    ((viewport box) (top real) (height real) (next-y real) (leading-y real))
+  "Expose a rectangle in the outer browser page after its local scroll."
+  (let* ((origin (+ (box-y viewport) top (- next-y)))
+         (current (%lui.frame:context-page-top *context*))
+         (target (reveal-offset
+                  origin height current
+                  (%lui.frame:context-viewport-height *context*) leading-y)))
+    (unless (= target current)
+      (setf (%lui.frame:context-page-top *context*) target
+            (%lui.frame:context-requested-page-top *context*) target)
+      (request-frame)))
+  (values))
+
 (fn (reveal-rect (or null boolean))
     ((id object-id) (left real) (top real) (width real) (height real) &key
      ((leading-x real) 0) ((leading-y real) 0))
   "Scroll a content rectangle into view, reserving optional leading header space."
   (let ((viewport (previous-box id)))
-    (when viewport
-      (multiple-value-bind (x y) (scroll-position id)
-        (let ((next-x (max 0 (min (- left leading-x)
-                                  (max x (- (+ left width)
-                                            (box-width viewport))))))
-              (next-y (max 0 (min (- top leading-y)
-                                  (max y (- (+ top height)
-                                            (box-height viewport)))))))
-          (when (%lui.frame:context-page-height-p *context*)
-            (let* ((origin (+ (box-y viewport) top (- next-y)))
-                   (current (%lui.frame:context-page-top *context*))
-                   (target
-                     (max 0
-                                (min (- origin leading-y)
-                                     (max current
-                                          (- (+ origin height)
-                          (%lui.frame:context-viewport-height
-                                             *context*)))))))
-              (unless (= target current)
-                (setf (%lui.frame:context-page-top *context*) target
-                      (%lui.frame:context-requested-page-top *context*)
-                      target)
-                (request-frame))))
-          (unless (and (= x next-x) (= y next-y))
-            (scroll-to id next-x next-y)
-            (request-frame)
-            t))))))
+    (unless viewport (return-from reveal-rect nil))
+
+    (multiple-value-bind (x y) (scroll-position id)
+      (let ((next-x (reveal-offset left width x
+                                   (box-width viewport) leading-x))
+            (next-y (reveal-offset top height y
+                                   (box-height viewport) leading-y)))
+        ;; Page scrolling and the widget's own viewport are independent.
+        (when (%lui.frame:context-page-height-p *context*)
+          (reveal-page-rect viewport top height next-y leading-y))
+
+        ;; Report only changes to the widget's retained scroll offsets.
+        (unless (and (= x next-x) (= y next-y))
+          (scroll-to id next-x next-y)
+          (request-frame)
+          t)))))

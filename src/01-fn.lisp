@@ -16,7 +16,9 @@
     "Return one ordinary binding, FTYPE argument, and local type declaration."
     (let* ((optional (member mode '(&optional &key &aux)))
            (binding (if (and optional (consp parameter))
-                        parameter (list parameter)))
+                        parameter
+                        ;; else
+                        (list parameter)))
            (head (first binding))
            (typed (consp head))
            (name (if typed (first head) head))
@@ -38,7 +40,10 @@
 
   (defun parse-typed-lambda-list (parameters)
     "Return the ordinary lambda list, FTYPE arguments, and local type declarations."
-    (let ((mode :required) lambda-list argument-types declarations)
+    (let ((mode :required)
+          lambda-list
+          argument-types
+          declarations)
       (dolist (parameter parameters)
         (cond
           ;; Section markers change how following bindings are interpreted.
@@ -104,20 +109,3 @@ For &REST, TYPE describes the collected list, not each supplied argument."
               (without-slot-checks
                   (macroexpand (funcall original form environment)
                                environment)))))))
-
-#+jscl
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  ;; JSCL's MULTIPLE-VALUE-SETQ rejects extra values instead of discarding them.
-  ;; Widget calls return an optional identity after their value and change flag.
-  (setf (macro-function 'multiple-value-setq)
-    (lambda (form environment)
-      (declare (ignore environment))
-      (let* ((variables (second form))
-             (temporaries (mapcar (lambda (name)
-                                    (gensym (symbol-name name)))
-                            variables)))
-        (if variables
-          `(multiple-value-bind ,temporaries ,(third form)
-             (setq ,@(mapcan #'list variables temporaries))
-             ,(first temporaries))
-          `(values ,(third form)))))))

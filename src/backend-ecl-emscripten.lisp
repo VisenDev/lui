@@ -109,7 +109,8 @@
 
 (fn (dispatch boolean) ((id integer) (arguments list))
   "Invoke a rooted Lisp callback and report failures across the JavaScript boundary."
-  (let* ((entry (gethash id *roots*)) (*owner* (cdr entry)))
+  (let* ((entry (gethash id *roots*))
+         (*owner* (cdr entry)))
     (handler-case
         (progn (when entry
                  (apply (car entry) arguments)) t)

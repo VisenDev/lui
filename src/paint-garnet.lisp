@@ -19,6 +19,8 @@
                    (%typed-vector contour (%rectangle-path box)
                                  (reverse
                                   (%rectangle-path inner)))
+
+                   ;; else
                    (make-array 1 :element-type 'contour :initial-element
                                (%rectangle-path box)))
                (widget-color widget :outline) 1))))
@@ -26,6 +28,8 @@
 (fn (garnet-stipple t) ((renderer renderer) (widget widget) (box box)
                         &optional ((border (or null real)) nil))
   "Paint a checkerboard fill or border for Garnet emphasis."
+
+  ;; Use the backend's pattern primitive when one is available.
   (when (%renderer-stipple renderer)
     (return-from garnet-stipple
       (funcall (%renderer-stipple renderer) box border
@@ -36,9 +40,12 @@
                     (box-height box) border))
          (cache (%renderer-patterns renderer))
          (paths (gethash key cache)))
+
+    ;; Otherwise cache the clipped checkerboard contours for this geometry.
     (unless paths
       (when (>= (hash-table-count cache) 256) (clrhash cache))
-      (let ((left (ceiling (box-x box))) (top (ceiling (box-y box)))
+      (let ((left (ceiling (box-x box)))
+            (top (ceiling (box-y box)))
             (right (floor (box-right box)))
             (bottom (floor (box-bottom box))))
         (let ((squares
@@ -61,6 +68,8 @@
           (setf paths (make-array (length squares) :element-type 'contour
                                   :initial-contents squares)
                 (gethash key cache) paths))))
+
+    ;; Submit the whole pattern as one contour batch.
     (when paths
       (funcall (renderer-polygons renderer) paths
         (widget-color widget
@@ -90,13 +99,16 @@
                            :height (max 0 (- (box-height box)
                                              +garnet-shadow-offset+))))
          (face (make-box :x (+ (box-x box) (if pressed +garnet-shadow-offset+
+                                               ;; else
                                                0))
                          :y (+ (box-y box) (if pressed +garnet-shadow-offset+
+                                               ;; else
                                                0))
                          :width (box-width shadow)
                          :height (box-height shadow))))
     (garnet-fill renderer shadow (widget-color widget :shadow))
     (garnet-fill renderer face (if (plusp band) (widget-color widget :light)
+                                   ;; else
                                    background))
     (when (plusp band)
       (garnet-stipple renderer widget (inset-box face 1) band)
@@ -118,7 +130,8 @@
                    :light) pressed)))
     (when hover (garnet-outline renderer widget (inset-box face 4) 2))
     (when (widget-value widget)
-      (let ((x (+ (box-x face) 5)) (y (+ (box-y face) 5)))
+      (let ((x (+ (box-x face) 5))
+            (y (+ (box-y face) 5)))
         ;; Separate strokes avoid crossing edges within one tessellation.
         (dolist (stroke
                   (list (list (cons x y) (cons (+ x 2) y)
@@ -178,8 +191,12 @@
          (hover (and (not disabled) (hovered-p (element-id node))))
          (pressed (and hover (equal (element-id node)
                                     (context-active *context*))))
-         (ink (if disabled (widget-color widget :disabled) (widget-foreground
+         (ink (if disabled (widget-color widget :disabled)
+                  ;; else
+                  (widget-foreground
                                                             widget))))
+
+    ;; Text and panels provide their surfaces without action-control feedback.
     (case kind
       (:label
        (%paint-widget-text renderer node ink))
@@ -188,8 +205,11 @@
                 (= (box-width box) (context-width *context*))
                 (= (box-height box) (context-height *context*)))
            (garnet-fill renderer box (widget-background widget))
+           ;; else
            (garnet-face renderer widget box (widget-background widget) nil
                         0)))
+
+      ;; Buttons and tabs combine a face, selection fill, hover outline, and text.
       ((:button :tab)
        (let* ((face (garnet-face renderer widget box
                                  (widget-background widget) pressed))
@@ -201,7 +221,12 @@
          (%paint-widget-text renderer node
            (if selected
                                               (widget-color widget
-                                                :on-accent) ink))))
+                                                :on-accent)
+
+               ;; else
+               ink))))
+
+      ;; Value controls delegate their indicators to kind-specific painters.
       (:checkbox
        (paint-garnet-checkbox renderer node widget box hover pressed ink))
       (:radio
@@ -216,7 +241,8 @@
 
 (fn (paint-garnet-scrollbar t) ((renderer renderer) (node element))
   "Paint the Garnet scrollbar with its beveled thumb."
-  (let* ((widget (element-content node)) (thumb (scrollbar-thumb node))
+  (let* ((widget (element-content node))
+         (thumb (scrollbar-thumb node))
          (inset (min 2 (/ (min (box-width thumb) (box-height thumb)) 4))))
     (garnet-slider renderer widget (element-box node) (inset-box thumb
                                                                  (min 1

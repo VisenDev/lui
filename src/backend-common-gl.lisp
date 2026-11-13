@@ -187,7 +187,8 @@ void main() {
                                         contours)))
                   (when contour (aref contour 0)))))
     (when origin
-      (let* ((x (car origin)) (y (cdr origin))
+      (let* ((x (car origin))
+             (y (cdr origin))
              (local (map 'contours (lambda (contour)
                                      (map 'contour (lambda (point)
                                                      (cons (- (car point) x)
@@ -208,7 +209,8 @@ void main() {
   "Paint font glyph outlines at the requested baseline and color."
   (let* ((loader (%font-loader font))
          (scale (float (/ (font-size font) (zpb-ttf:units/em loader)) 1.0f0))
-         (advance 0) (previous nil))
+         (advance 0)
+         (previous nil))
     (gl-color color 1)
     (call-gl "glPushMatrix" :void)
     (unwind-protect
@@ -260,7 +262,8 @@ void main() {
     ((gpu gpu) (box box) (radius real) (frost real))
   "Sample and blur the existing framebuffer behind a rounded translucent surface."
   (call-gl "glBindTexture" :uint #x0de1 :uint (gpu-texture gpu) :void)
-  (let* ((w (gpu-width gpu)) (h (gpu-height gpu))
+  (let* ((w (gpu-width gpu))
+         (h (gpu-height gpu))
          (area (pixel-box gpu box))
          (scale (/ w (gpu-logical-width gpu)))
          ;; Refraction, the outer blur taps, and bilinear interpolation.
@@ -274,13 +277,19 @@ void main() {
          (y (- h bottom)))
     (unless (and (< x right) (< top bottom))
       (return-from gl-backdrop-effect (values)))
+
+    ;; Resize the sampling texture only when the framebuffer size changed.
     (unless (and (= w (gpu-texture-width gpu)) (= h (gpu-texture-height gpu)))
       (call-gl "glTexImage2D" :uint #x0de1 :int 0 :int #x1908
                :int w :int h :int 0 :uint #x1908 :uint #x1401
                :pointer (cffi:null-pointer) :void)
       (setf (gpu-texture-width gpu) w (gpu-texture-height gpu) h))
+
+    ;; Copy only the visible sampling rectangle, including the blur margin.
     (call-gl "glCopyTexSubImage2D" :uint #x0de1 :int 0 :int x :int y
              :int x :int y :int (- right x) :int (- bottom top) :void))
+
+  ;; Configure the blur shader in physical pixels, then paint its contour.
   (call-gl "glUseProgram" :uint (gpu-program gpu) :void)
   (unwind-protect
        (progn
@@ -406,6 +415,8 @@ void main() {
                          :pointer (cffi:mem-ref config :pointer)
                          :pointer native-window
                          :pointer (cffi:null-pointer) :pointer)
+
+               ;; else
                (call-egl "eglCreatePbufferSurface"
                          :pointer display
                          :pointer (cffi:mem-ref config :pointer)
@@ -420,6 +431,7 @@ void main() {
   (let* ((display
           (if native-display
               (call-egl "eglGetDisplay" :pointer native-display :pointer)
+              ;; else
               (call-egl "eglGetPlatformDisplay" :uint #x31dd
                         :pointer (cffi:null-pointer)
                         :pointer (cffi:null-pointer) :pointer)))

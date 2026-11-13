@@ -234,7 +234,9 @@
          (name (case code
                  (37 "ArrowLeft") (39 "ArrowRight") (8 "Backspace")
                  (otherwise (if (<= 32 code 126)
-                                (string (code-char code)) ""))))
+                                (string (code-char code))
+                                ;; else
+                                ""))))
          (command (when (and text-p (not (and control alt)))
                     (%lui.widgets:readline-key name :control control
                                               :alt alt :shift shift))))
@@ -306,7 +308,9 @@
                            (case message ((#x201 #x204) :press)
                                  ((#x202 #x205) :release) (otherwise :move))
                            :button (if (member message '(#x204 #x205))
-                                       :secondary :primary)
+                                       :secondary
+                                       ;; else
+                                       :primary)
                            :buttons (logand wparam 3) :x x :y y))
   (values))
 
@@ -368,7 +372,10 @@
      (lparam integer))
   "Dispatch a native window message, updating lifecycle, dimensions, and input state."
   (let ((handle (win-window-handle window))
-        (x (signed-word lparam)) (y (signed-word (ash lparam -16))))
+        (x (signed-word lparam))
+        (y (signed-word (ash lparam -16))))
+
+    ;; Lifecycle and paint messages update state without building a frame here.
     (case message
       (#x10 (setf (win-window-quit window) t))
       (#x05 (setf (win-window-redraw-p window) t))
@@ -380,6 +387,8 @@
               (update-cursor window) (return-from window-message 1))
              (t (return-from window-message
                   (default-procedure handle message wparam lparam)))))
+
+      ;; Focus loss and pointer messages maintain capture and hover state.
       ((#x8 #x1f #x215)
        (cancel-window-capture window message))
       (#x2a3
@@ -392,6 +401,8 @@
        (pointer-message window handle message wparam x y))
       (#x20a
        (wheel-message window handle wparam x y))
+
+      ;; Translate key messages before their associated character messages.
       ((#x100 #x104)
        (return-from window-message
          (keyboard-message window handle message wparam lparam)))
@@ -406,6 +417,7 @@
       (#x102
        (if (and (= wparam 32) (plusp (win-window-suppressed-spaces window)))
            (decf (win-window-suppressed-spaces window))
+           ;; else
            (character-input window wparam)))
       (otherwise
        (return-from window-message
@@ -421,6 +433,8 @@
             (setf (win-window-error window) condition
                   (win-window-quit window) t)
             0))
+
+        ;; else
         (default-procedure handle message wparam lparam))))
 
 (fn (free-buffer cffi:foreign-pointer) ((window win-window))
@@ -470,7 +484,8 @@
   "Fill polygon contours on WINDOW's graphics surface."
   (cffi:with-foreign-objects ((path-out :pointer) (brush-out :pointer))
     (checked (create-path 1 path-out))
-    (let ((path (cffi:mem-ref path-out :pointer)) (brush nil))
+    (let ((path (cffi:mem-ref path-out :pointer))
+          (brush nil))
       (unwind-protect
            (progn
              (loop :for points :across contours :do
@@ -514,8 +529,12 @@
     ((window win-window) (x integer) (y integer)
      (width integer) (height integer))
   "Capture a clipped portion of WINDOW's backing surface for a glass effect."
-  (let ((image nil) (target nil) (source-dc nil) (target-dc nil)
-        (complete nil) (source (win-window-graphics window)))
+  (let ((image nil)
+        (target nil)
+        (source-dc nil)
+        (target-dc nil)
+        (complete nil)
+        (source (win-window-graphics window)))
     (cffi:with-foreign-object (out :pointer)
       (unwind-protect
            (progn
@@ -556,59 +575,74 @@
       (checked (add-polygon path data (length points)))))
   (values))
 
+(fn (backdrop-sample-bounds (values integer integer integer integer))
+    ((window win-window) (box box) (blur real))
+  "Return a blur-expanded sampling rectangle clipped to the native surface."
+  (let ((left (max 0 (floor (- (box-x box) (* 2 blur)))))
+        (top (max 0 (floor (- (box-y box) (* 2 blur)))))
+        (right (min (win-window-width window)
+                    (ceiling (+ (box-x box) (box-width box) (* 2 blur)))))
+        (bottom (min (win-window-height window)
+                     (ceiling (+ (box-y box) (box-height box) (* 2 blur))))))
+    (values left top (- right left) (- bottom top))))
+
 (fn (blur-backdrop (values))
     ((window win-window) (box box) (radius real) (blur real))
   "Approximate backdrop blur with native filtered downsampling and upsampling.
 GDI+ owns all image storage, filtering, clipping, and rasterization. This is a
 compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
   (when (<= blur 0) (return-from blur-backdrop (values)))
-  (let* ((graphics (win-window-graphics window))
-         (left (max 0 (floor (- (box-x box) (* 2 blur)))))
-         (top (max 0 (floor (- (box-y box) (* 2 blur)))))
-         (right (min (win-window-width window)
-                     (ceiling (+ (box-x box) (box-width box) (* 2 blur)))))
-         (bottom (min (win-window-height window)
-                      (ceiling (+ (box-y box) (box-height box) (* 2 blur)))))
-         (width (- right left)) (height (- bottom top))
-         (factor (max 1 (ceiling blur 2)))
-         (small-width (max 1 (ceiling width factor)))
-         (small-height (max 1 (ceiling height factor)))
-         (snapshot nil) (small nil) (small-graphics nil) (path nil)
-         (saved nil))
-    (unless (and (plusp width) (plusp height))
-      (return-from blur-backdrop (values)))
-    (cffi:with-foreign-objects ((out :pointer) (state :uint32))
-      (unwind-protect
-           (progn
-             (checked (flush-graphics graphics 1))
-             (setf snapshot (capture-backdrop window left top width height))
-             ;; NULL asks GDI+ to allocate storage; Lisp never supplies pixels.
-             (checked
-              (create-image small-width small-height 0 #x26200a
-                            (cffi:null-pointer) out))
-             (setf small (cffi:mem-ref out :pointer))
-             (checked (image-graphics small out))
-             (setf small-graphics (cffi:mem-ref out :pointer))
-             (checked (interpolation-mode small-graphics 7))
-             (blit-image small-graphics snapshot 0 0 small-width small-height
-                         0 0 width height)
-             (checked (delete-graphics small-graphics))
-             (setf small-graphics nil)
-             (checked (create-path 1 out))
-             (setf path (cffi:mem-ref out :pointer))
-             (add-rounded-clip-path path box radius)
-             (checked (save-graphics graphics state))
-             (setf saved (cffi:mem-ref state :uint32))
-             ;; Intersect with the current widget/ancestor clip.
-             (checked (clip-path graphics path 1))
-             (checked (interpolation-mode graphics 7))
-             (blit-image graphics small left top width height
-                         0 0 small-width small-height))
-        (when saved (restore-graphics graphics saved))
-        (when path (delete-path path))
-        (when small-graphics (delete-graphics small-graphics))
-        (when small (dispose-image small))
-        (when snapshot (dispose-image snapshot)))))
+  (multiple-value-bind (left top width height)
+      (backdrop-sample-bounds window box blur)
+    (let* ((graphics (win-window-graphics window))
+           (factor (max 1 (ceiling blur 2)))
+           (small-width (max 1 (ceiling width factor)))
+           (small-height (max 1 (ceiling height factor)))
+           (snapshot nil)
+           (small nil)
+           (small-graphics nil)
+           (path nil)
+           (saved nil))
+      (unless (and (plusp width) (plusp height))
+        (return-from blur-backdrop (values)))
+      (cffi:with-foreign-objects ((out :pointer) (state :uint32))
+        (unwind-protect
+             (progn
+
+               ;; Capture the already painted surface before filtered downsampling.
+               (checked (flush-graphics graphics 1))
+               (setf snapshot (capture-backdrop window left top width height))
+               ;; NULL asks GDI+ to allocate storage; Lisp never supplies pixels.
+               (checked
+                (create-image small-width small-height 0 #x26200a
+                              (cffi:null-pointer) out))
+               (setf small (cffi:mem-ref out :pointer))
+               (checked (image-graphics small out))
+               (setf small-graphics (cffi:mem-ref out :pointer))
+               (checked (interpolation-mode small-graphics 7))
+               (blit-image small-graphics snapshot
+                           0 0 small-width small-height 0 0 width height)
+               (checked (delete-graphics small-graphics))
+               (setf small-graphics nil)
+
+               ;; Upsample only inside the rounded widget and inherited ancestor clip.
+               (checked (create-path 1 out))
+               (setf path (cffi:mem-ref out :pointer))
+               (add-rounded-clip-path path box radius)
+               (checked (save-graphics graphics state))
+               (setf saved (cffi:mem-ref state :uint32))
+               ;; Intersect with the current widget/ancestor clip.
+               (checked (clip-path graphics path 1))
+               (checked (interpolation-mode graphics 7))
+               (blit-image graphics small left top width height
+                           0 0 small-width small-height))
+
+          ;; Restore drawing state before releasing temporary GDI+ resources.
+          (when saved (restore-graphics graphics saved))
+          (when path (delete-path path))
+          (when small-graphics (delete-graphics small-graphics))
+          (when small (dispose-image small))
+          (when snapshot (dispose-image snapshot))))))
   (values))
 
 (fn (pump-messages (values)) ((window win-window))
@@ -737,13 +771,18 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
 (fn (run-win32 context)
     ((draw function) &key (title "LUI") width height (interactive t))
   "Open a Win32 window and run the shared DRAW callback; INTERACTIVE NIL renders a single frame."
-  (let ((window (make-win-window)) (font nil) (token nil)
-        (registered nil) (*unit* 8)
+  (let ((window (make-win-window))
+        (font nil)
+        (token nil)
+        (registered nil)
+        (*unit* 8)
         (instance (module-handle (cffi:null-pointer)))
         (class-name (format nil "LUI-~D" (incf *class-counter*))))
     (cffi:with-foreign-string (name class-name :encoding :utf-16le)
       (unwind-protect
            (progn
+
+             ;; Register a private window class and allocate the requested client area.
              (setf token (start-gdi-plus))
              (setf registered (register-window-class class-name))
              (cffi:with-foreign-string (caption title :encoding :utf-16le)
@@ -768,11 +807,15 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
                                        (cffi:null-pointer)
                                        (cffi:null-pointer) instance
                                        (cffi:null-pointer))))))
+
+             ;; Publish the handle for callbacks, then enter the normal frame loop.
              (setf (gethash (cffi:pointer-address (win-window-handle window))
                             *windows*) window
                             font (open-font))
              (show-window (win-window-handle window) 5)
              (run-win32-frames window font draw interactive))
+
+        ;; Unwind in ownership order, even when window or font setup failed.
         (when font (close-font font))
         (free-buffer window)
         (unless (cffi:null-pointer-p (win-window-handle window))

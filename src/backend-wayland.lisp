@@ -93,6 +93,7 @@ Return bytes written, or -1 when the connection is not writable or has failed."
             (loop :for type :in types :for j :from 0
                   :do (setf (cffi:mem-aref type-array :pointer j)
                             (if type (interface type)
+                                ;; else
                                 (cffi:null-pointer))))
             (setf
              (cffi:foreign-slot-value message '(:struct wl-message) 'name)
@@ -148,9 +149,12 @@ proxy version; DESTROY-P tells libwayland to destroy the sending proxy."
                      (let ((text (cffi:foreign-string-alloc value)))
                        (push text strings)
                        (setf (cffi:mem-ref pointer :pointer) text))
+
+                     ;; else
                      (setf (cffi:mem-ref pointer type) value)))
            (marshal proxy opcode
                     (if result-interface (interface result-interface)
+                        ;; else
                         (cffi:null-pointer))
                     (or version (proxy-version proxy))
                     (if destroy-p 1 0) arguments))
@@ -172,18 +176,23 @@ proxy version; DESTROY-P tells libwayland to destroy the sending proxy."
 (fn (pump-display (values)) (display &optional (timeout 16))
   "Flush requests, wait briefly for readable input, and dispatch pending callbacks.
 Signal an error when the display disconnects or its read/dispatch operation fails."
+
+  ;; Drain queued callbacks until Wayland allows a prepared read.
   (loop :while
         (not (zerop
               (cffi:foreign-funcall "wl_display_prepare_read"
                                     :pointer display :int)))
         :do
         (setf timeout 0)
+
         (when (minusp (cffi:foreign-funcall "wl_display_dispatch_pending"
                                             :pointer display :int))
           (error '%lui.conditions:backend-error
                  :backend :wayland
                  :operation :pump-display
                  :format-control "Wayland display disconnected.")))
+
+  ;; Flush requests before polling; an unread reservation must be cancelled.
   (flush-display display)
   (cffi:with-foreign-object (poll '(:struct pollfd))
     (cffi:with-foreign-slots ((fd events revents) poll (:struct pollfd))
@@ -200,8 +209,11 @@ Signal an error when the display disconnects or its read/dispatch operation fail
                      :backend :wayland
                      :operation :pump-display
                      :format-control "Wayland read failed."))
+
+            ;; else
             (cffi:foreign-funcall "wl_display_cancel_read"
                                   :pointer display :void))))
+    ;; Dispatch newly read callbacks and report connection failures.
     (when (minusp (cffi:foreign-funcall "wl_display_dispatch_pending"
                                         :pointer display :int))
       (error '%lui.conditions:backend-error
@@ -412,7 +424,9 @@ Free all interface allocations on return or error; proxies must not outlive it."
                         (member mime '("text/plain;charset=utf-8"
                                        "text/plain")
                                 :test #'string=))
-                   (or (wl-window-clipboard-text *window*) "") "") fd)
+                   (or (wl-window-clipboard-text *window*) "")
+                   ;; else
+                   "") fd)
             (error () nil)))
 (callback clipboard-cancelled ()
           (when (and (wl-window-clipboard-source *window*)
@@ -553,6 +567,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
     (let ((kind (if (boundp '*context*)
                     (%lui.widgets:cursor-at
                      *context* (wl-window-x *window*) (wl-window-y *window*))
+
+                    ;; else
                     :default)))
       (unless (eq kind (wl-window-cursor-kind *window*))
         (when (cond ((wl-window-cursor-device *window*)
@@ -620,6 +636,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
               (setf (wl-window-buttons *window*)
                     (if (zerop state) (logandc2 (wl-window-buttons *window*)
                                                 bit)
+
+                        ;; else
                         (logior (wl-window-buttons *window*) bit))))
             (queue-input (if (zerop state) :release :press)
                          :button (if (= button #x111) :secondary :primary)
@@ -729,6 +747,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
 (fn (emit-key-input (values)) ((code integer))
   "Translate CODE through the active XKB state and enqueue keyboard or text input."
   (when (wl-window-key-state *window*)
+
+    ;; Predict focus from queued pointer input before interpreting XKB keys.
     (let* ((context
             (when (and (boundp '*context*) *context*)
               (pending-input-context
@@ -746,6 +766,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
                           (#xff50 . :home) (#xff57 . :end)
                           (#xff08 . :backspace) (#xffff . :delete)
                           (#xff1b . :escape))))))
+
+      ;; Shared editor commands and activation take precedence over text.
       (cond ((and (member symbol '(#x63 #x43))
                   (modifier-active-p state "Control")
                   (not (modifier-active-p state "Mod1")))
@@ -762,6 +784,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
             ((= symbol #xff0d) (queue-input :activate))
             (command (queue-input :key :key command))
             (t
+
+             ;; Only the remaining keys use XKB's UTF-8 text conversion.
              (cffi:with-foreign-object (text :char 64)
                (let ((length
                       (cffi:foreign-funcall "xkb_state_key_get_utf8"
@@ -829,6 +853,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
     (cancel-pointer window)
     (if (>= (wl-window-seat-version window) 3)
         (request (wl-window-keyboard window) 0 nil nil nil t)
+        ;; else
         (destroy-proxy (wl-window-keyboard window)))
     (setf (wl-window-keyboard window) nil))
   (values))
@@ -845,6 +870,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
             (when (wl-window-pointer *window*)
               (if (>= (wl-window-seat-version *window*) 3)
                   (request (wl-window-pointer *window*) 1 nil nil nil t)
+                  ;; else
                   (destroy-proxy (wl-window-pointer *window*)))
               (setf (wl-window-pointer *window*) nil))
             (setf (wl-window-cursor-serial *window*) nil
@@ -979,6 +1005,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
   "Return WINDOW's effective fractional or integer surface scale."
   (if (wl-window-fractional-object window)
       (/ (wl-window-scale120 window) 120)
+      ;; else
       (wl-window-buffer-scale window)))
 
 (fn (framebuffer-size (values integer integer)) ((window wl-window))
@@ -993,7 +1020,9 @@ Free all interface allocations on return or error; proxies must not outlive it."
         (width (wl-window-width window))
         (height (wl-window-height window))
         (buffer-scale (if (wl-window-viewport window)
-                          1 (wl-window-buffer-scale window))))
+                          1
+                          ;; else
+                          (wl-window-buffer-scale window))))
     (when (and (>= (wl-window-compositor-version window) 3)
                (not (eql buffer-scale
                          (wl-window-applied-buffer-scale window))))

@@ -53,7 +53,9 @@
                     (if (eq (font-weight font) :bold) "bold" "normal")
                     (jscl/ffi:clstring (#j:String (font-size font)))
                     (if (eq (font-family font) :monospace)
-                        "monospace" "sans-serif"))))
+                        "monospace"
+                        ;; else
+                        "sans-serif"))))
     (font-css-value font))
 
   (fn (measure-text t) ((font font) (text string))
@@ -75,7 +77,9 @@
     (let ((ascent (jscl/ffi:oget (measure-text font "Mg")
                                  "fontBoundingBoxAscent")))
       (if (and (numberp ascent) (plusp ascent))
-          ascent (* (font-size font) 0.8f0))))
+          ascent
+          ;; else
+          (* (font-size font) 0.8f0))))
 
   (fn (line-height real) ((font font))
     (let* ((metrics (measure-text font "Mg"))
@@ -84,6 +88,7 @@
       (if (and (numberp ascent) (numberp descent)
                (plusp (+ ascent descent)))
           (max (* (font-size font) 1.2f0) (+ ascent descent))
+          ;; else
           (* (font-size font) 1.2f0))))
 
   (fn (glyph-polygons nil) ((font font) (char character))
@@ -157,6 +162,8 @@
                 :with dirs := (if extra
                                   (cons (uiop:ensure-directory-pathname extra)
                                         *font-directories*)
+
+                                  ;; else
                                   *font-directories*)
                 :for name :in (cdr (assoc key *font-names* :test #'equal))
                 :thereis (loop :for dir :in dirs
@@ -215,6 +222,8 @@
                          (if previous
                              (zpb-ttf:kerning-offset
                               previous char (font-loader font))
+
+                             ;; else
                              0)))
             (setf previous char))
       (* (scale-font font) width)))
@@ -228,50 +237,35 @@
 
   (fn (glyph-polygons contours) ((font font) (char character))
     "Flatten TrueType curves into geometric contours, never pixels. Cache in font units."
-    (or (gethash char (font-cache font))
-        (setf (gethash char (font-cache font))
-              (let ((polygons nil))
-                (zpb-ttf:do-contours
-                    (contour (zpb-ttf:find-glyph char (font-loader font)))
-                  (let ((points nil))
-                    (zpb-ttf:do-contour-segments (p0 p1 p2) contour
-                                                 (if p1
-                                                     (loop :for i :from 1 :to
-                                                           12
-                                                           :for u :=
-                                                           (/ i 12.0f0)
-                                                           :for v := (- 1 u)
-                                                           :do
-                                                           (push
-                                                            (cons
-                                                             (+
-                                                              (* v v
-                                                                 (zpb-ttf:x
-                                                                  p0))
-                                                              (* 2 u v
-                                                                 (zpb-ttf:x
-                                                                  p1))
-                                                              (* u u
-                                                                 (zpb-ttf:x
-                                                                  p2)))
-                                                             (+
-                                                              (* v v
-                                                                 (zpb-ttf:y
-                                                                  p0))
-                                                              (* 2 u v
-                                                                 (zpb-ttf:y
-                                                                  p1))
-                                                              (* u u
-                                                                 (zpb-ttf:y
-                                                                  p2))))
-                                                            points))
-                                                     (push
-                                                      (cons (zpb-ttf:x p2)
-                                                            (zpb-ttf:y p2))
-                                                      points)))
-                    (when points (push (coerce (nreverse points) 'contour)
-                                       polygons))))
-                (coerce (nreverse polygons) 'contours))))))
+    (let ((cached (gethash char (font-cache font)))
+          (polygons nil))
+      (when cached (return-from glyph-polygons cached))
+
+      (zpb-ttf:do-contours
+          (contour (zpb-ttf:find-glyph char (font-loader font)))
+        (let ((points nil))
+          (zpb-ttf:do-contour-segments (p0 p1 p2) contour
+            (if p1
+                ;; Sample quadratic curves at the same twelve subdivisions.
+                (loop :for i :from 1 :to 12
+                      :for u = (/ i 12.0f0)
+                      :for v = (- 1 u)
+                      :for x = (+ (* v v (zpb-ttf:x p0))
+                                  (* 2 u v (zpb-ttf:x p1))
+                                  (* u u (zpb-ttf:x p2)))
+                      :for y = (+ (* v v (zpb-ttf:y p0))
+                                  (* 2 u v (zpb-ttf:y p1))
+                                  (* u u (zpb-ttf:y p2)))
+                      :do (push (cons x y) points))
+
+                ;; Straight segments contribute only their endpoint.
+                (push (cons (zpb-ttf:x p2) (zpb-ttf:y p2)) points)))
+          (when points
+            (push (coerce (nreverse points) 'contour) polygons))))
+
+      ;; Contour and point order must match the original font outline.
+      (setf (gethash char (font-cache font))
+            (coerce (nreverse polygons) 'contours)))))
 
 (fn (font-face font) ((font font) (family symbol) (weight symbol))
   "Resolve a sans-serif or monospace face at normal or bold weight; reuse it until the owner is closed."
@@ -279,6 +273,7 @@
         (index (+ (ecase family (:sans-serif 0) (:monospace 2))
                   (ecase weight (:normal 0) (:bold 1)))))
     (if (zerop index) owner
+        ;; else
         (or (aref (font-faces owner) index)
             (let ((face
                    #+(or jscl lui-ecl-web)
@@ -327,6 +322,7 @@
   (let ((result (gensym "VECTOR")))
     (if (null elements)
         `(make-array 0 :element-type ',type)
+        ;; else
         `(let ((,result (make-array ,(length elements) :element-type ',type
                                     :initial-element ,(first elements))))
            ,@(loop :for element :in (rest elements) :for i :from 1
@@ -406,6 +402,8 @@
   "Convert contours into nonzero-winding trapezoids for native triangle APIs."
   (let ((edges nil)
         (ys nil))
+
+    ;; Collect nonhorizontal edges and the horizontal boundaries between slabs.
     (loop :for points :across contours :do
           (loop :for i :below (length points)
                 :for a := (aref points i)
@@ -419,6 +417,8 @@
                   (* (- y (cdar edge))
                      (/ (- (cadr edge) (caar edge))
                         (- (cddr edge) (cdar edge)))))))
+
+      ;; Sort active crossings within each slab before applying the winding rule.
       (loop :for (top bottom) :on ys
             :for middle := (when bottom (/ (+ top bottom) 2))
             :while bottom
@@ -433,6 +433,8 @@
                         #'< :key (lambda (edge) (at-y edge middle))))
                       (winding 0)
                       (left nil))
+
+                  ;; A return to zero winding closes one filled trapezoid.
                   (dolist (edge active)
                     (when (zerop winding) (setf left edge))
                     (incf winding (if (< (cdar edge) (cddr edge)) 1 -1))
@@ -479,12 +481,14 @@
     ((renderer renderer) (widget
                           widget) (width (or null real)))
   "Measure current geometry, reusing matching prior-frame text measurements."
-  (let* ((g (widget-geometry widget)) (font (widget-font renderer widget))
+  (let* ((g (widget-geometry widget))
+         (font (widget-font renderer widget))
          (horizontal (+ (geometry-left g) (geometry-right g)))
          (vertical (+ (geometry-top g) (geometry-bottom g)))
          (text (when (geometry-text-p g)
                  (if (geometry-value-p g)
                      (widget-display-value widget)
+                     ;; else
                      (widget-text widget))))
          (size (%lui.frame:memoized
                 (list :measure font (%font-loader font) (font-size font)
@@ -497,7 +501,10 @@
                                                 (max 0
                                                      (-
                                                       width horizontal))))
-                                   #())) (widest 0))
+
+                                   ;; else
+                                   #()))
+                        (widest 0))
                     (dotimes (i (length lines))
                       (setf widest (max widest (text-width font (aref lines
                                                                       i)))))
@@ -513,9 +520,13 @@
   (let ((g (widget-geometry widget)))
     (make-box :x (+ (box-x box) (geometry-left g)
                    (if pressed
-                     (geometry-offset-x g) 0))
+                     (geometry-offset-x g)
+                       ;; else
+                       0))
               :y (+ (box-y box) (geometry-top g) (if pressed
-                                                     (geometry-offset-y g) 0))
+                                                     (geometry-offset-y g)
+                                                     ;; else
+                                                     0))
               :width (max 0 (- (box-width box) (geometry-left g)
                                (geometry-right g)))
               :height (max 0 (- (box-height box) (geometry-top g)
@@ -571,6 +582,7 @@
   "Fill BOX with COLOR at ALPHA opacity using rounded corners of RADIUS."
   (if (renderer-surface renderer)
       (funcall (renderer-surface renderer) box radius color alpha)
+      ;; else
       (funcall (renderer-polygons renderer)
                (make-array 1 :element-type 'contour :initial-element
                            (rounded-polygon box radius)) color alpha)))
@@ -581,6 +593,8 @@
   (if (renderer-surface renderer)
       (funcall (renderer-surface renderer)
                box radius color alpha thickness)
+
+      ;; else
       (funcall (renderer-polygons renderer)
                (%typed-vector contour (rounded-polygon box radius)
                              (reverse
@@ -647,7 +661,8 @@
     ((context context) &optional ((keys-p boolean) nil))
   "Collect visible selectable text nodes in layout order."
   (let ((nodes (make-array 0 :element-type 'element :adjustable t
-                           :fill-pointer 0)) (keys (when keys-p
+                           :fill-pointer 0))
+        (keys (when keys-p
                            (make-hash-table :test 'eq))))
     (labels ((visit (node anchor path)
                (when (element-id node)
@@ -684,13 +699,17 @@
   "Return the text represented by a selectable node."
   (let ((widget (element-content node)))
     (if (eq (widget-kind widget) :text-field)
-        (widget-display-value widget) (widget-text widget))))
+        (widget-display-value widget)
+        ;; else
+        (widget-text widget))))
 
 (fn (%selection-area box) ((renderer renderer) (node element))
   "Compute the text selection bounds using the widget's resolved geometry."
-  (let* ((widget (element-content node)) (area (text-box widget (element-box
+  (let* ((widget (element-content node))
+         (area (text-box widget (element-box
                                                                  node)))
-         (font (widget-font renderer widget)) (g (widget-geometry widget)))
+         (font (widget-font renderer widget))
+         (g (widget-geometry widget)))
     (when (geometry-center-y g)
       (incf (box-y area) (max 0 (/ (- (box-height area)
                                       (* (length
@@ -706,48 +725,58 @@
   (+ (box-x area) (if (geometry-center-x (widget-geometry (element-content
                                                            node)))
                       (max 0 (/ (- (box-width area) (text-width font line))
-                                2)) 0)))
+                                2))
 
-(fn (selection-index integer) ((renderer renderer) (node element) (x real)
-                               (y
-                                real))
+                      ;; else
+                      0)))
+
+(fn (line-selection-index integer) ((font font) (line string) (at real))
+  "Find the caret boundary nearest AT within a rendered line."
+  (let ((left 0)
+        #-(or jscl lui-ecl-web) (previous nil)
+        #-(or jscl lui-ecl-web) (loader (%font-loader font))
+        #-(or jscl lui-ecl-web)
+        (scale (/ (font-size font) (zpb-ttf:units/em (%font-loader font)))))
+    (dotimes (i (length line) (length line))
+      ;; Browsers measure prefixes; native fonts advance with pair kerning.
+      (let ((right #+(or jscl lui-ecl-web)
+                   (text-width font (subseq line 0 (1+ i)))
+                   #-(or jscl lui-ecl-web)
+                   (let* ((char (char line i))
+                          (glyph (zpb-ttf:find-glyph char loader))
+                          (advance (zpb-ttf:advance-width glyph))
+                          (kerning (if previous
+                                       (zpb-ttf:kerning-offset
+                                        previous char loader)
+
+                                       ;; else
+                                       0)))
+                     (+ left (* scale (+ advance kerning))))))
+        ;; Each glyph's midpoint separates the two adjacent caret positions.
+        (when (< at (/ (+ left right) 2))
+          (return-from line-selection-index i))
+        (setf left right)
+        #-(or jscl lui-ecl-web) (setf previous (char line i))))))
+
+(fn (selection-index integer)
+    ((renderer renderer) (node element) (x real) (y real))
   "Map a pointer position to a character index using rendered glyph widths."
-  (let ((area (%selection-area renderer node)))
-    (let* ((font (widget-font renderer (element-content node)))
-           (text (selection-text node)) (start 0)
-           (top (box-y area))
-           (lines (wrap-text font text
-                             (box-width area))))
-      (loop :for line :across lines :do
-            (when (< y (+ top (line-height font)))
-              (let ((at (- x (selection-left font node area line))) (left 0)
-                    #-(or jscl lui-ecl-web) (previous nil)
-                    #-(or jscl lui-ecl-web)
-                    (scale (/ (font-size font)
-                              (zpb-ttf:units/em (%font-loader font)))))
-                (dotimes (i (length line))
-                  (let (#-(or jscl lui-ecl-web) (char (char line i)))
-                    (let ((right #+(or jscl lui-ecl-web)
-                                 (text-width font (subseq line 0 (1+ i)))
-                                 #-(or jscl lui-ecl-web)
-                                 (+ left
-                                    (* scale
-                                       (+ (zpb-ttf:advance-width
-                                           (zpb-ttf:find-glyph
-                                            char (%font-loader font)))
-                                          (if previous
-                                              (zpb-ttf:kerning-offset
-                                               previous char (%font-loader
-                                                              font))
-                                              0))))))
-                      (when (< at (/ (+ left right) 2))
-                        (return-from selection-index (+ start i)))
-                      (setf left right)
-                      #-(or jscl lui-ecl-web) (setf previous char))))
-                (return-from selection-index (+ start (length line)))))
-            (incf start (1+ (length line)))
-            (incf top (line-height font))
-            :finally (return (length text))))))
+  (let* ((area (%selection-area renderer node))
+         (font (widget-font renderer (element-content node)))
+         (text (selection-text node))
+         (lines (wrap-text font text (box-width area)))
+         (start 0)
+         (top (box-y area)))
+    (loop :for line :across lines :do
+      ;; Only the line under the pointer needs per-character measurement.
+      (when (< y (+ top (line-height font)))
+        (return-from selection-index
+          (+ start (line-selection-index
+                    font line (- x (selection-left font node area line))))))
+
+      (incf start (1+ (length line)))
+      (incf top (line-height font)))
+    (length text)))
 
 (fn (selection-range (values (or null integer) &optional (or null integer)))
     ((selection text-selection) (index integer)
@@ -778,6 +807,8 @@
                                (when separator (terpri out))
                                (write-string text out :start start :end end)
                                (setf separator t))))))
+
+             ;; else
              (let* ((id (context-focus context))
                     (node (find id nodes :key #'element-id :test #'equal))
                     (state (gethash id (context-state context))))
@@ -796,7 +827,8 @@
     ((nodes (vector element)) (x real) (y real) &optional
      ((target (or null element)) nil))
   "Find the nearest visible text node, preferring vertical proximity before horizontal distance."
-  (let ((distance nil) (horizontal nil))
+  (let ((distance nil)
+        (horizontal nil))
     (loop :for node :across nodes :do
           (let* ((box (element-clip node))
                  (dx (max 0 (- (box-x box) x)
@@ -820,9 +852,12 @@
         (target (selection-target context x y)))
     (setf (context-selection context) selection)
 
+    ;; Start only on selectable content from the completed frame.
     (when (find target nodes)
       (let ((at (selection-index renderer target x y)))
         (setf (text-selection-dragging-p selection) t)
+
+        ;; Editors retain caret state; labels snapshot their text and stable keys.
         (if (eq (widget-kind (element-content target)) :text-field)
             (let* ((id (element-id target))
                    (state (or (gethash id (context-state context))
@@ -833,6 +868,8 @@
               (setf (text-selection-field selection) id
                     (edit-state-anchor state) at
                     (edit-state-cursor state) at))
+
+            ;; else
             (multiple-value-bind (snapshot keys)
                 (%selectable-nodes context t)
               (setf (text-selection-node-count selection)
@@ -863,6 +900,8 @@
         (when (and node state)
           (setf (edit-state-cursor state)
                 (selection-index renderer node x y))))
+
+      ;; else
       (when target
         (multiple-value-bind (snapshot keys)
             (%selectable-nodes context t)
@@ -904,7 +943,8 @@
           (when (%lui.frame:pointer-cancel-p event)
             (setf (text-selection-dragging-p selection) nil))
           (let* ((kind (event-kind event))
-                 (x (event-x event)) (y (event-y event))
+                 (x (event-x event))
+                 (y (event-y event))
                  (target
                   (find-if (lambda (node)
                              (%lui.frame:contains-p (element-clip node) x y))
@@ -1027,7 +1067,9 @@
                      (otherwise 12)))
          (right (case kind ((:checkbox :radio) 12) (otherwise left)))
          (top (if (member kind '(:label :panel :canvas :gauge :highlight
-                                 :splitter :scrollbar)) 0 6)))
+                                 :splitter :scrollbar)) 0
+                  ;; else
+                  6)))
     (make-geometry
      :value-p (eq kind :text-field) :text-p (not (eq kind :panel))
      :left left :right right :top top :bottom top
@@ -1039,7 +1081,8 @@
 
 (fn (%paint-widget-text t) ((renderer renderer) (node element) (color string))
   "Paint wrapped widget text with resolved font, alignment, and pressed offsets."
-  (let* ((widget (element-content node)) (g (widget-geometry widget))
+  (let* ((widget (element-content node))
+         (g (widget-geometry widget))
          (pressed (and (not (widget-disabled-p widget)) (hovered-p
                                                          (element-id node))
                        (equal (element-id node) (context-active *context*))))
@@ -1061,6 +1104,8 @@
          (top (+ y (if center-height
                        (max 0 (/ (- center-height (* (length lines)
                                                      line-height)) 2))
+
+                       ;; else
                        0))))
     (loop :for line :across lines
           :for baseline :from (+ top (baseline font)) :by line-height
@@ -1071,6 +1116,8 @@
                                       (/
                                        (- center-width (text-width font
                                                                    line)) 2))
+
+                                 ;; else
                                  0))
                           baseline color)))
   (values))
@@ -1092,7 +1139,9 @@
   (let* ((widget (element-content node))
          (font (renderer-font renderer))
          (area (text-box widget (element-box node)))
-         (x (box-x area)) (y (box-y area)) (width (box-width area))
+         (x (box-x area))
+         (y (box-y area))
+         (width (box-width area))
          (text (widget-display-value widget))
          (state (when (focused-p node)
                   (gethash (element-id node) (context-state *context*))))
@@ -1101,10 +1150,14 @@
          (anchor (when cursor
                    (max 0 (min (length text) (edit-state-anchor state)))))
          (start 0))
+
+    ;; Empty editors show their placeholder instead of an empty value.
     (when (zerop (length text))
       (paint-text renderer (widget-text widget) x (+ y (baseline font))
                   (%lui.widgets:muted-ink (widget-foreground widget)
                                           (widget-background widget))))
+
+    ;; Paint each wrapped line's selection behind its glyphs.
     (loop :for line :across (wrap-text font text width)
           :for top :from y :by (line-height font)
           :for end := (+ start (length line))
@@ -1126,7 +1179,11 @@
           (paint-text renderer line x (+ top (baseline font))
                       (if (widget-disabled-p widget) (widget-color widget
                                                                    :disabled)
+
+                          ;; else
                           (widget-foreground widget)))
+
+          ;; Draw the caret last so it remains visible over text and selection.
           (when (and cursor (<= start cursor end))
             (shape renderer
                    (make-box :x (+ x (text-width
@@ -1139,7 +1196,8 @@
 
 (fn (paint-canvas (values)) ((renderer renderer) (node element))
   "Execute a widget's custom canvas commands through the active renderer."
-  (let ((widget (element-content node)) (box (element-box node)))
+  (let ((widget (element-content node))
+        (box (element-box node)))
     (shape renderer box 0 (widget-background widget) 1)
     (dolist (command (widget-value widget))
       (destructuring-bind (kind cx cy radius stroke fill) command
@@ -1158,8 +1216,10 @@
          (selected (widget-value widget))
          (text (widget-text widget)))
     (shape renderer box 0 (if selected (widget-color widget :selection)
+                              ;; else
                               (widget-background widget)) 1)
     (outline renderer box 0 (if selected (widget-accent widget)
+                                ;; else
                                 (widget-color
                                  widget :border))
              1 (if selected 2 1))
@@ -1197,6 +1257,7 @@
   "Paint a selectable list row, its focus outline, and its text."
   (shape renderer box 0
          (if (widget-value widget) (widget-accent widget)
+             ;; else
              (widget-background widget)) 1)
   (when (and (not (widget-value widget))
              (hovered-p (element-id node)))
@@ -1205,10 +1266,16 @@
              (context-focus-visible-p *context*))
     (outline renderer box 1 (if (widget-value widget)
                                 (widget-color widget
-                                              :on-accent) foreground) 1 1))
+                                              :on-accent)
+
+                                ;; else
+                                foreground) 1 1))
   (%paint-widget-text renderer node (if (widget-value widget)
                                        (widget-color
-                                        widget :on-accent) foreground))
+                                        widget :on-accent)
+
+                                        ;; else
+                                        foreground))
   (values))
 
 (fn (%paint-shared-widget t) ((renderer renderer) (node element) (radius real)
@@ -1223,7 +1290,10 @@
                        (equal (element-id node)
                               (context-active *context*))))
          (foreground (if disabled (widget-color widget :disabled)
+                         ;; else
                          (widget-foreground widget))))
+
+    ;; Shared controls bypass toolkit-specific bodies but use resolved colors.
     (cond
       ((eq kind :cell) (paint-cell renderer node))
       ((eq kind :scrollbar) (funcall scrollbar renderer node))
@@ -1233,6 +1303,8 @@
                   (make-box :x (box-x box) :width (box-width box)
                             :y (+ (box-y box) (/ (box-height box) 2) -1)
                             :height 2)
+
+                  ;; else
                   (make-box :x (+ (box-x box) (/ (box-width box) 2) -1)
                             :y (box-y box) :width 2 :height (box-height box)))
               0 (widget-accent widget)
@@ -1246,6 +1318,8 @@
        (paint-calendar-button renderer node box shadow foreground))
       ((eq kind :list-item)
        (paint-list-item renderer node widget box foreground))
+
+      ;; Progress and drawing primitives render directly into their solved boxes.
       ((eq kind :gauge)
        (shape renderer box radius (widget-background widget) 1)
        (let ((fill (make-box :x (box-x box) :y (box-y box)
@@ -1257,6 +1331,8 @@
        (shape renderer box 0 (widget-foreground widget) 1))
       ((eq kind :canvas) (paint-canvas renderer node))
       (t (funcall body renderer node)))
+
+    ;; Keyboard focus feedback is the final layer for every control kind.
     (paint-focus-ring renderer node radius)))
 
 (fn (paint-standard-slider (values))
@@ -1274,14 +1350,19 @@
     (shape renderer track 2 (widget-color widget :track) 1)
     (setf (box-width track) (* fraction (box-width track)))
     (shape renderer track 2
-           (if disabled (widget-color widget :disabled-accent) (widget-accent
+           (if disabled (widget-color widget :disabled-accent)
+               ;; else
+               (widget-accent
                                                                 widget)) 1)
     (let ((thumb (make-box :x (+ (box-x track) (box-width track) -7)
                            :y (- (box-y track) 5) :width 14 :height 14)))
       (shape renderer thumb (if (or translucent flat) 7 0)
              (widget-color widget (if disabled :disabled-surface
+                                      ;; else
                                       (if flat
-                                          :thumb :light))) 1)
+                                          :thumb
+                                          ;; else
+                                          :light))) 1)
       (when flat (outline renderer thumb 7 (widget-color widget :border)
                           0.6f0 1))))
   (values))
@@ -1292,8 +1373,13 @@
   (if (or translucent flat)
       (if (widget-value widget)
           (if (and flat disabled) (widget-color widget :disabled-accent)
+              ;; else
               (widget-accent widget))
+
+          ;; else
           (widget-color widget (if flat :light :track)))
+
+      ;; else
       (widget-background widget)))
 
 (fn (paint-standard-checkbox (values))
@@ -1333,14 +1419,18 @@
                              :width 16 :height 16)))
     (shape renderer indicator 8
            (if (or translucent flat) (widget-color widget :light)
+               ;; else
                (widget-background widget)) 1)
     (outline renderer indicator 8
              (if disabled (widget-color widget :disabled)
+                 ;; else
                  (if flat (widget-color widget :border) foreground)) 1 1)
     (when (widget-value widget)
       (shape renderer (inset-box indicator 5) 3
              (if disabled (widget-color widget :disabled)
+                 ;; else
                  (if (or translucent flat) (widget-accent widget)
+                     ;; else
                      foreground)) 1))
     (%paint-widget-text renderer node foreground))
   (values))
@@ -1361,6 +1451,8 @@
     (if translucent
         (outline renderer box radius (widget-color widget :light)
                  (if disabled 0.15f0 0.4f0) 1)
+
+        ;; else
         (unless (member kind '(:checkbox :radio))
           (funcall bevel renderer widget box
                    (or (eq kind :text-field)
@@ -1381,13 +1473,18 @@
                        (equal (element-id node)
                               (context-active *context*))))
          (foreground (if disabled (widget-color widget :disabled)
+                         ;; else
                          (widget-foreground widget)))
          (radius (widget-radius widget))
          (inset (if (eq kind :label) 0 12))
          (x (+ (box-x box) inset))
          (y (+ (box-y box) (if (eq kind :label) 0 6))))
+
+    ;; Paint the toolkit surface before interaction feedback and contents.
     (paint-standard-surface renderer widget box kind radius disabled pressed
                             translucent flat bevel)
+
+    ;; Enabled action controls overlay hover, pressed, and selected feedback.
     (when (and (member kind '(:button :tab :checkbox :radio))
                (not (widget-disabled-p widget)))
       (cond
@@ -1400,11 +1497,15 @@
         (if flat (shape renderer (inset-box box 1) radius
                    (widget-color
                      widget :selection) 1)
+
+            ;; else
             (shape renderer
                    (make-box :x (+ (box-x box) 3)
                              :y (+ (box-y box) (box-height box) -3)
                              :width (max 0 (- (box-width box) 6)) :height 3)
                    0 (widget-accent widget) 1))))
+
+    ;; Finish with the kind-specific indicator or text within that surface.
     (case kind
       (:panel nil)
       (:slider
@@ -1422,7 +1523,8 @@
     ((renderer renderer) (node element) (bevel
                                          function))
   "Paint a desktop scrollbar using the supplied track and thumb colors."
-  (let ((widget (element-content node)) (thumb (scrollbar-thumb node)))
+  (let ((widget (element-content node))
+        (thumb (scrollbar-thumb node)))
     (shape renderer (element-box node) 0 (widget-color widget :track) 1)
     (shape renderer thumb 0 (widget-background widget) 1)
     (funcall bevel renderer widget thumb nil (widget-disabled-p widget))))
@@ -1444,7 +1546,8 @@
 
 (fn (%rectangle-path contour) ((box box))
   "Return a polygon contour tracing a rectangular box."
-  (let ((x (box-x box)) (y (box-y box))
+  (let ((x (box-x box))
+        (y (box-y box))
         (right (box-right box))
         (bottom (box-bottom box)))
     (%typed-vector point (cons x y) (cons right y) (cons right bottom)

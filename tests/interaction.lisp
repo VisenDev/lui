@@ -450,8 +450,11 @@
     (flet ((draw (context &optional events)
              (with-frame (context 80 20 :events events)
                (when visible
-                 (multiple-value-setq (value changed id)
-                   (lui:text-field (lui:opt :default-value default)))))))
+                 (multiple-value-bind (new-value changed-p resolved-id)
+                     (lui:text-field (lui:opt :default-value default))
+                   (setf value new-value
+                         changed changed-p
+                         id resolved-id))))))
       (draw context)
       (assert (equal value "first"))
       (assert (not changed))
