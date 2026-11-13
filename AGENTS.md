@@ -20,7 +20,7 @@ in `AGENTS.md` and application documentation in docstrings and
   shims for obsolete APIs.
 - Annotate FN parameters explicitly; use OR unions for nullable or multi-type
   inputs. Use `object-id` for widget identities; it intentionally expands to T.
-- Use structures with typed slots and `lui.fn:fn` with explicit return types for
+- Use structures with typed slots and `%lui.fn:fn` with explicit return types for
   implementation functions. Do not reintroduce `destruct*` or an alternate
   structure API; use standard `defstruct`.
 - Use precise vector element types in declarations and constructors. Keep T
@@ -42,7 +42,15 @@ in `AGENTS.md` and application documentation in docstrings and
   Do not mutate exports through private macros.
 - Access other LUI packages through exported symbols; declare shared internals
   in their owning package exports instead of using double-colon references.
+- Prefix internal-only packages with `%` (for example, `%lui.frame`). Keep
+  dual-use package names such as `lui.toolkit`; prefix only their internal
+  exported symbols with `%` (for example, `lui.toolkit:%find-toolkit`).
+  Keep definitions in their owning source files, without facade packages.
 - Normally wrap Lisp code at 78 columns; use keyword LOOP clauses.
+- Keep functions visually easy to scan: separate substantial conditional
+  branches with blank lines and brief intent comments, and label major steps.
+  Reduce nesting by moving shared local bindings to an enclosing scope where
+  their lifetime and evaluation order permit it.
 - Run `make lint` to normalize FN declarations and check strict Mallet rules,
   complexity, function length, and missing docstrings. Only `no-package-use`
   is disabled. Keep the defaults for all other rule thresholds.
@@ -67,9 +75,10 @@ the change and report material limitations instead of claiming untested support.
   through `16-debug.lisp`). Palette and toolkit support precede the application
   facade in `07-palette.lisp`, `08-toolkit.lisp`, and `09-lui.lisp`.
   The debugger remains an optional ASDF system.
-- Each core file owns one matching package. Ignore numeric prefixes and map
-  package dots to filename hyphens. Tests use `lui.tests.` and gallery packages
-  use `lui.example.`; script packages also follow their filenames.
+- Each core file owns one matching package. Ignore numeric prefixes and
+  the leading `%`, and map package dots to filename hyphens. Tests use
+  `%lui.tests.` and gallery packages use `%lui.example.`; script packages also
+  follow their filenames.
 - Backend files may group related packages. Keep each platform in
   `backend-<platform>.lisp`; share font/drawing support in `backend-common.lisp`,
   OpenGL in `backend-common-gl.lisp`, and browser rendering/input in
@@ -486,7 +495,7 @@ without JavaScript generation or Lisp text parsing. Set
   not cached. Text, font, width, and resolved geometry changes invalidate reuse.
 - Allocation regression checks: set `LUI_BENCH_LIBRARY_ONLY=1`, load
   `scripts/benchmark.lisp` and `tests/benchmark.lisp` with SBCL, then call
-  `(lui.tests.benchmark:run-tests)`. ALLOC rows report bytes total/mean/p95 and GC
+  `(%lui.tests.benchmark:run-tests)`. ALLOC rows report bytes total/mean/p95 and GC
   CPU milliseconds, with unsupported GC counts explicitly marked.
 - Historical performance logs include `build/profile-wayland-before.log`,
   `profile-wayland-after.log`, `benchmark-wayland-after.log`,

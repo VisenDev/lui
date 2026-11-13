@@ -1,5 +1,5 @@
 (defpackage #:lui.palette
-  (:use #:cl #:lui.fn)
+  (:use #:cl #:%lui.fn)
   (:export
            #:palette #:palette-p #:make-palette #:available-palettes
            #:call-with-palette #:with-palette #:+palette-default+
@@ -12,7 +12,7 @@
            #:palette-disabled-bevel-dark #:palette-outline #:palette-light
            #:palette-shadow #:palette-bevel-light #:palette-bevel-dark
            #:palette-track #:palette-cell-background
-           #:palette-cell-foreground #:palette-on-accent #:resolve-palette))
+           #:palette-cell-foreground #:palette-on-accent #:%resolve-palette))
 (in-package #:lui.palette)
 
 (defvar *palette* nil)
@@ -132,7 +132,7 @@
   "Call DRAW with a resolved palette dynamically bound for declarations."
   (let* ((value (etypecase palette
                   (symbol (or (cdr (assoc palette *named-palettes*))
-                              (error 'lui.conditions:configuration-error
+                              (error '%lui.conditions:configuration-error
                                      :setting :palette :value palette
                                      :operation :call-with-palette
                                      :format-control "Unknown palette ~S."
@@ -146,10 +146,10 @@
 NIL roles inherit enclosing colors; the parent scope is restored on exit."
   `(call-with-palette ,palette (lambda () ,@body)))
 
-(fn (resolve-palette list) ((defaults list))
+(fn (%resolve-palette list) ((defaults list))
   "Resolve a palette object, provider, or registered palette name."
   (labels ((colors (tail)
-             (cond ((null tail) lui.widgets:*base-palette*)
+             (cond ((null tail) %lui.widgets:*base-palette*)
                    ((eq (car tail) :palette) (append (cadr tail) (colors
                                                                   (cddr
                                                                    tail))))

@@ -1,7 +1,7 @@
-(defpackage #:lui.example.manual-demo
+(defpackage #:%lui.example.manual-demo
   (:use #:cl)
   (:export #:make-demo #:main))
-(in-package #:lui.example.manual-demo)
+(in-package #:%lui.example.manual-demo)
 
 (defun make-demo ()
   "Return a manually positioned UI; widgets measure their own text and height."

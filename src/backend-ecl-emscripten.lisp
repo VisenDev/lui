@@ -1,9 +1,9 @@
-(defpackage #:lui.ecl-emscripten
-  (:use #:cl #:lui.fn)
+(defpackage #:%lui.ecl-emscripten
+  (:use #:cl #:%lui.fn)
   (:nicknames #:jscl/ffi)
   (:export #:global #:oget #:invoke #:new #:jsstring #:clstring #:clbool
            #:*owner* #:release-owner #:release-root #:dispatch))
-(in-package #:lui.ecl-emscripten)
+(in-package #:%lui.ecl-emscripten)
 
 ;; JS objects have stable identities. Weak wrappers and deferred finalizers
 ;; release temporary DOM/measurement results without running JS inside GC.
@@ -19,7 +19,7 @@
 
 (fn (operation t) ((code integer) (arguments list))
   "Call the JavaScript bridge operation with Lisp arguments; reject host execution."
-  #+lui-ecl-host (error 'lui.conditions:backend-error
+  #+lui-ecl-host (error '%lui.conditions:backend-error
                         :backend :web-ecl
                         :operation :operation
                         :format-control "Browser operation ~D in host: ~S"

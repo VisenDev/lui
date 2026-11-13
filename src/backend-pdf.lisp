@@ -1,15 +1,15 @@
 (defpackage #:lui.pdf
-  (:use #:cl #:lui.fn #:lui.frame #:lui.layout #:lui.draw)
+  (:use #:cl #:%lui.fn #:%lui.frame #:%lui.layout #:lui.draw)
   (:export #:render-pdf #:*pdf-output*))
 
 (in-package #:lui.pdf)
 
-(defvar *pdf-output* #p"lui.pdf" "Destination used by the :PDF backend of LUI:RUN.")
+(defvar *pdf-output* #p"lui.pdf" "Destination used by the :PDF backend of lui:RUN.")
 
 (fn (pdf-renderer renderer) ((font lui.font:font))
   "Create renderer callbacks that emit vector paths into the current PDF page."
   (let (clip)
-    (make-renderer
+    (%make-renderer
      :font font
      :clip (lambda (box) (setf clip box))
      :polygons
@@ -44,7 +44,7 @@
     (let ((font (lui.font:open-font)))
       (unwind-protect
            (let* ((renderer (pdf-renderer font))
-                  (context (make-render-context renderer)))
+                  (context (%make-render-context renderer)))
              (with-frame (context width height) (funcall draw))
              (pdf:with-document (:title title)
                (pdf:with-page
@@ -58,7 +58,7 @@
                     (aref rgba 0) (aref rgba 1) (aref rgba 2)))
                  (pdf:basic-rect 0 0 width height)
                  (pdf:fill-path)
-                 (paint-frame renderer context))
+                 (%paint-frame renderer context))
                (pdf:write-document (pathname pathname)))
              (pathname pathname))
         (lui.font:close-font font)))))

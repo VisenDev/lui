@@ -1,5 +1,5 @@
-(defpackage #:lui.start.docs.web
+(defpackage #:%lui.start.docs.web
   (:use #:cl))
-(in-package #:lui.start.docs.web)
+(in-package #:%lui.start.docs.web)
 
-(lui.docs:main :backend :web-ecl)
+(%lui.docs:main :backend :web-ecl)

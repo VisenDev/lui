@@ -1,10 +1,10 @@
-(defpackage #:lui.wayland-protocol
-  (:use #:cl #:lui.fn)
+(defpackage #:%lui.wayland-protocol
+  (:use #:cl #:%lui.fn)
   (:export #:interface #:request #:listen-proxy #:destroy-proxy
            #:connect-display #:disconnect-display #:roundtrip
            #:dispatch-display #:flush-display #:pump-display
            #:call-with-interfaces))
-(in-package #:lui.wayland-protocol)
+(in-package #:%lui.wayland-protocol)
 
 (cffi:define-foreign-library wayland-client
     (:unix (:or "libwayland-client.so.0" "libwayland-client.so")))
@@ -163,7 +163,7 @@ proxy version; DESTROY-P tells libwayland to destroy the sending proxy."
           :do (setf (cffi:mem-aref listeners :pointer i) callback))
     (unless (zerop (add-listener proxy listeners (cffi:null-pointer)))
       (cffi:foreign-free listeners)
-      (error 'lui.conditions:backend-error
+      (error '%lui.conditions:backend-error
              :backend :wayland
              :operation :listen-proxy
              :format-control "Cannot install Wayland listener."))
@@ -180,7 +180,7 @@ Signal an error when the display disconnects or its read/dispatch operation fail
         (setf timeout 0)
         (when (minusp (cffi:foreign-funcall "wl_display_dispatch_pending"
                                             :pointer display :int))
-          (error 'lui.conditions:backend-error
+          (error '%lui.conditions:backend-error
                  :backend :wayland
                  :operation :pump-display
                  :format-control "Wayland display disconnected.")))
@@ -196,7 +196,7 @@ Signal an error when the display disconnects or its read/dispatch operation fail
             (when (minusp
                    (cffi:foreign-funcall "wl_display_read_events"
                                          :pointer display :int))
-              (error 'lui.conditions:backend-error
+              (error '%lui.conditions:backend-error
                      :backend :wayland
                      :operation :pump-display
                      :format-control "Wayland read failed."))
@@ -204,7 +204,7 @@ Signal an error when the display disconnects or its read/dispatch operation fail
                                   :pointer display :void))))
     (when (minusp (cffi:foreign-funcall "wl_display_dispatch_pending"
                                         :pointer display :int))
-      (error 'lui.conditions:backend-error
+      (error '%lui.conditions:backend-error
              :backend :wayland
              :operation :pump-display
              :format-control "Wayland dispatch failed.")))
@@ -305,11 +305,11 @@ Free all interface allocations on return or error; proxies must not outlive it."
       (dolist (pointer *interface-storage*)
         (cffi:foreign-free pointer)))))
 
-(defpackage #:lui.wayland
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.font
-        #:lui.draw #:lui.gl #:lui.wayland-protocol)
+(defpackage #:%lui.wayland
+  (:use #:cl #:%lui.fn #:lui #:%lui.layout #:%lui.frame #:lui.font
+        #:lui.draw #:%lui.gl #:%lui.wayland-protocol)
   (:export #:run-wayland))
-(in-package #:lui.wayland)
+(in-package #:%lui.wayland)
 
 (cffi:define-foreign-library wayland-egl
     (:unix (:or "libwayland-egl.so.1" "libwayland-egl.so")))
@@ -551,7 +551,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
   (when (and (wl-window-pointer *window*)
              (wl-window-cursor-serial *window*))
     (let ((kind (if (boundp '*context*)
-                    (lui.widgets:cursor-at
+                    (%lui.widgets:cursor-at
                      *context* (wl-window-x *window*) (wl-window-y *window*))
                     :default)))
       (unless (eq kind (wl-window-cursor-kind *window*))
@@ -714,13 +714,13 @@ Free all interface allocations on return or error; proxies must not outlive it."
 
 (fn (editor-command symbol) (state (symbol integer) context)
   "Resolve a modified key symbol to the platform's editor command."
-  (when (and context (lui.widgets:text-field-focused-p context))
+  (when (and context (%lui.widgets:text-field-focused-p context))
     (cffi:with-foreign-object (name :char 64)
       (let ((length (cffi:foreign-funcall
                      "xkb_keysym_get_name" :uint symbol
                      :pointer name :size 64 :int)))
         (when (< 0 length 64)
-          (lui.widgets:readline-key
+          (%lui.widgets:readline-key
            (cffi:foreign-string-to-lisp name :count length)
            :control (modifier-active-p state "Control")
            :alt (modifier-active-p state "Mod1")
@@ -757,7 +757,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
                                     (modifier-active-p state "Shift"))
                             :backward)))
             ((and (= symbol 32) context
-                  (lui.widgets:activation-focused-p context))
+                  (%lui.widgets:activation-focused-p context))
              (queue-input :activate))
             ((= symbol #xff0d) (queue-input :activate))
             (command (queue-input :key :key command))
@@ -1098,7 +1098,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
 
 (fn (wait-wayland (values)) (display (context context) events)
   "Wait for display input, key repetition, or the context's next frame deadline."
-  (loop :for delay := (lui.frame:frame-wait context events)
+  (loop :for delay := (%lui.frame:frame-wait context events)
         :for repeat := (wl-window-repeat-at *window*)
         :when repeat
         :do (let ((ticks (- repeat (get-internal-real-time))))
@@ -1110,7 +1110,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
                    (wl-window-quit-p *window*)
                    (/= (wl-window-width *window*) (context-width context))
                    (/= (wl-window-height *window*) (context-height context))))
-  (lui.frame:limit-frame-rate context)
+  (%lui.frame:limit-frame-rate context)
   (values))
 
 (fn (close-wayland-window (values)) (display)
@@ -1150,7 +1150,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
   (let* ((gpu (wl-window-gpu *window*))
          (renderer (gpu-renderer gpu))
          (context
-          (make-render-context
+          (%make-render-context
            renderer :copy
            (when (wl-window-clipboard-device *window*)
              (let ((window *window*))
@@ -1170,7 +1170,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
             (funcall draw))
           (update-cursor)
           (begin-gpu-frame gpu)
-          (paint-frame renderer context)
+          (%paint-frame renderer context)
           (present-gpu gpu)
           (unless interactive (return context))
           (wait-wayland display context events))))
@@ -1186,14 +1186,14 @@ Free all interface allocations on return or error; proxies must not outlive it."
                    (list (cffi:callback registry-global)
                          (cffi:callback registry-remove)))
   (when (minusp (roundtrip display))
-    (error 'lui.conditions:backend-error
+    (error '%lui.conditions:backend-error
            :backend :wayland
            :operation :run-window
            :format-control "Wayland registry roundtrip failed."))
   (create-clipboard-device *window*)
   (unless (and (wl-window-compositor *window*)
                (wl-window-shell *window*))
-    (error 'lui.conditions:backend-error
+    (error '%lui.conditions:backend-error
            :backend :wayland
            :operation :run-window
            :format-control "Wayland compositor requires wl_compositor and xdg_wm_base."))
@@ -1225,7 +1225,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
   (request (wl-window-surface *window*) 6 nil nil)
   (loop :until (wl-window-configured-p *window*)
         :do (when (minusp (dispatch-display display))
-              (error 'lui.conditions:backend-error
+              (error '%lui.conditions:backend-error
                      :backend :wayland
                      :operation :run-window
                      :format-control "Wayland initial configure failed.")))
@@ -1240,7 +1240,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
                                    :height (or height 520)))
          (*unit* 8))
     (when (cffi:null-pointer-p display)
-      (error 'lui.conditions:backend-error
+      (error '%lui.conditions:backend-error
              :backend :wayland
              :operation :run-window
              :format-control "Cannot connect to the Wayland display."))

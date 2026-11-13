@@ -94,15 +94,15 @@
                              (:file "seven"))))
   :perform (test-op (operation component)
              (declare (ignore operation component))
-             (uiop:symbol-call :lui.tests.debug :run-tests)
-             (uiop:symbol-call :lui.tests.core :run-tests)
-             (uiop:symbol-call :lui.tests.widgets :run-tests)
-             (uiop:symbol-call :lui.tests.interaction :run-tests)
-             (uiop:symbol-call :lui.tests.gallery :run-tests)
-             (uiop:symbol-call :lui.tests.seven.model :run-tests)
-             (uiop:symbol-call :lui.tests.seven :run-tests)
-             (uiop:symbol-call :lui.tests.seven.circles :run-tests)
-             (uiop:symbol-call :lui.tests.seven.cells :run-tests)))
+             (uiop:symbol-call :%lui.tests.debug :run-tests)
+             (uiop:symbol-call :%lui.tests.core :run-tests)
+             (uiop:symbol-call :%lui.tests.widgets :run-tests)
+             (uiop:symbol-call :%lui.tests.interaction :run-tests)
+             (uiop:symbol-call :%lui.tests.gallery :run-tests)
+             (uiop:symbol-call :%lui.tests.seven.model :run-tests)
+             (uiop:symbol-call :%lui.tests.seven :run-tests)
+             (uiop:symbol-call :%lui.tests.seven.circles :run-tests)
+             (uiop:symbol-call :%lui.tests.seven.cells :run-tests)))
 
 (defsystem "lui/native"
   :depends-on ("lui/core" "cffi" "zpb-ttf")
@@ -127,7 +127,7 @@
   :components ((:module "tests" :components ((:file "pdf"))))
   :perform (test-op (operation component)
              (declare (ignore operation component))
-             (uiop:symbol-call :lui.tests.pdf :run-tests)))
+             (uiop:symbol-call :%lui.tests.pdf :run-tests)))
 
 (defsystem "lui/x11"
   :depends-on ("lui/gl")
@@ -164,7 +164,7 @@
   :components ((:module "tests" :components ((:file "terminal-render"))))
   :perform (test-op (operation component)
              (declare (ignore operation component))
-             (uiop:symbol-call :lui.tests.terminal-render :run-tests)))
+             (uiop:symbol-call :%lui.tests.terminal-render :run-tests)))
 
 (defsystem "lui/native/tests"
   :depends-on ("lui/native")
@@ -172,4 +172,4 @@
                 :components ((:file "native"))))
   :perform (test-op (operation component)
              (declare (ignore operation component))
-             (uiop:symbol-call :lui.tests.native :run-tests)))
+             (uiop:symbol-call :%lui.tests.native :run-tests)))

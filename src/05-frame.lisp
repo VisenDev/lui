@@ -1,5 +1,5 @@
-(defpackage #:lui.frame
-  (:use #:cl #:lui.fn #:lui.layout)
+(defpackage #:%lui.frame
+  (:use #:cl #:%lui.fn #:%lui.layout)
   (:export #:*min-fps* #:*max-fps* #:contains-p #:context-after-layout
            #:context-ids #:context-page-height-p #:context-page-top
            #:context-pointer-press #:context-popups
@@ -27,7 +27,7 @@
            #:context-tabs-handled-p #:context-text-mode-p
            #:context-copy #:context-input-handler #:context-selection))
 
-(in-package #:lui.frame)
+(in-package #:%lui.frame)
 
 (defstruct event
   "Backend-neutral input: a kind, target ID, optional key/value, and coordinates.
@@ -147,7 +147,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (let* ((key (getf options :id site))
          (id (list :lui-widget-id site *key-scope* key)))
     (when (gethash id (context-ids *context*))
-      (error 'lui.conditions:configuration-error
+      (error '%lui.conditions:configuration-error
              :operation :declare-widget :setting :id :value key
              :format-control
              (if (eq key site)
@@ -177,7 +177,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
         (when (and (equal key (widget-key id))
                 (equal *key-scope* (id-scope id)))
           (when (and found (not (equal found id)))
-            (error 'lui.conditions:configuration-error
+            (error '%lui.conditions:configuration-error
               :operation :widget-id :setting :id :value key
               :format-control "Ambiguous widget key ~S; use a resolved ID."
               :format-arguments (list key)))

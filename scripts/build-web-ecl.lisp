@@ -1,9 +1,9 @@
 (require :cmp)
 (require :asdf)
 
-(defpackage #:lui.build.web.ecl
+(defpackage #:%lui.build.web.ecl
   (:use #:cl))
-(in-package #:lui.build.web.ecl)
+(in-package #:%lui.build.web.ecl)
 
 (unless (fboundp 'c::read-target-info)
   (error "ECL needs cross-compilation support; build a matching host ECL."))
@@ -80,7 +80,7 @@
                                :if-exists :supersede)
             (let ((*package* (find-package :cl-user)) (*print-case* :upcase)
                   (*print-pretty* nil) (*print-readably* t))
-              (loop :for form := (lui.ecl.web.reader:read-web-form in in)
+              (loop :for form := (%lui.ecl.web.reader:read-web-form in in)
                     :until (eq form in)
                     :do (write form :stream out) (terpri out)
                         (when (and (consp form)

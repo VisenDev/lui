@@ -23,17 +23,17 @@ def program(backend, toolkit, page):
     return f'''(load "scripts/setup.lisp")
 {load}
 (asdf:load-system "lui/demo")
-(setf (symbol-function 'lui.frame::frame-rate-label)
+(setf (symbol-function '%lui.frame::frame-rate-label)
       (lambda (&rest state) (declare (ignore state)) "Frame rate: parity"))
-(let ((gallery (lui.example.demo:make-gallery :toolkit :{toolkit} :page :{page}
+(let ((gallery (%lui.example.demo:make-gallery :toolkit :{toolkit} :page :{page}
                                        :name "A界é 🦊" :editor "Unicode 界é 🦊 clipped text"))
       (first t))
   (lui:run (lambda ()
-             (lui.example.demo:draw gallery)
+             (%lui.example.demo:draw gallery)
              (when first
                (setf first nil
-                     (lui.frame:context-focus lui.frame:*context*) :{focus}
-                     (lui.frame:context-focus-visible-p lui.frame:*context*) t)))
+                     (%lui.frame:context-focus %lui.frame:*context*) :{focus}
+                     (%lui.frame:context-focus-visible-p %lui.frame:*context*) t)))
            :backend :terminal))
 '''
 
@@ -108,8 +108,13 @@ def main():
         baseline = directory / "baseline"
         baseline.mkdir()
         for name in ("terminal.lisp", "terminal-io.lisp"):
-            (baseline / name).write_bytes(subprocess.check_output(
-                ["git", "show", f"{args.baseline}:src/{name}"], cwd=ROOT))
+            source = subprocess.check_output(
+                ["git", "show", f"{args.baseline}:src/{name}"],
+                cwd=ROOT, text=True)
+            # Use today's package names with the historical rendering code.
+            source = re.sub(r"\blui\.(fn|layout|frame|widgets)\b",
+                            r"%lui.\1", source)
+            (baseline / name).write_text(source, encoding="utf-8")
         path = directory / "run.lisp"
         comparisons = cells = 0
         cases = [(toolkit, page, "xterm-direct")

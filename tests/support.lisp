@@ -1,11 +1,11 @@
-(defpackage #:lui.tests.support
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets)
+(defpackage #:%lui.tests.support
+  (:use #:cl #:%lui.fn #:%lui.layout #:%lui.frame #:%lui.widgets)
   (:export #:make-test-context #:test-lines #:has-text-p #:visible-text-p
            #:visible-widget-count))
-(in-package #:lui.tests.support)
+(in-package #:%lui.tests.support)
 
 (fn (test-lines (vector string)) ((text string) width)
-  (lui.text:wrap-lines text width
+  (%lui.text:wrap-lines text width
                        (lambda (text start end)
                          (declare (ignore text)) (- end start))))
 

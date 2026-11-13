@@ -361,21 +361,21 @@ class X11Tests(unittest.TestCase):
     def test_native_clipboard_utf8_targets_and_ownership(self):
         source = r'''
 (defvar *clipboard-text* "Native café 🦊")
-(lui.x11:run-x11
+(%lui.x11:run-x11
  (lambda ()
    (setf *clipboard-text*
      (lui.motif:text-field (lui:opt :id :copy :value *clipboard-text*)))
-   (when (lui.frame:previous-box :copy)
-     (let ((box (lui.frame:previous-box :copy)))
+   (when (%lui.frame:previous-box :copy)
+     (let ((box (%lui.frame:previous-box :copy)))
        (with-open-file (stream STATE_PATH :direction :output
                                :if-exists :supersede)
          (format stream "{~S:[~D,~D,~D,~D],~S:~A}"
-                 "bounds" (round (lui.layout:box-x box))
-                 (round (lui.layout:box-y box))
-                 (round (lui.layout:box-width box))
-                 (round (lui.layout:box-height box))
+                 "bounds" (round (%lui.layout:box-x box))
+                 (round (%lui.layout:box-y box))
+                 (round (%lui.layout:box-width box))
+                 (round (%lui.layout:box-height box))
                  "focused" (if (eq :copy
-                                  (lui:widget-key (lui.frame:context-focus lui.frame:*context*)))
+                                  (lui:widget-key (%lui.frame:context-focus %lui.frame:*context*)))
                                "true" "false"))))))
  :title WINDOW_TITLE :width 400 :height 100)
 '''
@@ -413,25 +413,25 @@ class X11Tests(unittest.TestCase):
         source = r'''
 (asdf:load-system "lui/debug")
 (let ((state (lui.debug:make-debugger-state :selected '(:id :target))) (first t))
-  (lui.x11:run-x11
+  (%lui.x11:run-x11
    (lambda ()
      (when first
        (setf first nil)
        (lui.debug:set-debugger-enabled t :state state))
      (lui:button "Target" (lui:opt :id :target))
-     (let ((rail (lui.frame:previous-box '(:lui.debug :details-resize nil)))
-           (pane (lui.frame:previous-box '(:lui.debug :property-pane nil))))
+     (let ((rail (%lui.frame:previous-box '(:lui.debug :details-resize nil)))
+           (pane (%lui.frame:previous-box '(:lui.debug :property-pane nil))))
        (when (and rail pane)
          (with-open-file (out STATE_PATH :direction :output
                               :if-exists :supersede)
            (format out "{~S:[~D,~D,~D,~D],~S:~F,~S:~A,~S:~A}"
-                   "rail" (round (lui.layout:box-x rail))
-                   (round (lui.layout:box-y rail))
-                   (round (lui.layout:box-width rail))
-                   (round (lui.layout:box-height rail))
-                   "height" (lui.layout:box-height pane)
-                   "active" (if (equal (lui:widget-key (lui.frame:context-active
-                                        lui.frame:*context*))
+                   "rail" (round (%lui.layout:box-x rail))
+                   (round (%lui.layout:box-y rail))
+                   (round (%lui.layout:box-width rail))
+                   (round (%lui.layout:box-height rail))
+                   "height" (%lui.layout:box-height pane)
+                   "active" (if (equal (lui:widget-key (%lui.frame:context-active
+                                        %lui.frame:*context*))
                                        '(:lui.debug :details-resize nil))
                                 "true" "false")
                    "selected" (if (lui.debug:debugger-state-selected state)
@@ -469,31 +469,31 @@ class X11Tests(unittest.TestCase):
     def test_shared_demo_pixels_interaction_and_resize(self):
         source = r'''
 (asdf:load-system "lui/demo")
-(let ((gallery (lui.example.demo:make-gallery)))
-(lui.x11:run-x11
+(let ((gallery (%lui.example.demo:make-gallery)))
+(%lui.x11:run-x11
  (lambda ()
-   (lui.example.demo:draw gallery)
-   (when (lui.frame:previous-box :hello)
+   (%lui.example.demo:draw gallery)
+   (when (%lui.frame:previous-box :hello)
      (with-open-file (stream STATE_PATH :direction :output
                              :if-exists :supersede)
        (format stream "{~S:~S,~S:~D,~S:~A,~S:~F,~S:~D,~S:~A,~S:{"
-               "name" (lui.example.demo::gallery-name gallery) "count" (lui.example.demo::gallery-count gallery)
-               "enabled" (if (lui.example.demo::gallery-enabled gallery) "true" "false")
-               "volume" (lui.example.demo::gallery-volume gallery)
-               "width" (round (lui.frame:context-width lui.frame:*context*))
-               "hover" (if (lui:widget-key (lui.frame:context-hover lui.frame:*context*))
+               "name" (%lui.example.demo::gallery-name gallery) "count" (%lui.example.demo::gallery-count gallery)
+               "enabled" (if (%lui.example.demo::gallery-enabled gallery) "true" "false")
+               "volume" (%lui.example.demo::gallery-volume gallery)
+               "width" (round (%lui.frame:context-width %lui.frame:*context*))
+               "hover" (if (lui:widget-key (%lui.frame:context-hover %lui.frame:*context*))
                            "true" "false")
                "bounds")
        (loop :for id :in '(:name :volume :enabled :hello :reset)
              :for first := t :then nil
-             :for box := (lui.frame:previous-box id)
+             :for box := (%lui.frame:previous-box id)
              :do (unless first (write-char #\, stream))
                  (format stream "~S:[~D,~D,~D,~D]"
                          (string-downcase (symbol-name id))
-                         (round (lui.layout:box-x box))
-                         (round (lui.layout:box-y box))
-                         (round (lui.layout:box-width box))
-                         (round (lui.layout:box-height box))))
+                         (round (%lui.layout:box-x box))
+                         (round (%lui.layout:box-y box))
+                         (round (%lui.layout:box-width box))
+                         (round (%lui.layout:box-height box))))
        (write-string "}}" stream))))
  :title WINDOW_TITLE :width 720 :height 520))
 '''
@@ -542,25 +542,25 @@ class X11Tests(unittest.TestCase):
 
     def test_blur_strength_and_odd_resize_keep_global_sampling(self):
         source = r'''
-(lui.x11:run-x11
+(%lui.x11:run-x11
  (lambda ()
-   (lui.glass:button "" (lui:opt :id :blur :width (lui.layout:grow) :height (lui.layout:grow)
+   (lui.glass:button "" (lui:opt :id :blur :width (%lui.layout:grow) :height (%lui.layout:grow)
                       :painter
                       (lambda (renderer node)
-                        (let* ((box (lui.layout:element-box node))
-                               (width (lui.layout:box-width box))
-                               (height (lui.layout:box-height box)))
+                        (let* ((box (%lui.layout:element-box node))
+                               (width (%lui.layout:box-width box))
+                               (height (%lui.layout:box-height box)))
                           (loop :for x :from 0 :below width :by 8
                                 :do (funcall (lui.draw:renderer-polygons renderer)
                                              (make-array
-                                              1 :element-type 'lui.layout:contour
+                                              1 :element-type '%lui.layout:contour
                                               :initial-element
                                               (lui.draw:rounded-polygon
-                                                    (lui.layout:make-box
+                                                    (%lui.layout:make-box
                                                      :x x :width 8 :height height) 0))
                                              (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
                           (funcall (lui.draw:renderer-backdrop-effect renderer)
-                                   (lui.layout:make-box :width width :height height)
+                                   (%lui.layout:make-box :width width :height height)
                                    20 FROST))))))
  :title WINDOW_TITLE :width 241 :height 123)
 '''
@@ -594,10 +594,10 @@ class X11Tests(unittest.TestCase):
 
     def test_glx_glass_blurs_backdrop_inside_rounded_mask(self):
         source = r'''
-(lui.x11:run-x11
+(%lui.x11:run-x11
  (lambda ()
-   (lui.frame:column (:width (lui.layout:grow))
-     (lui.glass:button "" (lui:opt :id :blur :width (lui.layout:fixed 240) :height (lui.layout:fixed 120)
+   (%lui.frame:column (:width (%lui.layout:grow))
+     (lui.glass:button "" (lui:opt :id :blur :width (%lui.layout:fixed 240) :height (%lui.layout:fixed 120)
                         :painter
                         (lambda (renderer node)
                           (declare (ignore node))
@@ -605,14 +605,14 @@ class X11Tests(unittest.TestCase):
                           (loop :for x :from 0 :below 240 :by 8
                                 :do (funcall (lui.draw:renderer-polygons renderer)
                                              (make-array
-                                              1 :element-type 'lui.layout:contour
+                                              1 :element-type '%lui.layout:contour
                                               :initial-element
                                               (lui.draw:rounded-polygon
-                                                    (lui.layout:make-box :x x :width 8 :height 120)
+                                                    (%lui.layout:make-box :x x :width 8 :height 120)
                                                     0))
                                              (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
                           (funcall (lui.draw:renderer-backdrop-effect renderer)
-                                   (lui.layout:make-box :x 40 :y 20 :width 160 :height 80)
+                                   (%lui.layout:make-box :x 40 :y 20 :width 160 :height 80)
                                    20 8))))))
  :title WINDOW_TITLE :width 240 :height 120)
 '''

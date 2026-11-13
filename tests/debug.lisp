@@ -1,8 +1,8 @@
-(defpackage #:lui.tests.debug
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets
-        #:lui.tests.support)
+(defpackage #:%lui.tests.debug
+  (:use #:cl #:%lui.fn #:lui #:%lui.layout #:%lui.frame #:%lui.widgets
+        #:%lui.tests.support)
   (:export #:run-tests))
-(in-package #:lui.tests.debug)
+(in-package #:%lui.tests.debug)
 
 (fn test-tree ()
   (let ((state (lui.debug:make-debugger-state))
@@ -13,17 +13,17 @@
                  :scroll-p t)
                  (when show
                    (when (lui:with-toolkit (:glass)
-                           (lui.tests.support::draw-button "Action" (lui:opt
+                           (%lui.tests.support::draw-button "Action" (lui:opt
                       :id :action :width (grow)
                       :height (fixed 1))))
                      (incf count)))
                  (row (lui:opt :width (grow))
                    (when (lui:with-toolkit (:glass)
-                           (lui.tests.support::draw-tab "A" (lui:opt :id
+                           (%lui.tests.support::draw-tab "A" (lui:opt :id
                       :tab-a :selected-p (eq page :a))))
                      (setf page :a))
                    (when (lui:with-toolkit (:glass)
-                           (lui.tests.support::draw-tab "B" (lui:opt :id
+                           (%lui.tests.support::draw-tab "B" (lui:opt :id
                       :tab-b :selected-p (eq page :b))))
                      (setf page :b)))
                  (dotimes (i 200)
@@ -32,7 +32,7 @@
                (with-frame (context 80 36 :events events)
                  (app)))
              (node (id)
-               (gethash (lui:widget-id id context) (lui.frame::context-ids
+               (gethash (lui:widget-id id context) (%lui.frame::context-ids
                 context)))
              (row-count ()
                (let ((count 0))
@@ -153,7 +153,7 @@
                (box-width
                 (element-box
                    (gethash (lui:widget-id (lui.debug::id :debugger) context)
-                          (lui.frame::context-ids context))))))
+                          (%lui.frame::context-ids context))))))
       (frame) (frame)
       (assert (= 32 (width)))
       (frame (make-event :kind :move :x 48 :y 10))
@@ -192,12 +192,13 @@
     (labels ((frame (&rest events)
                (with-frame (context 100 48 :events events)
                  (lui:with-toolkit (:garnet)
-                   (lui.tests.support::draw-text-field (lui:opt :id :field
-                                                         :value "Actual editor value" :background "#d0e0f0"
+                   (%lui.tests.support::draw-text-field (lui:opt :id :field
+                                                         :value "Actual editor value"
+                                            :background "#d0e0f0"
                                             :foreground "#101020")))))
              (node (name)
                (gethash (lui:widget-id (lui.debug::id name) context)
-                        (lui.frame::context-ids context)))
+                        (%lui.frame::context-ids context)))
              (labels-named (text)
                (let ((found nil))
                  (walk-elements
@@ -283,14 +284,14 @@
     (labels ((app ()
                (column (lui:opt :id :app :width (grow) :height (grow))
                  (dotimes (i 50)
-                   (lui.tests.support::draw-button (format nil "Item ~D" i)
+                   (%lui.tests.support::draw-button (format nil "Item ~D" i)
                      (lui:opt :id (list :item i) :height (fixed 1))))))
              (frame (&rest events)
                (with-frame (context 80 36 :events events)
                  (app)))
              (selected ()
                (gethash (lui:widget-id (lui.debug::id :row key) context)
-                        (lui.frame::context-ids context))))
+                        (%lui.frame::context-ids context))))
       (frame) (frame)
       (setf key (list :id (lui:widget-id '(:item 20) context)))
       (setf (lui.debug:debugger-state-selected state) key)
@@ -321,10 +322,10 @@
     (lui.debug:set-debugger-enabled t :context context :state state)
     (labels ((frame (&rest events)
                (with-frame (context 100 48 :events events)
-                 (lui.tests.support::draw-button "Item" (lui:opt :id :item))))
+                 (%lui.tests.support::draw-button "Item" (lui:opt :id :item))))
              (node (kind)
                (gethash (lui:widget-id (lui.debug::id kind) context)
-                        (lui.frame::context-ids context)))
+                        (%lui.frame::context-ids context)))
              (select ()
                (frame (make-event :kind :activate
                         :id (lui.debug::id :row (list :id
@@ -384,11 +385,11 @@
           :toolkit style)
         (labels ((frame (&rest events)
                    (with-frame (context width height :events events)
-                     (lui.tests.support::draw-button "Item" (lui:opt :id
+                     (%lui.tests.support::draw-button "Item" (lui:opt :id
                                                               :item))))
                  (node (name)
                    (gethash (lui:widget-id (lui.debug::id name) context)
-                            (lui.frame::context-ids context)))
+                            (%lui.frame::context-ids context)))
                  (fully-visible (node)
                    (let ((box (element-box node))
                          (clip (element-clip node)))
@@ -423,10 +424,10 @@
     (lui.debug:set-debugger-enabled t :context context :state state)
     (labels ((frame (&rest events)
                (with-frame (context 100 48 :events events)
-                 (lui.tests.support::draw-button "Item" (lui:opt :id :item))))
+                 (%lui.tests.support::draw-button "Item" (lui:opt :id :item))))
              (node (name)
                (gethash (lui:widget-id (lui.debug::id name) context)
-                        (lui.frame::context-ids context)))
+                        (%lui.frame::context-ids context)))
              (extent (axis)
                (if (eq axis :resize)
                    (box-width (element-box (node :debugger)))
@@ -523,7 +524,7 @@
 
 (fn test-page-viewport ()
   (let ((context (make-test-context)) (state (lui.debug:make-debugger-state)))
-    (setf (lui.frame::context-page-height-p context) t)
+    (setf (%lui.frame::context-page-height-p context) t)
     (lui.debug:set-debugger-enabled t :context context :state state)
     (labels ((frame ()
                (with-frame (context 80 36)
@@ -534,9 +535,9 @@
              (box (name)
                (element-box (gethash (lui:widget-id (lui.debug::id name)
                                        context)
-                                    (lui.frame::context-ids context)))))
+                                    (%lui.frame::context-ids context)))))
       (frame) (frame)
-      (setf (lui.frame::context-page-top context) 500)
+      (setf (%lui.frame::context-page-top context) 500)
       (frame) (frame)
       (assert (> (context-height context) 1000))
       (assert (= 36 (box-height (box :debugger)) (box-height (box :resize))))
@@ -549,7 +550,7 @@
                    (when (and (consp key) (eq (first key) :lui.debug)
                               (eq (second key) :row))
                      (incf rows)))
-                 (lui.frame::context-ids context))
+                 (%lui.frame::context-ids context))
         (assert (< 1 rows 38)))
       (setf (lui.debug:debugger-state-selected state) (list :id
           (lui:widget-id :app context)))
@@ -557,7 +558,7 @@
       (assert (< (box-height (box :property-pane)) 36))
       (lui.debug:set-debugger-enabled nil :context context)
       (frame)
-      (assert (zerop (length (lui.frame::context-memo context)))))))
+      (assert (zerop (length (%lui.frame::context-memo context)))))))
 
 (fn run-tests ()
   (test-caption-cache)

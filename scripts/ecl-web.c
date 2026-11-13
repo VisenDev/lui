@@ -63,7 +63,7 @@ static void initialize_bridge(void)
 {
     if (transport_id) return;
     /* Interned symbols remain rooted by their packages. */
-    cl_object package = ecl_find_package("LUI.ECL-EMSCRIPTEN");
+    cl_object package = ecl_find_package("%LUI.ECL-EMSCRIPTEN");
     transport_id = _ecl_intern("TRANSPORT-ID", package);
     reference_for = _ecl_intern("REFERENCE-FOR", package);
     root_value = _ecl_intern("ROOT-VALUE", package);

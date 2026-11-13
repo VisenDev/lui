@@ -1,5 +1,5 @@
 (defpackage #:lui
-  (:use #:cl #:lui.fn #:lui.widgets #:lui.frame)
+  (:use #:cl #:%lui.fn #:%lui.widgets #:%lui.frame)
   (:import-from #:lui.palette
                 #:palette #:palette-p #:make-palette #:available-palettes
                 #:call-with-palette #:with-palette #:+palette-default+
@@ -8,21 +8,21 @@
   (:import-from #:lui.toolkit
                 #:register-toolkit #:toolkit-defaults #:define-toolkit
                 #:current-toolkit #:call-with-toolkit #:with-toolkit
-                #:control #:*toolkit* #:*toolkit-definition* #:find-toolkit
-                #:override #:without-option)
-  (:import-from #:lui.conditions
+                #:control #:%*toolkit* #:%*toolkit-definition* #:%find-toolkit
+                #:%override #:%without-option)
+  (:import-from #:%lui.conditions
                 #:lui-error #:configuration-error #:backend-error #:font-error
                 #:frame-state-error #:error-operation #:error-setting
                 #:error-value
                 #:error-backend #:error-font-request)
-  (:import-from #:lui.layout
+  (:import-from #:%lui.layout
                 #:position-mode
                 #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
                 #:fixed #:percent #:box
                 #:make-box #:box-x #:box-y #:box-width #:box-height
                 #:element-box
                 #:element-content)
-  (:import-from #:lui.frame
+  (:import-from #:%lui.frame
                 #:call-with-frame #:call-with-key
                 #:row #:column #:with-frame #:frame-time #:request-frame
                 #:previous-box
@@ -33,7 +33,7 @@
                 #:event-value
                 #:event-key #:event-button #:event-buttons #:event-clicks
                 #:event-dragging-p)
-  (:import-from #:lui.widgets
+  (:import-from #:%lui.widgets
                 #:declare-widget #:widget-text)
   ;; Application controls and layout live here; specialized APIs are exported
   ;; by their owning font, drawing, debugger, and backend packages.
@@ -63,11 +63,11 @@
            #:focus-widget #:opt #:panel #:label #:spacer #:hr #:vr #:button
            #:tab #:checkbox #:radio #:slider #:text-field #:cell
            #:list-item #:gauge #:canvas #:date-picker #:searchable-combobox
-           #:*default-backend-function*))
+           #:%*default-backend-function*))
 (in-package #:lui)
 
 (defvar *backends* (make-hash-table :test 'eq))
-(defvar *default-backend-function* nil
+(defvar %*default-backend-function* nil
   "A thunk that returns default backend when called.")
 (defvar *backend* nil "Default backend override; NIL selects an available backend.")
 (defvar *unit* 1 "Layout spacing unit supplied by the active backend.")
@@ -101,15 +101,15 @@ MIN-FPS sets idle redraws per second. MAX-FPS caps input and animation frames.
 INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
   (assert (< 0 min-fps))
   (assert (<= min-fps max-fps))
-  (let* ((lui.frame:*min-fps* min-fps) (lui.frame:*max-fps* max-fps)
+  (let* ((%lui.frame:*min-fps* min-fps) (%lui.frame:*max-fps* max-fps)
          (name (or backend
-                   (and *default-backend-function*
-                        (funcall *default-backend-function*))
+                   (and %*default-backend-function*
+                        (funcall %*default-backend-function*))
                    (loop :for backend :across (available-backends)
                          :return backend)))
          (runner (gethash name *backends*)))
     (unless runner
-      (error 'lui.conditions:configuration-error
+      (error '%lui.conditions:configuration-error
              :setting :backend :value name
              :operation :run
              :format-control "Backend ~S is not loaded. Available: ~S"
@@ -154,9 +154,9 @@ Offsets on automatic widgets shift their drawing without changing their slot."
 
 (defmacro panel (options &body body)
   "Draw a styled container and attach widgets declared in BODY as children."
-  `(let ((lui.frame:*parent*
-          (lui.widgets:declare-panel
-           *toolkit* (append ,options (toolkit-defaults)))))
+  `(let ((%lui.frame:*parent*
+          (%lui.widgets:declare-panel
+           %*toolkit* (append ,options (toolkit-defaults)))))
      ,@body))
 
 (fn (widget-options list) ((options list))
@@ -224,12 +224,12 @@ Offsets on automatic widgets shift their drawing without changing their slot."
                                 (otherwise t)))) args)
             &optional ((options list) nil))
        ,doc
-       (let* ((entry (or *toolkit-definition* (find-toolkit *toolkit*)))
-              (custom (override ,kind entry)))
+       (let* ((entry (or %*toolkit-definition* (%find-toolkit %*toolkit*)))
+              (custom (%override ,kind entry)))
          (if custom (funcall custom ,@args options)
-             (let ((style *toolkit*))
+             (let ((style %*toolkit*))
                (multiple-value-bind (defaults palette) (toolkit-defaults
-                                                        *toolkit* ,kind)
+                                                        %*toolkit* ,kind)
                  (declare (ignorable palette))
                    ,@body)))))
        (define-widget ,name ,args ,doc))))
@@ -242,12 +242,12 @@ Offsets on automatic widgets shift their drawing without changing their slot."
   "Return true on activation. OPT :id supplies an instance key; the ID is returned third."
   (apply #'declare-widget :button style id text (append options defaults)))
 
-(fn (spacer lui.layout:element) (&optional ((options list) nil))
+(fn (spacer %lui.layout:element) (&optional ((options list) nil))
   "Reserve empty layout space using OPT options, without painting or focus.
 Use :width (grow) in a row or :height (grow) in a column to push siblings apart.
 Fixed dimensions reserve a specific amount; :padding adds space on every side.
 The default size is zero. For padding around children, use ROW or COLUMN."
-  (lui.frame:emit (apply #'lui.layout:make-element options)))
+  (%lui.frame:emit (apply #'%lui.layout:make-element options)))
 
 (define-control hr (id)
   "Draw a noninteractive horizontal rule, growing in width and one coordinate thick.
@@ -293,37 +293,37 @@ OPT :width sets thickness; :height controls length. :foreground sets its color."
 (defmacro table (options &body rows)
   "Lay out TABLE-ROWs with shared content-sized columns using OPT options.
 :GAP separates rows; :COLUMN-GAP separates columns. Accepts layout options."
-  `(let ((lui.frame:*parent*
-          (lui.frame:emit
-           (apply #'lui.layout:make-element
+  `(let ((%lui.frame:*parent*
+          (%lui.frame:emit
+           (apply #'%lui.layout:make-element
                   :direction :column :table-p t ,options))))
      ,@rows))
 
 (defmacro table-row (options &body cells)
   "Declare a table row using OPT layout options or NIL for defaults.
 Each direct child occupies one column by default."
-  `(let ((lui.frame:*parent*
-          (lui.frame:emit
-           (apply #'lui.layout:make-element :direction :row ,options))))
+  `(let ((%lui.frame:*parent*
+          (%lui.frame:emit
+           (apply #'%lui.layout:make-element :direction :row ,options))))
      ,@cells))
 
 (defmacro table-cell (options &body contents)
   "Group widgets in a table cell using OPT layout options or NIL for defaults.
 :COLUMN-SPAN defaults to one. Height grows and content clips by default."
-  `(let ((lui.frame:*parent*
-          (lui.frame:emit
-           (apply #'lui.layout:make-element :direction :column
+  `(let ((%lui.frame:*parent*
+          (%lui.frame:emit
+           (apply #'%lui.layout:make-element :direction :column
                   (append ,options
-                          (list :height (lui.layout:grow) :clip-p t))))))
+                          (list :height (%lui.layout:grow) :clip-p t))))))
      ,@contents))
 
 (define-control cell (id text)
   "Display a compact grid cell. Use :selected-p to mark the active cell."
   (selectable :cell style id text options
-              (list* :background (lui.widgets:palette-color palette
+              (list* :background (%lui.widgets:palette-color palette
                                                              :cell-background
                                                              "#ffffff")
-                     :foreground (lui.widgets:palette-color palette
+                     :foreground (%lui.widgets:palette-color palette
                                                              :cell-foreground
                                                              "#202430")
                      defaults)))
@@ -343,7 +343,7 @@ Without :value, each control retains its own value, initially :default-value or 
   "Return the number, change flag, and ID. OPT accepts :minimum, :maximum and :step.
 OPT :default-value initializes owned state (default 0); :value is controlled."
   (value-widget :slider style id value (getf options :text "")
-                (append (without-option :text options) defaults)))
+                (append (%without-option :text options) defaults)))
 
 (define-control text-field (id value)
   "Return text, a change flag, and the resolved ID. Text is retained by default.
@@ -351,7 +351,7 @@ OPT :default-value initializes the string once (default empty); :value supplies
 application-owned text each frame. :password-p masks presentation and copying.
 Owned state is discarded when this widget is absent from a completed frame."
   (value-widget :text-field style id value (getf options :placeholder "")
-                (append (without-option :placeholder options) defaults)))
+                (append (%without-option :placeholder options) defaults)))
 
 (define-control gauge (id fraction)
   "Display a read-only progress fraction, clamped to the range zero to one."
@@ -406,25 +406,25 @@ Owned state is discarded when this widget is absent from a completed frame."
     (make-array count :element-type '(cons integer string) :initial-contents
                 (nreverse matches))))
 
-(fn (anchored-popup lui.layout:element)
-    ((id object-id) (anchor lui.layout:element) (options list))
+(fn (anchored-popup %lui.layout:element)
+    ((id object-id) (anchor %lui.layout:element) (options list))
   "Declare a floating popup whose geometry is constrained to ANCHOR."
-  (let ((*parent* (lui.layout:make-element)))
+  (let ((*parent* (%lui.layout:make-element)))
     (let ((pane
            (declare-panel
-            *toolkit*
+            %*toolkit*
             (append options
                     (opt :id id :position :absolute :opacity 1 :scroll-p t
                          :scrollbar-p nil :clip-p t :interactive-p t
                          :keyboard-focus-p nil :padding (units 1))
                     (toolkit-defaults)))))
-      (setf (lui.layout:element-popup-anchor pane) anchor)
-      (push pane (lui.frame:context-popups *context*))
+      (setf (%lui.layout:element-popup-anchor pane) anchor)
+      (push pane (%lui.frame:context-popups *context*))
       pane)))
 
 (fn (combobox-popup (values))
     ((id object-id) (matches (vector (cons integer string)))
-     (index (or null integer)) (anchor lui.layout:element)
+     (index (or null integer)) (anchor %lui.layout:element)
      (reveal (or null event)))
   "Declare the filtered combobox choices with stable source-index IDs."
   (let* ((pane (anchored-popup (list id :popup) anchor nil))
@@ -435,13 +435,13 @@ Owned state is discarded when this widget is absent from a completed frame."
                                (car
                                 match))
           :do (%list-item row-id (cdr match)
-                         (opt :width (lui.layout:grow) :selected-p
+                         (opt :width (%lui.layout:grow) :selected-p
                            (eql i
                              index)))
-          (let ((row (gethash row-id (lui.frame:context-ids *context*))))
-            (setf (lui.layout:element-keyboard-focus-p row) nil)
+          (let ((row (gethash row-id (%lui.frame:context-ids *context*))))
+            (setf (%lui.layout:element-keyboard-focus-p row) nil)
             (when (and reveal (eql index i))
-              (setf (lui.layout:element-popup-reveal pane) row)))))
+              (setf (%lui.layout:element-popup-reveal pane) row)))))
   (values))
 
 (fn (completion-navigation-p boolean) ((event event))
@@ -461,7 +461,7 @@ Owned state is discarded when this widget is absent from a completed frame."
 (fn (combobox-completion (or null string))
     ((id object-id) (state combobox-state) (text string) (choices sequence)
      (limit (integer 1 *)) (events (vector event))
-     (anchor lui.layout:element))
+     (anchor %lui.layout:element))
   "Apply autocomplete navigation or selection to the combobox editor state."
   (let ((navigate (find-if #'completion-navigation-p events)))
     (when (or navigate (combobox-state-open-p state))
@@ -517,10 +517,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                                                (context-focus
                                                                 *context*))))
          (events (events-for id))
-         (press (lui.frame:context-pointer-press *context*))
+         (press (%lui.frame:context-pointer-press *context*))
          (popup-box (previous-box (list id :popup)))
-         (edited (%text-field id text (without-option :max-results options)))
-         (anchor (gethash id (lui.frame:context-ids *context*)))
+         (edited (%text-field id text (%without-option :max-results options)))
+         (anchor (gethash id (%lui.frame:context-ids *context*)))
          (result (if (string= edited text) value edited)))
     (check-type limit (integer 1 *))
     (cond ((not focused) (setf (combobox-state-open-p state) nil))
@@ -531,7 +531,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                                   state) nil
                                                   (combobox-state-highlight
                                                    state) nil))
-          ((and press (not (and popup-box (lui.frame:contains-p popup-box
+          ((and press (not (and popup-box (%lui.frame:contains-p popup-box
                                                                  (event-x
                                                                   press)
                                                                  (event-y
@@ -547,7 +547,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         (when choice
           (setf result choice (edit-state-anchor state) (length choice)
                 (edit-state-cursor state) (length choice))
-          (let ((widget (lui.layout:element-content anchor)))
+          (let ((widget (%lui.layout:element-content anchor)))
             (when (and (widget-p widget) (eq :text-field (widget-kind
                                                           widget)))
               (setf (widget-value widget) choice)))
@@ -663,12 +663,12 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     ((id object-id) (state picker-state) (year integer) (month integer)
      (months boolean))
   "Declare month/year navigation and update the picker state when activated."
-  (row (opt :width (lui.layout:grow))
+  (row (opt :width (%lui.layout:grow))
     (when (calendar-item (list id :month-menu)
                          (format nil "~A ~4,'0D ▼"
                                  (aref *month-names* (1-
                                                       month)) year)
-                         :width (lui.layout:grow) :font-weight :bold)
+                         :width (%lui.layout:grow) :font-weight :bold)
       (setf (picker-state-months-p state) (not months)))
     (dolist (step '(-1 1))
       (multiple-value-bind (y m) (shift-month year month (* step (if months
@@ -677,7 +677,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                           :next-month))
                              (if (minusp step) "↑" "↓") :font-size 19
                              :center-text-p t
-                             :width (lui.layout:fixed (if
+                             :width (%lui.layout:fixed (if
                                                        (context-text-mode-p
                                                         *context*) 3 28))
                              :disabled-p (not (<= 1 y 9999))
@@ -690,14 +690,14 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     ((id object-id) (state picker-state) (month integer))
   "Declare the month chooser and switch back to the day grid after selection."
   (dotimes (r 4)
-    (row (opt :width (lui.layout:grow))
+    (row (opt :width (%lui.layout:grow))
       (dotimes (c 3)
         (let ((m (+ 1 (* r 3) c)))
           (when (calendar-item (list id :month m) (subseq (aref
                                                            *month-names* (1-
                                                                           m))
                                                           0 3)
-                               :width (lui.layout:percent (/ 1 3))
+                               :width (%lui.layout:percent (/ 1 3))
                                :selected-p (= m month))
             (setf (picker-state-month state) m (picker-state-months-p
                                                 state) nil))))))
@@ -709,10 +709,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
   (calendar-arrow-focus id state)
   (let* ((year (picker-state-year state)) (month (picker-state-month state))
          (months (picker-state-months-p state))
-         (width (lui.layout:percent (/ 1 7)))
+         (width (%lui.layout:percent (/ 1 7)))
          (palette (toolkit-defaults))
          (foreground (getf palette :foreground "#ffffff"))
-         (muted (lui.widgets:muted-ink
+         (muted (%lui.widgets:muted-ink
                  foreground (getf palette :background "#303040")))
          (ink (getf palette :accent foreground)))
     (calendar-header id state year month months)
@@ -721,12 +721,12 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
          state)
         (calendar-month-grid id state month)
         (let ((start (calendar-start year month)))
-          (row (opt :width (lui.layout:grow))
+          (row (opt :width (%lui.layout:grow))
             (loop :for name :across "SMTWTFS" :do
                   (row (opt :width width :align :center)
                   (%label nil (string name) (opt :font-size 13)))))
           (dotimes (week 6)
-            (row (opt :width (lui.layout:grow))
+            (row (opt :width (%lui.layout:grow))
               (dotimes (column 7)
                 (multiple-value-bind (y m day)
                     (calendar-day year month
@@ -742,10 +742,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                            (equalp (make-date-parts y m day) selected))
                       (return-from picker-calendar
                         (values (make-date-parts y m day) t))))))))))
-    (row (opt :width (lui.layout:grow))
+    (row (opt :width (%lui.layout:grow))
       (when (calendar-item (list id :clear) "Clear" :foreground ink)
         (return-from picker-calendar (values nil t)))
-      (column (opt :width (lui.layout:grow)))
+      (column (opt :width (%lui.layout:grow)))
       (when (calendar-item (list id :today) "Today" :foreground ink)
         (return-from picker-calendar (values (local-today) t))))
     (values nil nil)))
@@ -759,8 +759,8 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                                                  :field))))
          (icon-click (calendar-item trigger "▦" :icon :calendar
                                     :accessible-name "Choose date"
-                                    :height (lui.layout:grow) :width
-                                    (lui.layout:fixed (if terminal 3 26)))))
+                                    :height (%lui.layout:grow) :width
+                                    (%lui.layout:fixed (if terminal 3 26)))))
     (cond ((and icon-click (picker-state-open-p state))
            (setf (picker-state-open-p state) nil (context-focus *context*)
                  trigger))
@@ -788,7 +788,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         (terminal (context-text-mode-p *context*)))
     (calendar-trigger id state parts trigger terminal)
     (when (picker-state-open-p state)
-      (let ((press (lui.frame:context-pointer-press *context*))
+      (let ((press (%lui.frame:context-pointer-press *context*))
             (bounds (previous-box popup)))
         (cond ((and press bounds
                     (not (some (lambda (target) (find :press (events-for
@@ -796,7 +796,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                                               #'event-kind))
                                (list trigger (list id :input) (list id
                                                                     :field))))
-                    (not (lui.frame:contains-p bounds (event-x press)
+                    (not (%lui.frame:contains-p bounds (event-x press)
                                                 (event-y press))))
                (setf (picker-state-open-p state) nil))
               ((find :escape (events-for focus) :key #'event-key)
@@ -807,7 +807,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                (setf (picker-state-open-p state) nil))
               (t
                (let ((*parent* (anchored-popup popup *parent*
-                                               (opt :width (lui.layout:fixed
+                                               (opt :width (%lui.layout:fixed
                                                             (if terminal 32
                                                                 260))))))
                  (multiple-value-bind (date action)
@@ -816,7 +816,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                                        parts
                                        (local-today)))
                    (when action
-                     (pop (lui.frame:context-popups *context*))
+                     (pop (%lui.frame:context-popups *context*))
                      (setf (picker-state-open-p state) nil (context-focus
                                                             *context*)
                            trigger)
@@ -836,13 +836,13 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
       (setf (picker-state-value state) value
             (picker-state-draft state) (if date
                                        (picker-display date) (or value ""))))
-    (column (opt :id id :width (getf options :width (lui.layout:fit)))
+    (column (opt :id id :width (getf options :width (%lui.layout:fit)))
       (panel (append (opt :id (list id :field) :interactive-p t
                           :keyboard-focus-p nil)
                      options (opt :direction :row :padding 1 :gap 0))
              (let* ((old (picker-state-draft state))
                (draft (%text-field (list id :input) old
-                                       (opt :width (lui.layout:grow)
+                                       (opt :width (%lui.layout:grow)
                                             :accessible-name "Date"
                                             :placeholder "mm/dd/yyyy"))))
                (unless (equal old draft)

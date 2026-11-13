@@ -1,16 +1,16 @@
 (defpackage #:lui.toolkit
-  (:use #:cl #:lui.fn)
-  (:import-from #:lui.palette #:resolve-palette)
+  (:use #:cl #:%lui.fn)
+  (:import-from #:lui.palette #:%resolve-palette)
   (:export
            #:register-toolkit #:register-toolkit-rendering #:toolkit-paint
            #:toolkit-geometry #:toolkit-native-labels-p #:toolkit-palette
-           #:toolkit-defaults #:define-toolkit #:*toolkit-revision*
+           #:toolkit-defaults #:define-toolkit #:%*toolkit-revision*
            #:current-toolkit #:call-with-toolkit #:with-toolkit #:control
-           #:*toolkit* #:*toolkit-definition* #:find-toolkit #:override
-           #:without-option))
+           #:%*toolkit* #:%*toolkit-definition* #:%find-toolkit #:%override
+           #:%without-option))
 (in-package #:lui.toolkit)
 
-(fn (without-option list) ((key symbol) (options list))
+(fn (%without-option list) ((key symbol) (options list))
   "Return an option plist without KEY and its associated value."
   (let ((result nil))
     (do ((tail options (cddr tail))) ((null tail) (nreverse result))
@@ -18,8 +18,8 @@
         (push (car tail) result)
         (push (cadr tail) result)))))
 
-(defvar *toolkit* :qt)
-(defvar *toolkit-definition* nil)
+(defvar %*toolkit* :qt)
+(defvar %*toolkit-definition* nil)
 
 (defstruct (toolkit (:conc-name %toolkit-))
   (parent nil :type symbol)
@@ -30,11 +30,11 @@
   (native-labels :inherit :type (member nil t :inherit)))
 (defvar *toolkits* (make-hash-table :test 'eq))
 
-(defvar *toolkit-revision* 0)
+(defvar %*toolkit-revision* 0)
 
-(fn (find-toolkit toolkit) ((name symbol))
+(fn (%find-toolkit toolkit) ((name symbol))
   "Resolve a toolkit name or signal a CONFIGURATION-ERROR for an unknown name."
-  (or (gethash name *toolkits*) (error 'lui.conditions:configuration-error
+  (or (gethash name *toolkits*) (error '%lui.conditions:configuration-error
                                        :setting :toolkit :value name
                                        :operation :find-toolkit
                                        :format-control "Unknown toolkit ~S."
@@ -42,7 +42,7 @@
 
 (fn (rendering-option t) ((name symbol) (key symbol))
   "Resolve an inherited toolkit rendering policy through its parent chain."
-  (let* ((entry (find-toolkit name))
+  (let* ((entry (%find-toolkit name))
          (value (ecase key (:paint (%toolkit-paint entry))
                        (:geometry (%toolkit-geometry entry))
                        (:native-labels (%toolkit-native-labels entry)))))
@@ -74,7 +74,7 @@
                                     labels-p))
   "Set graphical callbacks for registered NAME. Omitted keys retain their
 settings or inherit from :PARENT; explicit NIL disables the inherited setting."
-  (let ((entry (find-toolkit name)))
+  (let ((entry (%find-toolkit name)))
     (when paint-p (check-type paint (or null function)))
     (when geometry-p (check-type geometry (or null function)))
     (when paint-p (setf (%toolkit-paint entry) paint))
@@ -83,7 +83,7 @@ settings or inherit from :PARENT; explicit NIL disables the inherited setting."
                      (not
                        (null
                          native-labels))))
-    (incf *toolkit-revision*))
+    (incf %*toolkit-revision*))
   name)
 
 (fn (register-toolkit symbol)
@@ -97,16 +97,16 @@ CONTROLS maps control names to functions taking the public arguments and options
 PAINT, GEOMETRY and NATIVE-LABELS configure graphical rendering; omitted values
 inherit only from an explicit PARENT."
   (loop :for ancestor := parent
-        :then (%toolkit-parent (find-toolkit ancestor))
+        :then (%toolkit-parent (%find-toolkit ancestor))
         :while ancestor :when (eq ancestor name)
-        :do (error 'lui.conditions:configuration-error
+        :do (error '%lui.conditions:configuration-error
                    :setting :toolkit :value name
                    :operation :register-toolkit
                    :format-control "Circular toolkit inheritance at ~S."
                    :format-arguments (list name)))
   (when paint-p (check-type paint (or null function)))
   (when geometry-p (check-type geometry (or null function)))
-  (incf *toolkit-revision*)
+  (incf %*toolkit-revision*)
   (setf (gethash name *toolkits*)
         (make-toolkit :parent parent :defaults defaults :controls controls
                       :paint (if paint-p paint :inherit)
@@ -117,62 +117,63 @@ inherit only from an explicit PARENT."
 
 (fn (current-toolkit symbol) ()
   "Return the toolkit name active in this drawing scope."
-  *toolkit*)
+  %*toolkit*)
 
 (fn (defaults-of list) ((entry toolkit))
   "Collect toolkit defaults, evaluating dynamic providers for this declaration."
   (let* ((parent (%toolkit-parent entry))
          (source (%toolkit-defaults entry))
          (defaults (if (functionp source) (funcall source) source)))
-    (if parent (append defaults (defaults-of (find-toolkit parent)))
+    (if parent (append defaults (defaults-of (%find-toolkit parent)))
         defaults)))
 
-(fn (toolkit-palette list) (&optional ((name symbol) *toolkit*))
+(fn (toolkit-palette list) (&optional ((name symbol) %*toolkit*))
   "Return scoped semantic colors followed by NAME's inherited palette."
-  (resolve-palette (defaults-of (find-toolkit name))))
+  (%resolve-palette (defaults-of (%find-toolkit name))))
 
 (fn (toolkit-defaults (values list list))
-    (&optional ((name symbol) *toolkit*) ((kind symbol) nil))
+    (&optional ((name symbol) %*toolkit*) ((kind symbol) nil))
   "Return appearance defaults for KIND and the captured palette as a second value."
-  (let* ((defaults (defaults-of (find-toolkit name)))
-         (palette (copy-list (resolve-palette defaults))))
+  (let* ((defaults (defaults-of (%find-toolkit name)))
+         (palette (copy-list (%resolve-palette defaults))))
     (values (list* :palette palette
-                   :foreground (lui.widgets:palette-color palette
+                   :foreground (%lui.widgets:palette-color palette
                                                            :foreground)
                    :background
                    (or
                     (when (member kind '(:button :tab
                                          :text-field))
-                      (lui.widgets:palette-color palette
+                      (%lui.widgets:palette-color palette
                                                   :control-background))
-                    (lui.widgets:palette-color palette
+                    (%lui.widgets:palette-color palette
                                                 :background))
-                   :accent (lui.widgets:palette-color palette :accent)
-                   (without-option :palette defaults))
+                   :accent (%lui.widgets:palette-color palette :accent)
+                   (%without-option :palette defaults))
             palette)))
 
-(fn (override (or null function)) ((kind symbol) (entry toolkit))
+(fn (%override (or null function)) ((kind symbol) (entry toolkit))
   "Merge explicit widget options with defaults, preserving explicit NIL values."
   (or (cdr (assoc kind (%toolkit-controls entry)))
       (let ((parent (%toolkit-parent entry)))
-        (when parent (override kind (find-toolkit parent))))))
+        (when parent (%override kind (%find-toolkit parent))))))
 
 (fn (control t) ((kind symbol) &rest (arguments list))
   "Invoke a user-defined control from the current toolkit or its ancestors."
-  (apply (or (override kind (or *toolkit-definition*
-                                (find-toolkit *toolkit*)))
-             (error 'lui.conditions:configuration-error
+  (apply (or (%override kind (or %*toolkit-definition*
+                                (%find-toolkit %*toolkit*)))
+             (error '%lui.conditions:configuration-error
                     :setting :control :value kind
                     :operation :control
                     :format-control "No ~S control in toolkit ~S."
-                    :format-arguments (list kind *toolkit*)))
+                    :format-arguments (list kind %*toolkit*)))
          arguments))
 
 (fn (call-with-toolkit (values &rest t))
     ((designator symbol) (draw function))
   "Call DRAW with the named toolkit; restore enclosing bindings on exit."
-  (let* ((*toolkit* designator)
-         (*toolkit-definition* (find-toolkit *toolkit*)))
+  (let* ((%*toolkit* designator)
+         (%*toolkit-definition* (%find-toolkit %*toolkit*)))
+    (declare (special %*toolkit* %*toolkit-definition*))
     (funcall draw)))
 
 (defmacro with-toolkit ((designator) &body body)

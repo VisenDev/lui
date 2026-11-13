@@ -1,6 +1,6 @@
-(defpackage #:lui.paint-glass
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui.draw))
-(in-package #:lui.paint-glass)
+(defpackage #:%lui.paint-glass
+  (:use #:cl #:%lui.fn #:%lui.layout #:%lui.frame #:%lui.widgets #:lui.draw))
+(in-package #:%lui.paint-glass)
 
 (fn (paint-glass-scrollbar t) ((renderer renderer) (node element))
   "Paint a translucent glass scrollbar track and thumb."
@@ -18,5 +18,5 @@
     (outline renderer face radius foreground 0.4f0
              (min 1 (/ (box-width face) 2)))))
 
-(register-standard-painter :glass nil #'paint-glass-scrollbar nil
+(%register-standard-painter :glass nil #'paint-glass-scrollbar nil
                            :translucent t)

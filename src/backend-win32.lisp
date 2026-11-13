@@ -1,8 +1,8 @@
-(defpackage #:lui.win32
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.font #:lui.draw)
+(defpackage #:%lui.win32
+  (:use #:cl #:%lui.fn #:lui #:%lui.layout #:%lui.frame #:lui.font #:lui.draw)
   (:export #:run-win32))
 
-(in-package #:lui.win32)
+(in-package #:%lui.win32)
 
 ;; Win64 uses the platform calling convention for both C and WinAPI calls.
 ;; Explicit STDCALL also permits 32-bit Common Lisp implementations.
@@ -180,7 +180,7 @@
 
 (fn (checked (values)) ((status integer))
   "Signal BACKEND-ERROR for a nonzero GDI+ status."
-  (unless (zerop status) (error 'lui.conditions:backend-error
+  (unless (zerop status) (error '%lui.conditions:backend-error
                                 :backend :win32
                                 :operation :checked
                                 :format-control "GDI+ status ~D."
@@ -189,7 +189,7 @@
 
 (fn (nonnull cffi:foreign-pointer) (pointer)
   "Return a non-null foreign pointer or signal BACKEND-ERROR with the Windows status."
-  (when (cffi:null-pointer-p pointer) (error 'lui.conditions:backend-error
+  (when (cffi:null-pointer-p pointer) (error '%lui.conditions:backend-error
                                              :backend :win32
                                              :operation :nonnull
                                              :format-control "Win32 allocation failed."))
@@ -236,7 +236,7 @@
                  (otherwise (if (<= 32 code 126)
                                 (string (code-char code)) ""))))
          (command (when (and text-p (not (and control alt)))
-                    (lui.widgets:readline-key name :control control
+                    (%lui.widgets:readline-key name :control control
                                               :alt alt :shift shift))))
     (cond ((and control (not alt) (= code 67))
            (make-event :kind :key :key :copy))
@@ -249,7 +249,7 @@
           ((and key (not alt))
            (make-event
             :kind :key :key
-            (lui.widgets:horizontal-selection-key
+            (%lui.widgets:horizontal-selection-key
              key (and text-p shift)))))))
 
 (fn (cursor-id integer) ((kind symbol))
@@ -272,7 +272,7 @@
              (load-cursor
               (cffi:null-pointer)
               (cffi:make-pointer
-               (cursor-id (lui.widgets:cursor-at
+               (cursor-id (%lui.widgets:cursor-at
                            (win-window-context window) x y)))))))))))
 
 (fn (pointer-message (values))
@@ -324,9 +324,9 @@
                  wparam (minusp (key-state 17))
                  (minusp (key-state 18)) (minusp (key-state 16))
                  (and predicted
-                      (lui.widgets:text-field-focused-p predicted))
+                      (%lui.widgets:text-field-focused-p predicted))
                  (and predicted
-                      (lui.widgets:activation-focused-p predicted)))))
+                      (%lui.widgets:activation-focused-p predicted)))))
     (when input
       (queue-input window input)
       (when (and (= wparam 32) (eq (event-kind input) :activate))
@@ -532,7 +532,7 @@
              (unless (plusp
                       (bit-blt target-dc 0 0 width height
                                source-dc x y #x00cc0020))
-               (error 'lui.conditions:backend-error
+               (error '%lui.conditions:backend-error
                       :backend :win32
                       :operation :capture-backdrop
                       :format-control "Native backdrop capture failed."))
@@ -625,13 +625,13 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
   "Wait for Windows input or the next frame deadline."
   (loop
    (pump-messages window)
-   (let ((delay (lui.frame:frame-wait context input)))
+   (let ((delay (%lui.frame:frame-wait context input)))
      (when (or (zerop delay) (win-window-events window)
                (win-window-redraw-p window) (win-window-quit window))
        (return))
      (wait-messages 0 (cffi:null-pointer) (ceiling (* 1000 delay))
                     #x4ff 0)))
-  (unless (win-window-quit window) (lui.frame:limit-frame-rate context))
+  (unless (win-window-quit window) (%lui.frame:limit-frame-rate context))
   (values))
 
 (fn (render-frame context)
@@ -640,7 +640,7 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
   "Build and paint one application frame into WINDOW's backing surface."
   (cffi:with-foreign-object (rect :int 4)
     (unless (plusp (client-rect (win-window-handle window) rect))
-      (error 'lui.conditions:backend-error
+      (error '%lui.conditions:backend-error
              :backend :win32
              :operation :render-frame
              :format-control "GetClientRect failed."))
@@ -656,7 +656,7 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
   (checked (reset-clip (win-window-graphics window)))
   (checked (clear-graphics (win-window-graphics window) #xff202532))
   (when (win-window-tracking-p window) (update-cursor window))
-  (paint-frame renderer context)
+  (%paint-frame renderer context)
   (checked (flush-graphics (win-window-graphics window) 1))
   (let ((dc (nonnull (get-dc (win-window-handle window)))))
     (unwind-protect
@@ -664,7 +664,7 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
                   (bit-blt dc 0 0 (win-window-width window)
                            (win-window-height window) (win-window-dc window)
                            0 0 #x00cc0020))
-           (error 'lui.conditions:backend-error
+           (error '%lui.conditions:backend-error
                   :backend :win32
                   :operation :render-frame
                   :format-control "BitBlt failed."))
@@ -688,7 +688,7 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
             instance (module-handle (cffi:null-pointer)))
       (unwind-protect
            (unless (plusp (register-class class))
-             (error 'lui.conditions:backend-error
+             (error '%lui.conditions:backend-error
                     :backend :win32
                     :operation :run-win32
                     :format-control "RegisterClassW failed."))
@@ -699,14 +699,14 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
     ((window win-window) (font font) (draw function) interactive)
   "Create renderer callbacks and process Windows messages and application frames."
   (let* ((renderer
-          (make-renderer :font font :polygons
+          (%make-renderer :font font :polygons
                          (lambda (polygons color alpha)
                            (draw-polygons window polygons color alpha))
                          :clip (lambda (box) (clip-window window box))
                          :backdrop-effect (lambda (box radius blur)
                                   (blur-backdrop window box radius blur))))
          (context
-          (make-render-context renderer :copy
+          (%make-render-context renderer :copy
                                (lambda (text)
                                  (copy-text
                                   (win-window-handle window) text)))))
@@ -753,7 +753,7 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
                        (cffi:mem-aref rect :int 2) (or width 720)
                        (cffi:mem-aref rect :int 3) (or height 520))
                  (unless (plusp (adjust-rect rect #x00cf0000 0))
-                   (error 'lui.conditions:backend-error
+                   (error '%lui.conditions:backend-error
                           :backend :win32
                           :operation :run-win32
                           :format-control "AdjustWindowRect failed."))

@@ -1,8 +1,8 @@
-(defpackage #:lui.tests.terminal-render
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets
+(defpackage #:%lui.tests.terminal-render
+  (:use #:cl #:%lui.fn #:lui #:%lui.layout #:%lui.frame #:%lui.widgets
     #:lui.terminal)
   (:export #:run-tests))
-(in-package #:lui.tests.terminal-render)
+(in-package #:%lui.tests.terminal-render)
 
 (fn test-overlay ()
   (let ((context (make-terminal-context)) (plain nil) (ansi nil))
@@ -62,7 +62,7 @@
                           :width (grow) :height (grow))
         (lui:label "Pane")))
     (let ((idle (render-terminal context :ansi t)))
-      (assert (eq :pane (lui:widget-key (lui.frame::hit context 15 4))))
+      (assert (eq :pane (lui:widget-key (%lui.frame::hit context 15 4))))
       (setf (context-hover context) (lui:widget-id :pane context))
       (assert (equal idle (render-terminal context :ansi t)))
       (setf (context-active context) (lui:widget-id :pane context))

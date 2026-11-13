@@ -64,7 +64,7 @@ class NormalizationTests(unittest.TestCase):
         self.assertIn('(defun collect-items (head &optional', result)
 
     def test_uppercase_qualified_fn(self):
-        source = '(LUI.FN:FN (F REAL) (&KEY ((X REAL) 3)) X)'
+        source = '(%lui.fn:FN (F REAL) (&KEY ((X REAL) 3)) X)'
         self.assertEqual(normalize(source), '(defun F (&KEY (X 3)) X)')
 
     def test_normalization_is_idempotent(self):

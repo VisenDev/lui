@@ -1,9 +1,9 @@
-(defpackage #:lui.conditions
+(defpackage #:%lui.conditions
   (:use #:cl)
   (:export #:lui-error #:configuration-error #:backend-error #:font-error
            #:frame-state-error #:error-operation #:error-setting
            #:error-value #:error-backend #:error-font-request))
-(in-package #:lui.conditions)
+(in-package #:%lui.conditions)
 
 (define-condition lui-error (simple-error)
   ((operation :initarg :operation :initform nil :reader error-operation

@@ -1,8 +1,8 @@
 (defpackage #:lui.terminal
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui)
+  (:use #:cl #:%lui.fn #:%lui.layout #:%lui.frame #:%lui.widgets #:lui)
   (:import-from #:uncursed #:character-width)
   (:export #:make-terminal-context #:render-terminal #:text-lines
-           #:run-terminal #:character-width #:terminal-text-width
+           #:%run-terminal #:character-width #:terminal-text-width
            #:cell-edge))
 
 (in-package #:lui.terminal)
@@ -13,7 +13,7 @@
 
 (fn (text-lines (vector string)) ((text string) width)
   "Wrap TEXT to WIDTH terminal cells; NIL preserves its explicit line breaks."
-  (lui.text:wrap-lines text (and width (max 1 (floor width)))
+  (%lui.text:wrap-lines text (and width (max 1 (floor width)))
                        (lambda (string start end)
                          (loop :for index :from start :below end
                                :sum (character-width (char string index))))))
@@ -358,7 +358,7 @@
 (fn (paint-terminal array) ((context context) (cells array))
   "Paint the solved context into CELLS using toolkit geometry and terminal styles."
   (let* ((root (or (context-root context)
-                   (error 'lui.conditions:frame-state-error
+                   (error '%lui.conditions:frame-state-error
                           :operation :paint-terminal
                           :format-control "No completed frame.")))
          (height (array-dimension cells 0)) (width (array-dimension cells 1))
@@ -400,7 +400,7 @@
                    (return (prog1 (copy-seq buffer)
                              (setf (fill-pointer buffer) 0))))
                   (char (vector-push-extend char buffer))
-                  (t (let ((delay (lui.frame:frame-wait context)))
+                  (t (let ((delay (%lui.frame:frame-wait context)))
                        (when (zerop delay) (return nil))
                        (sleep (min delay 0.02f0)))))))
 
@@ -425,7 +425,7 @@
      ;; Portable line-input fallback. Native terminal raw input is added separately.
      (let ((line (terminal-line context buffer)))
        (when (or (eq line :quit) (equal line ":quit")) (return context))
-       (lui.frame:limit-frame-rate context)
+       (%lui.frame:limit-frame-rate context)
        (setf events
              (cond ((null line) nil)
                    ((string= line ":next") (list (make-event :kind :tab)))
@@ -454,7 +454,7 @@
 
 (fn (focused-node (values (or null element) boolean)) ((context context))
   "Look up the focused element in CONTEXT's completed layout."
-  (gethash (context-focus context) (lui.frame:context-ids context)))
+  (gethash (context-focus context) (%lui.frame:context-ids context)))
 
 (fn (input-focus (values (or null element) boolean)) ((input input) (context
                                                                      context))
@@ -477,7 +477,7 @@
       (case (event-kind pending)
         (:press
          (setf capture (or (event-id pending)
-                           (lui.frame:hit context (event-x pending)
+                           (%lui.frame:hit context (event-x pending)
                                            (event-y pending)))))
         ((:release :cancel) (setf capture nil))
         (:move
@@ -485,9 +485,9 @@
                     (not (logbitp 0 (event-buttons pending))))
            (setf capture nil))) (otherwise nil)))
     (let* ((press (eq (event-kind event) :press))
-           (id (if press (lui.frame:hit context (event-x event)
+           (id (if press (%lui.frame:hit context (event-x event)
                                          (event-y event)) capture))
-           (target (gethash id (lui.frame:context-ids context)))
+           (target (gethash id (%lui.frame:context-ids context)))
            (widget (when target (element-content target))))
       ;; Preserve the topmost target even when a batch starts on a non-slider.
       (when press (setf (event-id event) id))
@@ -761,7 +761,7 @@
 (fn (wait-frame (values)) ((input input) (context context) width height)
   "Wait for input, resize, or the context's next scheduled frame."
   (loop
-   (let ((remaining (lui.frame:frame-wait context)))
+   (let ((remaining (%lui.frame:frame-wait context)))
      (read-input input context (max 0.001f0 (min 0.1f0 remaining)))
      (when (or (zerop remaining) (input-events input) (input-quit-p input))
        (return)))
@@ -771,7 +771,7 @@
        (return))))
   (values))
 
-(fn (run-terminal context)
+(fn (%run-terminal context)
     ((draw function) &key title width height (interactive t))
   "Run an interactive uncursed session with terminal restoration on every exit."
   (if (or (not interactive)
@@ -804,7 +804,7 @@
                 (display-frame context screen)
                 (wait-frame input context width height)
                 (when (input-quit-p input) (return context))
-                (lui.frame:limit-frame-rate context)))
+                (%lui.frame:limit-frame-rate context)))
           (when saved
             (unwind-protect
                  (progn
@@ -817,4 +817,4 @@
                                              #+unix
                                              uncursed-sys:+stdin+)))))))
 
-(register-backend :terminal #'run-terminal)
+(register-backend :terminal #'%run-terminal)

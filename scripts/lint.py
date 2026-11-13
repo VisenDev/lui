@@ -36,7 +36,7 @@ def ordinary_parameters(source, parameters):
 def normalize(source):
     """Desugar FN headers and typed parameters without moving body line numbers."""
     for form, parts in reversed(list(definitions(source))):
-        if parts[0].text(source).lower() not in ('fn', 'lui.fn:fn'):
+        if parts[0].text(source).lower() not in ('fn', '%lui.fn:fn'):
             continue
         name = parts[1]
         if name.text(source).startswith('('):

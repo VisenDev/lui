@@ -1,8 +1,8 @@
-(defpackage #:lui.cocoa
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.font
+(defpackage #:%lui.cocoa
+  (:use #:cl #:%lui.fn #:lui #:%lui.layout #:%lui.frame #:lui.font
         #:lui.draw)
   (:export #:run-cocoa))
-(in-package #:lui.cocoa)
+(in-package #:%lui.cocoa)
 
 (sb-alien:define-alien-type object sb-alien:system-area-pointer)
 ;; Objective-C BOOL is signed char on x86-64 and bool on arm64. Both occupy
@@ -115,7 +115,7 @@
 (fn (require-object sb-sys:system-area-pointer) (object (description string))
   "Return a non-null object or signal BACKEND-ERROR describing the failed operation."
   (when (null-object-p object)
-    (error 'lui.conditions:backend-error
+    (error '%lui.conditions:backend-error
            :backend :cocoa
            :operation :require-object
            :format-control "Cannot create Cocoa ~A."
@@ -193,7 +193,7 @@
                                   :fill-pointer 0)))
         ;; Reuse the font parser, kerning and geometry of the common renderer.
         (paint-text
-         (make-renderer :font font
+         (%make-renderer :font font
                         :polygons (lambda (paths ink alpha)
                                     (declare (ignore ink alpha))
                                     (loop :for path :across paths :do
@@ -254,7 +254,7 @@
                    (let ((graphics (objc-class "NSGraphicsContext")))
                      (message sb-alien:void graphics "saveGraphicsState")
                      (unwind-protect
-                          (paint-frame (cocoa-app-renderer *app*)
+                          (%paint-frame (cocoa-app-renderer *app*)
                                        (cocoa-app-context *app*))
                        (message sb-alien:void graphics
                                 "restoreGraphicsState"))))
@@ -285,7 +285,7 @@
           class (selector name)
           (sb-alien:alien-sap (sb-alien:alien-callable-function function))
           signature))
-    (error 'lui.conditions:backend-error
+    (error '%lui.conditions:backend-error
            :backend :cocoa
            :operation :install-method
            :format-control "Cannot install Cocoa method ~A."
@@ -346,7 +346,7 @@
          (shift (logtest flags #x20000))
          (command-key
           (when (and text-p (not command))
-            (lui.widgets:readline-key
+            (%lui.widgets:readline-key
              (case code
                (123 "ArrowLeft") (124 "ArrowRight")
                (51 "Backspace") (otherwise key-name))
@@ -371,7 +371,7 @@
            (make-event :kind :activate))
           ((member code '(36 76)) (make-event :kind :activate))
           (key (make-event :kind :key
-                           :key (lui.widgets:horizontal-selection-key key
+                           :key (%lui.widgets:horizontal-selection-key key
                                                                       shift)))
           ((and (plusp (length characters))
                 (every (lambda (char) (>= (char-code char) 32)) characters))
@@ -395,7 +395,7 @@
     (let ((cursor
            (message object (objc-class "NSCursor")
                     (cursor-selector
-                     (lui.widgets:cursor-at
+                     (%lui.widgets:cursor-at
                       (cocoa-app-context *app*) x y)))))
       (message sb-alien:void cursor "set")))
   (values))
@@ -433,12 +433,12 @@
        (message sb-alien:unsigned-long event "modifierFlags")
        (if (null-object-p characters) ""
            (or (message utf8-string characters "UTF8String") ""))
-       (and *app* (lui.widgets:text-field-focused-p
+       (and *app* (%lui.widgets:text-field-focused-p
                    (cocoa-app-context *app*)))
        (let ((name (message object event "charactersIgnoringModifiers")))
          (if (null-object-p name) ""
              (or (message utf8-string name "UTF8String") "")))
-       (and *app* (lui.widgets:activation-focused-p
+       (and *app* (%lui.widgets:activation-focused-p
                    (cocoa-app-context *app*)))))))
 
 (fn (cocoa-event (or null event)) (event view)
@@ -617,21 +617,21 @@
          (points (sb-alien:slot bounds 'size))
          (backing (message rect view "convertRectToBacking:" rect bounds))
          (pixels (sb-alien:slot backing 'size)))
-    (setf (lui.gl:gpu-logical-width gpu) (sb-alien:slot points 'width)
-          (lui.gl:gpu-logical-height gpu) (sb-alien:slot points 'height)
-          (lui.gl:gpu-width gpu) (round (sb-alien:slot pixels 'width))
-          (lui.gl:gpu-height gpu) (round (sb-alien:slot pixels 'height)))
-    (when (and (plusp (lui.gl:gpu-width gpu))
-               (plusp (lui.gl:gpu-height gpu)))
+    (setf (%lui.gl:gpu-logical-width gpu) (sb-alien:slot points 'width)
+          (%lui.gl:gpu-logical-height gpu) (sb-alien:slot points 'height)
+          (%lui.gl:gpu-width gpu) (round (sb-alien:slot pixels 'width))
+          (%lui.gl:gpu-height gpu) (round (sb-alien:slot pixels 'height)))
+    (when (and (plusp (%lui.gl:gpu-width gpu))
+               (plusp (%lui.gl:gpu-height gpu)))
       (message sb-alien:void gl "makeCurrentContext")
-      (lui.gl:begin-gpu-frame gpu)
-      (paint-frame (lui.gl:gpu-renderer gpu) context)
+      (%lui.gl:begin-gpu-frame gpu)
+      (%paint-frame (%lui.gl:gpu-renderer gpu) context)
       (message sb-alien:void gl "flushBuffer")))
   (values))
 
 (fn (wait-cocoa (values)) (application (context context) events)
   "Wait for native input or the context's next frame deadline."
-  (let ((delay (lui.frame:frame-wait context (plusp (length events)))))
+  (let ((delay (%lui.frame:frame-wait context (plusp (length events)))))
     (when (plusp delay)
       ;; Peek so the ordinary event loop still translates and dispatches input.
       (message object application
@@ -642,7 +642,7 @@
                                sb-alien:double (float delay 1d0))
                object (sb-alien:extern-alien "NSDefaultRunLoopMode" object)
                objc-bool 0)))
-  (lui.frame:limit-frame-rate context)
+  (%lui.frame:limit-frame-rate context)
   (values))
 
 (fn (create-cocoa-window-view (values))
@@ -749,7 +749,7 @@
   "Release owned Cocoa and GL resources and drain the outer autorelease pool."
   (when gpu
     (message sb-alien:void gl "makeCurrentContext")
-    (lui.gl:close-gpu gpu)
+    (%lui.gl:close-gpu gpu)
     (message sb-alien:void (objc-class "NSOpenGLContext")
              "clearCurrentContext"))
   (when format (message sb-alien:void format "release"))
@@ -793,11 +793,11 @@
                (setf application (message object (objc-class "NSApplication")
                                           "sharedApplication")
                      font (open-font)
-                     renderer (make-renderer :font font
+                     renderer (%make-renderer :font font
                                              :polygons #'cocoa-polygons
                                              :text #'cocoa-text
                                              :clip #'cocoa-clip)
-                     context (make-render-context renderer :copy #'copy-text)
+                     context (%make-render-context renderer :copy #'copy-text)
                      (cocoa-app-renderer *app*) renderer
                      (cocoa-app-context *app*) context)
                (message objc-bool application "setActivationPolicy:"
@@ -815,20 +815,20 @@
                            "OpenGL context"))
                  (message sb-alien:void gl "makeCurrentContext")
                  (disable-cocoa-vsync gl)
-                 (setf gpu (lui.gl:attach-gpu font 1 1)
-                       renderer (lui.gl:gpu-renderer gpu)))
+                 (setf gpu (%lui.gl:attach-gpu font 1 1)
+                       renderer (%lui.gl:gpu-renderer gpu)))
                (run-cocoa-frames draw application context gl gpu interactive))
           (close-cocoa-window pool format gl gpu font)))))
 
 (fn (run-cocoa context) ((draw function) &rest options)
-  "Run DRAW in an AppKit window on the SBCL main thread. OPTIONS are the LUI:RUN window keywords."
+  "Run DRAW in an AppKit window on the SBCL main thread. OPTIONS are the lui:RUN window keywords."
   (unless (member :darwin *features*)
-    (error 'lui.conditions:backend-error
+    (error '%lui.conditions:backend-error
            :backend :cocoa
            :operation :run-cocoa
            :format-control "The Cocoa backend requires macOS and SBCL."))
   (unless (sb-thread:main-thread-p)
-    (error 'lui.conditions:backend-error
+    (error '%lui.conditions:backend-error
            :backend :cocoa
            :operation :run-cocoa
            :format-control "Run Cocoa on the main thread."))

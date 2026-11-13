@@ -1,7 +1,7 @@
-(defpackage #:lui.text
-  (:use #:cl #:lui.fn)
+(defpackage #:%lui.text
+  (:use #:cl #:%lui.fn)
   (:export #:wrap-lines))
-(in-package #:lui.text)
+(in-package #:%lui.text)
 
 (fn (wrap-lines (vector string)) ((text string) (width (or null real))
                                   (measure function))

@@ -16,10 +16,10 @@ from playwright.sync_api import sync_playwright
 from web import ROOT
 
 PHASES = (
-    "lui.frame::begin-frame", "lui.docs::draw-docs", "lui.frame::end-frame",
-    "lui.layout:solve", "lui.draw::measure-widget", "lui.draw::paint-frame",
+    "%lui.frame::begin-frame", "%lui.docs::draw-docs", "%lui.frame::end-frame",
+    "%lui.layout:solve", "lui.draw::%measure-widget", "lui.draw::%paint-frame",
     "lui.web::sync-overlay", "lui.debug::snapshot", "lui.debug::draw-debugger",
-    "lui.web.input:update-accessibility",
+    "%lui.web.input:update-accessibility",
 )
 INSTRUMENT = r"""({phases, detail}) => {
     window.samples = [];

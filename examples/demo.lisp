@@ -1,10 +1,10 @@
-(defpackage #:lui.example.demo
+(defpackage #:%lui.example.demo
   (:use #:cl)
   (:export #:main #:draw #:make-gallery #:make-demo))
-(in-package #:lui.example.demo)
+(in-package #:%lui.example.demo)
 
 (defstruct gallery
-  (seven (lui.example.seven:make-state))
+  (seven (%lui.example.seven:make-state))
   (page :controls)
   (toolkit :qt)
   (palette :default)
@@ -234,7 +234,7 @@
 (defun styles-content (g)
   (lui:label "Customize the active toolkit.")
   (when (and (eq (gallery-toolkit g) :glass)
-             (not (lui.frame:context-text-mode-p lui.frame:*context*)))
+             (not (%lui.frame:context-text-mode-p %lui.frame:*context*)))
     (lui:label (format nil "Opacity: ~D%"
                        (round (* 100 (gallery-opacity g)))))
     (setf (gallery-opacity g)
@@ -258,7 +258,7 @@
           :maximum 24
           :step 1
                                                   :width (lui:grow)))))
-  (let* ((terminal (lui.frame:context-text-mode-p lui.frame:*context*))
+  (let* ((terminal (%lui.frame:context-text-mode-p %lui.frame:*context*))
          (opacity (if terminal 1 (gallery-opacity g)))
          (frost (if terminal 0 (gallery-frost g)))
          (radius (if terminal 0 (gallery-radius g))))
@@ -320,13 +320,13 @@
                   (preview)))))))))
 
 (defun styles-page (g)
-  (when (lui.frame:context-text-mode-p lui.frame:*context*)
+  (when (%lui.frame:context-text-mode-p %lui.frame:*context*)
     (lui:label
      "Terminal preview uses solid colors; no blur or transparency."))
   (styles-content g))
 
 (defun modal-p (g)
-  (lui.example.seven:modal-p (gallery-seven g)))
+  (%lui.example.seven:modal-p (gallery-seven g)))
 
 (defun draw-gallery (g)
   (lui:panel (lui:opt :id :window :width (lui:grow) :height (lui:grow)
@@ -358,7 +358,7 @@
       (lui:button
         "Cycle palette"
         (lui:opt :id :palette :disabled-p (modal-p g))))
-    (lui:label (lui.frame::frame-rate-label))
+    (lui:label (%lui.frame::frame-rate-label))
     (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1))
       (dolist (page *pages*)
         (when
@@ -381,7 +381,7 @@
         (:scroll (scroll-page g))
         (:styles (styles-page g))
         (:seven
-         (lui.example.seven:draw-content (gallery-seven g)))))))
+         (%lui.example.seven:draw-content (gallery-seven g)))))))
 
 (defun draw (g)
   (when (and (not (modal-p g)) (lui:activated-p :toolkit))

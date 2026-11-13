@@ -1,11 +1,11 @@
 (load "scripts/setup.lisp")
 (asdf:load-system "lui/pdf")
 
-(defpackage #:lui.pdf-demo
+(defpackage #:%lui.pdf-demo
   (:use #:cl)
   (:export #:make-document #:main))
 
-(in-package #:lui.pdf-demo)
+(in-package #:%lui.pdf-demo)
 
 (defun make-document ()
   (lui:column (lui:opt :width (lui:grow) :gap (lui:units 2)

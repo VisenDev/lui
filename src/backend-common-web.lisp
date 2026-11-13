@@ -1,9 +1,9 @@
-(defpackage #:lui.web.input
-  (:use #:cl #:lui.fn #:lui.frame #:lui.widgets)
+(defpackage #:%lui.web.input
+  (:use #:cl #:%lui.fn #:%lui.frame #:%lui.widgets)
   (:export #:install-input #:update-accessibility)
   (:import-from #:jscl/ffi #:clbool #:clstring #:jsstring #:new #:oget))
 
-(in-package #:lui.web.input)
+(in-package #:%lui.web.input)
 
 (defstruct input-session
   "Browser input resources and gesture state owned by one mounted application."
@@ -16,7 +16,7 @@
   (sink nil :type t)
   (listeners nil :type list)
   (pending nil :type list)
-  (pending-root nil :type (or null lui.layout:element))
+  (pending-root nil :type (or null %lui.layout:element))
   (pointer nil :type t)
   (touch-start nil :type list)
   (touch-motion nil :type symbol)
@@ -359,7 +359,7 @@
         (input-focus-without-scroll (if
                                      (and (text-field-focused-p input)
                                           (equal (context-focus input)
-                                                 (lui.frame:hit input
+                                                 (%lui.frame:hit input
                                                                  (event-x
                                                                   position)
                                                                  (event-y
@@ -524,7 +524,7 @@
   "Handle browser copy and cut using the shared LUI selection."
   (input-stop event)
   ;; Shared selection handling owns both editor and label text.
-  (let ((nodes (lui.draw:selectable-nodes (input-session-context session)))
+  (let ((nodes (lui.draw:%selectable-nodes (input-session-context session)))
         (copied nil))
     (let ((original (context-copy (input-session-context session))))
       (unwind-protect
@@ -536,10 +536,10 @@
                        event "clipboardData" "setData")
                       #j"text/plain"
                       (jsstring value))))
-             (lui.draw:copy-selection
+             (lui.draw:%copy-selection
               (input-session-context session) nodes
               (or (context-selection (input-session-context session))
-                  (lui.draw:make-text-selection))))
+                  (lui.draw:%make-text-selection))))
         (setf (context-copy (input-session-context session)) original)))
     (when (and copied (text-field-focused-p (input-session-context session))
                (string= "cut"
@@ -593,8 +593,8 @@
   (let* ((host (oget canvas "parentNode"))
          (sink ((oget host "querySelector") #j"textarea"))
          (node (gethash (context-focus context)
-                        (lui.frame:context-ids context)))
-         (widget (when node (lui.layout:element-content node))))
+                        (%lui.frame:context-ids context)))
+         (widget (when node (%lui.layout:element-content node))))
     (unless (eq sink #j:null)
       (let ((label (if (and widget (widget-p widget))
                        (or (widget-accessible-name widget)
@@ -619,7 +619,7 @@
          (jsstring label))))))
 
 (defpackage #:lui.web
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.draw)
+  (:use #:cl #:%lui.fn #:lui #:%lui.layout #:%lui.frame #:lui.draw)
   (:import-from #:lui.toolkit #:toolkit-native-labels-p)
   (:import-from #:lui
                 #:mount #:unmount #:refresh)
@@ -723,7 +723,7 @@
   "Paint text with the resolved browser font and baseline."
   (setf (oget g "globalAlpha") 1
         (oget g "font")
-        (jsstring (lui.font:font-css font))
+        (jsstring (lui.font:%font-css font))
         (oget g "fillStyle") (jsstring color))
   ((oget g "fillText") (jsstring text) x y))
 
@@ -786,7 +786,7 @@
          (blur ((oget sample "getContext") #j"2d")))
     (setf (oget tile "width") 2 (oget tile "height") 2)
     (let ((patterns (make-hash-table :test 'equal)))
-      (make-renderer
+      (%make-renderer
        :font (lui.font:open-font)
        :surface
        (lambda (box radius color alpha &optional stroke)
@@ -831,7 +831,7 @@
   "Schedule a redraw for the context's next animation or idle deadline."
   (unless (web-app-pending-p app)
     (cancel-deadline app)
-    (let ((delay (lui.frame:frame-wait (web-app-context app))))
+    (let ((delay (%lui.frame:frame-wait (web-app-context app))))
       (if (zerop delay)
           (refresh app)
           (setf (web-app-deadline-timer app)
@@ -910,10 +910,10 @@
                               (or interactive
                                   (element-interactive-p node))))))
     (when (and (plusp (box-width clip)) (plusp (box-height clip))
-               (or (lui.widgets:widget-p widget)
+               (or (%lui.widgets:widget-p widget)
                    (element-interactive-p node)))
-      (let ((kind (and (lui.widgets:widget-p widget)
-                       (lui.widgets:widget-kind widget))))
+      (let ((kind (and (%lui.widgets:widget-p widget)
+                       (%lui.widgets:widget-kind widget))))
         (when (overlay-region-visible-p scan
                                         clip
                                         (and (member kind '(:cell :label
@@ -922,9 +922,9 @@
                                                             :checkbox :radio))
                                              (or (not (eq kind :label))
                                                  (toolkit-native-labels-p
-                                                  (lui.widgets:widget-style
+                                                  (%lui.widgets:widget-style
                                                    widget)))
-                                             (not (lui.widgets:widget-painter
+                                             (not (%lui.widgets:widget-painter
                                                    widget))))
           (vector-push-extend
            (list node (cons kind key) interactive) (overlay-scan-entries
@@ -1067,10 +1067,10 @@
       (setf (web-app-overlay-order app) order))))
 
 (fn (sync-semantic-state (values))
-    ((record dom-widget) (widget lui.widgets:widget) element (kind symbol))
+    ((record dom-widget) (widget %lui.widgets:widget) element (kind symbol))
   "Update native disabled and checked/pressed attributes only when widget state changes."
-  (let ((state (list (not (null (lui.widgets:widget-value widget)))
-                     (lui.widgets:widget-disabled-p widget))))
+  (let ((state (list (not (null (%lui.widgets:widget-value widget)))
+                     (%lui.widgets:widget-disabled-p widget))))
     (unless (equal state (dom-widget-state record))
       (setf (dom-widget-state record) state
             (oget element "disabled") (if (second state) #j:true
@@ -1092,11 +1092,11 @@
       (setf (oget style "pointerEvents") (if interactive
                                              #j"none" #j"auto")
             (oget style "font") (jsstring
-                                 (lui.font:font-css font))
+                                 (lui.font:%font-css font))
             (oget style "lineHeight") (css-pixels
                                        (lui.font:line-height font))
             (oget style "color") (jsstring
-                                  (lui.widgets:widget-foreground
+                                  (%lui.widgets:widget-foreground
                                    widget))
             (oget style "textAlign")
             (if (and label (geometry-center-x (widget-geometry
@@ -1116,17 +1116,17 @@
                                                             (element-content
                                                              node))
                  (element (dom-widget-element record))
-                 (text (if label (lui.widgets:widget-text widget)
-                           (or (lui.widgets:widget-accessible-name widget)
-                               (lui.widgets:widget-text widget))))
+                 (text (if label (%lui.widgets:widget-text widget)
+                           (or (%lui.widgets:widget-accessible-name widget)
+                               (%lui.widgets:widget-text widget))))
                  (appearance (and label (list interactive
-                                              (lui.widgets:widget-font-size
+                                              (%lui.widgets:widget-font-size
                                                widget)
-                                              (lui.widgets:widget-font-family
+                                              (%lui.widgets:widget-font-family
                                                widget)
-                                              (lui.widgets:widget-font-weight
+                                              (%lui.widgets:widget-font-weight
                                                widget)
-                                              (lui.widgets:widget-foreground
+                                              (%lui.widgets:widget-foreground
                                                widget)
                                               (geometry-center-x
                                                (widget-geometry widget))))))
@@ -1136,7 +1136,7 @@
                         #j"position:absolute;display:block;margin:0;padding:0;border:0;white-space:pre-wrap;overflow:hidden;user-select:text;-webkit-user-select:text;cursor:text"
                         #j"position:absolute;display:block;margin:0;padding:0;border:0;opacity:0;pointer-events:none;user-select:none")))
             (position-dom-widget record
-                                 (if label (lui.draw:selection-area
+                                 (if label (lui.draw:%selection-area
                                             (web-app-renderer app) node)
                                      (element-box node)) (element-clip node))
             (sync-label-style app record widget element appearance
@@ -1197,14 +1197,14 @@
          (scale #j:window:devicePixelRatio)
          (events (nreverse (shiftf (web-app-events app) nil))))
     (resize-canvas-bitmap canvas width height scale)
-    (setf (lui.frame:context-page-height-p context) (not (null port))
-          (lui.frame:context-page-top context)
+    (setf (%lui.frame:context-page-height-p context) (not (null port))
+          (%lui.frame:context-page-top context)
           (max 0 (min (- (context-height context) height) (+ origin delta))))
     (with-frame (context width height :events events)
       (funcall (web-app-callback app)))
     (when port
       (let ((page-height (context-height context))
-            (requested (shiftf (lui.frame:context-requested-page-top context)
+            (requested (shiftf (%lui.frame:context-requested-page-top context)
                                nil)))
         (when requested (setf delta (- requested origin)))
         (let ((offset (max 0 (min (- page-height height) (+ origin delta)))))
@@ -1220,7 +1220,7 @@
     ((oget g "translate") 0 (- (web-app-viewport-offset app)))
     ((oget g "save"))
     (unwind-protect
-         (paint-frame (web-app-renderer app) context (sync-overlay app)
+         (%paint-frame (web-app-renderer app) context (sync-overlay app)
                       (when port
                         (make-box :x 0 :y (web-app-viewport-offset app)
                                   :width width :height height)))
@@ -1233,13 +1233,13 @@
     (unless (zerop (web-app-velocity app)) (refresh app))
     (when (some (lambda (e) (not (eq :move (event-kind e)))) events)
       (refresh app))
-    (lui.web.input:update-accessibility canvas context)
+    (%lui.web.input:update-accessibility canvas context)
     (schedule-deadline app)))
 
 (fn (refresh t) ((app web-app))
   "Request one redraw of a mounted application, coalescing pending requests."
   #+lui-ecl-web
-  (let ((lui.ecl-emscripten:*owner* (web-app-ffi-owner app)))
+  (let ((%lui.ecl-emscripten:*owner* (web-app-ffi-owner app)))
     (schedule-refresh app))
   #-lui-ecl-web (schedule-refresh app))
 
@@ -1260,7 +1260,7 @@
                         (draw-frame app)))))))
       (let* ((context (web-app-context app))
              (wait (if (context-root context)
-                       (lui.frame:frame-wait context t) 0)))
+                       (%lui.frame:frame-wait context t) 0)))
         (if (zerop wait)
             (enqueue)
             (setf (web-app-deadline-timer app)
@@ -1303,8 +1303,8 @@
   (values))
 
 (fn (mount web-app) (host (callback function) &key (min-fps
-                                                    lui.frame:*min-fps*)
-                                                (max-fps lui.frame:*max-fps*)
+                                                    %lui.frame:*min-fps*)
+                                                (max-fps %lui.frame:*max-fps*)
                                                 ((scroll-mode
                                                   (member :page
                                                           :viewport))
@@ -1312,7 +1312,7 @@
   "Mount a Canvas 2D app in HOST. SCROLL-MODE is :PAGE for content expansion or
 :VIEWPORT for a fixed embedded view; the default is :PAGE on coarse pointers."
   (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
-  (let* (#+lui-ecl-web (lui.ecl-emscripten:*owner* (list :web-app))
+  (let* (#+lui-ecl-web (%lui.ecl-emscripten:*owner* (list :web-app))
                        (page-scroll-p (eq scroll-mode :page))
                        (port (and page-scroll-p (page-scrollport host)))
                        (stage (#j:document:createElement #j"div"))
@@ -1321,12 +1321,12 @@
                        (g ((oget canvas "getContext") #j"2d"))
                        (renderer (canvas-renderer canvas g))
                        (context
-                        (make-render-context renderer
+                        (%make-render-context renderer
                                              :min-fps min-fps :max-fps
                                              max-fps))
                        (app (make-web-app
                              #+lui-ecl-web :ffi-owner
-                             #+lui-ecl-web lui.ecl-emscripten:*owner*
+                             #+lui-ecl-web %lui.ecl-emscripten:*owner*
                              :host host :stage stage :overlay labels
                              :canvas canvas :graphics g :renderer renderer
                              :context context :callback callback :scrollport
@@ -1335,7 +1335,7 @@
                                  (declare (ignore ignored)) (refresh app))))
     (mount-app-elements app page-scroll-p)
     (setf (web-app-cleanup app)
-          (lui.web.input:install-input
+          (%lui.web.input:install-input
            stage canvas context (lambda (event) (queue-event app event))
            :page-scroll-p page-scroll-p
            :scroll-page (lambda (delta &optional (speed 0))
@@ -1363,7 +1363,7 @@
 (fn (unmount t) ((app web-app))
   "Cancel scheduled work and release the mounted canvas and input listeners."
   #+lui-ecl-web
-  (let ((lui.ecl-emscripten:*owner* (web-app-ffi-owner app)))
+  (let ((%lui.ecl-emscripten:*owner* (web-app-ffi-owner app)))
     (dispose-app app))
   #-lui-ecl-web (dispose-app app))
 
@@ -1389,7 +1389,7 @@
     #+lui-ecl-web
     (progn
       (setf (oget (web-app-canvas app) "luiApp") #j:null)
-      (lui.ecl-emscripten:release-owner (web-app-ffi-owner app)))))
+      (%lui.ecl-emscripten:release-owner (web-app-ffi-owner app)))))
 
 (fn (css-size t) (value fallback)
   "Convert a numeric CSS size to pixels, preserving strings and using FALLBACK for NIL."

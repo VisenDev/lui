@@ -1,9 +1,9 @@
 (defpackage #:lui.font
-  (:use #:cl #:lui.fn #:lui.layout)
-  (:export #:font #:open-font #:close-font #:font-size #:font-loader
+  (:use #:cl #:%lui.fn #:%lui.layout)
+  (:export #:font #:open-font #:close-font #:font-size #:%font-loader
            #:text-width #:line-height #:baseline #:wrap-text #:glyph-polygons
            #:*font-path* #:*font-paths* #:*font-directories*
-           #:*font-names* #:font-face #:font-css))
+           #:*font-names* #:font-face #:%font-css))
 
 (in-package #:lui.font)
 
@@ -44,7 +44,7 @@
     (setf (font-loader font) nil)
     (values))
 
-  (fn (font-css string) ((font font))
+  (fn (%font-css string) ((font font))
     "Return the CSS font shorthand used by measurement and drawing."
     (unless (eql (font-css-size font) (font-size font))
       (setf (font-css-size font) (font-size font)
@@ -57,7 +57,7 @@
     (font-css-value font))
 
   (fn (measure-text t) ((font font) (text string))
-    (let ((css (font-css font))
+    (let ((css (%font-css font))
           (cache (font-metrics font))
           (key (list (font-size font) text)))
       (or (gethash key cache)
@@ -88,7 +88,7 @@
 
   (fn (glyph-polygons nil) ((font font) (char character))
     (declare (ignore font char))
-    (error 'lui.conditions:backend-error
+    (error '%lui.conditions:backend-error
            :backend :web
            :operation :glyph-polygons
            :format-control "Browser text is drawn by the renderer text callback."))
@@ -96,7 +96,7 @@
   (fn (uncached-wrap-text (vector string))
     ((font font) (text string) (width (or null real)))
     "Split TEXT into lines at newlines and spaces; NIL width preserves explicit breaks."
-    (lui.text:wrap-lines text width
+    (%lui.text:wrap-lines text width
                          (lambda (text start end)
                            (text-width font (subseq text start end)))))
 
@@ -162,10 +162,10 @@
                 :thereis (loop :for dir :in dirs
                                :thereis (probe-file
                                          (merge-pathnames name dir))))
-          (error 'lui.conditions:font-error
+          (error '%lui.conditions:font-error
                  :backend :native :request key
                  :operation :resolve-face
-                 :format-control "No TrueType font for ~S. Set LUI.FONT:*FONT-PATHS*."
+                 :format-control "No TrueType font for ~S. Set lui.font:*FONT-PATHS*."
                  :format-arguments (list key)))))
 
   (fn (default-font (or pathname string)) ()
@@ -222,7 +222,7 @@
   (fn (wrap-text (vector string))
     ((font font) (text string) (width (or null real)))
     "Split TEXT into lines at newlines and spaces; NIL width preserves explicit breaks."
-    (lui.text:wrap-lines text width
+    (%lui.text:wrap-lines text width
                          (lambda (text start end)
                            (text-width font (subseq text start end)))))
 
@@ -291,18 +291,24 @@
               (setf (font-owner face) owner
                     (aref (font-faces owner) index) face))))))
 
+(fn (%font-loader t) ((font font))
+  "Return the implementation font loader for backend glyph access."
+  (font-loader font))
+
 (defpackage #:lui.draw
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui.font)
-  (:export #:typed-vector #:renderer-patterns #:rectangle-path
-           #:standard-geometry #:paint-widget-text #:paint-text-field
-           #:paint-shared-widget #:paint-desktop-scrollbar
-           #:register-standard-painter #:copy-selection #:make-text-selection
-           #:selectable-nodes
-           #:selection-area
-           #:renderer #:make-renderer #:renderer-font #:renderer-polygons
+  (:use #:cl #:%lui.fn #:%lui.layout #:%lui.frame #:%lui.widgets #:lui.font)
+  (:export #:%typed-vector #:%renderer-patterns #:%rectangle-path
+           #:%standard-geometry #:%paint-widget-text #:%paint-text-field
+           #:%paint-shared-widget #:%paint-desktop-scrollbar
+           #:%register-standard-painter #:%copy-selection
+           #:%make-text-selection
+           #:%selectable-nodes
+           #:%selection-area
+           #:renderer #:%make-renderer #:renderer-font #:renderer-polygons
            #:renderer-clip #:renderer-backdrop-effect #:renderer-text
-           #:renderer-surface #:renderer-stipple
-           #:make-render-context #:paint-frame #:measure-widget #:widget-font
+           #:%renderer-surface #:%renderer-stipple
+           #:%make-render-context #:%paint-frame #:%measure-widget
+           #:widget-font
            #:focused-p #:shape
            #:outline #:inset-box
            #:geometry #:make-geometry #:geometry-left #:geometry-top
@@ -312,11 +318,11 @@
            #:geometry-center-x #:geometry-center-y #:geometry-offset-x
            #:geometry-offset-y
            #:widget-geometry #:text-box #:rounded-polygon #:color-components
-           #:trapezoids #:paint-text))
+           #:%trapezoids #:paint-text))
 
 (in-package #:lui.draw)
 
-(defmacro typed-vector (type &rest elements)
+(defmacro %typed-vector (type &rest elements)
   "Construct a typed vector without an intermediate list of its elements."
   (let ((result (gensym "VECTOR")))
     (if (null elements)
@@ -327,7 +333,7 @@
                    :collect `(setf (aref ,result ,i) ,element))
            ,result))))
 
-(defstruct renderer
+(defstruct (renderer (:constructor %make-renderer))
   "Native drawing callbacks and font shared by the graphical backends."
   (font nil :type (or null font))
   ;; POLYGONS takes contours, #rrggbb color, and opacity. Native API does rasterization.
@@ -342,6 +348,18 @@
   (surface nil :type (or null function))
   (stipple nil :type (or null function))
   (patterns (make-hash-table :test 'equal) :type hash-table))
+
+(fn (%renderer-patterns hash-table) ((renderer renderer))
+  "Return the renderer's internal paint-pattern cache."
+  (renderer-patterns renderer))
+
+(fn (%renderer-surface (or null function)) ((renderer renderer))
+  "Return the backend's optional rectangle primitive."
+  (renderer-surface renderer))
+
+(fn (%renderer-stipple (or null function)) ((renderer renderer))
+  "Return the backend's optional stippled-rectangle primitive."
+  (renderer-stipple renderer))
 
 (fn (color-components (vector single-float 4))
     ((color string) &optional
@@ -365,7 +383,7 @@
          (r (max 0 (min radius (/ w 2) (/ h 2)))))
     (when (zerop r)
       (return-from rounded-polygon
-        (typed-vector point (cons (+ x w) y) (cons (+ x w) (+ y h))
+        (%typed-vector point (cons (+ x w) y) (cons (+ x w) (+ y h))
                       (cons x (+ y h)) (cons x y))))
     (make-array 36 :element-type 'point :initial-contents
                 (loop :for (cx cy base)
@@ -384,7 +402,7 @@
                                                    #+jscl (#j:Math:sin
                                                            angle)))))))))
 
-(fn (trapezoids (values)) ((contours contours) (emit function))
+(fn (%trapezoids (values)) ((contours contours) (emit function))
   "Convert contours into nonzero-winding trapezoids for native triangle APIs."
   (let ((edges nil)
         (ys nil))
@@ -420,7 +438,7 @@
                     (incf winding (if (< (cdar edge) (cddr edge)) 1 -1))
                     (when (and left (zerop winding))
                       (funcall emit
-                               (typed-vector point (cons (at-y left top) top)
+                               (%typed-vector point (cons (at-y left top) top)
                                              (cons (at-y edge top) top)
                                              (cons (at-y edge bottom) bottom)
                                              (cons (at-y left bottom)
@@ -443,21 +461,21 @@
 (fn (widget-geometry geometry) ((widget widget))
   "Return the active toolkit's shared text geometry for WIDGET."
   (funcall (or (lui.toolkit:toolkit-geometry (widget-style widget))
-               (error 'lui.conditions:configuration-error
+               (error '%lui.conditions:configuration-error
                       :setting :geometry :value (widget-style widget)
                       :operation :widget-geometry
                       :format-control "Toolkit ~S has no graphical geometry."
                       :format-arguments (list (widget-style widget))))
            widget))
 
-(fn (make-render-context context) ((renderer renderer) &rest (options list))
+(fn (%make-render-context context) ((renderer renderer) &rest (options list))
   "Create a frame context measured by RENDERER, with backend-specific OPTIONS."
   (apply #'make-context
          :measure (lambda (widget width)
-                    (measure-widget renderer widget width))
+                    (%measure-widget renderer widget width))
          options))
 
-(fn (measure-widget (values number number))
+(fn (%measure-widget (values number number))
     ((renderer renderer) (widget
                           widget) (width (or null real)))
   "Measure current geometry, reusing matching prior-frame text measurements."
@@ -468,8 +486,8 @@
                  (if (geometry-value-p g)
                      (widget-display-value widget)
                      (widget-text widget))))
-         (size (lui.frame:memoized
-                (list :measure font (font-loader font) (font-size font)
+         (size (%lui.frame:memoized
+                (list :measure font (%font-loader font) (font-size font)
                       text width horizontal vertical
                       (geometry-min-width g) (geometry-min-height g))
                 (lambda ()
@@ -511,13 +529,13 @@
         (funcall (renderer-text renderer) (renderer-font renderer)
                  text x y color)
         #+(or jscl lui-ecl-web)
-        (error 'lui.conditions:configuration-error
+        (error '%lui.conditions:configuration-error
                :setting :text-renderer :value nil
                :operation :paint-text
                :format-control "The browser renderer requires a text drawing callback.")
         #-(or jscl lui-ecl-web)
         (let* ((font (renderer-font renderer))
-               (scale (/ (font-size font) (zpb-ttf:units/em (font-loader
+               (scale (/ (font-size font) (zpb-ttf:units/em (%font-loader
                                                              font))))
                (cursor x)
                (previous nil))
@@ -525,7 +543,7 @@
                 :do (when previous
                       (incf cursor
                             (* scale (zpb-ttf:kerning-offset
-                                      previous char (font-loader font)))))
+                                      previous char (%font-loader font)))))
                 (funcall
                  (renderer-polygons renderer)
                  (map 'contours
@@ -539,7 +557,7 @@
                 (incf cursor
                       (* scale (zpb-ttf:advance-width
                                 (zpb-ttf:find-glyph char
-                                                    (font-loader font)))))
+                                                    (%font-loader font)))))
                 (setf previous char))))))
 
 (fn (inset-box box) ((box box) (inset real))
@@ -564,7 +582,7 @@
       (funcall (renderer-surface renderer)
                box radius color alpha thickness)
       (funcall (renderer-polygons renderer)
-               (typed-vector contour (rounded-polygon box radius)
+               (%typed-vector contour (rounded-polygon box radius)
                              (reverse
                                (rounded-polygon (inset-box box
                                                                   thickness)
@@ -585,7 +603,7 @@
   (let* ((widget (element-content node))
          (paint (or (widget-painter widget)
                     (lui.toolkit:toolkit-paint (widget-style widget))
-                    (error 'lui.conditions:configuration-error
+                    (error '%lui.conditions:configuration-error
                            :setting :painter :value (widget-style widget)
                            :operation :paint-widget
                            :format-control "Toolkit ~S has no graphical painter."
@@ -597,7 +615,7 @@
                 (funcall paint renderer node))
       (setf (renderer-font renderer) font))))
 
-(fn (paint-frame t)
+(fn (%paint-frame t)
     ((renderer renderer) (context context) &optional
      ((external-labels (or null hash-table)) nil)
      ((viewport (or null box)) nil))
@@ -619,13 +637,13 @@
          (paint-widget renderer node))))
     (finish-selection renderer context)))
 
-(defstruct text-selection
+(defstruct (text-selection (:constructor %make-text-selection))
   anchor focus anchor-text focus-text anchor-key focus-key field
   (node-count 0 :type integer)
   (pending-copy-p nil :type boolean)
   (dragging-p nil :type boolean))
 
-(fn (selectable-nodes (values (vector element) (or null hash-table)))
+(fn (%selectable-nodes (values (vector element) (or null hash-table)))
     ((context context) &optional ((keys-p boolean) nil))
   "Collect visible selectable text nodes in layout order."
   (let ((nodes (make-array 0 :element-type 'element :adjustable t
@@ -658,7 +676,7 @@
      (context-root context)
      (lambda (node)
        (when (and (widget-p (element-content node))
-                  (lui.frame:contains-p (element-clip node) x y))
+                  (%lui.frame:contains-p (element-clip node) x y))
          (setf target node))))
     target))
 
@@ -668,7 +686,7 @@
     (if (eq (widget-kind widget) :text-field)
         (widget-display-value widget) (widget-text widget))))
 
-(fn (selection-area box) ((renderer renderer) (node element))
+(fn (%selection-area box) ((renderer renderer) (node element))
   "Compute the text selection bounds using the widget's resolved geometry."
   (let* ((widget (element-content node)) (area (text-box widget (element-box
                                                                  node)))
@@ -694,7 +712,7 @@
                                (y
                                 real))
   "Map a pointer position to a character index using rendered glyph widths."
-  (let ((area (selection-area renderer node)))
+  (let ((area (%selection-area renderer node)))
     (let* ((font (widget-font renderer (element-content node)))
            (text (selection-text node)) (start 0)
            (top (box-y area))
@@ -706,7 +724,7 @@
                     #-(or jscl lui-ecl-web) (previous nil)
                     #-(or jscl lui-ecl-web)
                     (scale (/ (font-size font)
-                              (zpb-ttf:units/em (font-loader font)))))
+                              (zpb-ttf:units/em (%font-loader font)))))
                 (dotimes (i (length line))
                   (let (#-(or jscl lui-ecl-web) (char (char line i)))
                     (let ((right #+(or jscl lui-ecl-web)
@@ -716,10 +734,10 @@
                                     (* scale
                                        (+ (zpb-ttf:advance-width
                                            (zpb-ttf:find-glyph
-                                            char (font-loader font)))
+                                            char (%font-loader font)))
                                           (if previous
                                               (zpb-ttf:kerning-offset
-                                               previous char (font-loader
+                                               previous char (%font-loader
                                                               font))
                                               0))))))
                       (when (< at (/ (+ left right) 2))
@@ -745,7 +763,7 @@
         (values (min length (if (= index (car a)) (cdr a) 0))
                 (min length (if (= index (car b)) (cdr b) length)))))))
 
-(fn (copy-selection t) ((context context) (nodes (vector element))
+(fn (%copy-selection t) ((context context) (nodes (vector element))
                         (selection text-selection))
   "Copy selected text to the registered clipboard callback."
   (let ((text
@@ -798,7 +816,7 @@
     ((renderer renderer) (context context) (nodes (vector element))
      (x real) (y real))
   "Begin a pointer selection in an editor or across selectable text nodes."
-  (let ((selection (make-text-selection))
+  (let ((selection (%make-text-selection))
         (target (selection-target context x y)))
     (setf (context-selection context) selection)
 
@@ -816,7 +834,7 @@
                     (edit-state-anchor state) at
                     (edit-state-cursor state) at))
             (multiple-value-bind (snapshot keys)
-                (selectable-nodes context t)
+                (%selectable-nodes context t)
               (setf (text-selection-node-count selection)
                     (length snapshot)
                     (text-selection-anchor-key selection)
@@ -847,7 +865,7 @@
                 (selection-index renderer node x y))))
       (when target
         (multiple-value-bind (snapshot keys)
-            (selectable-nodes context t)
+            (%selectable-nodes context t)
           (declare (ignore snapshot))
           (setf (text-selection-focus-key selection)
                 (gethash target keys)))
@@ -877,19 +895,19 @@
   (unless (and (plusp (length events))
                (selection-input-needed-p context events))
     (return-from selection-input (values)))
-  (let ((nodes (selectable-nodes context))
+  (let ((nodes (%selectable-nodes context))
         (selection (or (context-selection context)
                        (setf (context-selection context)
-                             (make-text-selection)))))
+                             (%make-text-selection)))))
     (loop :for event-index :below (length events)
           :for event := (elt events event-index) :do
-          (when (lui.frame:pointer-cancel-p event)
+          (when (%lui.frame:pointer-cancel-p event)
             (setf (text-selection-dragging-p selection) nil))
           (let* ((kind (event-kind event))
                  (x (event-x event)) (y (event-y event))
                  (target
                   (find-if (lambda (node)
-                             (lui.frame:contains-p (element-clip node) x y))
+                             (%lui.frame:contains-p (element-clip node) x y))
                            nodes :from-end t)))
             (when (and (null target) (text-selection-dragging-p selection)
                        (member kind '(:move :release)))
@@ -912,7 +930,7 @@
     ((renderer renderer) (node element) (text string) (start integer)
      (end integer))
   "Paint the selected character range across the node's wrapped text lines."
-  (let ((area (selection-area renderer node)))
+  (let ((area (%selection-area renderer node)))
     (let ((font (widget-font renderer
                              (element-content node)))
           (offset 0))
@@ -947,7 +965,7 @@
   "Paint selected text ranges using the same wrapping and geometry as text rendering."
   (let ((selection (context-selection context)))
     (when (and selection (text-selection-anchor selection))
-      (multiple-value-bind (nodes keys) (selectable-nodes context t)
+      (multiple-value-bind (nodes keys) (%selectable-nodes context t)
         (unless (= (length nodes) (text-selection-node-count selection))
           (setf (context-selection context) nil)
           (return-from paint-selection (values)))
@@ -981,7 +999,7 @@
                            (or (text-selection-pending-copy-p selection)
                                (and (text-selection-anchor selection)
                                     focused)))
-                  (selectable-nodes context)))
+                  (%selectable-nodes context)))
          (field (find (context-focus context) nodes :key #'element-id
                       :test #'equal)))
     (when (and selection field
@@ -997,10 +1015,10 @@
     (paint-selection renderer context)
     (when (and selection (eq selection (context-selection context))
                (shiftf (text-selection-pending-copy-p selection) nil))
-      (copy-selection context (or nodes (selectable-nodes context))
+      (%copy-selection context (or nodes (%selectable-nodes context))
                       selection))))
 
-(fn (standard-geometry geometry) ((widget widget))
+(fn (%standard-geometry geometry) ((widget widget))
   "Return shared widget geometry for standard toolkit painting and measurement."
   (let* ((kind (widget-kind widget))
          (left (case kind ((:label :panel :canvas :gauge :highlight :splitter
@@ -1016,10 +1034,10 @@
      :min-width (if (member kind '(:slider :text-field)) 160 0)
      :center-x (or (member kind '(:button :tab))
                    (and (eq kind :list-item)
-                        (lui.widgets:widget-center-text-p widget)))
+                        (%lui.widgets:widget-center-text-p widget)))
      :center-y (member kind '(:button :tab)))))
 
-(fn (paint-widget-text t) ((renderer renderer) (node element) (color string))
+(fn (%paint-widget-text t) ((renderer renderer) (node element) (color string))
   "Paint wrapped widget text with resolved font, alignment, and pressed offsets."
   (let* ((widget (element-content node)) (g (widget-geometry widget))
          (pressed (and (not (widget-disabled-p widget)) (hovered-p
@@ -1069,7 +1087,7 @@
                color 1 1.5f0)
       (bar 1 5 12 1.5f0) (bar 3 0 2 4) (bar 9 0 2 4))))
 
-(fn (paint-text-field (values))     ((renderer renderer) (node element))
+(fn (%paint-text-field (values))     ((renderer renderer) (node element))
   "Paint editor contents, selection, and caret within the text field's inner clip."
   (let* ((widget (element-content node))
          (font (renderer-font renderer))
@@ -1085,7 +1103,7 @@
          (start 0))
     (when (zerop (length text))
       (paint-text renderer (widget-text widget) x (+ y (baseline font))
-                  (lui.widgets:muted-ink (widget-foreground widget)
+                  (%lui.widgets:muted-ink (widget-foreground widget)
                                           (widget-background widget))))
     (loop :for line :across (wrap-text font text width)
           :for top :from y :by (line-height font)
@@ -1146,7 +1164,7 @@
                                  widget :border))
              1 (if selected 2 1))
     (when (plusp (length text))
-      (paint-widget-text renderer node (widget-foreground widget)))))
+      (%paint-widget-text renderer node (widget-foreground widget)))))
 
 (fn (paint-focus-ring t) ((renderer renderer) (node element) (radius real))
   "Paint a keyboard-focus outline inside the widget bounds."
@@ -1183,17 +1201,17 @@
   (when (and (not (widget-value widget))
              (hovered-p (element-id node)))
     (shape renderer box 0 foreground 0.12f0))
-  (when (and (lui.widgets:widget-center-text-p widget) (focused-p node)
+  (when (and (%lui.widgets:widget-center-text-p widget) (focused-p node)
              (context-focus-visible-p *context*))
     (outline renderer box 1 (if (widget-value widget)
                                 (widget-color widget
                                               :on-accent) foreground) 1 1))
-  (paint-widget-text renderer node (if (widget-value widget)
+  (%paint-widget-text renderer node (if (widget-value widget)
                                        (widget-color
                                         widget :on-accent) foreground))
   (values))
 
-(fn (paint-shared-widget t) ((renderer renderer) (node element) (radius real)
+(fn (%paint-shared-widget t) ((renderer renderer) (node element) (radius real)
                              (shadow real)
                              (scrollbar function) (body function))
   "Paint shared controls, delegate toolkit bodies, and finish keyboard-focus feedback."
@@ -1223,7 +1241,7 @@
        (shape renderer box 0 (widget-accent widget)
               (widget-opacity widget))
        (outline renderer box 0 (widget-accent widget) 1 1))
-      ((eq (lui.widgets:widget-icon widget) :calendar)
+      ((eq (%lui.widgets:widget-icon widget) :calendar)
        ;; The field owns the surface and its rounded border.
        (paint-calendar-button renderer node box shadow foreground))
       ((eq kind :list-item)
@@ -1303,7 +1321,7 @@
                                   (6 . 13) (2 . 9)))))
        (if (or translucent flat) (widget-color widget :on-accent) foreground)
        1)))
-  (paint-widget-text renderer node foreground)
+  (%paint-widget-text renderer node foreground)
   (values))
 
 (fn (paint-standard-radio (values))
@@ -1324,7 +1342,7 @@
              (if disabled (widget-color widget :disabled)
                  (if (or translucent flat) (widget-accent widget)
                      foreground)) 1))
-    (paint-widget-text renderer node foreground))
+    (%paint-widget-text renderer node foreground))
   (values))
 
 (fn (paint-standard-surface (values))
@@ -1397,10 +1415,10 @@
       (:radio
        (paint-standard-radio renderer node widget x y disabled translucent
                              flat foreground))
-      (:text-field (paint-text-field renderer node))
-      (otherwise (paint-widget-text renderer node foreground)))))
+      (:text-field (%paint-text-field renderer node))
+      (otherwise (%paint-widget-text renderer node foreground)))))
 
-(fn (paint-desktop-scrollbar t)
+(fn (%paint-desktop-scrollbar t)
     ((renderer renderer) (node element) (bevel
                                          function))
   "Paint a desktop scrollbar using the supplied track and thumb colors."
@@ -1409,7 +1427,7 @@
     (shape renderer thumb 0 (widget-background widget) 1)
     (funcall bevel renderer widget thumb nil (widget-disabled-p widget))))
 
-(fn (register-standard-painter symbol)
+(fn (%register-standard-painter symbol)
     ((name symbol) (radius (or null real)) (scrollbar function)
      (bevel (or null function)) &key ((translucent boolean) nil)
      ((flat boolean) nil))
@@ -1417,18 +1435,18 @@
   (let ((body (lambda (renderer node)
                 (paint-standard-body renderer node translucent bevel flat))))
     (lui.toolkit:register-toolkit-rendering
-     name :geometry #'standard-geometry :native-labels t
+     name :geometry #'%standard-geometry :native-labels t
      :paint (lambda (renderer node)
-              (paint-shared-widget
+              (%paint-shared-widget
                renderer node
                (or radius (widget-radius (element-content node)))
                0 scrollbar body)))))
 
-(fn (rectangle-path contour) ((box box))
+(fn (%rectangle-path contour) ((box box))
   "Return a polygon contour tracing a rectangular box."
   (let ((x (box-x box)) (y (box-y box))
         (right (box-right box))
         (bottom (box-bottom box)))
-    (typed-vector point (cons x y) (cons right y) (cons right bottom)
+    (%typed-vector point (cons x y) (cons right y) (cons right bottom)
                   (cons x
                         bottom))))

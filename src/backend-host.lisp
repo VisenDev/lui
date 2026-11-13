@@ -1,6 +1,6 @@
-(defpackage #:lui.host
-  (:use #:cl #:lui.fn))
-(in-package #:lui.host)
+(defpackage #:%lui.host
+  (:use #:cl #:%lui.fn))
+(in-package #:%lui.host)
 
 (fn (wayland-session-p (or null string pathname)) ()
   "Recognize a current Wayland socket without opening a display connection."
@@ -28,4 +28,4 @@
 
 ;; This module is loaded only by the aggregate system. Keep core/custom backend
 ;; registration independent of host libraries and inspect the restored session.
-(setf lui:*default-backend-function* #'preferred-backend)
+(setf lui:%*default-backend-function* #'preferred-backend)

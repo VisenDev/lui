@@ -1,10 +1,10 @@
-(defpackage #:lui.gl
-  (:use #:cl #:lui.fn #:lui.layout #:lui.draw #:lui.font)
+(defpackage #:%lui.gl
+  (:use #:cl #:%lui.fn #:%lui.layout #:lui.draw #:lui.font)
   (:export #:gpu #:attach-gpu #:open-gpu #:close-gpu #:gpu-renderer
            #:gpu-width
            #:gpu-height #:gpu-logical-width #:gpu-logical-height
            #:begin-gpu-frame #:present-gpu))
-(in-package #:lui.gl)
+(in-package #:%lui.gl)
 
 (cffi:define-foreign-library egl
     (:unix (:or "libEGL.so.1" "libEGL.so")))
@@ -87,7 +87,7 @@ void main() {
           (call-gl "glGetShaderInfoLog" :uint shader :int 4096
                    :pointer (cffi:null-pointer) :pointer log :void)
           (call-gl "glDeleteShader" :uint shader :void)
-          (error 'lui.conditions:backend-error
+          (error '%lui.conditions:backend-error
                  :backend :gl
                  :operation :compile-shader
                  :format-control "GL shader: ~A"
@@ -111,7 +111,7 @@ void main() {
                       :pointer status :void)
              (when (zerop (cffi:mem-ref status :int))
                (call-gl "glDeleteProgram" :uint program :void)
-               (error 'lui.conditions:backend-error
+               (error '%lui.conditions:backend-error
                       :backend :gl
                       :operation :make-program
                       :format-control "Cannot link the GL backdrop shader.")))
@@ -143,7 +143,7 @@ void main() {
       (when (>= (hash-table-count (gpu-geometry gpu)) 512)
         (clear-geometry gpu))
       (setf display-list (call-gl "glGenLists" :int 1 :uint))
-      (when (zerop display-list) (error 'lui.conditions:backend-error
+      (when (zerop display-list) (error '%lui.conditions:backend-error
                                         :backend :gl
                                         :operation :gl-geometry
                                         :format-control "Cannot allocate GL geometry."))
@@ -152,7 +152,7 @@ void main() {
            (progn
              (call-gl "glBegin" :uint 4 :void)
              (unwind-protect
-                  (trapezoids
+                  (%trapezoids
                    contours
                    (lambda (quad)
                      (dolist (index '(0 1 2 0 2 3))
@@ -206,7 +206,7 @@ void main() {
 (fn (gl-text (values)) ((gpu gpu) (font font) (text string)
                         (x real) (y real) (color string))
   "Paint font glyph outlines at the requested baseline and color."
-  (let* ((loader (font-loader font))
+  (let* ((loader (%font-loader font))
          (scale (float (/ (font-size font) (zpb-ttf:units/em loader)) 1.0f0))
          (advance 0) (previous nil))
     (gl-color color 1)
@@ -312,7 +312,7 @@ void main() {
   "Return a successful EGL result or signal BACKEND-ERROR with the EGL status."
   (when (or (null result) (eql result 0)
             (and (cffi:pointerp result) (cffi:null-pointer-p result)))
-    (error 'lui.conditions:backend-error
+    (error '%lui.conditions:backend-error
            :backend :gl
            :operation :egl-check
            :format-control "~A failed (EGL ~X)."
@@ -334,7 +334,7 @@ void main() {
     (call-gl "glTexParameteri" :uint #x0de1
              :uint parameter :int #x812f :void))
   (setf (gpu-renderer gpu)
-        (make-renderer
+        (%make-renderer
          :font font
          :polygons (lambda (contours color alpha)
                      (gl-shape gpu contours color alpha))

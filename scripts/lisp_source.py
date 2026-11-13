@@ -116,7 +116,7 @@ def definitions(source):
             head = parts[0].text(source).lower()
             if head in ('quote', 'function'):
                 return
-            if head in ('fn', 'lui.fn:fn', 'defun', 'defmacro'):
+            if head in ('fn', '%lui.fn:fn', 'defun', 'defmacro'):
                 yield form, parts
                 # Nested definitions are unusual but still need normalization.
                 parts = parts[3:]

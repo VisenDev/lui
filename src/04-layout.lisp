@@ -1,5 +1,5 @@
-(defpackage #:lui.layout
-  (:use #:cl #:lui.fn)
+(defpackage #:%lui.layout
+  (:use #:cl #:%lui.fn)
   (:export #:sizing-kind #:sizing-value #:sizing-minimum
            #:sizing-maximum
            #:position-mode #:element-position
@@ -23,7 +23,7 @@
            #:element-offset-x
            #:element-offset-y #:intersect-boxes #:visible-elements))
 
-(in-package #:lui.layout)
+(in-package #:%lui.layout)
 
 (deftype object-id ()
   "An application-defined identity compared with EQUAL. Any Lisp object is valid;

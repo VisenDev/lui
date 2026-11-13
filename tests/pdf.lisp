@@ -1,7 +1,7 @@
-(defpackage #:lui.tests.pdf
+(defpackage #:%lui.tests.pdf
   (:use #:cl)
   (:export #:run-tests))
-(in-package #:lui.tests.pdf)
+(in-package #:%lui.tests.pdf)
 
 (defun run-tests ()
   (uiop:with-temporary-file (:pathname path :type "pdf")

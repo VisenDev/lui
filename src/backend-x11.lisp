@@ -1,9 +1,9 @@
-(defpackage #:lui.x11
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.font #:lui.draw
-        #:lui.gl)
+(defpackage #:%lui.x11
+  (:use #:cl #:%lui.fn #:lui #:%lui.layout #:%lui.frame #:lui.font #:lui.draw
+        #:%lui.gl)
   (:export #:run-x11))
 
-(in-package #:lui.x11)
+(in-package #:%lui.x11)
 
 (cffi:define-foreign-library xlib (:unix (:or "libX11.so.6" "libX11.so")))
 
@@ -282,7 +282,7 @@
            (control (logtest state 4))
            (alt (logtest state 8))
            (shift (logtest state 1))
-           (text-p (and context (lui.widgets:text-field-focused-p context)))
+           (text-p (and context (%lui.widgets:text-field-focused-p context)))
            (key (cdr (assoc code
                             '((#xff51 . :left) (#xff53 . :right)
                               (#xff52 . :up) (#xff54 . :down)
@@ -295,7 +295,7 @@
                    (otherwise (if (<= 32 code 126)
                                   (string (code-char code)) ""))))
            (command (when text-p
-                      (lui.widgets:readline-key name :control control
+                      (%lui.widgets:readline-key name :control control
                                                 :alt alt :shift shift))))
       (cond ((and control (not alt) (member code '(#x63 #x43)))
              (make-event :kind :key :key :copy))
@@ -304,12 +304,12 @@
              (make-event :kind :tab
                          :key (when (or shift (= code #xfe20)) :backward)))
             ((and (= code 32) context
-                  (lui.widgets:activation-focused-p context))
+                  (%lui.widgets:activation-focused-p context))
              (make-event :kind :activate))
             ((= code #xff0d) (make-event :kind :activate))
             (key (make-event :kind :key
                              :key
-                             (lui.widgets:horizontal-selection-key key
+                             (%lui.widgets:horizontal-selection-key key
                                (and text-p shift))))
             ((and (plusp length) (not control) (not alt))
              (make-event :kind :text :value
@@ -345,7 +345,7 @@
 (fn (update-cursor symbol) ((window x-window))
   "Update WINDOW's native cursor from the current pointer target."
   (let ((kind (if (x-window-context window)
-                  (lui.widgets:cursor-at
+                  (%lui.widgets:cursor-at
                    (x-window-context window)
                    (x-window-pointer-x window) (x-window-pointer-y window))
                   :default)))
@@ -447,7 +447,7 @@
         (setf (cffi:mem-aref attrs :int 8) 0
               visual (choose-visual display screen attrs)))
       (when (cffi:null-pointer-p visual)
-        (error 'lui.conditions:backend-error
+        (error '%lui.conditions:backend-error
                :backend :x11
                :operation :glx-visual
                :format-control "No double-buffered OpenGL visual on this X display."))
@@ -483,12 +483,12 @@
       (cffi:foreign-funcall "poll" :pointer p :ulong 1
                             :int
         (ceiling (* 1000
-                                             (lui.frame:frame-wait
+                                             (%lui.frame:frame-wait
                                               context
                                                (plusp
                                                  (length
                                                    events))))) :int)))
-  (lui.frame:limit-frame-rate context)
+  (%lui.frame:limit-frame-rate context)
   (values))
 
 (fn (draw-window context) ((window x-window) (gpu gpu) (context context)
@@ -503,7 +503,7 @@
        (with-frame (context w h :events events) (funcall draw)))
      (update-cursor window)
      (begin-gpu-frame gpu)
-     (paint-frame (gpu-renderer gpu) context)
+     (%paint-frame (gpu-renderer gpu) context)
      (swap-buffers (x-window-display window) (x-window-window window))
      (cffi:foreign-funcall "glFinish" :void)
      (unless interactive (return context))
@@ -534,7 +534,7 @@
          (w (or width 720)) (h (or height 520))
          (window (make-x-window :display display :width w :height h))
          (glx (cffi:null-pointer)) (font nil) (gpu nil) (*unit* 8))
-    (when (cffi:null-pointer-p display) (error 'lui.conditions:backend-error
+    (when (cffi:null-pointer-p display) (error '%lui.conditions:backend-error
                                                :backend :x11
                                                :operation :run-x11
                                                :format-control "Cannot open X11 display."))
@@ -550,7 +550,7 @@
            (when (or (cffi:null-pointer-p glx)
                      (zerop (make-current display (x-window-window window)
                                           glx)))
-             (error 'lui.conditions:backend-error
+             (error '%lui.conditions:backend-error
                     :backend :x11
                     :operation :run-x11
                     :format-control
@@ -566,7 +566,7 @@
              (set-protocols display (x-window-window window) atom 1))
            (map-window display (x-window-window window))
            (let ((context
-                  (make-render-context
+                  (%make-render-context
                    (gpu-renderer gpu)
                    :copy (lambda (text) (copy-clipboard window text)))))
              (setf (x-window-context window) context)

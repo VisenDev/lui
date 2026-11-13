@@ -1,7 +1,7 @@
-(defpackage #:lui.build.web
+(defpackage #:%lui.build.web
   (:use #:cl))
 
-(in-package #:lui.build.web)
+(in-package #:%lui.build.web)
 
 (jscl:compile-application
  '("src/01-fn.lisp"

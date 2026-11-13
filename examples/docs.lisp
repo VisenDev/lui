@@ -1,7 +1,7 @@
-(defpackage #:lui.docs
+(defpackage #:%lui.docs
   (:use #:cl)
   (:export #:main #:make-docs #:*entries*))
-(in-package #:lui.docs)
+(in-package #:%lui.docs)
 
 (defvar *entries* nil
   "Generated public API entries, loaded before constructing the browser.")
@@ -72,7 +72,7 @@
      "Scrolling panels show a scrollbar by default. :scrollbar-p NIL hides it; :scrollbar-width customizes the reserved track width in backend coordinates. The default is 12 graphical pixels or one terminal cell. Drag the thumb to move continuously, or click the track above/below it to page by a viewport. Wheel scrolling supports momentum; nested scrollers pass unused motion to an ancestor."
      "A scrolling viewport needs a bounded size. Nested scrollers pass wheel input to an ancestor when they cannot scroll further. lui:previous-box exposes completed geometry; lui:scroll-position and scroll-to support application-controlled navigation. Virtualize very large lists instead of declaring every row.")
     (:toolkits "Toolkits"
-      "The lui package contains application controls, layout, palettes, toolkit registration, and events. Palette accessors live in lui.palette; toolkit registration, rendering policies, and resolved defaults live in lui.toolkit. Both are included in lui/core. Everyday palette construction, presets, and palette/toolkit scopes stay in lui. Built-in defaults belong to their own packages, such as lui.qt:*qt-defaults*. Other specialized APIs live in lui.font (font configuration and metrics), lui.draw (custom painting and geometry), lui.debug (inspection), lui.terminal (snapshots), and lui.pdf (PDF output); load the corresponding optional systems before calling them. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. macOS uses warm surfaces, rounded controls, subtle borders, and blue accents; Qt uses restrained raised desktop controls. Cycle palette to try Default, Light, Dark, Ocean, and Forest on the page and live samples. A window background remains opaque."
+      "The lui package contains application controls, layout, palettes, toolkit registration, and events. Palette accessors live in lui.palette; toolkit registration, rendering policies, and resolved defaults live in lui.toolkit. Both are included in lui/core. Internal-only packages have a leading %, such as %lui.frame. In dual-use packages, only internal exported symbols have a leading %, such as lui.toolkit:%find-toolkit. These internal interfaces are not application APIs. Everyday palette construction, presets, and palette/toolkit scopes stay in lui. Built-in defaults belong to their own packages, such as lui.qt:*qt-defaults*. Other specialized APIs live in lui.font (font configuration and metrics), lui.draw (custom painting and geometry), lui.debug (inspection), lui.terminal (snapshots), and lui.pdf (PDF output); load the corresponding optional systems before calling them. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. macOS uses warm surfaces, rounded controls, subtle borders, and blue accents; Qt uses restrained raised desktop controls. Cycle palette to try Default, Light, Dark, Ocean, and Forest on the page and live samples. A window background remains opaque."
      "(lui:with-toolkit (:motif)
   (lui:button \"OK\" (lui:opt :id :ok)))
 (lui:with-toolkit (:garnet)
@@ -135,16 +135,16 @@
   (lui:scroll-to :docs-detail 0 0))
 
 (defun navigation-width ()
-  (min (lui:units (if (< (lui.frame:context-width lui.frame:*context*)
+  (min (lui:units (if (< (%lui.frame:context-width %lui.frame:*context*)
             (lui:units 105)) 18 28))
-       (* 0.3 (lui.frame:context-width lui.frame:*context*))))
+       (* 0.3 (%lui.frame:context-width %lui.frame:*context*))))
 
 (defun reference-width ()
-  (if (>= (lui.frame:context-width lui.frame:*context*) (lui:units 80))
+  (if (>= (%lui.frame:context-width %lui.frame:*context*) (lui:units 80))
       (min (lui:units 40)
-           (* 0.44 (- (lui.frame:context-width lui.frame:*context*)
+           (* 0.44 (- (%lui.frame:context-width %lui.frame:*context*)
                       (navigation-width) (lui:units 4))))
-      (- (lui.frame:context-width lui.frame:*context*) (navigation-width)
+      (- (%lui.frame:context-width %lui.frame:*context*) (navigation-width)
         (lui:units 3))))
 
 (defun wrap-symbol (text columns)
@@ -162,19 +162,19 @@
 
 (defun symbol-rows (state)
   (let* ((width (reference-width))
-         (key (list width (lui:current-toolkit) lui.toolkit:*toolkit-revision*
-            lui:*unit*
-                    (lui.frame:context-text-mode-p lui.frame:*context*))))
+         (key (list width (lui:current-toolkit)
+                    lui.toolkit:%*toolkit-revision* lui:*unit*
+                    (%lui.frame:context-text-mode-p %lui.frame:*context*))))
     (unless (equal key (browser-row-key state))
       (let* ((defaults (lui.toolkit:toolkit-defaults))
-             (measure (lui.frame:context-measure lui.frame:*context*))
-             (text-p (lui.frame:context-text-mode-p lui.frame:*context*))
+             (measure (%lui.frame:context-measure %lui.frame:*context*))
+             (text-p (%lui.frame:context-text-mode-p %lui.frame:*context*))
              (inset (if text-p 0 24)) (gutter (if text-p 1 12))
              (available (max 1 (- width (lui:units 1) gutter inset)))
              (top 0))
         (flet ((probe (text)
                  (funcall measure
-                          (lui.widgets:make-widget
+                          (%lui.widgets:make-widget
                            :kind :label :text text :font-family :monospace
                            :font-size (getf defaults :font-size 16)
                            :font-weight (getf defaults :font-weight :normal))
@@ -203,14 +203,14 @@
   (lui:panel (lui:opt :id :docs-navigation
                       :width (lui:fixed (navigation-width))
                       :height (lui:grow) :scroll-p (not
-          (lui.frame::context-page-height-p lui.frame:*context*))
+          (%lui.frame::context-page-height-p %lui.frame:*context*))
                       :padding (lui:units 1)
                       :gap (lui:units 0.5) :opacity 1 :frost 0)
     (lui:label "Guides")
     (dolist (guide *guides*)
       (when
         (lui:list-item
-          (if (< (lui.frame:context-width lui.frame:*context*) (lui:units
+          (if (< (%lui.frame:context-width %lui.frame:*context*) (lui:units
                   105))
                                (case (first guide)
                                  (:start "Start") (:debug "Debugger")
@@ -263,29 +263,29 @@
             (browser-guide state) nil
             (browser-symbols-p state) nil)
       (lui:scroll-to :docs-detail 0 0)
-      (when (lui.frame::context-page-height-p lui.frame:*context*)
-            (setf (lui.frame::context-requested-page-top lui.frame:*context*)
-            0))
+      (when (%lui.frame::context-page-height-p %lui.frame:*context*)
+        (setf (%lui.frame::context-requested-page-top
+               %lui.frame:*context*) 0))
       (lui:request-frame))))
 
 (defun entry-list (state height)
   (lui:panel (lui:opt :id :docs-entries :width (lui:grow) :height height
-                      :scroll-p (not (lui.frame::context-page-height-p
-            lui.frame:*context*))
+                      :scroll-p (not (%lui.frame::context-page-height-p
+            %lui.frame:*context*))
                       :padding (lui:units 0.5) :opacity 1 :frost 0)
     (let* ((rows (symbol-rows state)) (count (length rows))
            (viewport (lui:previous-box :docs-entries))
-           (page-p (lui.frame::context-page-height-p lui.frame:*context*))
+           (page-p (%lui.frame::context-page-height-p %lui.frame:*context*))
            (offset (if page-p
                        (if viewport
-                           (- (lui.frame::context-page-top
-                    lui.frame:*context*)
+                           (- (%lui.frame::context-page-top
+                    %lui.frame:*context*)
                               (lui:box-y viewport) (lui:units 0.5))
                            0)
                        (nth-value 1 (lui:scroll-position :docs-entries))))
            (bottom (+ offset (if page-p
-                                 (lui.frame::context-viewport-height
-                  lui.frame:*context*)
+                                 (%lui.frame::context-viewport-height
+                  %lui.frame:*context*)
                                  (if viewport (lui:box-height viewport)
                   (lui:units 18)))))
            (start (max 0 (1- (or (position-if
@@ -298,10 +298,11 @@
            (total (if (plusp count)
                       (+ (third (aref rows (1- count)))
                          (fourth (aref rows (1- count)))) 0)))
-      (lui.frame:emit (lui.layout:make-element :height (lui:fixed (if (< start
-                  count)
-                                             (third (aref rows start))
-                                             total))))
+      (%lui.frame:emit
+       (%lui.layout:make-element
+        :height (lui:fixed (if (< start count)
+                               (third (aref rows start))
+                               total))))
       (loop :for i :from start :below end
             :for (index caption top height) := (aref rows i)
             :do
@@ -315,7 +316,7 @@
                           :selected-p
                           (and (null (browser-guide state))
                                (= index (browser-selected state))))))
-      (lui.frame:emit (lui.layout:make-element
+      (%lui.frame:emit (%lui.layout:make-element
              :height (lui:fixed (- total (if (plusp end)
                                          (+ (third (aref rows (1- end)))
                                             (fourth (aref rows (1- end))))
@@ -334,7 +335,7 @@
 (defun canvas-preview (state)
   (let ((box (lui:previous-box :docs-preview-canvas)))
     (when box
-      (loop for event across (lui.frame:events-for :docs-preview-canvas) do
+      (loop for event across (%lui.frame:events-for :docs-preview-canvas) do
         (when (and (eq (lui:event-kind event) :press)
                    (eq (lui:event-button event) :primary))
           (push (list (/ (- (lui:event-x event) (lui:box-x box)) lui:*unit*)
@@ -491,14 +492,15 @@
 
 (defun entry-preview-kind (entry)
   (when (member (getf entry :package)
-                '("lui" "lui.glass" "lui.motif" "lui.garnet" "lui.macos" "lui.qt" "lui.frame")
+                '("lui" "lui.glass" "lui.motif" "lui.garnet"
+                  "lui.macos" "lui.qt" "%lui.frame")
                 :test #'string=)
     (cdr (assoc (getf entry :name) *preview-kinds* :test #'string-equal))))
 
 (defun detail (state)
   (lui:panel (lui:opt :id :docs-detail :width (lui:grow) :height (lui:grow)
-                      :scroll-p (not (lui.frame::context-page-height-p
-            lui.frame:*context*)) :padding (lui:units 1) :gap (lui:units 1)
+                      :scroll-p (not (%lui.frame::context-page-height-p
+            %lui.frame:*context*)) :padding (lui:units 1) :gap (lui:units 1)
                       :opacity 1 :frost 0)
     (cond
       ((eq (browser-guide state) :previews)
@@ -622,11 +624,11 @@
                     (aref names (mod (1+ (position (browser-palette state)
                           names)) (length names)))))
           (lui:request-frame)))
-      (lui:label (lui.frame::frame-rate-label))
+      (lui:label (%lui.frame::frame-rate-label))
       (lui:row (lui:opt :width (lui:grow) :height (lui:grow) :gap (lui:units
         1))
         (navigation state)
-          (if (>= (lui.frame:context-width lui.frame:*context*) (lui:units
+          (if (>= (%lui.frame:context-width %lui.frame:*context*) (lui:units
                   80))
             (progn (references state) (detail state))
             (lui:column (lui:opt :width (lui:grow) :height (lui:grow) :gap

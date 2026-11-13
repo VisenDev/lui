@@ -1,6 +1,6 @@
-(defpackage #:lui.paint-qt
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui.draw))
-(in-package #:lui.paint-qt)
+(defpackage #:%lui.paint-qt
+  (:use #:cl #:%lui.fn #:%lui.layout #:%lui.frame #:%lui.widgets #:lui.draw))
+(in-package #:%lui.paint-qt)
 
 (fn (qt-bevel t) ((renderer renderer) (widget widget) (box box)
                   &optional ((recessed boolean) nil) ((disabled boolean) nil))
@@ -23,6 +23,6 @@
 
 (fn (paint-qt-scrollbar t) ((renderer renderer) (node element))
   "Paint the Qt scrollbar track and thumb."
-  (paint-desktop-scrollbar renderer node #'qt-bevel))
+  (%paint-desktop-scrollbar renderer node #'qt-bevel))
 
-(register-standard-painter :qt 2 #'paint-qt-scrollbar #'qt-bevel)
+(%register-standard-painter :qt 2 #'paint-qt-scrollbar #'qt-bevel)

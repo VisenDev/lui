@@ -1,5 +1,5 @@
-(defpackage #:lui.interaction
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame)
+(defpackage #:%lui.interaction
+  (:use #:cl #:%lui.fn #:%lui.layout #:%lui.frame)
   (:import-from #:lui
                 #:key-pressed-p #:text-input-event #:visible-span #:list-index
                 #:reveal-rect #:take-events #:event-targets #:reset-editor
@@ -7,7 +7,7 @@
   (:export #:key-pressed-p #:text-input-event #:visible-span #:list-index
            #:reveal-rect #:take-events #:event-targets #:reset-editor
            #:edit-value))
-(in-package #:lui.interaction)
+(in-package #:%lui.interaction)
 
 (fn (key-pressed-p boolean)
     ((key symbol) &optional ((context context) *context*))
@@ -20,7 +20,7 @@
 
 (fn (take-events (vector event)) ((id object-id))
   "Return and consume a vector of a control's ordered frame events."
-  (setf id (lui.frame:widget-id id))
+  (setf id (%lui.frame:widget-id id))
   (prog1 (events-for id)
     (setf (gethash id (context-events *context*)) nil)))
 
@@ -32,14 +32,14 @@ ID types are unrestricted and may differ between vector elements."
              (context-events *context*))
     (make-array (length ids) :element-type 'object-id :initial-contents ids)))
 
-(fn (reset-editor lui.widgets:edit-state) ((id object-id) (text string))
+(fn (reset-editor %lui.widgets:edit-state) ((id object-id) (text string))
   "Reset owned text and editor state, placing the caret at the end of TEXT.
 ID is a resolved widget ID or a unique declared key."
   (setf id (lui:widget-id id))
-  (setf (gethash id (lui.frame:context-values *context*)) text)
+  (setf (gethash id (%lui.frame:context-values *context*)) text)
   (let ((length (length text)))
     (setf (gethash id (context-state *context*))
-          (lui.widgets:make-edit-state :cursor length :anchor length))))
+          (%lui.widgets:make-edit-state :cursor length :anchor length))))
 
 (fn (edit-value string)
     ((id object-id) (text string) &optional
@@ -48,7 +48,7 @@ ID is a resolved widget ID or a unique declared key."
   (setf id (lui:widget-id id))
   (let* ((state (or (gethash id (context-state *context*))
                     (reset-editor id text)))
-         (next (lui.widgets:edit-text text state events)))
+         (next (%lui.widgets:edit-text text state events)))
     (unless (equal text next) (request-frame))
     next))
 
@@ -62,7 +62,7 @@ outside editing. Return an event or NIL; printable input remains text."
           ((and code (or (< code 32) (= code 127)))
            (when editing-p
              (let ((key (if (= code 127) :backspace
-                            (lui.widgets:readline-key
+                            (%lui.widgets:readline-key
                              (string (code-char (+ code 64))) :control t))))
                (when key (make-event :kind :key :key key)))))
           (t
@@ -105,19 +105,19 @@ outside editing. Return an event or NIL; printable input remains text."
               (next-y (max 0 (min (- top leading-y)
                                   (max y (- (+ top height)
                                             (box-height viewport)))))))
-          (when (lui.frame:context-page-height-p *context*)
+          (when (%lui.frame:context-page-height-p *context*)
             (let* ((origin (+ (box-y viewport) top (- next-y)))
-                   (current (lui.frame:context-page-top *context*))
+                   (current (%lui.frame:context-page-top *context*))
                    (target
                      (max 0
                                 (min (- origin leading-y)
                                      (max current
                                           (- (+ origin height)
-                          (lui.frame:context-viewport-height
+                          (%lui.frame:context-viewport-height
                                              *context*)))))))
               (unless (= target current)
-                (setf (lui.frame:context-page-top *context*) target
-                      (lui.frame:context-requested-page-top *context*)
+                (setf (%lui.frame:context-page-top *context*) target
+                      (%lui.frame:context-requested-page-top *context*)
                       target)
                 (request-frame))))
           (unless (and (= x next-x) (= y next-y))

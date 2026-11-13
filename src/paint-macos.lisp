@@ -1,6 +1,6 @@
-(defpackage #:lui.paint-macos
-  (:use #:cl #:lui.fn #:lui.layout #:lui.frame #:lui.widgets #:lui.draw))
-(in-package #:lui.paint-macos)
+(defpackage #:%lui.paint-macos
+  (:use #:cl #:%lui.fn #:%lui.layout #:%lui.frame #:%lui.widgets #:lui.draw))
+(in-package #:%lui.paint-macos)
 
 (fn (macos-bevel t)
     ((renderer renderer) (widget widget) (box box) &optional
@@ -16,5 +16,5 @@
   (shape renderer (inset-box (scrollbar-thumb node) 2) 4
          (widget-color (element-content node) :track) 0.8f0))
 
-(register-standard-painter :macos 6 #'paint-macos-scrollbar #'macos-bevel
+(%register-standard-painter :macos 6 #'paint-macos-scrollbar #'macos-bevel
                            :flat t)
