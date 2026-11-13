@@ -170,7 +170,7 @@
                   (context
                     (%lui.frame:make-context
                      :measure (lambda (widget width)
-                                (call :lui.draw :measure-widget
+                                (call :lui.draw :%measure-widget
                                       renderer widget width))))
                   ;; Compile CFFI only on the GL path; CORE stays dependency-free.
                   (finish (compile nil
@@ -182,7 +182,7 @@
                 (%lui.frame:with-frame (context *width* *height*)
                   (%lui.example.demo:draw *gallery*))
                 (call :%lui.gl :begin-gpu-frame gpu)
-                (call :lui.draw :paint-frame renderer context)
+                (call :lui.draw :%paint-frame renderer context)
                 (call :%lui.gl :present-gpu gpu)
                 (funcall finish)))))
       (when gpu (call :%lui.gl :close-gpu gpu))
@@ -239,7 +239,13 @@
             #+sbcl "SBCL" #-sbcl "unsupported")
     (cond ((string= *platform* "core") (benchmark-core))
           ((string= *platform* "terminal") (benchmark-terminal))
-          ((string= *platform* "gl") (benchmark-gl))
+          ((string= *platform* "gl")
+           ;; Mesa may raise floating-point flags inside foreign drawing calls.
+           #+sbcl
+           (sb-int:with-float-traps-masked
+               (:invalid :divide-by-zero :overflow :underflow :inexact)
+             (benchmark-gl))
+           #-sbcl (benchmark-gl))
           (t (benchmark-window)))
     (assert (= *frames*
                (loop :for values :being :the :hash-values :of *samples*
