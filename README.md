@@ -53,7 +53,18 @@ https://visendev.github.io/lui/
 ## What dependencies does Lui require?
   The core has no external dependencies, native backends require CFFI for
   OS communication and [zpb-ttf](https://github.com/xach/zpb-ttf) for font
-  rendering. The terminal backend uses [uncursed](https://github.com/plisp/uncursed).
+  rendering. Shinmera's [font-discovery](https://codeberg.org/shinmera/font-discovery.git)
+  is optionally used to find font-files. You can push `:lui-no-font-discovery`
+  to disable this. The terminal backend uses [uncursed](https://github.com/plisp/uncursed).
+  
+## How do I use a custom font?
+  Override the value of `lui.font:*font-path*` to the path to the font you 
+  want to use.
+  
+```lisp
+  (let ((lui.font:*font-path* "/usr/share/fonts/TTF/DejaVuSans.ttf"))
+           (lui:run (lambda () (lui:label "hello world"))))
+```
   
 ## Is this just a wrapper over a C windowing library?
   No, everything interfaces with OS apis directly, allowing you to build

@@ -82,8 +82,8 @@
              (uiop:symbol-call :%lui.tests.seven.cells :run-tests)))
 
 (defsystem "lui/native"
-  :weakly-depends-on ("font-discovery")
-  :depends-on ("lui/core" "cffi" "zpb-ttf")
+  :depends-on ("lui/core" "cffi" "zpb-ttf"
+                          (:feature (:not :lui-no-font-discovery) "font-discovery"))
   :components ((:module "src"
                 :serial t
                 :components ((:file "backend-common")
