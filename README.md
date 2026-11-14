@@ -6,21 +6,21 @@ https://visendev.github.io/lui/
 ```lisp
 (lui:run (lambda () (lui:panel (lui:opt :width (lui:grow)
                                         :height (lui:grow))
-           (lui:label "hello world"))))
+                       (lui:label "hello world"))))
 ```
 
 # FAQ
 
-- What is this? 
+## What is this? 
   Lui is an immediate mode common lisp ui library.
   
-- Was this developed with AI?
+## Was this developed with AI?
   Yes.
   
-- Is the README written by AI?
+## Is the README written by AI?
   No, the readme was entirely human written.
   
-- Is this slop?
+## Is this slop?
   Depends on what you mean by that. If you consider anything developed using
   AI to be slop, then yes. However, because I am developing this project
   primary to for me to use (manually coding) at work to build business 
@@ -38,15 +38,15 @@ https://visendev.github.io/lui/
   And the windowing backends are based on my [incomplete (human written)
   common lisp windowing library](https://github.com/visendev/clgfw).
   
-- What dependencies does Lui require?
+## What dependencies does Lui require?
   The core has no external dependencies, most backends require cffi though. 
   The terminal backend uses [uncursed](https://github.com/plisp/uncursed).
   
-- Is this just a wrapper over a C windowing library?
+## Is this just a wrapper over a C windowing library?
   No, everything interfaces with OS apis directly, allowing you to build
   small self contained lisp executables.
   
-- What backends are supported?
+## What backends are supported?
   Linux Wayland,
   Linux X11,
   ANSI Terminal (TUI),
@@ -56,12 +56,12 @@ https://visendev.github.io/lui/
   Web via [JSCL](https://github.com/jscl-project/jscl),
   Web via ECL and EMSCRIPTEN,
   
-- What is the "Debugger"
+## What is the "Debugger"?
   Lui has a built in inspector you can use to examine the UI tree in real
   time while your application is running. To test it out, just click
   the "Show Debugger" button on [the docs page](https://visendev.github.io/lui/).
   
-- What styles does the UI support?
+## What styles does the UI support?
   Lui has the concept of different widget "toolkits", with different
   toolkits each emulating the look and feel of various famous UI libraries
   or OS native functionality. 
@@ -81,9 +81,9 @@ https://visendev.github.io/lui/
   Macos
   ![](./assets/macos.png)
 
-- What does the TUI version of the UI look like?
+## What does the TUI version of the UI look like?
   ![](./assets/tui.png)
 
-- Do you need to write different UI code based on the platform?
+## Do you need to write different UI code based on the platform?
   No, write your UI code once, and it can be run natively, in your terminal,
   or on the web.
