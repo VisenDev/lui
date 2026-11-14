@@ -12,7 +12,8 @@ https://visendev.github.io/lui/
 # FAQ
 
 ## What is this? 
-  Lui is an immediate mode common lisp ui library.
+  Lui is an immediate mode common lisp ui library. You can run the demo via
+  `make demo` (you must have cffi and zpb-ttf `load-system`'able).
   
 ## Was this developed with AI?
   Yes.
