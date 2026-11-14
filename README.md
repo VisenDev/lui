@@ -4,9 +4,7 @@ https://visendev.github.io/lui/
 # Hello World
 
 ```lisp
-(lui:run (lambda () (lui:panel (lui:opt :width (lui:grow)
-                                        :height (lui:grow))
-                       (lui:label "hello world"))))
+(lui:run (lambda () (lui:label "hello world")))
 ```
 
 # FAQ
