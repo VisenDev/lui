@@ -72,6 +72,10 @@ https://visendev.github.io/lui/
   here because type annotations make it much easier to understand unfamiliar
   code and review things.
   
+## Why are vectors used so much in the source code? Isn't this (LIS)t (P)rocessing??
+  More type safety to increase code understandability. Lists can't be given
+  element types, vectors can. 
+  
 ## Why aren't you using CLOS?
   JSCL can't compile `setf` on CLOS accessors, so classes are not as ergonomic
   to use, and structs are a lot faster anyways.
