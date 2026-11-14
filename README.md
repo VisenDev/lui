@@ -39,8 +39,9 @@ https://visendev.github.io/lui/
   common lisp windowing library](https://github.com/visendev/clgfw).
   
 ## What dependencies does Lui require?
-  The core has no external dependencies, most backends require cffi though. 
-  The terminal backend uses [uncursed](https://github.com/plisp/uncursed).
+  The core has no external dependencies, native backends require CFFI for
+  OS communication and [zpb-ttf](https://github.com/xach/zpb-ttf) for font
+  rendering. The terminal backend uses [uncursed](https://github.com/plisp/uncursed).
   
 ## Is this just a wrapper over a C windowing library?
   No, everything interfaces with OS apis directly, allowing you to build
@@ -60,6 +61,20 @@ https://visendev.github.io/lui/
   Lui has a built in inspector you can use to examine the UI tree in real
   time while your application is running. To test it out, just click
   the "Show Debugger" button on [the docs page](https://visendev.github.io/lui/).
+  
+## Do you need to write different UI code based on the platform?
+  No, write your UI code once, and it can be run natively, in your terminal,
+  or on the web.
+
+## What is this `fn` macro all over the source code?
+  `fn` is a (human written) macro used to simplify type declarations on 
+  functions. I originally wrote it for another project, but I am using it
+  here because type annotations make it much easier to understand unfamiliar
+  code and review things.
+  
+## Why aren't you using CLOS?
+  JSCL can't compile `setf` on CLOS accessors, so classes are not as ergonomic
+  to use, and structs are a lot faster anyways.
   
 ## What styles does the UI support?
   Lui has the concept of different widget "toolkits", with different
@@ -84,6 +99,3 @@ https://visendev.github.io/lui/
 ## What does the TUI version of the UI look like?
   ![](./assets/tui.png)
 
-## Do you need to write different UI code based on the platform?
-  No, write your UI code once, and it can be run natively, in your terminal,
-  or on the web.
