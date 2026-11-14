@@ -52,7 +52,7 @@ class DocsWebTests(unittest.TestCase):
             try:
                 page.goto((ROOT / "build/docs.html").as_uri())
                 ui = DocsUI(page)
-                ui.click_widget("Full demo")
+                ui.click_widget("View Full Demo")
                 ui.widget("LUI feature gallery")
                 # Uncovered space beside the back button follows Qt's palette.
                 pixel = page.locator("main canvas").evaluate("""canvas =>
@@ -85,7 +85,7 @@ class DocsWebTests(unittest.TestCase):
             try:
                 page.goto((ROOT / "build/docs.html").as_uri())
                 page.get_by_role("button", name="Browse symbols", exact=True).evaluate("el => el.click()")
-                page.get_by_role("button", name="Show debugger", exact=True).evaluate("el => el.click()")
+                page.get_by_role("button", name="Show Debugger", exact=True).evaluate("el => el.click()")
                 ui = DocsUI(page)
                 ui.frames()
                 page.evaluate("window.scrollTo(0, 500)")
@@ -157,15 +157,15 @@ class DocsWebTests(unittest.TestCase):
                 expect(ui.page.get_by_text(re.compile(
                     r" FPS · .*ms/frame \(layout\)"))).to_be_visible()
                 ui.widget(text="Toolkit: Qt")
-                ui.click_widget(text="Cycle toolkit")
+                ui.click_widget(text="Cycle Toolkit")
                 ui.widget(text="Toolkit: Glass")
                 for toolkit in ("Motif", "Garnet", "macOS", "Qt", "Glass"):
-                    ui.click_widget(text="Cycle toolkit")
+                    ui.click_widget(text="Cycle Toolkit")
                     ui.widget(text="Toolkit: " + toolkit)
                 for palette in ("Light", "Dark", "Ocean", "Forest", "Default"):
-                    ui.click_widget(text="Cycle palette")
+                    ui.click_widget(text="Cycle Palette")
                     ui.widget(text="Palette: " + palette)
-                ui.click_widget(text="Show debugger")
+                ui.click_widget(text="Show Debugger")
                 ui.widget(text="Layout debugger")
                 ui.click_widget(text="Close")
                 ui.click_widget(text="Toolkits", kind="list-item")

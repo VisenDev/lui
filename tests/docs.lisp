@@ -213,7 +213,7 @@
          (other (make-test-context))
          (draw (%lui.docs:make-docs)) (second (%lui.docs:make-docs)))
     (frame context draw)
-    (assert (string= "Show debugger"
+    (assert (string= "Show Debugger"
                      (widget-text
                       (element-content (node-with-id context :docs-debug)))))
     (frame context draw

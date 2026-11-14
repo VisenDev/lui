@@ -641,35 +641,34 @@
                         :padding (lui:units 1) :gap (lui:units 1))
       (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1) :cross-align
         :center)
-        (when (lui:button "Full demo" (lui:opt :id :docs-demo))
-          (setf (browser-demo-p state) t))
         (lui:label "LUI documentation"
                    (lui:opt :font-weight :bold :width (lui:grow)))
-        (lui:label (ecase (browser-toolkit state)
-                     (:glass "Toolkit: Glass") (:motif "Toolkit: Motif")
-                       (:garnet "Toolkit: Garnet") (:macos "Toolkit: macOS")
-                (:qt "Toolkit: Qt")))
-          (when (lui:button "Cycle toolkit" (lui:opt :id
-                                              :docs-toolkit))
-          (setf (browser-toolkit state)
-                (case (browser-toolkit state)
-                    (:glass :motif) (:motif :garnet) (:garnet :macos) (:macos
-                    :qt) (otherwise :glass)))
-          (lui:request-frame))
-          (when (lui:button "Show debugger" (lui:opt :id
-                                              :docs-debug))
-          (lui.debug:set-debugger-enabled t)))
-      (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1) :cross-align
-        :center)
-          (lui:label (format nil "Palette: ~A" (string-capitalize (symbol-name
-                    (browser-palette state)))))
-          (when (lui:button "Cycle palette" (lui:opt :id
-                                              :docs-palette))
+        (when (lui:button "View Full Demo" (lui:opt :id :docs-demo))
+          (setf (browser-demo-p state) t))
+        (when (lui:button "Cycle Palette" (lui:opt :id :docs-palette))
           (let ((names (lui:available-palettes)))
             (setf (browser-palette state)
-                    (aref names (mod (1+ (position (browser-palette state)
-                          names)) (length names)))))
-          (lui:request-frame)))
+                  (aref names
+                        (mod (1+ (position (browser-palette state) names))
+                             (length names)))))
+          (lui:request-frame))
+        (when (lui:button "Cycle Toolkit" (lui:opt :id :docs-toolkit))
+          (setf (browser-toolkit state)
+                (case (browser-toolkit state)
+                  (:glass :motif) (:motif :garnet) (:garnet :macos)
+                  (:macos :qt) (otherwise :glass)))
+          (lui:request-frame))
+        (when (lui:button "Show Debugger" (lui:opt :id :docs-debug))
+          (lui.debug:set-debugger-enabled t)))
+      (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1)
+                          :cross-align :center)
+        (lui:label (ecase (browser-toolkit state)
+                    (:glass "Toolkit: Glass") (:motif "Toolkit: Motif")
+                    (:garnet "Toolkit: Garnet") (:macos "Toolkit: macOS")
+                    (:qt "Toolkit: Qt")))
+        (lui:label (format nil "Palette: ~A"
+                           (string-capitalize
+                            (symbol-name (browser-palette state))))))
       (lui:label (%lui.frame::frame-rate-label))
       (lui:row (lui:opt :width (lui:grow) :height (lui:grow) :gap (lui:units
         1))
