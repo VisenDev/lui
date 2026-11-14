@@ -38,10 +38,10 @@ https://visendev.github.io/lui/
   Linux X11,
   ANSI Terminal (TUI),
   Macos Cocoa,
-  Windows Win32
-  PDF (for doing document layouts)
-  Web via [JSCL](https://github.com/jscl-project/jscl)
-  Web via ECL and EMSCRIPTEN
+  Windows Win32,
+  PDF (for doing document layouts),
+  Web via [JSCL](https://github.com/jscl-project/jscl),
+  Web via ECL and EMSCRIPTEN,
   
 - What styles does the UI support?
   Lui has the concept of different widget "toolkits", with different
