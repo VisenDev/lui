@@ -38,6 +38,18 @@ https://visendev.github.io/lui/
   And the windowing backends are based on my [incomplete (human written)
   common lisp windowing library](https://github.com/visendev/clgfw).
   
+## Why did you build this?
+  Common Lisp has a painful dearth of UI libraries. I have a lot of things
+  I want out of a UI library, and this is my attempt to build my dream 
+  UI Library. Namely, the features I wanted:
+  - Native Lisp Windowing (no wrappers over glfw or SDL)
+  - Must support the web.
+  - Must support TUI rendering, so applications built with it can be used on headless systems.
+  - Must be able to emulate a wide variety of other UI toolkits (Motif, Garnet, etc...)
+  - No mandatory dependencies.
+  - Minimal, preferrably below 10kloc (we are a bit above this right now).
+  - Immediate Mode
+  
 ## What dependencies does Lui require?
   The core has no external dependencies, native backends require CFFI for
   OS communication and [zpb-ttf](https://github.com/xach/zpb-ttf) for font
