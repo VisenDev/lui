@@ -103,6 +103,8 @@
      "Build commands use GNU Make, Bash, and SBCL. Python is used by the existing integration tests and local web server. make test PLATFORM=core runs portable checks; native, gl, and platform-specific targets cover additional paths. See AGENTS.md for configuration, source registry setup, and platform validation guidance.")))
 
 (defstruct browser
+  (demo (%lui.example.demo:make-demo) :type function)
+  (demo-p nil :type boolean)
   (clicks 0 :type integer) (panel-clicks 0 :type integer)
   (date nil :type (or null string))
   (checked-p t :type boolean) (cell-p nil :type boolean)
@@ -626,7 +628,7 @@
     (search-reference state)
     (entry-list state (lui:grow))))
 
-(defun draw-docs (state)
+(defun draw-reference (state)
   (select-reference state)
   (lui:with-toolkit ((browser-toolkit state))
    (lui:with-palette ((browser-palette state))
@@ -639,6 +641,8 @@
                         :padding (lui:units 1) :gap (lui:units 1))
       (lui:row (lui:opt :width (lui:grow) :gap (lui:units 1) :cross-align
         :center)
+        (when (lui:button "Full demo" (lui:opt :id :docs-demo))
+          (setf (browser-demo-p state) t))
         (lui:label "LUI documentation"
                    (lui:opt :font-weight :bold :width (lui:grow)))
         (lui:label (ecase (browser-toolkit state)
@@ -687,6 +691,18 @@
               (if (browser-symbols-p state)
                   (entry-list state (lui:grow))
                   (detail state)))))))))
+
+(defun draw-docs (state)
+  "Draw the reference or the shared gallery, preserving both models."
+  (if (browser-demo-p state)
+      (lui:column (lui:opt :width (lui:grow) :height (lui:grow))
+        (when (lui:button "Back to documentation"
+                          (lui:opt :id :docs-back))
+          (setf (browser-demo-p state) nil))
+        (funcall (browser-demo state)))
+
+      ;; else
+      (draw-reference state)))
 
 (defun make-docs (&key (toolkit :qt) (entries *entries*))
   "Return a fresh documentation browser drawing function for ENTRIES."

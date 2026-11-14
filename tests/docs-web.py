@@ -41,6 +41,33 @@ class DocsUI:
 
 
 class DocsWebTests(unittest.TestCase):
+    def test_shared_gallery_offline(self):
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                executable_path=shutil.which("chromium-browser") or shutil.which("chromium"),
+                args=["--no-sandbox"])
+            page = browser.new_page(viewport={"width": 1400, "height": 1000})
+            errors = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            try:
+                page.goto((ROOT / "build/docs.html").as_uri())
+                ui = DocsUI(page)
+                ui.click_widget("Full demo")
+                ui.widget("LUI feature gallery")
+                for name in ["Editing", "Layout", "Scroll", "Styles", "Menus", "7GUIs"]:
+                    ui.click_widget(name)
+                    ui.frames()
+                for name in ["Temperature", "Flight", "Timer", "CRUD", "Circles", "Cells", "Counter"]:
+                    ui.click_widget(name)
+                    ui.frames()
+                ui.click_widget("Count")
+                ui.frames()
+                ui.click_widget("Back to documentation")
+                ui.widget("Getting started")
+                self.assertEqual(errors, [])
+            finally:
+                browser.close()
+
     def test_mobile_debugger_uses_viewport(self):
         with sync_playwright() as pw:
             browser = pw.chromium.launch(

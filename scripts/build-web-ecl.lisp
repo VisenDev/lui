@@ -46,11 +46,11 @@
     "src/backend-common-web.lisp"))
 (setf *sources*
       (append *sources*
-              (if *docs-p*
-                  '("examples/docs.lisp" "build/docs-data.lisp")
-                  '("examples/seven-model.lisp" "examples/seven-circles.lisp"
-                    "examples/seven-cells.lisp" "examples/seven.lisp"
-                    "examples/demo.lisp"))))
+              '("examples/seven-model.lisp" "examples/seven-circles.lisp"
+                "examples/seven-cells.lisp" "examples/seven.lisp"
+                "examples/demo.lisp")
+              (when *docs-p*
+                '("examples/docs.lisp" "build/docs-data.lisp"))))
 
 (ensure-directories-exist *output*)
 (pushnew :lui-ecl-web *features*)
@@ -108,6 +108,10 @@
       (unless (equal source *entry*)
         (let ((*features* (cons :lui-ecl-host *features*)))
           (load prepared)))))
+  ;; Replacing archive members leaves an old generated initializer behind.
+  (let ((archive (merge-pathnames "liblui-web.a" *output*)))
+    (when (probe-file archive)
+      (delete-file archive)))
   (with-compilation-unit (:target *target-info*)
     (c:build-static-library
      (merge-pathnames "liblui-web.a" *output*)

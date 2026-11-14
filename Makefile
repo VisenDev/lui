@@ -33,7 +33,7 @@ SUFFIX := $(if $(filter win32,$(PLATFORM)),.exe,)
 DEMO := build/bin/demo-$(PLATFORM)$(SUFFIX)
 MANUAL_DEMO := build/bin/manual-demo-$(PLATFORM)$(SUFFIX)
 
-DOC_SOURCES := $(wildcard src/*.lisp) examples/docs.lisp lui.asd
+DOC_SOURCES := $(wildcard src/*.lisp examples/*.lisp) lui.asd
 DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
@@ -108,7 +108,7 @@ test-docs: build/docs.html
 	LUI_DOCS_LIBRARY_ONLY=1 $(SBCL) $(SBCL_FLAGS) --load scripts/setup.lisp \
 		--load scripts/docs-data.lisp --load tests/docs-data.lisp \
 		--eval '(%lui.tests.docs-data:run-tests)' \
-		--eval '(asdf:load-system "lui/debug")' \
+		--eval '(asdf:load-system "lui/demo")' \
 		--load examples/docs.lisp --load tests/support.lisp --load tests/docs.lisp \
 		--eval '(%lui.tests.docs:run-tests)'
 	$(PYTHON) -u tests/docs-web.py
