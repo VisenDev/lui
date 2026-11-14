@@ -151,9 +151,11 @@ void main() {
              :float (aref rgba 2) :float (aref rgba 3) :void))
   (values))
 
-(fn (gl-geometry (values)) ((gpu gpu) (contours contours))
+(fn (gl-geometry (values))
+    ((gpu gpu) (contours contours)
+     &optional ((key (or list contours)) contours))
   "Draw filled contours, caching reusable geometry in GPU's display lists."
-  (let ((display-list (gethash contours (gpu-geometry gpu))))
+  (let ((display-list (gethash key (gpu-geometry gpu))))
     (unless display-list
       ;; Keep resize/animation variants bounded; glyphs use font-unit contours.
       (when (>= (hash-table-count (gpu-geometry gpu)) 512)
@@ -179,7 +181,7 @@ void main() {
                (call-gl "glEnd" :void)))
         (call-gl "glEndList" :void))
       (incf (gpu-geometry-builds gpu))
-      (setf (gethash contours (gpu-geometry gpu)) display-list))
+      (setf (gethash key (gpu-geometry gpu)) display-list))
     (call-gl "glCallList" :uint display-list :void))
   (values))
 
@@ -234,6 +236,46 @@ void main() {
                         :float (float y 1.0f0) :float 0.0f0 :void)
                (gl-polygons gpu local color alpha))
           (call-gl "glPopMatrix" :void)))))
+  (values))
+
+(fn (surface-contours contours)
+    ((width real) (height real) (radius real) (thickness (or null real)))
+  "Build local fill or border contours for a previously unseen surface size."
+  (let* ((box (make-box :width width :height height))
+         (outer (rounded-polygon box radius)))
+    (if thickness
+        (%typed-vector contour outer
+                       (reverse (rounded-polygon
+                                 (inset-box box thickness)
+                                 (max 0 (- radius thickness)))))
+
+        ;; else
+        (%typed-vector contour outer))))
+
+(fn (gl-surface (values))
+    ((gpu gpu) (box box) (radius real) (color string) (alpha real)
+     &optional ((thickness (or null real)) nil))
+  "Draw a cached local surface without rebuilding or copying its contour points."
+  (let* ((key (list :surface (box-width box) (box-height box)
+                    radius thickness))
+         (display-list (gethash key (gpu-geometry gpu))))
+    (record-ink gpu (list key (box-x box) (box-y box)
+                         (copy-seq color) alpha))
+    (gl-color color alpha)
+    (call-gl "glPushMatrix" :void)
+    (unwind-protect
+         (progn
+           (call-gl "glTranslatef" :float (float (box-x box) 1.0f0)
+                    :float (float (box-y box) 1.0f0) :float 0.0f0 :void)
+           (if display-list
+               (call-gl "glCallList" :uint display-list :void)
+               ;; else
+               (gl-geometry gpu
+                            (surface-contours (box-width box)
+                                              (box-height box)
+                                              radius thickness)
+                            key)))
+      (call-gl "glPopMatrix" :void)))
   (values))
 
 (fn (gl-text (values)) ((gpu gpu) (font font) (text string)
@@ -446,6 +488,8 @@ void main() {
   (setf (gpu-renderer gpu)
         (%make-renderer
          :font font
+         :surface (lambda (box radius color alpha &optional thickness)
+                    (gl-surface gpu box radius color alpha thickness))
          :polygons (lambda (contours color alpha)
                      (gl-shape gpu contours color alpha))
          :text (lambda (font text x y color)

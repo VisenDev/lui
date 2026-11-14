@@ -92,6 +92,13 @@
                 (declare (ignore widget)) (lui.draw:make-geometry))
     :paint (lambda (target node)
              (let ((widget (element-content node)) (box (element-box node)))
+               ;; Draw the backdrop after the frame's opaque background clear.
+               (dotimes (stripe 90)
+                 (let ((x (* stripe 8)))
+                   (funcall (renderer-polygons target)
+                            (vector (vector (cons x 0) (cons (+ x 8) 0)
+                                            (cons (+ x 8) 520) (cons x 520)))
+                            (if (evenp stripe) "#000000" "#ffffff") 1)))
                (funcall (renderer-backdrop-effect target)
                         box 0 (%lui.widgets:widget-frost widget))
                (shape target box 0 (%lui.widgets:widget-background widget)
@@ -108,12 +115,6 @@
              (begin-gpu-frame gpu)
              (funcall (renderer-clip renderer)
                       (make-box :width 720 :height 520))
-             (dotimes (stripe 90)
-               (let ((x (* stripe 8)))
-                 (funcall (renderer-polygons renderer)
-                          (vector (vector (cons x 0) (cons (+ x 8) 0)
-                                      (cons (+ x 8) 520) (cons x 520)))
-                          (if (evenp stripe) "#000000" "#ffffff") 1)))
              (%paint-frame renderer context)
              (let ((samples (loop :for x :from 80 :below 144
                                   :collect (first (pixel-color x 100)))))
@@ -161,9 +162,48 @@
       (assert (< (first (pixel-color 585 385)) 40))))
   (format t "Translated cell geometry stays cached across 600 positions.~%"))
 
+(defun frame-pixels ()
+  (let* ((count (* 720 520 4))
+         (pixels (make-array count :element-type '(unsigned-byte 8))))
+    (cffi:with-pointer-to-vector-data (data pixels)
+      (cffi:foreign-funcall "glReadPixels"
+                            :int 0 :int 0 :int 720 :int 520
+                            :uint #x1908 :uint #x1401 :pointer data :void))
+    pixels))
+
+(defun test-surface-cache (gpu renderer)
+  ;; Compare the direct surface path with the original polygon fallback.
+  (let ((fallback (%make-renderer
+                   :font (renderer-font renderer)
+                   :polygons (renderer-polygons renderer))))
+    (dolist (parameters '((10 20 90 60 0 nil)
+                          (120 20 90 60 0 nil)
+                          (10 20 90 60 7 nil)
+                          (10 20 90 60 7 2)
+                          (10 20 100 60 7 2)
+                          (10 20 90 70 7 3)
+                          (21/2 41/2 90 60 7 2)))
+      (let ((box (make-box :x (first parameters) :y (second parameters)
+                           :width (third parameters)
+                           :height (fourth parameters)))
+            (radius (fifth parameters))
+            (thickness (sixth parameters)))
+        (flet ((scene (target)
+                 (begin-gpu-frame gpu)
+                 (if thickness
+                     (outline target box radius "#20c040" 0.7 thickness)
+                     ;; else
+                     (shape target box radius "#20c040" 0.7))
+                 (frame-pixels)))
+          (let ((expected (scene fallback)))
+            (assert (equalp expected (scene renderer)))
+            (assert (equalp expected (scene renderer))))))))
+  (format t "Cached surfaces match polygon fills, borders and translations.~%"))
+
 (defun test-fractional-resolution (gpu renderer)
   (setf (gpu-logical-width gpu) 480
         (gpu-logical-height gpu) (/ 1040 3))
+  (test-surface-cache gpu renderer)
   (begin-gpu-frame gpu)
   (funcall (renderer-clip renderer)
            (make-box :x 10 :y 10 :width 20 :height 20))
@@ -185,15 +225,6 @@
       (assert (< (red-at 12) 50))
       (assert (< (red-at 46) 50))))
   (setf (gpu-logical-width gpu) 720 (gpu-logical-height gpu) 520))
-
-(defun frame-pixels ()
-  (let* ((count (* 720 520 4))
-         (pixels (make-array count :element-type '(unsigned-byte 8))))
-    (cffi:with-pointer-to-vector-data (data pixels)
-      (cffi:foreign-funcall "glReadPixels"
-                            :int 0 :int 0 :int 720 :int 520
-                            :uint #x1908 :uint #x1401 :pointer data :void))
-    pixels))
 
 (defun test-backdrop-cache (gpu renderer)
   (let ((text (copy-seq "CASE"))
@@ -311,6 +342,7 @@
        (*unit* 8))
   (unwind-protect
        (progn
+         (test-surface-cache gpu renderer)
          (test-opaque-compositing gpu renderer context)
          (test-fractional-resolution gpu renderer)
          (test-backdrop-frost gpu renderer context)
