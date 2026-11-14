@@ -26,37 +26,37 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def script(error=False, debug=False):
     # These assertions inspect Glass colors and Unicode borders explicitly.
-    draw = """(let ((frames 0) (draw (lui.example:make-demo)))
+    draw = """(let ((frames 0) (draw (%lui.example.demo:make-demo)))
   (handler-case
       (lui:run (lambda ()
                  (funcall draw)
-                 (lui.frame:request-frame 0.03)
+                 (%lui.frame:request-frame 0.03)
                  (when (> (incf frames) 1) (error "test draw failure")))
                :backend :terminal)
     (error () (format t "~&@@DRAW-ERROR~%"))))""" if error else """
-(let* ((gallery (lui.example:make-gallery :toolkit :glass))
-       (context (lui:run (lambda () (lui.example:draw gallery))
+(let* ((gallery (%lui.example.demo:make-gallery :toolkit :glass))
+       (context (lui:run (lambda () (%lui.example.demo:draw gallery))
                          :backend :terminal)))
   (format t "~&@@RESULT name=~S volume=~,2F enabled=~S count=~D size=~Dx~D~%"
-          (lui.example::gallery-name gallery)
-          (lui.example::gallery-volume gallery)
-          (lui.example::gallery-enabled gallery)
-          (lui.example::gallery-count gallery) (lui.frame:context-width context)
-          (lui.frame:context-height context)))"""
+          (%lui.example.demo::gallery-name gallery)
+          (%lui.example.demo::gallery-volume gallery)
+          (%lui.example.demo::gallery-enabled gallery)
+          (%lui.example.demo::gallery-count gallery) (%lui.frame:context-width context)
+          (%lui.frame:context-height context)))"""
     if debug:
         draw = """
-(let* ((gallery (lui.example:make-gallery :toolkit :glass))
+(let* ((gallery (%lui.example.demo:make-gallery :toolkit :glass))
        (state (lui.debug:make-debugger-state :open-p t :width 30))
        (first t)
        (context (lui:run (lambda ()
                            (when first
                              (setf first nil)
                              (lui.debug:set-debugger-enabled t :state state))
-                           (lui.example:draw gallery))
+                           (%lui.example.demo:draw gallery))
                          :backend :terminal)))
   (format t "~&@@DEBUG width=~,1F size=~Dx~D~%"
           (lui.debug:debugger-state-width state)
-          (lui.frame:context-width context) (lui.frame:context-height context)))
+          (%lui.frame:context-width context) (%lui.frame:context-height context)))
 
 """
     return f"""(load "scripts/setup.lisp")
@@ -69,38 +69,38 @@ def script(error=False, debug=False):
                             (concatenate 'string (string #\\Escape) "[<" sequence)))
          (event (uncursed-sys:read-event)))
     (lui.terminal::mouse-event input (uncursed:event-kind event) context)))
-(assert (= (lui:terminal-text-width "A界é") 4))
+(assert (= (lui.terminal:terminal-text-width "A界é") 4))
 (assert (equalp (lui.terminal:text-lines "界 ab" 3) #("界" "ab")))
 (let ((context (lui.terminal:make-terminal-context)))
-  (lui.frame:with-frame (context 4 1) (lui.glass:label "A界é"))
+  (%lui.frame:with-frame (context 4 1) (lui.glass:label "A界é"))
   (assert (string= (lui.terminal:render-terminal context)
                    (format nil "A界é~%"))))
 (let ((context (lui.terminal:make-terminal-context)))
-  (lui.frame:with-frame (context 8 3)
-    (lui.motif:panel (lui:opt :width (lui.layout:fixed 4)
-                              :height (lui.layout:fixed 3) :padding 1)
+  (%lui.frame:with-frame (context 8 3)
+    (lui.motif:panel (lui:opt :width (%lui.layout:fixed 4)
+                              :height (%lui.layout:fixed 3) :padding 1)
       (lui.motif:label "X")))
   (assert (string= (lui.terminal:render-terminal context)
                    (format nil "+--+    ~%|X |    ~%+--+    ~%"))))
 (let ((context (lui.terminal:make-terminal-context)))
-  (lui.frame:with-frame (context 8 3)
-    (lui.glass:panel (lui:opt :width (lui.layout:fixed 4)
-                              :height (lui.layout:fixed 3) :padding 1)
+  (%lui.frame:with-frame (context 8 3)
+    (lui.glass:panel (lui:opt :width (%lui.layout:fixed 4)
+                              :height (%lui.layout:fixed 3) :padding 1)
       (lui.glass:label "X")))
   (assert (string= (lui.terminal:render-terminal context)
                    (format nil "╭──╮    ~%│X │    ~%╰──╯    ~%"))))
 ;; Text border glyphs are independent of a toolkit's graphical radius.
-(lui.fn:fn test-panel-border ((toolkit symbol) (radius real) (border string)
+(%lui.fn:fn test-panel-border ((toolkit symbol) (radius real) (border string)
                              &rest options)
   (let ((context (lui.terminal:make-terminal-context)))
-    (lui.frame:with-frame (context 5 3)
+    (%lui.frame:with-frame (context 5 3)
       (lui:with-toolkit (toolkit)
         (lui:panel (append options (lui:opt :id :border :radius radius
-                          :width (lui.layout:fixed 5)
-                          :height (lui.layout:fixed 3) :padding 0)))))
-    (assert (= radius (lui.widgets:widget-radius
-                       (lui.layout:element-content
-                        (gethash :border (lui.frame::context-ids context))))))
+                          :width (%lui.layout:fixed 5)
+                          :height (%lui.layout:fixed 3) :padding 0)))))
+    (assert (= radius (%lui.widgets:widget-radius
+                       (%lui.layout:element-content
+                        (gethash (lui:widget-id :border context) (%lui.frame::context-ids context))))))
     (assert (string= (lui.terminal:render-terminal context)
                      (format nil "~C~A~C~%~C   ~C~%~C~A~C~%"
                              (char border 0) (make-string 3 :initial-element (char border 4))
@@ -110,7 +110,7 @@ def script(error=False, debug=False):
 (test-panel-border :glass 0 "╭╮╰╯─│")
 (test-panel-border :motif 12 "++++-|")
 (test-panel-border :garnet 12 "++++-|")
-(lui:register-toolkit :terminal-border-test :parent :glass
+(lui.toolkit:register-toolkit :terminal-border-test :parent :glass
                      :defaults '(:terminal-border "┌┐└┘═║"))
 (dolist (radius '(0 14))
   (test-panel-border :terminal-border-test radius "┌┐└┘═║"))
@@ -119,52 +119,51 @@ def script(error=False, debug=False):
 (test-panel-border :terminal-border-test 0 "++++-|" :terminal-border nil)
 (test-panel-border :terminal-border-test 14 "╭╮╰╯─│" :terminal-border nil)
 (let ((context (lui.terminal:make-terminal-context))
-      (gallery (lui.example:make-gallery :toolkit :glass)))
-  (lui.frame:with-frame (context 90 35) (lui.example:draw gallery))
+      (gallery (%lui.example.demo:make-gallery :toolkit :glass)))
+  (%lui.frame:with-frame (context 90 35) (%lui.example.demo:draw gallery))
   (let ((lines (lui.terminal:text-lines (lui.terminal:render-terminal context) nil)))
     (assert (string= (aref lines 0) (format nil "╭~A╮" (make-string 88 :initial-element #\\─))))
     (assert (string= (aref lines 34) (format nil "╰~A╯" (make-string 88 :initial-element #\\─))))))
 ;; Track endpoints agree with keyboard and raw mouse edits.
 (let ((context (lui.terminal:make-terminal-context)) (value 0.5))
   (flet ((draw ()
-           (setf value (lui.motif:slider :slide value
-                         (lui:opt :width (lui.layout:fixed 20) :step 0.25)))))
+           (setf value (lui.motif:slider (lui:opt :id :slide :value value :width (%lui.layout:fixed 20) :step 0.25)))))
     (dolist (entry '((0 "#---------------- 0%")
                      (0.5 "========#------- 50%")
                      (1 "==============# 100%")))
       (setf value (first entry))
-      (lui.frame:with-frame (context 20 2) (draw))
+      (%lui.frame:with-frame (context 20 2) (draw))
       (assert (string= (second entry)
                        (subseq (lui.terminal:render-terminal context) 0 20))))
     (setf value 0.5)
-    (lui.frame:with-frame (context 20 2) (draw))
+    (%lui.frame:with-frame (context 20 2) (draw))
     (dolist (entry '((16 1) (1 0) (9 0.5)))
       (let ((input (lui.terminal::make-input)))
         (test-mouse input
           (format nil "0;~D;1M" (first entry)) context)
-        (lui.frame:with-frame
+        (%lui.frame:with-frame
             (context 20 2 :events
               (reverse (lui.terminal::input-events input)))
           (draw))
         (assert (= value (second entry)))))
     (dolist (entry '((:home 0) (:end 1) (:left 0.75) (:right 1)))
-      (lui.frame:with-frame
+      (%lui.frame:with-frame
           (context 20 2 :events
-            (list (lui.frame:make-event :kind :key :id :slide
+            (list (%lui.frame:make-event :kind :key :id :slide
                                        :key (first entry))))
         (draw))
       (assert (= value (second entry))))))
 (dolist (width '(1 2 3))
   (let ((context (lui.terminal:make-terminal-context)))
-    (lui.frame:with-frame (context width 1)
-      (lui.motif:slider :narrow 0.5 (lui:opt :width (lui.layout:fixed width))))
+    (%lui.frame:with-frame (context width 1)
+      (lui.motif:slider (lui:opt :id :narrow :value 0.5 :width (%lui.layout:fixed width))))
     (let ((line (lui.terminal:render-terminal context)))
-      (assert (= (1+ width) (lui:terminal-text-width line)))
+      (assert (= (1+ width) (lui.terminal:terminal-text-width line)))
       (assert (find #\\# line)))))
 (let ((context (lui.terminal:make-terminal-context)))
-  (lui.frame:with-frame (context 12 1)
-    (lui.frame:column (:width (lui.layout:fixed 10) :clip-p t)
-      (lui.motif:slider :clipped 1 (lui:opt :width (lui.layout:fixed 20)))))
+  (%lui.frame:with-frame (context 12 1)
+    (%lui.frame:column (lui:opt :width (%lui.layout:fixed 10) :clip-p t)
+      (lui.motif:slider (lui:opt :id :clipped :value 1 :width (%lui.layout:fixed 20)))))
   (let ((line (lui.terminal:render-terminal context)))
     (assert (char= (char line 10) #\\Space))
     (assert (char= (char line 11) #\\Space))
@@ -174,31 +173,28 @@ def script(error=False, debug=False):
   (let ((context (lui.terminal:make-terminal-context))
         (clicks 0) (checked nil) (value 0.5))
     (labels ((draw ()
-               (when (lui:button :fractional-button "Click"
-                       (lui:opt :floating-p t :offset-x start :offset-y start
-                                :width (lui.layout:fixed 8)
-                                :height (lui.layout:fixed 1)))
+               (when (lui:button "Click" (lui:opt :id :fractional-button :position :absolute :offset-x start :offset-y start
+                                :width (%lui.layout:fixed 8)
+                                :height (%lui.layout:fixed 1)))
                  (incf clicks))
                (setf checked
-                 (lui:checkbox :fractional-check checked "Enabled"
-                   (lui:opt :floating-p t :offset-x start
-                            :offset-y (+ 2 start) :width (lui.layout:fixed 12)
-                            :height (lui.layout:fixed 1))))
+                 (lui:checkbox "Enabled" (lui:opt :id :fractional-check :value checked :position :absolute :offset-x start
+                            :offset-y (+ 2 start) :width (%lui.layout:fixed 12)
+                            :height (%lui.layout:fixed 1))))
                (setf value
-                 (lui:slider :fractional-slider value
-                   (lui:opt :floating-p t :offset-x start
-                            :offset-y (+ 4 start) :width (lui.layout:fixed 20)
-                            :height (lui.layout:fixed 1) :step 0.01))))
+                 (lui:slider (lui:opt :id :fractional-slider :value value :position :absolute :offset-x start
+                            :offset-y (+ 4 start) :width (%lui.layout:fixed 20)
+                            :height (%lui.layout:fixed 1) :step 0.01))))
              (mouse (button x y &optional release)
                (let ((input (lui.terminal::make-input)))
                  (test-mouse
                    input (format nil "~D;~D;~D~A" button x y
                                  (if release "m" "M")) context)
-                 (lui.frame:with-frame
+                 (%lui.frame:with-frame
                      (context 24 7 :events
                        (reverse (lui.terminal::input-events input)))
                    (draw)))))
-      (lui.frame:with-frame (context 24 7) (draw))
+      (%lui.frame:with-frame (context 24 7) (draw))
       (let ((cell (1+ (floor (+ start 1/2)))))
         (mouse 0 cell cell)
         (mouse 0 cell cell t)
@@ -213,30 +209,27 @@ def script(error=False, debug=False):
         (mouse 32 1 (+ cell 4))
         (assert (zerop value))
         (mouse 0 1 (+ cell 4) t)
-        (assert (null (lui.frame:context-active context)))))))
+        (assert (null (lui:widget-key (%lui.frame:context-active context))))))))
 ;; Sliders behind overlays cannot steal their presses or a batched drag.
 (let ((context (lui.terminal:make-terminal-context))
       (behind 0.5) (visible 0.5) (clicks 0))
   (labels ((draw ()
-             (setf behind (lui:slider :behind behind
-                            (lui:opt :width (lui.layout:fixed 20)
-                                     :height (lui.layout:fixed 1))))
-             (setf visible (lui:slider :visible visible
-                             (lui:opt :width (lui.layout:fixed 20)
-                                      :height (lui.layout:fixed 1))))
-             (when (lui:button :overlay "Close"
-                     (lui:opt :floating-p t :width (lui.layout:fixed 20)
-                              :height (lui.layout:fixed 1)))
+             (setf behind (lui:slider (lui:opt :id :behind :value behind :width (%lui.layout:fixed 20)
+                                     :height (%lui.layout:fixed 1))))
+             (setf visible (lui:slider (lui:opt :id :visible :value visible :width (%lui.layout:fixed 20)
+                                      :height (%lui.layout:fixed 1))))
+             (when (lui:button "Close" (lui:opt :id :overlay :position :absolute :width (%lui.layout:fixed 20)
+                              :height (%lui.layout:fixed 1)))
                (incf clicks)))
            (batch (&rest sequences)
              (let ((input (lui.terminal::make-input)))
                (dolist (sequence sequences)
                  (test-mouse input sequence context))
-               (lui.frame:with-frame
+               (%lui.frame:with-frame
                    (context 20 2 :events
                      (reverse (lui.terminal::input-events input)))
                  (draw)))))
-    (lui.frame:with-frame (context 20 2) (draw))
+    (%lui.frame:with-frame (context 20 2) (draw))
     (batch "0;3;1M" "0;3;1m")
     (assert (= clicks 1))
     (assert (= behind 0.5))
@@ -251,21 +244,21 @@ def script(error=False, debug=False):
     (assert (zerop visible))
     (batch "35;30;1M" "32;30;1M")
     (assert (zerop visible))
-    (assert (null (lui.frame:context-active context)))
+    (assert (null (lui:widget-key (%lui.frame:context-active context))))
     (batch "0;1;2M" "32;30;1M" "0;30;1m")
     (assert (= visible 1))))
 ;; Shared gauge/canvas values have useful plain and colored representations.
 (let ((context (lui.terminal:make-terminal-context)))
-  (lui.frame:with-frame (context 20 1)
-    (lui.widgets:declare-widget :gauge :motif :progress "" :value 0.5))
+  (%lui.frame:with-frame (context 20 1)
+    (%lui.widgets:declare-widget :gauge :motif :progress "" :value 0.5))
   (assert (search "[#####.....] 50%"
                   (lui.terminal:render-terminal context))))
 (let ((context (lui.terminal:make-terminal-context)))
-  (lui.frame:with-frame (context 5 5)
-    (lui.motif:panel (lui:opt :width (lui.layout:grow) :height (lui.layout:grow))
-      (lui.widgets:declare-widget
-       :canvas :motif :circles "" :width (lui.layout:fixed 5)
-       :height (lui.layout:fixed 5)
+  (%lui.frame:with-frame (context 5 5)
+    (lui.motif:panel (lui:opt :width (%lui.layout:grow) :height (%lui.layout:grow))
+      (%lui.widgets:declare-widget
+       :canvas :motif :circles "" :width (%lui.layout:fixed 5)
+       :height (%lui.layout:fixed 5)
        :value '((:circle 2.5 2.5 2 "#ff0000" "#00ff00")))))
   (let ((plain (lui.terminal:render-terminal context))
         (colored (lui.terminal:render-terminal context :ansi t)))
@@ -275,13 +268,13 @@ def script(error=False, debug=False):
     (format t "~&@@ANSI-CANVAS-BEGIN~%~A@@ANSI-CANVAS-END~%" colored)))
 (let ((input (lui.terminal::make-input)))
   (test-mouse input "2;3;4M")
-  (assert (eq (lui.frame:event-button
+  (assert (eq (%lui.frame:event-button
                (first (lui.terminal::input-events input))) :secondary))
   (test-mouse input "32;3;4M")
-  (assert (lui.frame:event-dragging-p
+  (assert (%lui.frame:event-dragging-p
            (first (lui.terminal::input-events input))))
   (test-mouse input "35;3;4M")
-  (assert (not (lui.frame:event-dragging-p
+  (assert (not (%lui.frame:event-dragging-p
                 (first (lui.terminal::input-events input))))))
 ;; Physical SGR state distinguishes released motion from a retained capture.
 (dolist (entry '(("0;3;4M" 1) ("32;3;4M" 1) ("0;3;4m" 0)
@@ -290,15 +283,15 @@ def script(error=False, debug=False):
   (let ((input (lui.terminal::make-input)))
     (test-mouse input (first entry))
     (assert (eql (second entry)
-                 (lui.frame:event-buttons
+                 (%lui.frame:event-buttons
                    (first (lui.terminal::input-events input)))))))
 ;; Fractional cell boundaries must agree for painting and clipping.
 (let ((context (lui.terminal:make-terminal-context)))
-  (lui.frame:with-frame (context 10 4)
-    (lui.frame:row (:width (lui.layout:grow) :height (lui.layout:grow))
-      (lui.motif:panel (lui:opt :width (lui.layout:fixed 2.4)
-                                :height (lui.layout:grow)))
-      (lui.motif:panel (lui:opt :width (lui.layout:grow) :height (lui.layout:grow)
+  (%lui.frame:with-frame (context 10 4)
+    (%lui.frame:row (lui:opt :width (%lui.layout:grow) :height (%lui.layout:grow))
+      (lui.motif:panel (lui:opt :width (%lui.layout:fixed 2.4)
+                                :height (%lui.layout:grow)))
+      (lui.motif:panel (lui:opt :width (%lui.layout:grow) :height (%lui.layout:grow)
                                 :padding 1)
         (lui.motif:label "X"))))
   (let ((lines (lui.terminal:text-lines
@@ -308,37 +301,37 @@ def script(error=False, debug=False):
     (assert (char= (char (aref lines 3) 2) #\\+))))
 ;; A zero-padding child cannot overwrite its enclosing panel's borders.
 (let ((context (lui.terminal:make-terminal-context)))
-  (lui.frame:with-frame (context 5 3)
-    (lui.garnet:panel (lui:opt :width (lui.layout:grow) :height (lui.layout:grow))
+  (%lui.frame:with-frame (context 5 3)
+    (lui.garnet:panel (lui:opt :width (%lui.layout:grow) :height (%lui.layout:grow))
       (lui.garnet:label "XXXXX")))
   (let ((plain (lui.terminal:render-terminal context))
         (colored (lui.terminal:render-terminal context :ansi t)))
     (assert (string= plain (format nil "+---+~%|   |~%+---+~%")))
     (assert (not (find #\\Escape plain)))
     (format t "~&@@ANSI-GARNET-BEGIN~%~A@@ANSI-GARNET-END~%" colored)))
-(let ((context (lui:run (lui.example:make-demo) :backend :terminal
+(let ((context (lui:run (%lui.example.demo:make-demo) :backend :terminal
                         :width 90 :height 35 :interactive nil)))
-  (lui.layout:walk-elements
-   (lui.frame:context-root context)
+  (%lui.layout:walk-elements
+   (%lui.frame:context-root context)
    (lambda (node)
-     (when (eq (lui.layout:element-id node) :name)
-       (let ((box (lui.layout:element-box node)))
+     (when (eq (lui:widget-key (%lui.layout:element-id node)) :name)
+       (let ((box (%lui.layout:element-box node)))
          (format t "~&@@NAME=~D,~D~%"
-                 (1+ (floor (lui.layout:box-x box)))
-                 (1+ (floor (lui.layout:box-y box))))))
-     (when (member (lui.layout:element-id node)
+                 (1+ (floor (%lui.layout:box-x box)))
+                 (1+ (floor (%lui.layout:box-y box))))))
+     (when (member (lui:widget-key (%lui.layout:element-id node))
                    '((:page :controls) (:page :editing) (:page :layout))
                    :test #'equal)
-       (let ((box (lui.layout:element-box node)))
+       (let ((box (%lui.layout:element-box node)))
          (format t "~&@@TAB-~A=~D,~D~%"
-                 (second (lui.layout:element-id node))
-                 (1+ (lui.terminal:cell-edge (lui.layout:box-x box)))
-                 (1+ (lui.terminal:cell-edge (lui.layout:box-y box))))))
-     (when (eq (lui.layout:element-id node) :reset)
-       (let ((box (lui.layout:element-box node)))
+                 (second (lui:widget-key (%lui.layout:element-id node)))
+                 (1+ (lui.terminal:cell-edge (%lui.layout:box-x box)))
+                 (1+ (lui.terminal:cell-edge (%lui.layout:box-y box))))))
+     (when (eq (lui:widget-key (%lui.layout:element-id node)) :reset)
+       (let ((box (%lui.layout:element-box node)))
          (format t "~&@@RESET=~D,~D~%"
-                 (1+ (floor (lui.layout:box-x box)))
-                 (1+ (floor (lui.layout:box-y box)))))))))
+                 (1+ (floor (%lui.layout:box-x box)))
+                 (1+ (floor (%lui.layout:box-y box)))))))))
 {draw}
 """
 
@@ -554,8 +547,8 @@ def exercise(lisp, path):
         assert match, terminal.output
         x, y = (int(value) for value in match.groups())
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
-        # Shift-Tab reaches 7GUIs; Left selects the preceding Styles tab.
-        terminal.send(b"\x1b[Z\x1b[D")
+        # Shift-Tab reaches 7GUIs; two Left presses pass Menus to Styles.
+        terminal.send(b"\x1b[Z\x1b[D\x1b[D")
         terminal.until_visible(b"Customize the active toolkit")
         terminal.send(b"\x1b[H")
         terminal.send(f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
@@ -716,8 +709,8 @@ def exercise_fallback(lisp, path):
 (asdf:load-system "lui/terminal")
 (let ((context (lui:run (lambda () (lui:label "Fallback frame"))
                         :backend :terminal :width 24 :height 2)))
-  (format t "~&@@FALLBACK ~Dx~D~%" (lui.frame:context-width context)
-          (lui.frame:context-height context)))
+  (format t "~&@@FALLBACK ~Dx~D~%" (%lui.frame:context-width context)
+          (%lui.frame:context-height context)))
 """, encoding="utf-8")
     environment = os.environ.copy()
     environment["TERM"] = "xterm-direct"

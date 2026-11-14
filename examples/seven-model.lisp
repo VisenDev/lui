@@ -1,4 +1,4 @@
-(defpackage #:lui.seven.model
+(defpackage #:%lui.seven.model
   (:use #:cl)
   (:export #:parse-number #:parse-date #:temperature #:flight-valid-p
            #:timer #:make-timer #:timer-elapsed #:timer-duration
@@ -14,7 +14,7 @@
            #:sheet #:make-sheet #:sheet-cell #:sheet-set #:sheet-recomputed
            #:cell-text #:cell-value #:cell-problem #:cell-revision
            #:cell-display #:cell-index #:cell-address #:parse-formula))
-(in-package #:lui.seven.model)
+(in-package #:%lui.seven.model)
 
 ;; JSCL's source reader does not recognize the named Return character.
 (defparameter *whitespace* (mapcar #'code-char '(9 10 13 32)))

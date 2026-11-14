@@ -53,12 +53,12 @@ RAW_PROFILE = r"""({count, warmup}) => new Promise(resolve => {
 
 PROFILE = r"""({count, warmup}) => new Promise(resolve => {
     const phases = {
-        'lui.frame::begin-frame': 'begin_ms',
-        'lui.example:draw': 'declare_ms',
-        'lui.frame::end-frame': 'end_ms',
-        'lui.layout:solve': 'layout_ms',
-        'lui.draw::measure-widget': 'measure_ms',
-        'lui.draw::paint-frame': 'paint_ms',
+        '%lui.frame::begin-frame': 'begin_ms',
+        '%lui.example.demo:draw': 'declare_ms',
+        '%lui.frame::end-frame': 'end_ms',
+        '%lui.layout:solve': 'layout_ms',
+        'lui.draw::%measure-widget': 'measure_ms',
+        'lui.draw::%paint-frame': 'paint_ms',
         'lui.web::sync-overlay': 'overlay_ms',
     };
     const draw = 'lui.web::draw-frame';
@@ -105,31 +105,32 @@ def nodes(page):
     return page.evaluate("""() => {
         return jscl.evaluateString(`
           (let ((result (jscl/ffi:new #j:Array)))
-            (lui.layout:walk-elements
-             (lui.frame:context-root
+            (%lui.layout:walk-elements
+             (%lui.frame:context-root
               (lui.web::web-app-context
-               (lui.web::canvas-app (#j:document:querySelector #j"main canvas"))))
+               (jscl/ffi:oget (#j:document:querySelector #j"main canvas")
+                              "luiApp")))
              (lambda (node)
-               (let ((widget (lui.layout:element-content node))
-                     (box (lui.layout:element-box node))
-                     (clip (lui.layout:element-clip node)))
-                 (when (and (lui.widgets:widget-p widget)
-                            (plusp (lui.layout:box-width clip))
-                            (plusp (lui.layout:box-height clip)))
+               (let ((widget (%lui.layout:element-content node))
+                     (box (%lui.layout:element-box node))
+                     (clip (%lui.layout:element-clip node)))
+                 (when (and (%lui.widgets:widget-p widget)
+                            (plusp (%lui.layout:box-width clip))
+                            (plusp (%lui.layout:box-height clip)))
                    (let ((item (jscl/ffi:new #j:Object)))
                      (setf (jscl/ffi:oget item "text")
-                           (jscl/ffi:jsstring (lui.widgets:widget-text widget))
+                           (jscl/ffi:jsstring (%lui.widgets:widget-text widget))
                            (jscl/ffi:oget item "kind")
                            (jscl/ffi:jsstring
-                            (symbol-name (lui.widgets:widget-kind widget)))
+                            (symbol-name (%lui.widgets:widget-kind widget)))
                            (jscl/ffi:oget item "x")
-                           (+ (lui.layout:box-x clip)
-                              (/ (lui.layout:box-width clip) 2))
+                           (+ (%lui.layout:box-x clip)
+                              (/ (%lui.layout:box-width clip) 2))
                            (jscl/ffi:oget item "y")
-                           (+ (lui.layout:box-y clip)
-                              (/ (lui.layout:box-height clip) 2))
+                           (+ (%lui.layout:box-y clip)
+                              (/ (%lui.layout:box-height clip) 2))
                            (jscl/ffi:oget item "top")
-                           (lui.layout:box-y box))
+                           (%lui.layout:box-y box))
                      ((jscl/ffi:oget result "push") item))))))
             result))`);
     }""")
@@ -150,15 +151,15 @@ def has_text(page, text):
 def cells_view(page):
     return page.evaluate(r'''() => jscl.evaluateString(`
       (let* ((context (lui.web::web-app-context
-                        (lui.web::canvas-app (#j:document:querySelector #j"main canvas"))))
-             (grid (gethash :seven-grid (lui.frame::context-ids context)))
-             (box (lui.layout:element-box grid))
+                        (jscl/ffi:oget (#j:document:querySelector #j"main canvas") "luiApp")))
+             (grid (gethash :seven-grid (%lui.frame::context-ids context)))
+             (box (%lui.layout:element-box grid))
              (result (jscl/ffi:new #j:Object)))
-        (setf (jscl/ffi:oget result "scroll_y") (lui.layout:element-scroll-y grid))
+        (setf (jscl/ffi:oget result "scroll_y") (%lui.layout:element-scroll-y grid))
         (setf (jscl/ffi:oget result "x")
-              (+ (lui.layout:box-x box) (/ (lui.layout:box-width box) 2))
+              (+ (%lui.layout:box-x box) (/ (%lui.layout:box-width box) 2))
               (jscl/ffi:oget result "y")
-              (+ (lui.layout:box-y box) (/ (lui.layout:box-height box) 2)))
+              (+ (%lui.layout:box-y box) (/ (%lui.layout:box-height box) 2)))
         result)`)''')
 
 
@@ -272,7 +273,7 @@ try:
                     (let ((total 0))
                       (maphash (lambda (id offset) (declare (ignore id))
                                  (incf total (cdr offset)))
-                               (lui.frame::context-scroll
+                               (%lui.frame::context-scroll
                                 (lui.web::web-app-context
                                  #j:window:__luiBenchmarkApp)))
                       total))`);

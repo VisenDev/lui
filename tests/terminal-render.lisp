@@ -1,20 +1,27 @@
-(defpackage #:lui.tests.terminal-render
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.widgets #:lui.terminal)
+(defpackage #:%lui.tests.terminal-render
+  (:use #:cl #:%lui.fn #:lui #:%lui.layout #:%lui.frame #:%lui.widgets
+    #:lui.terminal)
   (:export #:run-tests))
-(in-package #:lui.tests.terminal-render)
+(in-package #:%lui.tests.terminal-render)
 
 (fn test-overlay ()
   (let ((context (make-terminal-context)) (plain nil) (ansi nil))
     (labels ((text ()
-               (lui.glass:cell :background ""
-                (lui:opt :floating-p t :disabled-p t
-                         :width (fixed 10) :height (fixed 3)
+          (lui.glass:cell
+            ""
+            (lui:opt
+              :id :background
+              :position :absolute
+              :disabled-p t
+              :width (fixed 10)
+              :height (fixed 3)
                          :background "#303040"))
                (lui.glass:label "ABCDEFGHIJ"
-                                (lui:opt :width (fixed 10) :height (fixed 3))))
+                                (lui:opt :width (fixed 10) :height (fixed
+                  3))))
              (overlay (opacity)
                (emit (make-element
-                      :id :overlay :floating-p t :width (fixed 10)
+                      :id :overlay :position :absolute :width (fixed 10)
                       :height (fixed 3)
                       :content (make-widget :kind :highlight :opacity opacity
                                             :accent "#ff8c00")))))
@@ -37,7 +44,7 @@
 (fn test-terminal-overlap ()
   (let ((context (make-terminal-context)) (expected nil))
     (flet ((front ()
-             (lui.glass:panel (lui:opt :floating-p t :width (fixed 20)
+             (lui.glass:panel (lui:opt :position :absolute :width (fixed 20)
                                        :height (fixed 8) :padding 1)
                (lui.glass:label (format nil "Front~%Second~%Third")))))
       (with-frame (context 20 8) (front))
@@ -55,10 +62,10 @@
                           :width (grow) :height (grow))
         (lui:label "Pane")))
     (let ((idle (render-terminal context :ansi t)))
-      (assert (eq :pane (lui.frame::hit context 15 4)))
-      (setf (context-hover context) :pane)
+      (assert (eq :pane (lui:widget-key (%lui.frame::hit context 15 4))))
+      (setf (context-hover context) (lui:widget-id :pane context))
       (assert (equal idle (render-terminal context :ansi t)))
-      (setf (context-active context) :pane)
+      (setf (context-active context) (lui:widget-id :pane context))
       (assert (equal idle (render-terminal context :ansi t))))))
 
 (fn test-scrollbar-rendering ()
@@ -79,17 +86,17 @@
 (fn test-text-rendering ()
   (let ((context (make-terminal-context)))
     (with-frame (context 5 10)
-      (column (:width (grow))
+      (column (lui:opt :width (grow))
         (lui.glass:label "ab cd ef")
         (lui.glass:label "next")))
     (assert (search (format nil "ab cd~%ef   ~%next ")
                     (render-terminal context)))
-    (with-frame (context 20 5) (lui.motif:button :new "New"))
+    (with-frame (context 20 5) (lui.motif:button "New" (lui:opt :id :new)))
     (assert (search "[ New ]" (render-terminal context)))
     (with-frame (context 32 12)
       (table (opt :width (grow) :column-gap 1)
         (table-row () (table-cell (opt :column-span 2) (label "Header")))
-        (table-row () (label "A") (button :edit "Edit"))))
+        (table-row () (label "A") (button "Edit" (opt :id :edit)))))
     (assert (search "Header" (render-terminal context))))
   (assert (equalp (text-lines (format nil "a~%~%b~%") 3)
                  #("a" "" "b" "")))
@@ -123,9 +130,39 @@
                                                     0 column)))))))))
 
 (fn run-tests ()
+  (let ((context (make-terminal-context))
+        (trigger nil))
+    (flet ((draw ()
+             (lui:spinner (lui:opt :disabled-p t))
+             (setf trigger
+                   (nth-value 2
+                     (lui:menu "File" nil
+                       (lui:menu-item "Open document"))))))
+      (with-frame (context 30 8) (draw))
+      (assert (search "|" (render-terminal context)))
+      (setf (context-focus context) trigger)
+      (with-frame (context 30 8 :events
+                           (list (make-event :kind :key :key :down)))
+        (draw))
+      (assert (search "Open document" (render-terminal context)))
+      (with-frame (context 30 8 :events
+                           (list (make-event :kind :key :key :escape)))
+        (draw))
+      (assert (not (search "Open document" (render-terminal context))))))
+  (let ((context (make-terminal-context)))
+    (with-frame (context 8 4)
+      (lui:hr)
+      (lui:row (lui:opt :width (grow) :height (grow))
+        (lui:label "A")
+        (lui:spacer (lui:opt :width (grow)))
+        (lui:vr)))
+    (let ((text (render-terminal context)))
+      (assert (search "────────" text))
+      (assert (search "A      │" text))
+      (assert (search "       │" text))))
   (let ((context (make-terminal-context)))
     (with-frame (context 20 2)
-      (lui:text-field :secret "secret界" (lui:opt :password-p t)))
+      (lui:text-field (lui:opt :id :secret :value "secret界" :password-p t)))
     (let ((text (render-terminal context)))
       (assert (search "*******" text))
       (assert (not (search "secret" text)))))

@@ -1,6 +1,6 @@
-(defpackage #:lui.setup
+(defpackage #:%lui.setup
   (:use #:cl))
-(in-package #:lui.setup)
+(in-package #:%lui.setup)
 
 (require :asdf)
 #-quicklisp

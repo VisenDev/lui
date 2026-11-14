@@ -5,8 +5,6 @@ Run: python tests/web.py (requires Playwright and Chromium).
 """
 
 import functools
-import os
-import re
 import http.server
 from pathlib import Path
 import shutil
@@ -16,7 +14,6 @@ import unittest
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
-WEB_PAGE = os.environ.get("LUI_WEB_PAGE", "/examples/web.html")
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -48,13 +45,13 @@ class WebTests(unittest.TestCase):
         self.page = self.browser.new_page(viewport={"width": 900, "height": 700})
         self.errors = []
         self.page.on("pageerror", lambda error: self.errors.append(str(error)))
-        self.page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
+        self.page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
         self.page.wait_for_function("""() => {
             const c = document.querySelector('main canvas');
             return c && c.luiApp && c.width > 0;
         }""")
-        self.lisp('''(declaim (special lui.frame:*context* lui.frame:*parent*
-          lui:*unit* lui::*toolkit* lui::*toolkit-definition*))''')
+        self.lisp('''(declaim (special %lui.frame:*context* %lui.frame:*parent*
+          lui:*unit* lui.toolkit:%*toolkit* lui.toolkit:%*toolkit-definition*))''')
         self.frames()
 
     def tearDown(self):
@@ -62,11 +59,11 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.errors, [])
 
     def lisp(self, source):
-        self.page.evaluate("source => { (window.luiEvaluate || jscl.evaluateString)(source); }",
+        self.page.evaluate("source => { jscl.evaluateString(source); }",
                            "(progn " + source + ")")
 
     def number(self, expression):
-        self.lisp(f'(setf (lui.js:property (lui.js:global "window") "testNumber") {expression})')
+        self.lisp(f'(setf (jscl/ffi:oget #j:window "testNumber") {expression})')
         return self.page.evaluate("window.testNumber")
 
     def frames(self):
@@ -77,40 +74,42 @@ class WebTests(unittest.TestCase):
         """Snapshot solved widget geometry and model values, never widget DOM."""
         self.page.evaluate("s => {window.testCanvas = document.querySelector(s+' canvas');}", host)
         self.lisp('''
-          (let* ((app (lui.web::canvas-app (lui.js:property (lui.js:global "window") "testCanvas")))
+          (let* ((app (jscl/ffi:oget #j:window:testCanvas "luiApp"))
                  (context (lui.web::web-app-context app))
-                 (result (lui.js:new (lui.js:global "Array"))))
-            (when (lui.frame:context-root context)
-              (lui.layout:walk-elements (lui.frame:context-root context)
+                 (result (jscl/ffi:new #j:Array)))
+            (when (%lui.frame:context-root context)
+              (%lui.layout:walk-elements (%lui.frame:context-root context)
                 (lambda (node)
-                  (let ((widget (lui.layout:element-content node))
-                        (box (lui.layout:element-box node))
-                        (clip (lui.layout:element-clip node)))
-                    (when (lui.widgets:widget-p widget)
-                      (let ((item (lui.js:new (lui.js:global "Object"))))
+                  (let ((widget (%lui.layout:element-content node))
+                        (box (%lui.layout:element-box node))
+                        (clip (%lui.layout:element-clip node)))
+                    (when (%lui.widgets:widget-p widget)
+                      (let ((item (jscl/ffi:new #j:Object)))
                         (setf
-                          (lui.js:property item "id")
-                          (prin1-to-string (lui.layout:element-id node))
-                          (lui.js:property item "kind")
-                          (string-downcase
-                            (symbol-name (lui.widgets:widget-kind widget)))
-                          (lui.js:property item "text")
-                          (lui.widgets:widget-text widget)
-                          (lui.js:property item "value")
-                          (princ-to-string
-                            (lui.widgets:widget-value widget))
-                          (lui.js:property item "x") (lui.layout:box-x box)
-                          (lui.js:property item "y") (lui.layout:box-y box)
-                          (lui.js:property item "width") (lui.layout:box-width box)
-                          (lui.js:property item "height") (lui.layout:box-height box)
-                          (lui.js:property item "clipX") (lui.layout:box-x clip)
-                          (lui.js:property item "clipY") (lui.layout:box-y clip)
-                          (lui.js:property item "clipWidth")
-                          (lui.layout:box-width clip)
-                          (lui.js:property item "clipHeight")
-                          (lui.layout:box-height clip))
-                        (lui.js:invoke result "push" item)))))))
-            (setf (lui.js:property (lui.js:global "window") "testNodes") result))
+                          (jscl/ffi:oget item "id")
+                          (jscl/ffi:jsstring
+                            (prin1-to-string
+                              (lui:widget-key (%lui.layout:element-id node))))
+                          (jscl/ffi:oget item "kind")
+                          (jscl/ffi:jsstring (string-downcase
+                            (symbol-name (%lui.widgets:widget-kind widget))))
+                          (jscl/ffi:oget item "text")
+                          (jscl/ffi:jsstring (%lui.widgets:widget-text widget))
+                          (jscl/ffi:oget item "value")
+                          (jscl/ffi:jsstring (princ-to-string
+                            (%lui.widgets:widget-value widget)))
+                          (jscl/ffi:oget item "x") (%lui.layout:box-x box)
+                          (jscl/ffi:oget item "y") (%lui.layout:box-y box)
+                          (jscl/ffi:oget item "width") (%lui.layout:box-width box)
+                          (jscl/ffi:oget item "height") (%lui.layout:box-height box)
+                          (jscl/ffi:oget item "clipX") (%lui.layout:box-x clip)
+                          (jscl/ffi:oget item "clipY") (%lui.layout:box-y clip)
+                          (jscl/ffi:oget item "clipWidth")
+                          (%lui.layout:box-width clip)
+                          (jscl/ffi:oget item "clipHeight")
+                          (%lui.layout:box-height clip))
+                        ((jscl/ffi:oget result "push") item)))))))
+            (setf (jscl/ffi:oget #j:window "testNodes") result)))
         ''')
         return self.page.evaluate("window.testNodes")
 
@@ -152,21 +151,20 @@ class WebTests(unittest.TestCase):
     def fixture(self, body=None, options=""):
         """Mount an isolated visible application; return its host selector."""
         body = body or '''
-          (lui.frame:column (:width (lui.layout:grow) :gap 8)
+          (%lui.frame:column (lui:opt :width (%lui.layout:grow) :gap 8)
             (setf *web-test-value*
-              (lui.glass:text-field :fixture *web-test-value*
-                (lui:opt :width (lui.layout:grow))))
-            (when (lui.glass:button :push "Fixture push")
+              (lui.glass:text-field (lui:opt :id :fixture :value *web-test-value* :width (%lui.layout:grow))))
+            (when (lui.glass:button "Fixture push" (lui:opt :id :push))
               (incf *web-test-clicks*)))'''
         self.lisp(f'''
           (defvar *web-test-value* "original")
           (defvar *web-test-clicks* 0)
           (defvar *web-test-draws* 0)
-          (defvar *web-test-host* (lui.js:invoke (lui.js:global "document") "createElement" "section"))
-          (setf (lui.js:property *web-test-host* "id") "test-host"
-                (lui.js:property *web-test-host* "style" "cssText")
-                "position:fixed;left:0;top:0;width:500px;height:300px;z-index:10")
-          (lui.js:invoke (lui.js:property (lui.js:global "document") "body") "appendChild" *web-test-host*)
+          (defvar *web-test-host* (#j:document:createElement #j"section"))
+          (setf (jscl/ffi:oget *web-test-host* "id") #j"test-host"
+                (jscl/ffi:oget *web-test-host* "style" "cssText")
+                #j"position:fixed;left:0;top:0;width:500px;height:300px;z-index:10")
+          (#j:document:body:appendChild *web-test-host*)
           (defvar *web-test-app*
             (lui.web:mount *web-test-host*
               (lambda () (incf *web-test-draws*) {body}) {options}))
@@ -175,46 +173,47 @@ class WebTests(unittest.TestCase):
         return "#test-host"
 
     def focus_id(self, app="*web-test-app*"):
-        self.lisp(f'''(setf (lui.js:property (lui.js:global "window") "testFocus")
-          (prin1-to-string
-            (lui.frame:context-focus (lui.web::web-app-context {app}))))''')
+        self.lisp(f'''(setf (jscl/ffi:oget #j:window "testFocus")
+          (jscl/ffi:jsstring (prin1-to-string
+            (lui:widget-key
+              (%lui.frame:context-focus (lui.web::web-app-context {app})))))))''')
         return self.page.evaluate("window.testFocus")
 
     def test_font_caches_preserve_alternating_sizes(self):
         self.lisp('''
-          (let ((font (lui:open-font)))
+          (let ((font (lui.font:open-font)))
             (unwind-protect
               (let ((small (lui.font::measure-text font "alpha beta"))
-                    (lines (lui:wrap-text font "alpha beta gamma" 100)))
-                (setf (lui:font-size font) 32)
-                (assert (> (lui:text-width font "alpha beta")
-                           (lui.js:property small "width")))
-                (lui:wrap-text font "alpha beta gamma" 100)
-                (setf (lui:font-size font) 16)
+                    (lines (lui.font:wrap-text font "alpha beta gamma" 100)))
+                (setf (lui.font:font-size font) 32)
+                (assert (> (lui.font:text-width font "alpha beta")
+                           (jscl/ffi:oget small "width")))
+                (lui.font:wrap-text font "alpha beta gamma" 100)
+                (setf (lui.font:font-size font) 16)
                 (assert (eq small (lui.font::measure-text font "alpha beta")))
-                (assert (eq lines (lui:wrap-text font "alpha beta gamma" 100))))
-              (lui:close-font font)))
+                (assert (eq lines (lui.font:wrap-text font "alpha beta gamma" 100))))
+              (lui.font:close-font font)))
         ''')
 
     def test_explicit_page_scroll_on_desktop(self):
         host = self.fixture("""
           (lui:label "Page policy"
-            (lui:opt :height (lui.layout:fixed 1200)))
+            (lui:opt :height (%lui.layout:fixed 1200)))
         """, options=":scroll-mode :page")
         self.assertGreater(self.page.locator(host).evaluate(
             "host => host.firstElementChild.getBoundingClientRect().height"), 1000)
         self.lisp('''
-          (assert (lui.frame::context-page-height-p
+          (assert (%lui.frame::context-page-height-p
                    (lui.web::web-app-context *web-test-app*)))
         ''')
 
     def test_measurement_cache_inputs(self):
         self.lisp('''
           (let* ((font (lui.font:open-font))
-                 (renderer (lui.draw:make-renderer :font font))
-                 (context (lui.frame:make-context))
+                 (renderer (lui.draw:%make-renderer :font font))
+                 (context (%lui.frame:make-context))
                  (text (copy-seq "alpha beta gamma"))
-                 (widget (lui.widgets:make-widget :kind :label :text text))
+                 (widget (%lui.widgets:make-widget :kind :label :text text))
                  (original (symbol-function 'lui.font:wrap-text))
                  (calls 0) (last-height 0))
             (unwind-protect
@@ -223,10 +222,10 @@ class WebTests(unittest.TestCase):
                       (lambda (font text width)
                         (incf calls) (funcall original font text width)))
                 (flet ((frame (width)
-                         (lui.frame:with-frame (context 300 100)
+                         (%lui.frame:with-frame (context 300 100)
                            (setf last-height
                              (nth-value 1
-                               (lui.draw:measure-widget renderer widget width))))))
+                               (lui.draw:%measure-widget renderer widget width))))))
                   (frame nil) (frame nil)
                   (assert (= calls 1))
                   (let ((height last-height))
@@ -237,18 +236,18 @@ class WebTests(unittest.TestCase):
                   (setf (char text 0) #\\W)
                   (frame 60)
                   (assert (= calls 3))
-                  (setf (lui.widgets:widget-font-size widget) 24)
+                  (setf (%lui.widgets:widget-font-size widget) 24)
                   (frame 60)
                   (assert (= calls 4))
-                  (setf (lui.widgets:widget-font-weight widget) :bold)
+                  (setf (%lui.widgets:widget-font-weight widget) :bold)
                   (frame 60)
                   (assert (= calls 5))
-                  (setf (lui.widgets:widget-kind widget) :text-field
-                        (lui.widgets:widget-value widget) "changed")
+                  (setf (%lui.widgets:widget-kind widget) :text-field
+                        (%lui.widgets:widget-value widget) "changed")
                   (frame 60) (frame 60)
                   (assert (= calls 6))))
               (setf (symbol-function 'lui.font:wrap-text) original)
-              (lui.font:close-font font)))
+              (lui.font:close-font font))))
         ''')
 
     def test_prepainted_page_scroll_does_not_redraw_twice(self):
@@ -259,26 +258,26 @@ class WebTests(unittest.TestCase):
                     is_mobile=True, has_touch=True, device_scale_factor=2)
                 page.on("pageerror", lambda error: self.errors.append(str(error)))
                 try:
-                    page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
+                    page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
                     page.wait_for_function("document.querySelector('main canvas')?.luiApp")
                     ui = WebTests()
                     ui.page = page
                     style = ("position:fixed;top:0;left:0;width:300px;height:320px;overflow:auto"
                              if embedded else "width:100%")
                     ui.lisp(f'''
-                      (lui.web:unmount (lui.web::canvas-app
-                        (lui.js:invoke (lui.js:global "document") "querySelector" "main canvas")))
-                      (lui.js:invoke (lui.js:invoke (lui.js:global "document") "querySelector" "main") "remove")
-                      (defvar *scroll-host* (lui.js:invoke (lui.js:global "document") "createElement" "main"))
-                      (setf (lui.js:property *scroll-host* "style" "cssText") "{style}")
-                      (lui.js:invoke (lui.js:property (lui.js:global "document") "body") "appendChild" *scroll-host*)
+                      (lui.web:unmount (jscl/ffi:oget
+                        (#j:document:querySelector #j"main canvas") "luiApp"))
+                      ((jscl/ffi:oget (#j:document:querySelector #j"main") "remove"))
+                      (defvar *scroll-host* (#j:document:createElement #j"main"))
+                      (setf (jscl/ffi:oget *scroll-host* "style" "cssText") #j"{style}")
+                      (#j:document:body:appendChild *scroll-host*)
                       (defvar *scroll-draws* 0)
                       (defvar *scroll-app*
                         (lui.web:mount *scroll-host*
                           (lambda ()
                             (incf *scroll-draws*)
                             (lui:label "Tall page"
-                              (lui:opt :height (lui.layout:fixed 2400))))
+                              (lui:opt :height (%lui.layout:fixed 2400))))
                           :scroll-mode :page :min-fps 0.001))
                     ''')
                     ui.frames()
@@ -318,18 +317,18 @@ class WebTests(unittest.TestCase):
         self.lisp('''
           (defvar *custom-label-paints* 0)
           (defvar *custom-label-measures* 0)
-          (lui:register-toolkit :test-canvas-labels :parent :glass
+          (lui.toolkit:register-toolkit :test-canvas-labels :parent :glass
             :paint (lambda (renderer node)
-              (when (eq :label (lui.widgets:widget-kind
-                                (lui.layout:element-content node)))
+              (when (eq :label (%lui.widgets:widget-kind
+                                (%lui.layout:element-content node)))
                 (incf *custom-label-paints*)
-                (lui.draw:shape renderer (lui.layout:element-box node)
+                (lui.draw:shape renderer (%lui.layout:element-box node)
                                 0 "#123456" 1)))
             :geometry (lambda (widget)
               (declare (ignore widget))
               (incf *custom-label-measures*)
               (lui.draw:make-geometry :text-p nil :min-width 123 :min-height 31)))
-          (lui:register-toolkit :test-canvas-label-child
+          (lui.toolkit:register-toolkit :test-canvas-label-child
                                :parent :test-canvas-labels)
         ''')
         host = self.fixture('''
@@ -352,14 +351,14 @@ class WebTests(unittest.TestCase):
         self.assertEqual(color, [18, 52, 86, 255])
 
     def test_palette_and_geometry_reach_native_labels_and_patterns(self):
-        self.lisp('''(lui:register-toolkit :inset-labels :parent :glass
+        self.lisp('''(lui.toolkit:register-toolkit :inset-labels :parent :glass
           :geometry (lambda (widget) (declare (ignore widget))
                       (lui.draw:make-geometry :left 20 :right 8 :top 10 :bottom 4))
           :native-labels t)''')
         host = self.fixture('''
           (lui:with-palette ((lui:make-palette :foreground "#124578" :outline "#cc2288"))
             (lui:with-toolkit (:inset-labels) (lui:label "Inset native text"))
-            (lui:with-toolkit (:garnet) (lui:button :pattern "Pattern")))
+            (lui:with-toolkit (:garnet) (lui:button "Pattern" (lui:opt :id :pattern))))
         ''')
         node = self.widget(text="Inset native text", host=host)
         label = self.page.locator(host).get_by_text("Inset native text", exact=True)
@@ -403,7 +402,7 @@ class WebTests(unittest.TestCase):
 
     def test_native_label_selection_survives_frames_and_copies(self):
         host = self.fixture('''
-          (lui.frame:column (:width (lui.layout:grow) :gap 8)
+          (%lui.frame:column (lui:opt :width (%lui.layout:grow) :gap 8)
             (lui.glass:label "Selectable native label")
             (lui.glass:label "Read only and accessible"))''')
         label = self.page.get_by_text("Selectable native label", exact=True)
@@ -447,8 +446,8 @@ class WebTests(unittest.TestCase):
         self.lisp('(defvar *web-test-show-first-label* t)')
         self.fixture('''
           (when *web-test-show-first-label*
-            (lui.widgets:declare-widget :label :glass :first "First label"))
-          (lui.widgets:declare-widget :label :glass :second "Selected sibling")''')
+            (%lui.widgets:declare-widget :label :glass :first "First label"))
+          (%lui.widgets:declare-widget :label :glass :second "Selected sibling")''')
         self.assertEqual(self.page.locator("#test-host span").all_text_contents(),
                          ["First label", "Selected sibling"])
         sibling = self.page.get_by_text("Selected sibling", exact=True)
@@ -465,11 +464,10 @@ class WebTests(unittest.TestCase):
 
     def test_floating_control_covers_native_text(self):
         host = self.fixture('''
-          (lui.frame:column (:width (lui.layout:fixed 240))
+          (%lui.frame:column (lui:opt :width (%lui.layout:fixed 240))
             (lui:label "Under the popup")
             (when (zerop *web-test-clicks*)
-              (when (lui:button :popup "Dismiss"
-                      (lui:opt :floating-p t :width (lui.layout:grow)))
+              (when (lui:button "Dismiss" (lui:opt :id :popup :position :absolute :width (%lui.layout:grow)))
                 (incf *web-test-clicks*))))''')
         label = self.page.locator(host).get_by_text("Under the popup", exact=True)
         expect(label).to_have_count(0)
@@ -481,7 +479,7 @@ class WebTests(unittest.TestCase):
                                      device_scale_factor=2, is_mobile=True,
                                      has_touch=True)
         try:
-            page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
+            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
             page.wait_for_function("""() => {
               const c=document.querySelector('main canvas');
               return c && c.luiApp && document.body.innerText.includes('Toolkit: Qt');
@@ -542,27 +540,25 @@ class WebTests(unittest.TestCase):
                     window.pendingFrames.splice(0).forEach(callback => raf(callback));
                 };
             })()""")
-            page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
+            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
             page.wait_for_function("document.querySelector('main canvas')?.luiApp")
             ui = WebTests()
             ui.page = page
             ui.lisp('''
-              (declaim (special lui.frame:*context* lui.frame:*parent* lui:*unit*))
-              (lui.web:unmount (lui.web::canvas-app
-                (lui.js:invoke (lui.js:global "document") "querySelector" "main canvas")))
-              (lui.js:invoke (lui.js:invoke (lui.js:global "document") "querySelector" "main") "remove")
+              (declaim (special %lui.frame:*context* %lui.frame:*parent* lui:*unit*))
+              (lui.web:unmount (jscl/ffi:oget
+                (#j:document:querySelector #j"main canvas") "luiApp"))
+              ((jscl/ffi:oget (#j:document:querySelector #j"main") "remove"))
               (defvar *web-test-clicks* -1)
-              (defvar *web-test-host* (lui.js:invoke (lui.js:global "document") "createElement" "main"))
-              (lui.js:invoke (lui.js:property (lui.js:global "document") "body") "appendChild" *web-test-host*)
+              (defvar *web-test-host* (#j:document:createElement #j"main"))
+              (#j:document:body:appendChild *web-test-host*)
               (defvar *web-test-app*
                 (lui.web:mount *web-test-host*
                   (lambda ()
-                    (lui.frame:column (:width (lui.layout:grow))
+                    (%lui.frame:column (lui:opt :width (%lui.layout:grow))
                       (dotimes (i 60)
-                        (when (lui.glass:button (list :row i)
-                                (format nil "Row ~D" i)
-                                (lui:opt :height (lui.layout:fixed 48)
-                                         :width (lui.layout:grow)))
+                        (when (lui.glass:button (format nil "Row ~D" i) (lui:opt :id (list :row i) :height (%lui.layout:fixed 48)
+                                         :width (%lui.layout:grow)))
                           (setf *web-test-clicks* i)))))))''')
             ui.frames()
             page.wait_for_function("document.documentElement.scrollHeight > innerHeight * 2")
@@ -616,23 +612,23 @@ class WebTests(unittest.TestCase):
                                      is_mobile=True, has_touch=True)
         page.on("pageerror", lambda error: self.errors.append(str(error)))
         try:
-            page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
+            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
             page.wait_for_function("document.querySelector('main canvas')?.luiApp")
             ui = WebTests()
             ui.page = page
             ui.lisp('''
-              (declaim (special lui.frame:*context* lui.frame:*parent* lui:*unit*))
-              (defvar *mobile-port* (lui.js:invoke (lui.js:global "document") "createElement" "section"))
-              (setf (lui.js:property *mobile-port* "id") "mobile-port"
-                    (lui.js:property *mobile-port* "style" "cssText")
-                    "position:fixed;top:40px;left:0;width:300px;height:320px;overflow:auto")
-              (lui.js:invoke (lui.js:property (lui.js:global "document") "body") "appendChild" *mobile-port*)
+              (declaim (special %lui.frame:*context* %lui.frame:*parent* lui:*unit*))
+              (defvar *mobile-port* (#j:document:createElement #j"section"))
+              (setf (jscl/ffi:oget *mobile-port* "id") #j"mobile-port"
+                    (jscl/ffi:oget *mobile-port* "style" "cssText")
+                    #j"position:fixed;top:40px;left:0;width:300px;height:320px;overflow:auto")
+              (#j:document:body:appendChild *mobile-port*)
               (lui.web:mount *mobile-port*
                 (lambda ()
-                  (lui.frame:column (:width (lui.layout:grow))
+                  (%lui.frame:column (lui:opt :width (%lui.layout:grow))
                     (dotimes (i 40)
                       (lui.glass:label (format nil "Embedded row ~D" i)
-                        (lui:opt :width (lui.layout:grow) :height (lui.layout:fixed 48)))))))''')
+                        (lui:opt :width (%lui.layout:grow) :height (%lui.layout:fixed 48)))))))''')
             port = page.locator("#mobile-port")
             label = port.get_by_text("Embedded row 4", exact=True)
             expect(label).to_be_visible()
@@ -667,7 +663,7 @@ class WebTests(unittest.TestCase):
                                      device_scale_factor=2, is_mobile=True,
                                      has_touch=True)
         try:
-            page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
+            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
             page.wait_for_function("""() => {
               const c=document.querySelector('main canvas');
               return c && c.luiApp && c.width > 0 &&
@@ -749,21 +745,94 @@ class WebTests(unittest.TestCase):
         self.page.keyboard.insert_text("42")
         self.page.keyboard.press("Enter")
         self.frames()
-        self.assertEqual(float(self.widget(id=first, kind="cell")["text"]), 42)
+        self.widget(id=first, kind="cell", text="42")
 
         label = self.page.get_by_text("Selected: A0", exact=True)
         label.evaluate("el => getSelection().selectAllChildren(el)")
         self.page.mouse.move(*self.point(self.widget(id=":SEVEN-GRID")))
         self.page.mouse.wheel(0, 240)
         self.frames()
-        grid_offset = self.number('''
-          (let* ((app (lui.web::canvas-app
-                       (lui.js:invoke (lui.js:global "document")
-                                      "querySelector" "main canvas")))
-                 (ids (lui.frame::context-ids (lui.web::web-app-context app))))
-            (lui.layout:element-scroll-y (gethash :seven-grid ids)))''')
+        grid_offset = self.page.evaluate("""() => jscl.evaluateString(`
+          (let* ((app (jscl/ffi:oget (#j:document:querySelector #j"main canvas") "luiApp"))
+                 (ids (%lui.frame::context-ids (lui.web::web-app-context app))))
+            (%lui.layout:element-scroll-y (gethash :seven-grid ids)))`)""")
         self.assertGreater(grid_offset, 0)
         self.assertEqual(self.page.evaluate("getSelection().toString()"), "Selected: A0")
+
+    def test_floating_menus_and_spinner(self):
+        self.click_widget(text="Menus", kind="tab")
+        self.widget(text="Settings ▾", kind="button")
+        self.click_widget(text="Cycle toolkit")
+        self.click_widget(text="Cycle toolkit")
+        self.page.screenshot(path=str(ROOT / "build/menu-bar.png"))
+        expect(self.page.get_by_role("status", name="Loading")).to_have_count(1)
+        phases = set()
+        for _ in range(4):
+            phases.add(self.widget(id=":DEMO-SPINNER")["value"])
+            self.page.wait_for_timeout(120)
+        self.assertGreater(len(phases), 1)
+
+        # Hover opens the root and then a submenu beside its trigger.
+        self.hover_widget(id=":DEMO-FILE-MENU")
+        expect(self.page.get_by_role("button", name="File", exact=True)
+               ).to_have_attribute("aria-expanded", "true")
+        self.hover_widget(id=":DEMO-EXPORT-MENU")
+        self.widget(text="Export ▸", kind="list-item")
+        trigger = self.widget(id=":DEMO-EXPORT-MENU")
+        action = self.widget(text="Export PDF", kind="list-item")
+        self.assertGreaterEqual(action["x"], trigger["x"] + trigger["width"])
+        self.page.screenshot(path=str(ROOT / "build/menu-submenu.png"))
+        self.click_widget(text="Export PDF", kind="list-item")
+        self.widget(text="Export PDF selected", kind="label")
+        self.assertFalse(any(n["text"] == "Export PDF" for n in self.nodes()))
+
+        # Hover-opened chains close below and to either side, not just above.
+        for position in ((890, 690), (1, 350), (890, 350)):
+            self.hover_widget(id=":DEMO-FILE-MENU")
+            self.hover_widget(id=":DEMO-EXPORT-MENU")
+            self.hover_widget(text="Export PDF", kind="list-item")
+            self.page.mouse.move(*position)
+            self.frames()
+            expect(self.page.get_by_role("button", name="File", exact=True)
+                   ).to_have_attribute("aria-expanded", "false")
+            self.assertFalse(any(n["text"] == "Export PDF" for n in self.nodes()))
+
+        # Direct bar actions use flat menu styling and activate without a popup.
+        action = self.widget(id=":DEMO-CUSTOMERS", kind="list-item")
+        self.assertLess(action["width"], 200)
+        self.hover_widget(id=":DEMO-CUSTOMERS")
+        self.page.screenshot(path=str(ROOT / "build/menu-bar-action-hover.png"))
+        self.click_widget(id=":DEMO-CUSTOMERS")
+        self.widget(text="Customers selected", kind="label")
+        self.assertFalse(any(n["text"] == "Export PDF" for n in self.nodes()))
+
+        # Ordinary value controls inside an expander leave it open.
+        self.click_widget(id=":DEMO-SETTINGS")
+        self.click_widget(text="Enabled", kind="checkbox")
+        self.widget(text="Floating content can contain ordinary controls.")
+        self.page.keyboard.press("Escape")
+        self.frames()
+        self.assertFalse(any(n["text"] == "Enabled" for n in self.nodes()))
+
+    def test_manual_widget_placement(self):
+        self.click_widget(text="Layout", kind="tab")
+        self.frames()
+        manual = self.widget(id=":MANUAL-BUTTON")
+        automatic = self.widget(id="(:AUTOMATIC 0)")
+        self.assertLess(automatic["y"], manual["y"])
+        self.click_widget(id=":MANUAL-BUTTON")
+        self.widget(text="Manual X 10 / Y 3; clicks 1")
+        self.replace_text(":MANUAL-EDITOR", "Retained manual text")
+        slider = self.widget(id=":MANUAL-X")
+        canvas = self.page.locator("main canvas").bounding_box()
+        self.page.mouse.click(canvas["x"] + slider["x"] + slider["width"] * .8,
+                              self.point(slider)[1])
+        self.frames()
+        moved = self.widget(id=":MANUAL-BUTTON")
+        self.assertGreater(moved["x"], manual["x"])
+        self.assertEqual(self.text_value(":MANUAL-EDITOR"), "Retained manual text")
+        self.assertEqual(self.widget(id="(:AUTOMATIC 0)")["y"], automatic["y"])
+        self.page.screenshot(path=str(ROOT / "build/manual-placement.png"))
 
     def test_gallery_persistence_and_toolkit_pixels(self):
         self.replace_text(":NAME", "Persistent name")
@@ -850,8 +919,7 @@ class WebTests(unittest.TestCase):
 
     def test_password_field(self):
         host = self.fixture(body='''(setf *web-test-value*
-          (lui:text-field :fixture *web-test-value*
-            (lui:opt :password-p t :width (lui.layout:grow))))''')
+          (lui:text-field (lui:opt :id :fixture :value *web-test-value* :password-p t :width (%lui.layout:grow))))''')
         self.replace_text(":FIXTURE", "secret界", host)
         self.assertEqual(self.text_value(":FIXTURE", host), "secret界")
         sink = self.page.locator(host + " textarea")
@@ -866,7 +934,7 @@ class WebTests(unittest.TestCase):
         host = self.fixture()
         self.click_widget(id=":FIXTURE", host=host)
         sink = self.page.locator(host + " textarea")
-        expect(sink).to_have_attribute("aria-label", re.compile(r"^:?FIXTURE$"))
+        expect(sink).to_have_attribute("aria-label", ":FIXTURE")
         expect(sink).to_have_attribute("aria-valuetext", "original")
         self.replace_text(":FIXTURE", "Updated value", host)
         expect(sink).to_have_attribute("aria-valuetext", "Updated value")
@@ -926,8 +994,8 @@ class WebTests(unittest.TestCase):
         self.page.mouse.move(*point)
         self.page.mouse.down()
         self.frames()
-        self.assertEqual(self.number('''(if (lui.frame:context-active
-          (lui.web::web-app-context *web-test-app*)) 1 0)'''), 1)
+        self.assertEqual(self.number('''(if (lui:widget-key (%lui.frame:context-active
+          (lui.web::web-app-context *web-test-app*))) 1 0)'''), 1)
         self.page.mouse.move(700, 500)
         self.page.mouse.up()
         self.frames()
@@ -938,8 +1006,8 @@ class WebTests(unittest.TestCase):
         self.page.mouse.up()
         self.frames()
         self.assertEqual(self.number("*web-test-clicks*"), 0)
-        self.assertEqual(self.number('''(if (lui.frame:context-active
-          (lui.web::web-app-context *web-test-app*)) 1 0)'''), 0)
+        self.assertEqual(self.number('''(if (lui:widget-key (%lui.frame:context-active
+          (lui.web::web-app-context *web-test-app*))) 1 0)'''), 0)
 
     def test_cursor_feedback_disabled_and_text(self):
         self.hover_widget(text="Disabled")
@@ -953,13 +1021,11 @@ class WebTests(unittest.TestCase):
 
     def test_scroll_hit_testing_and_wheel(self):
         host = self.fixture('''
-          (lui.frame:column (:id :scroll :width (lui.layout:grow)
-                            :height (lui.layout:fixed 280) :scroll-p t)
+          (%lui.frame:column (lui:opt :id :scroll :width (%lui.layout:grow)
+                            :height (%lui.layout:fixed 280) :scroll-p t)
             (dotimes (i 30)
-              (when (lui.glass:button (list :row i)
-                      (format nil "Row ~D" i)
-                       (lui:opt :height (lui.layout:fixed 32)
-                                :width (lui.layout:grow)))
+              (when (lui.glass:button (format nil "Row ~D" i) (lui:opt :id (list :row i) :height (%lui.layout:fixed 32)
+                                :width (%lui.layout:grow)))
                 (setf *web-test-clicks* i))))''')
         before = self.widget(text="Row 1", host=host)["y"]
         self.hover_widget(text="Row 1", host=host)
@@ -989,7 +1055,7 @@ class WebTests(unittest.TestCase):
         page = self.browser.new_page(viewport={"width": 640, "height": 480},
                                      device_scale_factor=2)
         try:
-            page.goto(f"http://127.0.0.1:{self.server.server_port}{WEB_PAGE}")
+            page.goto(f"http://127.0.0.1:{self.server.server_port}/examples/web.html")
             page.wait_for_function("""() => {
               const c=document.querySelector('main canvas');
               return c && c.width===c.clientWidth*2 && c.height===c.clientHeight*2;
@@ -1016,7 +1082,7 @@ class WebTests(unittest.TestCase):
 
     def test_native_label_color_updates_at_fixed_geometry(self):
         host = self.fixture('''
-          (lui.widgets:declare-widget :label :glass :tint "Tinted"
+          (%lui.widgets:declare-widget :label :glass :tint "Tinted"
             :foreground (if (zerop *web-test-clicks*) "#112233" "#445566"))''')
         label = self.page.locator(host).get_by_text("Tinted", exact=True)
         expect(label).to_have_css("color", "rgb(17, 34, 51)")
@@ -1027,7 +1093,7 @@ class WebTests(unittest.TestCase):
 
     def test_font_measurement_changes_solved_geometry(self):
         host = self.fixture('''
-          (lui.widgets:declare-widget :label :glass :font "iiiiiiii"
+          (%lui.widgets:declare-widget :label :glass :font "iiiiiiii"
             :font-family (if (zerop *web-test-clicks*)
                              :sans-serif :monospace))''')
         narrow = self.widget(id=":FONT", host=host)["width"]

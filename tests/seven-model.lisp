@@ -1,7 +1,7 @@
-(defpackage #:lui.tests.seven.model
-  (:use #:cl #:lui.fn #:lui.seven.model)
+(defpackage #:%lui.tests.seven.model
+  (:use #:cl #:%lui.fn #:%lui.seven.model)
   (:export #:run-tests))
-(in-package #:lui.tests.seven.model)
+(in-package #:%lui.tests.seven.model)
 
 (defvar *executed* nil)
 
@@ -16,7 +16,7 @@
   (assert (zerop (parse-number "0")))
   (dolist (text '("" "+" "." "1e" "1e+" "1/2" "1x" "1d0"
                   "NaN" "Infinity" "1e999999" "1e309" "R99"
-                  "#.(setf lui.tests.seven.model::*executed* t)"))
+                  "#.(setf %lui.tests.seven.model::*executed* t)"))
     (assert (null (parse-number text))))
   (assert (near 32 (temperature "0" :celsius)))
   (assert (near 100 (temperature "212" :fahrenheit)))

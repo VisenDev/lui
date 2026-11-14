@@ -1,5 +1,5 @@
-(defpackage #:lui.start.demo
+(defpackage #:%lui.start.demo
   (:use #:cl))
-(in-package #:lui.start.demo)
+(in-package #:%lui.start.demo)
 
-(lui.example:main)
+(%lui.example.demo:main)

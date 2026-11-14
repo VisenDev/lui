@@ -1,24 +1,29 @@
-(defpackage #:lui.docs.generator
+(defpackage #:%lui.docs.data
   (:use #:cl)
   (:export #:collect-entries #:write-data #:main))
-(in-package #:lui.docs.generator)
+(in-package #:%lui.docs.data)
 
 ;; DEFPACKAGE exports also connect implementation modules. The reference is
 ;; deliberately an application/extension API, not an inventory of those links.
 ;; Keep public reexports here even when their definitions live in hidden modules.
 (defparameter *public-api*
   '(("lui"
+     "LUI-ERROR" "CONFIGURATION-ERROR" "BACKEND-ERROR" "FONT-ERROR"
+     "FRAME-STATE-ERROR" "ERROR-OPERATION" "ERROR-SETTING" "ERROR-VALUE"
+     "ERROR-BACKEND" "ERROR-FONT-REQUEST"
      "RUN" "REGISTER-BACKEND" "AVAILABLE-BACKENDS" "UNITS" "*BACKEND*"
-     "*UNIT*" "WITH-TOOLKIT" "CURRENT-TOOLKIT" "TOOLKIT-DEFAULTS"
-     "REGISTER-TOOLKIT" "REGISTER-TOOLKIT-RENDERING" "TOOLKIT-PAINT"
-     "TOOLKIT-GEOMETRY" "*GLASS-DEFAULTS*" "*MOTIF-DEFAULTS*"
-     "*GARNET-DEFAULTS*" "*MACOS-DEFAULTS*" "*QT-DEFAULTS*"
-     "MAKE-TERMINAL-CONTEXT" "RENDER-TERMINAL" "TERMINAL-TEXT-WIDTH"
-     "TEXT-LINES" "CELL-EDGE" "PALETTE" "MAKE-PALETTE" "PALETTE-P"
+     "*UNIT*" "WITH-TOOLKIT" "CURRENT-TOOLKIT"
+     "PALETTE" "MAKE-PALETTE" "PALETTE-P"
      "AVAILABLE-PALETTES" "+PALETTE-DEFAULT+" "+PALETTE-LIGHT+"
      "+PALETTE-DARK+" "+PALETTE-OCEAN+" "+PALETTE-FOREST+"
-     "TOOLKIT-NATIVE-LABELS-P" "WITH-PALETTE" "TOOLKIT-PALETTE" "WIDGET-COLOR"
-     "CONTROL" "DEFINE-TOOLKIT" "OPT" "PANEL" "LABEL" "BUTTON" "TAB"
+     "WITH-PALETTE" "WIDGET-COLOR"
+      "CALL-WITH-FRAME" "CALL-WITH-KEY"
+      "CALL-WITH-TOOLKIT" "CALL-WITH-PALETTE"
+      "POSITION-MODE" "PARENT-SCROLL-POSITION"
+      "OBJECT-ID" "WITH-KEY" "WIDGET-KEY" "WIDGET-ID" "FOCUS-WIDGET"
+     "CONTROL" "OPT" "PANEL" "LABEL" "BUTTON" "TAB"
+     "SPACER" "HR" "VR" "SPINNER"
+     "MENU-BAR" "MENU" "MENU-ITEM" "FLOATING-EXPANDER"
      "CHECKBOX" "DATE-PICKER" "SLIDER" "TEXT-FIELD" "CELL" "LIST-ITEM" "GAUGE"
      "CANVAS" "POINT" "CONTOUR" "CONTOURS" "SIZING" "FIT" "GROW" "FIXED"
      "PERCENT" "BOX" "MAKE-BOX" "BOX-X" "BOX-Y" "BOX-WIDTH" "BOX-HEIGHT"
@@ -26,24 +31,13 @@
      "SCROLL-POSITION" "SCROLL-TO" "ACTIVATED-P" "ACTIVATED-IDS" "HOVERED-P"
      "EVENT" "EVENT-KIND" "EVENT-X" "EVENT-Y" "EVENT-ID" "EVENT-VALUE"
      "EVENT-KEY" "EVENT-BUTTON" "EVENT-BUTTONS" "EVENT-CLICKS"
-     "EVENT-DRAGGING-P" "SET-DEBUGGER-ENABLED" "DEBUGGER-ENABLED-P"
-     "DEBUGGER-STATE" "MAKE-DEBUGGER-STATE" "DEBUGGER-STATE-OPEN-P"
-     "DEBUGGER-STATE-SELECTED" "DEBUGGER-STATE-WIDTH" "FONT" "OPEN-FONT"
-     "CLOSE-FONT" "FONT-SIZE" "FONT-FACE" "TEXT-WIDTH" "LINE-HEIGHT"
-     "BASELINE" "WRAP-TEXT" "GLYPH-POLYGONS" "*FONT-PATH*" "*FONT-PATHS*"
-     "*FONT-DIRECTORIES*" "*FONT-NAMES*" "RENDERER" "RENDERER-FONT"
-     "RENDERER-POLYGONS" "RENDERER-CLIP" "RENDERER-GLASS" "RENDERER-TEXT"
-     "ROUNDED-POLYGON" "GEOMETRY" "MAKE-GEOMETRY" "GEOMETRY-LEFT"
-     "GEOMETRY-TOP" "GEOMETRY-RIGHT" "GEOMETRY-BOTTOM" "GEOMETRY-MIN-WIDTH"
-     "GEOMETRY-MIN-HEIGHT" "GEOMETRY-CENTER-X" "GEOMETRY-CENTER-Y"
-     "GEOMETRY-OFFSET-X" "GEOMETRY-OFFSET-Y" "GEOMETRY-TEXT-P"
-     "GEOMETRY-VALUE-P" "WIDGET-GEOMETRY" "TEXT-BOX" "COLOR-COMPONENTS"
-     "PAINT-TEXT" "SHAPE" "OUTLINE" "INSET-BOX" "FOCUSED-P" "WIDGET-FONT"
+     "EVENT-DRAGGING-P"
      "ELEMENT-CONTENT" "WITH-FRAME" "DECLARE-WIDGET" "WIDGET-TEXT"
      "KEY-PRESSED-P" "TEXT-INPUT-EVENT" "VISIBLE-SPAN" "LIST-INDEX"
      "REVEAL-RECT" "TAKE-EVENTS" "EVENT-TARGETS" "RESET-EDITOR" "EDIT-VALUE"
-     "MOUNT" "UNMOUNT" "REFRESH" "RENDER-PDF" "*PDF-OUTPUT*"
-     "TABLE" "TABLE-ROW" "TABLE-CELL" "SEARCHABLE-COMBOBOX"
+     "MOUNT" "UNMOUNT" "REFRESH"
+     "TABLE" "TABLE-ROW" "TABLE-CELL" "SEARCHABLE-COMBOBOX")
+    ("lui.palette"
      "PALETTE-THUMB" "PALETTE-CONTROL-BACKGROUND" "PALETTE-BACKGROUND"
      "PALETTE-FOREGROUND" "PALETTE-ACCENT" "PALETTE-WINDOW-BACKGROUND"
      "PALETTE-SELECTION" "PALETTE-BORDER" "PALETTE-DISABLED"
@@ -51,7 +45,37 @@
      "PALETTE-DISABLED-BEVEL-LIGHT" "PALETTE-DISABLED-BEVEL-DARK"
      "PALETTE-OUTLINE" "PALETTE-LIGHT" "PALETTE-SHADOW" "PALETTE-BEVEL-LIGHT"
      "PALETTE-BEVEL-DARK" "PALETTE-TRACK" "PALETTE-CELL-BACKGROUND"
-     "PALETTE-CELL-FOREGROUND" "PALETTE-ON-ACCENT")))
+     "PALETTE-CELL-FOREGROUND" "PALETTE-ON-ACCENT")
+    ("lui.toolkit"
+     "REGISTER-TOOLKIT" "REGISTER-TOOLKIT-RENDERING" "TOOLKIT-PAINT"
+     "TOOLKIT-GEOMETRY" "TOOLKIT-NATIVE-LABELS-P" "TOOLKIT-PALETTE"
+     "TOOLKIT-DEFAULTS" "DEFINE-TOOLKIT")
+    ("lui.glass" "*GLASS-DEFAULTS*")
+    ("lui.motif" "*MOTIF-DEFAULTS*")
+    ("lui.macos" "*MACOS-DEFAULTS*")
+    ("lui.qt" "*QT-DEFAULTS*")
+    ("lui.garnet" "*GARNET-DEFAULTS*")
+    ("lui.font"
+     "FONT" "OPEN-FONT" "CLOSE-FONT" "FONT-SIZE" "FONT-FACE" "TEXT-WIDTH"
+     "LINE-HEIGHT" "BASELINE" "WRAP-TEXT" "GLYPH-POLYGONS" "*FONT-PATH*"
+     "*FONT-PATHS*")
+    ("lui.draw"
+     "RENDERER" "RENDERER-FONT" "RENDERER-POLYGONS" "RENDERER-CLIP"
+     "RENDERER-BACKDROP-EFFECT" "RENDERER-TEXT" "ROUNDED-POLYGON"
+     "GEOMETRY" "MAKE-GEOMETRY" "GEOMETRY-LEFT" "GEOMETRY-TOP"
+     "GEOMETRY-RIGHT" "GEOMETRY-BOTTOM" "GEOMETRY-MIN-WIDTH"
+     "GEOMETRY-MIN-HEIGHT" "GEOMETRY-CENTER-X" "GEOMETRY-CENTER-Y"
+     "GEOMETRY-OFFSET-X" "GEOMETRY-OFFSET-Y" "GEOMETRY-TEXT-P"
+     "GEOMETRY-VALUE-P" "WIDGET-GEOMETRY" "TEXT-BOX" "COLOR-COMPONENTS"
+     "PAINT-TEXT" "SHAPE" "OUTLINE" "INSET-BOX" "FOCUSED-P" "WIDGET-FONT")
+    ("lui.debug"
+     "SET-DEBUGGER-ENABLED" "DEBUGGER-ENABLED-P" "DEBUGGER-STATE"
+     "MAKE-DEBUGGER-STATE" "DEBUGGER-STATE-OPEN-P" "DEBUGGER-STATE-SELECTED"
+     "DEBUGGER-STATE-WIDTH")
+    ("lui.terminal"
+     "MAKE-TERMINAL-CONTEXT" "RENDER-TERMINAL" "TERMINAL-TEXT-WIDTH"
+     "TEXT-LINES" "CELL-EDGE")
+    ("lui.pdf" "RENDER-PDF" "*PDF-OUTPUT*")))
 
 ;; Read syntax, never evaluate application forms or load foreign libraries.
 (defun token-end-p (character)
@@ -176,10 +200,9 @@
             arguments)))
 
 (defun source-files ()
-  ;; The native font module documents the public API shared by both hosts.
   (remove-if (lambda (path)
                (let ((name (pathname-name path)))
-                 (or (char= #\. (char name 0)) (string= name "web-font"))))
+                 (char= #\. (char name 0))))
              (directory "src/*.lisp")))
 
 (defun collect-entries (&optional (paths (source-files))
@@ -193,16 +216,35 @@ are read for resolution; only explicitly selected exports enter the reference."
         (current "cl-user") (source ""))
     (labels
         ((key (package name) (list package (local-name name)))
+         (definition-package (package name &optional seen)
+           ;; An implementation can define a public symbol imported from an
+           ;; interface package. Record it under the symbol's declared owner.
+           (let ((import
+                   (find-if
+                    (lambda (option)
+                      (and (eq (car option) :import-from)
+                           (find (local-name name) (cddr option)
+                                 :key #'local-name :test #'string=)))
+                    (gethash package packages))))
+             (if (and import (not (member package seen :test #'equal)))
+                 (definition-package
+                  (string-downcase (string (second import))) name
+                  (cons package seen))
+                 package)))
+         (definition-key (name)
+           (key (definition-package current name) name))
          (record (name kind args documentation)
            (when (consp name)
-             (setf (gethash (key current (second name)) setters)
+             (setf (gethash (definition-key (second name)) setters)
                    (signature name args))
              (return-from record nil))
            (let ((base name))
-             (setf (gethash (key current base) definitions)
-                   (list :package current :name (local-name base) :kind kind
+             (setf (gethash (definition-key base) definitions)
+                   (list :package (definition-package current base)
+                         :name (local-name base) :kind kind
                          :signature (if (member kind '(:variable :constant
-                                                       :structure :type))
+                                                       :structure :type
+                                                       :condition))
                                         (string-downcase (local-name base))
                                         (signature name args))
                          :documentation (or documentation "")
@@ -263,16 +305,12 @@ are read for resolution; only explicitly selected exports enter the reference."
                  ((string= head "DEFPACKAGE")
                   (let ((package (string-downcase (string (second form)))))
                     (setf (gethash package packages) (cddr form))))
-                 ((string= head "EXPOSE-API")
-                  (push (list* :import-from current (cdr form))
-                        (gethash "lui" packages))
-                  (push (cons :export (cdr form)) (gethash "lui" packages)))
                  ((string= head "IN-PACKAGE")
                   (setf current (string-downcase (string (second form)))))
                  ((member head '("PROGN" "EVAL-WHEN") :test #'string=)
                   (mapc #'walk (if (string= head "PROGN") (cdr form)
                                   (cddr form))))
-                 ((member head '("DEFUN" "DEFMACRO" "FN" "DEFINE-CONTROL")
+               ((member head '("DEFUN" "DEFMACRO" "FN" "DEFINE-CONTROL" "DEFINE-WIDGET")
                           :test #'string=)
                   (let* ((name (second form)) (args (third form))
                          (kind (if (string= head "DEFMACRO") :macro
@@ -280,8 +318,15 @@ are read for resolution; only explicitly selected exports enter the reference."
                     (when (string= head "FN")
                       (when (consp name) (setf name (car name)))
                       (setf args (typed-arguments args)))
-                    (when (string= head "DEFINE-CONTROL")
-                      (setf args (append args '(&optional options))))
+                  (when (member head '("DEFINE-CONTROL" "DEFINE-WIDGET")
+                          :test #'string=)
+                    (setf kind :macro
+                      args (append
+                             (remove-if
+                               (lambda (arg)
+                                 (member (local-name arg) '("ID" "VALUE")
+                                   :test #'string=)) args)
+                             '(&optional options))))
                     (record name kind args
                             (when (stringp (fourth form)) (fourth form)))))
                  ((string= head "DEFCFUN")
@@ -291,6 +336,14 @@ are read for resolution; only explicitly selected exports enter the reference."
                     (record name :function
                             (mapcar #'first (remove-if #'stringp body))
                             (find-if #'stringp body))))
+                 ((string= head "DEFINE-CONDITION")
+                  (record (second form) :condition nil
+                          (second (assoc :documentation (cddddr form))))
+                  (dolist (slot (fourth form))
+                    (let ((reader (getf (cdr slot) :reader)))
+                      (when reader
+                        (record reader :function '(condition)
+                                (getf (cdr slot) :documentation))))))
                  ((member head '("DEFSTRUCT" "DEFSTRUCT*") :test #'string=)
                   (structure form))
                  ((member head '("DEFVAR" "DEFPARAMETER" "DEFCONSTANT")
@@ -310,8 +363,8 @@ are read for resolution; only explicitly selected exports enter the reference."
                                    (named-p (car (second place)) "QUOTE")
                                    (stringp value))
                           :do (let ((entry (gethash
-                                            (key current
-                                                 (second (second place)))
+                                            (definition-key
+                                             (second (second place)))
                                             definitions)))
                                 (when entry
                                   (setf (getf entry :documentation)
@@ -338,7 +391,7 @@ are read for resolution; only explicitly selected exports enter the reference."
                                   :thereis
                                   (resolve (string-downcase (string parent))
                                            name (cons package seen)))))))))
-      (let ((*package* (find-package :lui.docs.generator))
+      (let ((*package* (find-package :%lui.docs.data))
             (*readtable* (source-readtable)) (*read-eval* nil))
         (dolist (path (sort (copy-list paths) #'string< :key #'namestring))
           (setf current "cl-user"
@@ -384,7 +437,7 @@ are read for resolution; only explicitly selected exports enter the reference."
   (ensure-directories-exist path)
   (with-open-file (output path :direction :output :if-exists :supersede)
     (write-line ";; Generated by scripts/docs-data.lisp; do not edit." output)
-    (write-line "(in-package #:lui.docs)" output)
+    (write-line "(in-package #:%lui.docs)" output)
     (write-line "(defparameter *entries*" output)
     (write-char #\' output)
     (let ((*print-case* :downcase) (*print-pretty* t)

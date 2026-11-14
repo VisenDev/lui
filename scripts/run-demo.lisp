@@ -1,7 +1,7 @@
-(defpackage #:lui.start.native
+(defpackage #:%lui.run.demo
   (:use #:cl))
 
-(in-package #:lui.start.native)
+(in-package #:%lui.run.demo)
 
 (require :asdf)
 
@@ -12,4 +12,4 @@
 
 (asdf:load-system "lui/demo")
 
-(lui.example:main)
+(%lui.example.demo:main)

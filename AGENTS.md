@@ -1,46 +1,105 @@
 # Working on LUI
 
-This file preserves development guidance and maintenance context independently
-of the human-facing README. Consult the code and current test results for exact
-APIs and platform support; historical measurements are not current guarantees.
+This file is the project guidance and maintenance reference. Consult the code
+and current test results for exact APIs and platform support; historical
+measurements are not current guarantees.
+
+**Do not edit `README.md`. It is intentionally empty.** Keep project guidance
+in `AGENTS.md` and application documentation in docstrings and
+`examples/docs.lisp`; regenerate `docs/index.html` through the docs build.
 
 ## Project constraints and conventions
 
-- Keep `src/` below 10,800 physical lines. Examples, tests, and generated output
+- Keep `src/` below 10,200 physical lines. Examples, tests, and generated output
   are outside that budget. Prefer simplicity over artificial compression; flag
   any tradeoff that would reduce lines by making the implementation harder to
   understand. `make loc` reports cloc counts; also check physical line totals.
+  The user approved exceeding this cap for the ECL/Emscripten web backend.
 - This is a work-in-progress API. When replacing an API, remove the retired form
   and migrate its in-tree callers and documentation. Do not retain compatibility
   shims for obsolete APIs.
-- Use structures with typed slots and `lui.fn:fn` with explicit return types for
+- Annotate FN parameters explicitly; use OR unions for nullable or multi-type
+  inputs. Use `object-id` for widget identities; it intentionally expands to T.
+- Use structures with typed slots and `%lui.fn:fn` with explicit return types for
   implementation functions. Do not reintroduce `destruct*` or an alternate
   structure API; use standard `defstruct`.
+- Use precise vector element types in declarations and constructors. Keep T
+  only for genuinely heterogeneous contents, such as unrestricted widget IDs.
 - Collection APIs use vectors with declared element types: wrapped strings,
   events, layout children, contours, and colors. Configuration plists, control
   alists, Lisp forms, and internal pending-event queues can remain lists.
-- Prefer one package per source file. Implementation packages may use `:use`.
+- Use one package per core source file; backend files may group related
+  packages. Implementation packages may use `:use`.
   Demos and examples must use only Common Lisp in `:use`; qualify their LUI API
   references. Keep local variables and structure slot names ordinary local
   symbols. Qualify or explicitly import other external API symbols.
+- Side-effect-only functions declare `(values)` and end with `(values)`,
+  including early function exits; reserve `null` for an actual NIL result.
+- Declare application API symbols in `lui`'s `defpackage`. Specialized font,
+  drawing, palette inspection, toolkit extension, debugger, terminal, and PDF
+  APIs belong to their owning packages. Keep everyday palette construction,
+  presets, and palette/toolkit scopes available through `lui`.
+  Do not mutate exports through private macros.
+- Access other LUI packages through exported symbols; declare shared internals
+  in their owning package exports instead of using double-colon references.
+- Prefix internal-only packages with `%` (for example, `%lui.frame`). Keep
+  dual-use package names such as `lui.toolkit`; prefix only their internal
+  exported symbols with `%` (for example, `lui.toolkit:%find-toolkit`).
+  Keep definitions in their owning source files, without facade packages.
 - Normally wrap Lisp code at 78 columns; use keyword LOOP clauses.
-- Lint with `mallet src --strict --disable no-package-use --disable
-  error-without-custom-condition` (one shell command). Those disabled rules
-  conflict with the internal-package `:use` and structure-based conventions.
+- Keep functions visually easy to scan: separate substantial conditional
+  branches with blank lines and brief intent comments, and label major steps.
+  Reduce nesting by moving shared local bindings to an enclosing scope where
+  their lifetime and evaluation order permit it.
+- Put each `let` and `let*` binding on its own line.
+- Mark multiline `if` else branches with `;; else` on a separate line. Add a
+  blank line before that comment when the then branch spans multiple lines.
+  Single-line ternary-style forms do not need an else comment.
+- Run `make lint` to normalize FN declarations and check strict Mallet rules,
+  complexity, function length, and missing docstrings. Only `no-package-use`
+  is disabled. Keep the defaults for all other rule thresholds.
+- Use documented custom conditions for explicit LUI failures. Conditions use
+  standard `define-condition`; ordinary application data still uses structures.
 - Do not add dependencies as part of simplification work without discussing
   the dependency tradeoff with the user.
 
 ## Finishing updates
+
+Work on the current branch by default. Do not create a new branch unless the
+user explicitly asks for one.
 
 After completing an update, run `make docs-pages` and commit any resulting
 changes to `docs/index.html` along with the update. Commit as work is completed
 and push finished updates, as requested by the user. Run checks appropriate to
 the change and report material limitations instead of claiming untested support.
 
+## Source organization
+
+- Keep portable source files numbered in dependency order (`01-fn.lisp`
+  through `16-debug.lisp`). Palette and toolkit support precede the application
+  facade in `07-palette.lisp`, `08-toolkit.lisp`, and `09-lui.lisp`.
+  The debugger remains an optional ASDF system.
+- Each core file owns one matching package. Ignore numeric prefixes and
+  the leading `%`, and map package dots to filename hyphens. Tests use
+  `%lui.tests.` and gallery packages use `%lui.example.`; script packages also
+  follow their filenames.
+- Backend files may group related packages. Keep each platform in
+  `backend-<platform>.lisp`; share font/drawing support in `backend-common.lisp`,
+  OpenGL in `backend-common-gl.lisp`, and browser rendering/input in
+  `backend-common-web.lisp`.
+- Built-in graphical painters and registrations belong in `paint-<toolkit>.lisp`
+  (`lui.paint-<toolkit>`), loaded after the shared renderer. Keep toolkit names
+  out of backend dispatch; backdrop effects are shared rendering capabilities.
+- ECL Lisp interop belongs in `backend-ecl-emscripten.lisp`; C/JavaScript
+  build support belongs in `scripts/ecl-web.c` and `scripts/ecl-web.js`.
+  Update ASDF, both browser build manifests, and the portable test runner
+  when moving code.
+
 ## Architecture and contracts
 
 - LUI is an immediate-mode Common Lisp UI library. Applications own their model
-  state; `lui:run` owns the backend lifecycle. The same gallery and widget logic
+  state; value controls retain local state unless OPT :value is supplied.
+  `lui:run` owns the backend lifecycle. The same gallery and widget logic
   run on native windows, the browser, and the terminal. Avoid demo-only fixes
   for behavior that should apply to all applications.
 - `lui/core` is dependency-free. All terminal output, including plain snapshots,
@@ -83,10 +142,23 @@ the change and report material limitations instead of claiming untested support.
 - Measurement receives `(widget available-content-width)` and returns width
   and height. NIL width requests intrinsic measurement. Dimensions must be
   nonnegative; measured leaves cannot have children.
+- Widgets accept `:position :automatic`, `:absolute`, or `:fixed`.
+  `:fixed` uses `:offset-x` and `:offset-y` in logical client-surface coordinates.
+  It ignores ancestor scrolling but obeys ancestor clips. `lui:parent-scroll-position`
+  returns the current parent's retained offsets for explicit compensation.
+- `:position :absolute` uses parent-relative offsets and scrolls with content.
+  Both manual positioning forms are outside normal flow: they do not affect
+  sibling positions or FIT container sizes. There is no obstacle avoidance.
+  Use an automatic container to reserve space explicitly. Offsets on automatic
+  widgets shift their drawing without changing their normal flow slot.
 - Horizontal sizing precedes width-dependent measurement and vertical layout.
   Percentages exclude padding and inter-child gaps. Fixed sizes and minimum
   bounds may overflow rather than silently shrink.
-- Value widgets return the new value and a changed flag. Preserve release
+- Control macros use quoted call-site IDs, combined with WITH-KEY scopes and
+  OPT :id instance keys (including numbers). OPT :default-value initializes
+  owned values once; absent widgets lose owned state after a completed frame.
+  Value widgets return the new value, a changed flag, and resolved ID.
+  Preserve release
   activation, pointer capture, disabled behavior, and keyboard-only focus rings.
 - `cell` is selectable text; general tables use `table`, `table-row`, and
   `table-cell` for arbitrary contents. Columns share widths across rows; column
@@ -99,8 +171,7 @@ the change and report material limitations instead of claiming untested support.
 
 ### Browser behavior and performance
 
-- The browser uses JSCL or experimental MiriCL and one high-DPI Canvas 2D
-  surface per window, with
+- The browser uses JSCL or ECL/Emscripten and one high-DPI Canvas 2D surface per window, with
   read-only native HTML labels for selection/accessibility. Preserve native
   text selection, normal browser context menus, and accessible control actions.
   Occluded labels may be painted on canvas; a shared textarea handles editing,
@@ -118,9 +189,13 @@ the change and report material limitations instead of claiming untested support.
   Indexed `dotimes` loops and direct traversal are useful in measured hot paths.
   Fixed polygon vectors use `typed-vector` to avoid expensive generic
   `make-array :initial-contents` traversal while retaining element types.
-- The JSCL-only standard `defstruct` expansion override in `src/fn.lisp` omits
+- The JSCL-only standard `defstruct` expansion override in `src/01-fn.lisp` omits
   generated constructor/writer slot checks but retains slot metadata and
   initializer checks. Native Lisp builds use their standard `defstruct`.
+
+Host selection uses `trivial-features` as an ASDF definition dependency; core
+source loading remains dependency-free. Native systems weakly depend on
+`font-discovery`: ASDF loads it when available but does not require installation.
 
 ## Build and validation workflow
 
@@ -133,12 +208,14 @@ benchmark targets. Scripts discover optional dependency checkouts under
 | Task | Command / notes |
 | --- | --- |
 | Core and native drawing | `make test-core test-native` |
+| Fonts without discovery | `sbcl --script tests/font-discovery.lisp /path/to/font.ttf` (fresh process) |
 | Portable source runner | `sbcl --script tests/run.lisp`, `clisp -q -q tests/run.lisp`, `ecl -shell tests/run.lisp` |
 | JSCL source runner | `node /path/to/jscl/dist/jscl-node.js tests/run.lisp` |
 | Browser build / serve | `make web-build` / `make web-demo`; `JSCL` defaults to `~/clone/jscl`, `PORT` to 8000 |
-| MiriCL build / tests | `make web-build WEB_RUNTIME=miricl` / `make test PLATFORM=web WEB_RUNTIME=miricl`; requires built `miricl.js` and `miricl.wasm` under `MIRICL_RUNTIME` (defaults to `~/clone/miricl`) |
+| ECL browser | `make web-ecl-build` / `make web-ecl-demo`; see ECL/WebAssembly setup below for the matching host and wasm toolchain |
 | Browser tests | `make test PLATFORM=web` or, after building, `python3 tests/web.py`; requires Playwright and Chromium |
 | Docs | `make docs-pages`; `make test-docs` checks extraction, examples, and offline browser behavior |
+| Manual-only demo | `make manual-demo` (or `PLATFORM=x11`, `terminal`, etc.); all widgets use explicit positions outside normal flow; heights fit measured content |
 | Native executable | `make demo PLATFORM=x11` (or another backend); `RUN_ARGS=--smoke-test` renders one frame and exits |
 | Terminal | `make test PLATFORM=terminal`; `python3 tests/terminal.py --lisp sbcl` runs POSIX PTY checks |
 | Terminal parity | `make test-terminal-parity`; requires historical commit `16f79dd`, compares reconstructed styled cells and I/O against current layout/widgets/examples |
@@ -157,16 +234,18 @@ installed SBCL themselves rather than honoring a custom `SBCL` command prefix.
 The docs reference is generated from signatures/docstrings and an explicit
 public-symbol allowlist in `scripts/docs-data.lisp`. Internal exports used
 between modules are not automatically public documentation. Reexports belong
-under their application-facing package. `build/docs.html` embeds the runtime
-and app for offline use; `docs/index.html` is its committed Pages copy.
+under their application-facing package. `build/docs.html` uses ECL/Emscripten
+and embeds the WebAssembly runtime and app for offline use; `docs/index.html` is its committed Pages copy.
 
 ### Dependencies and platform limits
 
 - Native measurement/painting requires CFFI, zpb-ttf, and an available TrueType
   font. Set font configuration before opening a window. Saved executables accept
-  `LUI_FONT` and `LUI_FONT_DIR`; font faces are cached and closed with the base
+  `LUI_FONT`; font faces are cached and closed with the base
   font. Browser measurement and painting must use matching family/weight.
-- Uncursed requires CFFI grovel and a C compiler; Unix terminal support uses
+- Use uncursed 0.7.0 or later; Quicklisp 0.3.0 is too old. Its source is
+  https://github.com/Plisp/uncursed. It requires CFFI grovel and a C compiler;
+  Unix terminal support uses
   terminfo. Recorded tested revision: `89f9cb6f21bc7e981a04ce0d6361ae73dde49c4f`.
 - X11 needs Xlib and GLX/OpenGL; Wayland needs libwayland, xkbcommon, EGL/OpenGL,
   and a compositor. Win32 uses User32/GDI32/Kernel32/GDI+. Cocoa is SBCL-only
@@ -206,7 +285,7 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 ## Performance evidence
 
 - Use matching toolkit/page, viewport, sample count, warmup, and pacing settings.
-  Historical README timings were machine-specific and often used older backends;
+  Historical timings were machine-specific and often used older backends;
   they are not targets or evidence about the current checkout.
 - `make benchmark PLATFORM=...` writes timestamped logs under `build/logs/`.
   Native/core use `BENCH_CASE` (e.g. `garnet/seven/cells`); web uses
@@ -229,3 +308,290 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 - Interactive runners default to 1 idle FPS and 240 maximum active FPS; input
   wakes rendering and animation deadlines schedule work. Confirm benchmark
   settings instead of attributing a pacing limit to rendering cost.
+
+## Application API maintenance notes
+
+- Load `lui` for host backends, `lui/core` for dependency-free use, and
+  `lui/demo` for the gallery. Optional systems include `lui/debug`, `lui/native`,
+  `lui/terminal`, `lui/pdf`, `lui/gl`, `lui/x11`, `lui/wayland`, `lui/win32`, and
+  `lui/cocoa`. `lui:available-backends` lists loaded backends; `lui:run :backend`
+  chooses one. Width/height use backend coordinates; omission uses defaults.
+- Core application APIs use `lui:`. Font, drawing, debugger, terminal, and PDF
+  helpers use `lui.font:`, `lui.draw:`, `lui.debug:`, `lui.terminal:`, and
+  `lui.pdf:` respectively; load the corresponding optional system first.
+  Control macros cannot be passed to FUNCALL/APPLY. Toolkit
+  overrides remain functions receiving resolved IDs, positional arguments, and
+  an options list. `lui:control` invokes a registered custom control.
+- Palette readers use `lui.palette:`. Toolkit registration, rendering policies,
+  resolved defaults, and revision tracking use `lui.toolkit:`. Built-in defaults
+  belong to their toolkit packages, such as `lui.qt:*qt-defaults*`.
+  `lui:make-palette`, palette presets, `lui:with-palette`, `lui:with-toolkit`,
+  and `lui:current-toolkit` remain everyday application APIs.
+- Each control call site has a stable ID. Instance keys are combined with that
+  site, so different control sites may share a key. Use stable item keys rather
+  than indices when rows can move. Repeated unkeyed sites or duplicate instance
+  keys signal `configuration-error` before state is reused. Recompiling a call
+  site creates a new identity. IDs are scoped to a context and may be any object.
+- `widget-id` resolves a unique key in the current key scope; ambiguous keys
+  signal `configuration-error`. `widget-key` extracts the declared key;
+  `focus-widget` requests focus; `reset-editor` resets owned text and caret.
+  Use the third returned control value when a resolved ID is needed.
+- `with-key`, `with-toolkit`, `with-palette`, and `with-frame` are thin macros
+  over `call-with-` functions. The first three functions take the scope value
+  and a zero-argument function and preserve its return values.
+  `(lui:call-with-frame context width height draw :events events)` calls DRAW
+  once and returns the solved root. Preserve cleanup on errors/nonlocal exits.
+- Buttons return activation. Value controls return value, changed flag, and ID.
+  `:default-value` initializes owned state once; `:value` supplies an external
+  model each frame. Radio controls take their own choice and a shared `:value`.
+  Button clicks preserve keyboard focus; fields acquire editing focus on click.
+  Tab groups wrap Left/Right, support Home/End, and skip disabled tabs.
+- Combobox Up/Down selects suggestions; Enter accepts a highlighted suggestion.
+  Enter without a highlight, Escape, and Tab preserve typed text. Suggestions
+  are overlays; `:max-results` bounds their count.
+- `row` and `column` take an options expression, like `panel` and `table`.
+  Use `(lui:row (lui:opt :gap 1) ...)` or a stored options list; the expression
+  is evaluated once.
+- `spacer` reserves empty space with OPT sizing and padding. Use `:width (grow)`
+  in rows or `:height (grow)` in columns. `hr` and `vr` are noninteractive rules:
+  the long axis grows, thickness defaults to one backend coordinate, and
+  `:foreground` overrides the captured palette border color.
+- Table columns use the widest content across rows. Extra width is shared;
+  narrow tables shrink columns proportionally before row-height measurement.
+  Short rows may omit trailing cells. `:column-gap` belongs to the table and
+  `:column-span` to a cell; table option forms may be expressions or stored lists.
+- `:password-p t` masks built-in painting, copied selections, accessibility,
+  and debugger values with one asterisk per character. Storage is not encrypted;
+  custom painters still receive the original value.
+- Custom toolkits use `register-toolkit` with optional parent, defaults, controls,
+  paint, geometry, and native-label policy. Geometry callbacks return text
+  insets, minimum size, alignment, and pressed displacement. `text-box` exposes
+  the same text area to custom painters. `shape`, `outline`, and `paint-text`
+  use the active renderer. `renderer-backdrop-effect` is an optional callback
+  taking bounds, corner radius, and blur radius; paint the tint afterward.
+- Palette presets are returned by `available-palettes` as a vector. `with-palette`
+  accepts preset names/constants or `make-palette` instances, not raw plists.
+  Palette slots are read-only; NIL slots inherit. Toolkit defaults contain a
+  palette plist, and `widget-color` resolves its roles. Keep disabled, selection,
+  on-accent, border, light/shadow, track, bevel, and cell colors consistent.
+- `:terminal-label` is a widget-to-string callback. `:terminal-border` is a
+  six-character string; Glass uses "╭╮╰╯─│", other built-ins use "++++-|".
+  Terminal button delimiters follow widget radius. Backdrop rendering differs:
+  Canvas uses clipped blur; GL adds approximate edge refraction; Win32 uses
+  filtered blur without refraction; Cocoa's AppKit fallback uses tint only.
+- `spinner` schedules animation only while declared; `:disabled-p` pauses it.
+  `menu-bar` uses toolkit framing: Motif has an inset beveled panel;
+  other built-ins use a borderless row. `menu` opens on click/hover and nests beside
+  its parent; `menu-item` actions dismiss the chain. Direct `menu-item` children
+  of a menu bar are compact, hover-highlighted actions with button-style
+  activation; they do not open popups. `floating-expander` accepts
+  arbitrary controls, with optional hover opening and constrained popup sizes.
+  Child IDs are scoped to their expander. Escape closes one level, arrow keys
+  navigate menus, and Tab or outside presses dismiss them. Hover-opened panes
+  close when the pointer leaves their trigger and popup descendants; click-
+  and keyboard-opened panes remain open until explicitly dismissed.
+  Toolkit defaults may set `:menu-bar-options` to a plist with `:border-p`
+  and layout/appearance options (Motif uses `:border-p t :padding 2`).
+- The gallery covers Controls, Editing, Layout, Scroll, Styles, Menus, and all 7GUIs.
+  Its A0:Z99 sheet uses a safe formula parser and incremental dependencies.
+  FPS includes pacing; layout time is a 30-frame rolling average including
+  measurement but excluding construction, painting, presentation, and pacing.
+  `1000 / layout-ms` is only a layout throughput ceiling.
+
+### Future navigation work
+
+- Explore text-based keyboard navigation inspired by Motif mnemonics:
+  underline a letter in menu labels, use Alt+letter to open a top-level menu,
+  and use mnemonic letters within an open menu. The user requested pursuing
+  this in the future; exact API, scope beyond menus, and backend behavior
+  remain to be designed. This is planned work, not a current capability.
+
+### Editing and debugger behavior
+
+Readline-style editing is shared across backends: Ctrl-A/E moves to line ends,
+Ctrl-B/F by character, Alt-B/F or Ctrl-Left/Right by word, Ctrl-D/H deletes,
+Ctrl-K/U kills to line end/start, Ctrl-W or Alt-D kills a word, Ctrl-Y yanks,
+and Ctrl-T transposes. Shift-arrows extend selection; Ctrl-Shift-A selects all
+(Command-A also works on macOS). Consecutive kills combine in a per-field
+buffer. Ctrl-P/N navigates existing lines where supported, not command history.
+Terminal modifiers require distinguishable key sequences. Tab/Shift-Tab moves
+focus; Enter/Space activates controls; Space inserts text in editors. Ctrl-Q/C
+exits terminal mode; Ctrl-D deletes. Redirected input uses `:next`, empty-line
+activation, text edits, and `:quit`.
+
+The debugger attaches to the current context through `set-debugger-enabled`;
+subsequent frames draw it automatically. Tree rows are virtualized, and hover
+highlights bounds/clip without intercepting input. Stable IDs preserve selection;
+anonymous nodes use paths under the closest ID, so identical reordered siblings
+have positional identity. Removed selections clear. Clip/offscreen badges are
+geometry information, not errors; duplicate-ID failures cannot yield a completed
+frame for inspection. Drag the left sidebar edge or use Left/Right/Home/End on
+its separator; `debugger-state-width` uses LUI spacing units. Drag the property
+pane's top edge or use Up/Down/Home/End on its divider. Dragging to the bottom,
+End, the close button, or reselecting its row dismisses the properties.
+
+### Setup and build details
+
+For direct ASDF use, load `lui.asd` or add
+`(:directory "/absolute/path/to/lui/")` to
+`~/.config/common-lisp/source-registry.conf.d/lui.conf`. Register optional
+checkouts too. With Quicklisp, load `scripts/setup.lisp` and then
+`(ql:quickload "lui")` for host dependencies. A missing `zpb-ttf` component means
+the dependency must be installed/registered, not that the backend is broken.
+
+Native builds use `scripts/build.lisp` and `save-lisp-and-die` to produce
+`build/bin/demo-PLATFORM` (`.exe` on Windows). `make build` saves it; `make demo`
+runs it; `RUN_ARGS=--smoke-test` renders one frame. `make terminal-demo` selects
+the terminal. `make docs` opens the native documentation browser;
+`make docs-html` produces the standalone HTML; `make docs-pages` copies changed
+output into `docs/index.html`. GitHub Pages serves the repository's `/docs` folder.
+`make loc` writes `build/logs/src-loc.txt`. Strict lint requires Mallet and writes
+`build/logs/mallet-normalized.json`, failing on informational findings as well
+as warnings. Logs are timestamped; Bash pipefail preserves pipeline failures.
+
+For fonts, set `*font-path*` for the base face, `*font-paths*` for exact
+family/weight overrides. Optional `font-discovery` supplies automatic system
+lookup when installed; without it, configure explicit TrueType paths. Directory
+and filename search settings, including `LUI_FONT_DIR`, have been removed.
+Supported families are
+`:sans-serif`/`:monospace`, weights `:normal`/`:bold`. PDF uses points (72/inch),
+defaults to 612×792, and renders one display-free frame. Use `render-pdf` directly
+or bind `*pdf-output*` (default `lui.pdf`) and run with `:backend :pdf`.
+
+JSCL builds need Node.js and a built JSCL checkout. `make web-demo` serves
+`build/index.html` from localhost (`PORT`, default 8000); open its printed root
+URL and stop with Ctrl-C. `make web-build` builds without starting a server.
+Windows testing can prefix launches with `RUNNER=wine` and an existing Windows
+SBCL command/core in `SBCL`; configure WINEPREFIX and ASDF dependencies first.
+`scripts/test-win32.lisp` is the direct Windows SBCL test launcher. Portable
+Wayland callback checks live in `tests/wayland.lisp`; load `lui/wayland` and
+`lui/demo` first. Offscreen GL checks similarly use `lui/gl`, `lui/demo`, and
+`tests/gl.lisp`. Ensure `build/` exists.
+
+### ECL/WebAssembly setup
+
+The ECL browser build compiles Lisp to C, then links with Emscripten; it does not
+use JSCL. `build/web-ecl/index.html` embeds its loader and WebAssembly and opens
+as one static file without a server. `examples/web-ecl.html` is the development
+template, not the standalone artifact. Browser interaction support is shared,
+but performance and coverage must be validated separately for ECL and JSCL.
+
+On a fresh Linux host, install Git, GNU Make, Bash, Python 3, a native C/C++
+toolchain, and ECL's native prerequisites; SBCL generates the docs reference.
+Run `make web-ecl-toolchain`, then `make web-ecl-build` or `make docs-pages`.
+Setup downloads tested tools into `build/deps/`, makes no system-wide changes,
+and preserves existing source checkouts when rerun. Other setup hosts remain
+untested. The tested source is ECL `855f93431` with Emscripten `4.0.12`.
+ECL needs `compile-file :target` support and a matching non-threaded host build
+(`--disable-threads`); the same version string alone is insufficient. Host/target
+structure macro behavior must match. Upstream references:
+https://gitlab.com/embeddable-common-lisp/ecl/-/blob/develop/INSTALL and
+https://ecl.common-lisp.dev/static/manual/System-building.html.
+
+To reuse tools, set `ECL_SOURCE=/path/to/ecl` and
+`EMSDK_ENV=/path/to/emsdk/emsdk_env.sh` before `make web-ecl-toolchain`.
+`JOBS` sets parallelism; `ECL_WASM` selects the
+installed target prefix (default `build/deps/ecl-wasm`), `ECL_TARGET_INFO` its
+optional target-info override, and `EMCC` the compiler. Subsequent builds activate
+`build/deps/emsdk/emsdk_env.sh` when emcc is missing; external SDKs require
+EMSDK_ENV again or shell activation. Explicit EMCC overrides are respected;
+compiler paths recorded in target info must remain available.
+
+Application C and final WebAssembly use `-O3 -g0`; Lisp uses speed 3, safety 2.
+Prebuilt ECL/GMP/GC libraries retain their toolchain settings. Preserve the
+pointer-spilling linker pass, larger stack, and persistent callback runtime.
+The interop bridge transfers numbers, Unicode strings, and object identities
+through imports; separate argument frames permit synchronous DOM reentrancy
+without JavaScript generation or Lisp text parsing. Set
+`ECL_WEB_APP=/absolute/path/start.lisp` for an application entry that calls
+`lui:run`. `make web-ecl-demo` serves the standalone output on localhost.
+
+### Additional performance workflows
+
+- Default benchmark dimensions: native/GL 720×520, web 900×700, core/terminal
+  100×40 cells. The native/core 240-frame/30-warmup default spans 65 cases; require
+  at least one measured frame per selected case and nonnegative warmup. Per-case results include
+  mean, median, p95, maximum, and FPS.
+- `make benchmark-web-parity` compares existing JSCL/ECL builds with matching
+  viewports and steady redraws. BENCH_FRAMES/WARMUP are per case for this target,
+  unlike the general benchmark. `PROFILE=1` saves ECL CPU profiles under
+  `build/profiles/`. `make benchmark PLATFORM=web-ecl` builds both first.
+  These are steady redraw measurements, not input-latency or scroll benchmarks.
+- `python3 tests/profile-docs.py --output build/profiles/docs` profiles mobile
+  docs scrolling with the debugger open/closed at normal speed and 6× CPU
+  slowdown. `--bundle` selects saved HTML. Match viewport, wheels, warmup, and
+  slowdown, and compare work per wheel if redraw counts differ. CPU throttling
+  does not reproduce phone GPU/memory behavior.
+- Measurement/caption reuse is limited to matching previous-frame inputs.
+  Geometry callbacks still execute; custom context measurement callbacks are
+  not cached. Text, font, width, and resolved geometry changes invalidate reuse.
+- Allocation regression checks: set `LUI_BENCH_LIBRARY_ONLY=1`, load
+  `scripts/benchmark.lisp` and `tests/benchmark.lisp` with SBCL, then call
+  `(%lui.tests.benchmark:run-tests)`. ALLOC rows report bytes total/mean/p95 and GC
+  CPU milliseconds, with unsupported GC counts explicitly marked.
+- Historical performance logs include `build/profile-wayland-before.log`,
+  `profile-wayland-after.log`, `benchmark-wayland-after.log`,
+  `benchmark-gl-after.log`, `web-raw-before.log`, and `web-final-benchmark.log`.
+  The removed README's historical tables remain in Git history; do not present
+  their machine-specific numbers as current results.
+
+### Condition handling
+
+`lui-error` inherits `simple-error` formatting and exposes `error-operation`.
+`configuration-error` exposes `error-setting`/`error-value`; `backend-error`
+exposes `error-backend`; its `font-error` subtype adds `error-font-request`.
+`frame-state-error` indicates an operation requiring a completed frame. Catch
+specific conditions and configure missing capabilities before retrying. Cleanup
+still runs on unwinding. Invalid-argument assertions and application callback
+errors retain their own condition types; do not wrap them indiscriminately.
+
+### Experimental MiriCL browser builds
+
+The `codex/miricl-web` integration uses the same browser renderer and input
+code through `src/backend-miricl.lisp`. Build with `make web-miricl-build` or
+`make docs-miricl`; output is a standalone offline page in `build/miricl/`
+or `build/docs-miricl/`. The backend name is `:web-miricl`. ECL remains the
+Pages/default docs runtime. Do not infer other browser-engine support from
+Chromium tests.
+
+Validated runtime source: MiriCL `ebe1618` (2026-11-14). Set `MIRICL` to its
+source checkout and `MIRICL_RUNTIME` to a matching built distribution containing
+`miricl.js`, `miricl.wasm`, and `miricl-interpreter.wasm`. The default uses
+`build/deps/miricl-runtime/` when present, otherwise `MIRICL` (default
+`~/clone/miricl`). Keep the adapter and both images from the same revision.
+MiriCL's build uses SBCL/Quicklisp and the Wasmtime 50 C API shared library;
+from its checkout run `sbcl --load ~/quicklisp/setup.lisp --script
+scripts/build-wasm.lisp /absolute/path/to/runtime/`, with its library directory
+in `LD_LIBRARY_PATH` on Linux if needed. LUI does not install these dependencies.
+
+Application compilation requests speed 3, safety 2, debug 0, and space 0, matching
+the ECL build policy. The builder compiles native bundles in a fresh VM and
+checks loading in both compiler and interpreter images. Delivery includes the smaller
+compiler-free interpreter. Preserve the output's MiriCL LGPL license and notice
+files when redistributing. Browser object identity uses JS strict equality;
+integer-valued JS Numbers become Lisp integers for typed event fields. Callback
+wrappers are weakly cached to preserve listener removal without retaining dead
+applications. Runtime-owned JS references remain under MiriCL's Wasm GC.
+
+`make test-miricl` runs the portable suite against the native bundle and the
+same offline docs browser tests used for ECL. `make benchmark-docs-parity`
+compares existing ECL and MiriCL docs pages; build both first. It alternates
+runtime order, uses equal viewports/warmup/sample counts, and records raw/gzip
+HTML size, fresh-context local startup, and active redraw plus browser layout
+flush timings. These are not network download, GPU presentation, input latency,
+or sustained FPS measurements. Pin a tested runtime; upstream is evolving.
+
+
+Measured on 2026-11-14 with Chromium 156.0.8078.47 and an AMD Ryzen 7 7800X3D:
+ECL standalone docs were 8,859,848 bytes raw / 2,474,820 gzip; MiriCL was
+1,956,838 / 686,186 bytes (72.3% less gzip). Two alternating rounds used
+120 measured + 30 warmup redraws per case, Qt/Default, desktop 1100x820 at
+DPR 1 and mobile 412x700 at DPR 2. Mean active milliseconds (ECL / MiriCL):
+docs 4.70 / 20.74; docs debugger 9.26 / 44.60; gallery Controls 2.95 / 13.67;
+gallery Cells 27.12 / 88.62; mobile symbols 4.06 / 17.77; mobile symbols with
+debugger 7.81 / 38.21. Fresh-context desktop startup averaged 467 / 511 ms
+(two samples each; local files, no network). These results support keeping ECL
+as the default and MiriCL experimental, not a general performance guarantee.
+Raw samples and artifact hashes are in `build/miricl-docs-comparison.json`.
+The adapter increases physical `src/` lines by 75 over this master baseline
+(14,292 to 14,367); the existing ECL exception already exceeded the normal cap.

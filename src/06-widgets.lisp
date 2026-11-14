@@ -1,0 +1,806 @@
+(defpackage #:%lui.widgets
+  (:use #:cl #:%lui.fn #:%lui.layout #:%lui.frame)
+  (:export #:*base-palette* #:muted-ink #:palette-color
+           #:widget-center-text-p #:widget-icon
+           #:widget #:widget-p #:widget-kind #:widget-style #:widget-text
+           #:widget-color #:widget-palette #:widget-foreground
+           #:widget-background #:widget-radius
+           #:widget-frost #:widget-terminal-border
+           #:widget-terminal-text #:declare-panel #:declare-widget
+           #:value-widget
+           #:scrollbar-thumb #:make-widget
+           #:widget-display-value #:widget-password-p
+           #:widget-value #:widget-minimum #:widget-maximum #:widget-step
+           #:widget-font-size #:widget-font-family #:widget-font-weight
+           #:widget-opacity #:widget-accent
+           #:widget-disabled-p #:widget-orientation #:widget-accessible-name
+           #:widget-popup-kind #:widget-expanded-p
+           #:widget-painter
+           #:edit-state #:edit-state-cursor
+           #:edit-state-anchor #:make-edit-state #:edit-text #:readline-key
+           #:horizontal-selection-key
+           #:text-field-focused-p #:activation-focused-p #:cursor-at))
+
+(in-package #:%lui.widgets)
+
+(fn (muted-ink string) ((foreground string) (background string))
+  "Soften a foreground color against its surface for secondary text."
+  (if (every (lambda (color) (and (= (length color) 7) (char= (char color 0)
+                                                              #\#)))
+             (list foreground background))
+      (with-output-to-string (stream)
+        (write-char #\# stream)
+        (loop :for i :in '(1 3 5)
+              :for fg := (parse-integer foreground
+                                        :start i :end (+ i 2) :radix 16)
+              :for bg := (parse-integer background
+                                        :start i :end (+ i 2) :radix 16)
+              :do (format stream "~2,'0X" (round (+ (* 2 fg) bg) 3))))
+
+      ;; else
+      foreground))
+
+(defparameter *base-palette*
+  '(:foreground "#ffffff" :background "#303040" :accent "#258bff"
+    :disabled "#777777" :selection "#e7effa" :border "#939ba5" :outline "#000000"
+    :thumb "#ffffff" :on-accent "#ffffff" :light "#ffffff" :shadow "#000000"
+    :track "#777777"
+    :disabled-accent "#999999" :disabled-surface "#a0a0a0"
+    :bevel-light "#ffffff" :bevel-dark "#505050"
+    :disabled-bevel-light "#d0d0d0" :disabled-bevel-dark "#989898"
+    :cell-background "#ffffff" :cell-foreground "#202430"))
+
+(defstruct widget
+  "Backend-neutral control content, values, appearance, and extension callbacks."
+  (palette (copy-list *base-palette*) :type list)
+  (kind :label :type symbol)
+  (style :glass :type symbol)
+  icon
+  (center-text-p nil :type boolean)
+  (orientation :vertical :type (member :vertical :horizontal))
+  (accessible-name nil :type (or null string))
+  (popup-kind nil :type (member nil :menu :dialog))
+  (expanded-p nil :type boolean)
+  value
+  (password-p nil :type boolean)
+  (minimum 0 :type real)
+  (maximum 1 :type real)
+  (step 0.01f0 :type real)
+  (font-size 16 :type real)
+  (font-family :sans-serif :type (member :sans-serif :monospace))
+  (font-weight :normal :type (member :normal :bold))
+  (opacity 0.85f0 :type real)
+  (accent "#258bff" :type string)
+  (disabled-p nil :type boolean)
+  (terminal-label nil :type (or null function))
+  ;; Top-left/right, bottom-left/right, horizontal and vertical glyphs.
+  (terminal-border nil :type (or null (string 6)))
+  (painter nil :type (or null function))
+  (text "" :type string)
+  (terminal-cache nil :type (or null string))
+  (foreground "#ffffff" :type string)
+  (background "#303040" :type string)
+  (radius 12 :type real)
+  (frost 12 :type real))
+
+(fn (palette-color (or null string)) ((palette list) (role symbol)
+                                      &optional ((default (or null string))
+                                                 nil))
+  "Resolve KEY in the widget palette, falling back to the supplied color."
+  ;; Palette lookup stays small and allocation-free in the per-widget hot path.
+  (cond ((null palette) default)
+        ((eq (car palette) role) (cadr palette))
+        (t (palette-color (cddr palette) role default))))
+
+(fn (widget-color (or null string)) ((widget widget) (role symbol))
+  "Resolve ROLE using WIDGET's color overrides and captured semantic palette."
+  (case role
+    (:foreground (widget-foreground widget))
+    (:background (widget-background widget))
+    (:accent (widget-accent widget))
+    (otherwise (palette-color (widget-palette widget) role))))
+
+(fn (widget-display-value t) ((widget widget))
+  "Return the value for presentation, masking password fields."
+  (let ((value (widget-value widget)))
+    (if (and (widget-password-p widget)
+             (eq (widget-kind widget) :text-field))
+        (make-string (length value) :initial-element #\*)
+        ;; else
+        value)))
+
+(fn (default-terminal-text string) ((widget widget))
+  "Format the built-in terminal label for WIDGET's kind and displayed value."
+  (let ((text (widget-text widget))
+        (value (widget-display-value widget)))
+    (case (widget-kind widget)
+      ;; Plain text and controls that paint their own contents.
+      ((:label :list-item :cell) text)
+      ((:panel :canvas :hr :vr) "")
+      (:spinner (string (char "|/-\\|/-\\" value)))
+
+      ;; Numeric values have a compact textual indicator.
+      (:gauge
+       (let* ((fraction (min 1 (max 0 value)))
+              (filled (round (* 10 fraction))))
+         (format nil "[~A~A] ~D%"
+                 (make-string filled :initial-element #\#)
+                 (make-string (- 10 filled) :initial-element #\.)
+                 (round (* 100 fraction)))))
+      (:slider
+       (let* ((minimum (widget-minimum widget))
+              (range (- (widget-maximum widget) minimum))
+              (percent (round (* 100 (/ (- value minimum) range)))))
+         (format nil "~A [~D%]" text percent)))
+
+      ;; Selection and editing state decorate the caption.
+      (:checkbox (format nil "[~A] ~A" (if value "x" " ") text))
+      (:radio (format nil "(~A) ~A" (if value "*" " ") text))
+      (:text-field
+       (format nil "[~A]" (if (zerop (length value)) text value)))
+      (:tab (format nil (if value "[ ~A ]" "  ~A  ") text))
+      (otherwise
+       (format nil (if (zerop (widget-radius widget)) "[ ~A ]" "( ~A )")
+               text)))))
+
+(fn (widget-terminal-text string) ((widget widget))
+  "Return WIDGET's portable text representation, computing it lazily as needed.
+An optional terminal-label callback overrides the standard kind-based label."
+  (or (widget-terminal-cache widget)
+      (setf (widget-terminal-cache widget)
+            (if (widget-terminal-label widget)
+                (funcall (widget-terminal-label widget) widget)
+                ;; else
+                (default-terminal-text widget)))))
+
+(fn (tab-arrow-p boolean) ((event event))
+  "Recognize directional keyboard input used to navigate a tab group."
+  (and (eq (event-kind event) :key)
+       (not (null (member (event-key event) '(:left :right :home :end))))))
+
+(fn (interactive-tab-p boolean) ((node element))
+  "Recognize enabled tabs that participate in their parent's keyboard group."
+  (let ((widget (element-content node)))
+    (and (widget-p widget) (eq (widget-kind widget) :tab)
+         (element-interactive-p node))))
+
+(fn (activate-next-tab (values)) ((tabs (vector element)) (event event))
+  "Move keyboard focus within TABS and activate only the destination tab."
+  (let* ((index (or (position (context-focus *context*) tabs
+                              :key #'element-id :test #'equal) 0))
+         (count (length tabs))
+         (next (ecase (event-key event)
+                 (:home 0) (:end (1- count))
+                 (:left (mod (1- index) count))
+                 (:right (mod (1+ index) count))))
+         (target (element-id (aref tabs next))))
+    ;; A batch of arrows leaves only its final destination activated.
+    (loop :for node :across tabs
+          :do (remhash (element-id node) (context-activated *context*)))
+    (setf (context-focus-visible-p *context*) t
+          (context-focus *context*) target)
+    (record-activation *context* target))
+  (values))
+
+(fn (navigate-tab-group (values)) ((parent element))
+  "Consume directional events for the interactive tabs directly under PARENT."
+  (let ((tabs (remove-if-not #'interactive-tab-p (element-children parent))))
+    (loop :for tab :across tabs
+          :for id = (element-id tab)
+          :for events = (gethash id (context-events *context*))
+          :for arrows = (remove-if-not #'tab-arrow-p (reverse events))
+          :do
+             ;; Input queues are reversed; navigation follows arrival order.
+             (dolist (event arrows) (activate-next-tab tabs event))
+
+             ;; Other key events remain available to the control.
+             (when arrows
+               (setf (gethash id (context-events *context*))
+                     (remove-if (lambda (event) (member event arrows))
+                                events)))))
+  (values))
+
+(fn (navigate-tabs (values)) ()
+  "Route tab-group arrow keys once per frame using the previous layout."
+  (when (or (context-tabs-handled-p *context*)
+            (null (context-previous-root *context*)))
+    (return-from navigate-tabs (values)))
+
+  ;; Avoid walking the previous tree when no group has directional input.
+  (when (loop :for events :being :the :hash-values
+              :of (context-events *context*)
+              :thereis (some #'tab-arrow-p events))
+    (setf (context-tabs-handled-p *context*) t)
+    (walk-elements (context-previous-root *context*) #'navigate-tab-group))
+  (values))
+
+(fn (declare-widget boolean)
+    ((kind symbol) (style symbol) (id object-id) (text string) &key
+     ((width sizing) (fit)) ((height sizing) (fit)) ((padding real) 0)
+     ((position position-mode) :automatic)
+     ((offset-x real) 0) ((offset-y real) 0)
+     ((foreground string) "#ffffff") ((background string) "#303040")
+     ((radius real) 12) ((frost real) 12) ((value t) nil) ((minimum real) 0)
+     ((maximum real) 1) ((step real) 0.01f0) ((font-size real) 16)
+     ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
+     ((opacity real) 0.85f0) ((accent string) "#258bff")
+     ((disabled-p boolean) nil) ((painter (or null function)) nil)
+     ((terminal-label (or null function)) nil)
+     ((terminal-border (or null (string 6))) nil)
+     ((accessible-name (or null string)) nil) ((icon symbol) nil)
+     ((popup-kind (member nil :menu :dialog)) nil)
+     ((expanded-p boolean) nil)
+     ((center-text-p boolean) nil) ((password-p boolean) nil)
+     ((palette list) *base-palette*))
+  "Declare a low-level widget in the current frame using STYLE and stable ID.
+Layout, typography, colors, optical effects, and backend extension callbacks
+are supplied as keywords. Return activation for enabled actionable kinds.
+Most applications should use the public LUI controls with lui:OPT instead."
+
+  ;; Resolve tab navigation before reporting this frame's activation.
+  (when (eq kind :tab) (navigate-tabs))
+
+  ;; Capture the resolved presentation and the context's text measurer.
+  (let ((measure (or (context-measure *context*)
+                     (error '%lui.conditions:configuration-error
+                            :setting :text-measurer :value nil
+                            :operation :declare-widget
+                            :format-control "A backend text measurer is required.")))
+        (widget
+         (make-widget
+          :kind kind :style style :palette (copy-list palette) :text text
+          :foreground foreground
+          :background background :radius radius :frost frost :value value
+          :minimum minimum :maximum maximum :step step :font-size font-size
+          :font-family font-family :font-weight font-weight
+          :opacity opacity :accent accent
+          :disabled-p (not (null disabled-p)) :painter painter
+          :icon icon :center-text-p center-text-p :terminal-label
+          terminal-label
+          :password-p (not (null password-p))
+          :terminal-border terminal-border
+          :popup-kind popup-kind :expanded-p expanded-p
+          :accessible-name accessible-name)))
+
+    ;; Attach measurement and input policies to the frame-local element.
+    (emit (make-element
+           :id id :content widget :width width :height height :padding padding
+           :position position
+           :offset-x offset-x :offset-y offset-y
+           :interactive-p (and (not disabled-p)
+                               (not (member kind
+                                            '(:label :gauge :spinner :hr :vr))))
+           :pointer-focus-p (eq kind :text-field)
+           :measure (if (member kind '(:hr :vr :spinner))
+                        (lambda (available)
+                          (declare (ignore available)) (values 0 0))
+
+                        ;; else
+                        (lambda (available)
+                          (funcall measure widget available)))))
+
+    ;; Only actionable, enabled controls report activation to the caller.
+    (and (not disabled-p)
+         (or (eq kind :button) (eq kind :tab)
+             (eq kind :list-item) (eq kind :cell))
+         (activated-p id))))
+
+(defstruct edit-state
+  "Persistent text-editor caret, selection anchor, kill buffer, and command history."
+  (cursor 0 :type integer)
+  (anchor 0 :type integer)
+  (kill "" :type string)
+  (last-command nil :type symbol))
+
+(fn (focused-widget (or null widget)) ((context context))
+  "Find the focused widget in the previous completed layout, or return NIL."
+  (when (context-root context)
+    (let ((node (gethash (context-focus context)
+                         (%lui.frame:context-ids context))))
+      (when node (element-content node)))))
+
+(fn (text-field-focused-p boolean) ((context context))
+  "Whether CONTEXT focuses an enabled text field in its current completed tree."
+  (let ((widget (focused-widget context)))
+    (and (widget-p widget) (eq (widget-kind widget) :text-field)
+         (not (widget-disabled-p widget)))))
+
+(fn (activation-focused-p boolean) ((context context))
+  "Whether CONTEXT focuses an enabled button, checkbox, tab, list item, or cell.
+Backends use this to activate controls with Space without stealing editor text."
+  (let ((widget (focused-widget context)))
+    (and (widget-p widget) (not (widget-disabled-p widget))
+         (not (null (member (widget-kind widget)
+                            '(:button :checkbox :radio :tab :list-item
+                              :cell)))))))
+
+(fn (widget-cursor symbol) ((widget widget))
+  "Choose the pointer cursor for a widget's kind, state, and orientation."
+  (when (widget-disabled-p widget)
+    (return-from widget-cursor
+      (if (eq (widget-kind widget) :cell) :default :not-allowed)))
+
+  (case (widget-kind widget)
+    (:splitter
+     (if (eq (widget-orientation widget) :horizontal)
+         :resize-vertical
+         ;; else
+         :resize-horizontal))
+    ((:label :text-field) :text)
+    ((:button :checkbox :radio :tab :slider :list-item :cell) :pointer)
+    (otherwise :default)))
+
+(fn (cursor-at symbol) ((context context) (x real) (y real))
+  "Return the cursor kind at X,Y, respecting clipping and topmost widgets.
+Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWED."
+  (let ((cursor :default))
+    (when (context-root context)
+      (walk-elements (context-root context)
+        (lambda (node)
+          (let ((widget (element-content node)))
+            (when (and (widget-p widget)
+                       (%lui.frame:contains-p (element-clip node) x y))
+              ;; Later nodes are painted above earlier nodes.
+              (setf cursor (widget-cursor widget)))))))
+    cursor))
+
+(fn (horizontal-selection-key symbol) ((key symbol) (extend boolean))
+  "Map horizontal arrows to selection-extending commands when EXTEND is true."
+  (if extend
+      (case key (:left :shift-left) (:right :shift-right) (otherwise key))
+      ;; else
+      key))
+
+(fn (readline-key symbol)
+    ((key string) &key ((control boolean) nil) ((alt boolean) nil)
+     ((shift boolean) nil))
+  "Translate modified keys to shared editor commands; NIL leaves native handling."
+  (let* ((name (string-downcase key))
+         (arrow (cond ((member name '("left" "arrowleft") :test #'string=)
+                       :word-left)
+                      ((member name '("right" "arrowright") :test #'string=)
+                       :word-right))))
+
+    ;; Handle shared clipboard and word-navigation shortcuts first.
+    (cond
+      ((and control (string= name "c")) :copy)
+      ((and control shift (string= name "a")) :select-all)
+      ((and (or control alt) arrow)
+       (if shift
+           (if (eq arrow :word-left) :shift-word-left :shift-word-right)
+           ;; else
+           arrow))
+
+      ;; Control bindings implement readline-style editing and movement.
+      (control
+       (let ((command (cdr (assoc name
+                                  '(("a" . :home) ("e" . :end)
+                                    ("b" . :left) ("f" . :right)
+                                    ("p" . :up) ("n" . :down)
+                                    ("d" . :delete) ("h" . :backspace)
+                                    ("k" . :kill-end) ("u" . :kill-start)
+                                    ("w" . :kill-word) ("y" . :yank)
+                                    ("t" . :transpose))
+                                  :test #'string=))))
+         (if shift
+             (case command
+               (:home :shift-home) (:end :shift-end)
+               (:left :shift-left) (:right :shift-right)
+               (otherwise command))
+
+             ;; else
+             command)))
+
+      ;; Alt keeps the smaller set of word movement and deletion commands.
+      (alt
+       (cdr (assoc name '(("b" . :word-left) ("f" . :word-right)
+                          ("d" . :kill-word-forward)
+                          ("backspace" . :kill-word))
+                   :test #'string=))))))
+
+(fn (line-start integer) ((text string) (cursor integer))
+  "Return the start index of the line containing POSITION in TEXT."
+  (let ((newline (position #\Newline text :end cursor :from-end t)))
+    (if newline (1+ newline) 0)))
+
+(fn (line-end integer) ((text string) (cursor integer))
+  "Return the end index of the line containing POSITION in TEXT."
+  (or (position #\Newline text :start cursor) (length text)))
+
+(fn (word-position integer)
+    ((text string) (cursor integer) (direction integer) &optional
+     ((whitespace boolean) nil))
+  "Find the next word boundary for a directional editor motion."
+  (let ((index (if (minusp direction) (1- cursor) cursor)))
+    (flet ((word-p (character)
+             (if whitespace
+                 (not (member (char-code character) '(9 10 13 32)))
+                 ;; else
+                 (alphanumericp character))))
+      (loop :while (and (<= 0 index) (< index (length text))
+                        (not (word-p (char text index))))
+            :do (incf index direction))
+      (loop :while (and (<= 0 index) (< index (length text))
+                        (word-p (char text index)))
+            :do (incf index direction)))
+    (if (minusp direction) (1+ index) index)))
+
+(fn (move-editor-cursor (values))
+    ((text string) (state edit-state) (position integer) &optional
+     ((extend boolean) nil))
+  "Clamp the caret to TEXT and collapse selection unless EXTEND is true."
+  (setf (edit-state-cursor state) (max 0 (min (length text) position)))
+  (unless extend
+    (setf (edit-state-anchor state) (edit-state-cursor state)))
+  (values))
+
+(fn (replace-editor-selection string)
+    ((text string) (state edit-state) (start integer) (end integer)
+     (replacement string))
+  "Replace START..END and collapse STATE's selection after the inserted text."
+  (setf (edit-state-cursor state) (+ start (length replacement))
+        (edit-state-anchor state) (edit-state-cursor state))
+  (concatenate 'string (subseq text 0 start) replacement (subseq text end)))
+
+(fn (kill-editor-selection string)
+    ((text string) (state edit-state) (start integer) (end integer)
+     (backward boolean))
+  "Remove START..END and append to a consecutive kill in the proper direction."
+  (when (< start end)
+    (let ((killed (subseq text start end)))
+      (setf (edit-state-kill state)
+            (if (member (edit-state-last-command state)
+                        '(:kill-end :kill-start :kill-word
+                          :kill-word-forward))
+                (if backward
+                    (concatenate 'string killed (edit-state-kill state))
+                    ;; else
+                    (concatenate 'string (edit-state-kill state) killed))
+
+                ;; else
+                killed)))
+    (setf text (replace-editor-selection text state start end "")))
+  text)
+
+(fn (move-editor-line (values))
+    ((text string) (state edit-state) (direction integer))
+  "Move to the adjacent line while preserving the column where possible."
+  (let* ((cursor (edit-state-cursor state))
+         (left (line-start text cursor))
+         (column (- cursor left))
+         (next (if (minusp direction) (1- left)
+                   ;; else
+                   (1+ (line-end text cursor)))))
+    (when (<= 0 next (length text))
+      (move-editor-cursor text state
+                          (min (line-end text next)
+                               (+ (line-start text next) column)))))
+  (values))
+
+(fn (editor-motion-p boolean)
+    ((text string) (state edit-state) (key symbol)
+     (start integer) (end integer))
+  "Apply a caret-motion KEY and report whether it was handled."
+  (let ((cursor (edit-state-cursor state)))
+    (flet ((move-to (position &optional extend)
+             (move-editor-cursor text state position extend)))
+      (case key
+        (:left (move-to (if (< start end) start (1- cursor))))
+        (:right (move-to (if (< start end) end (1+ cursor))))
+        (:shift-left (move-to (1- cursor) t))
+        (:shift-right (move-to (1+ cursor) t))
+        (:home (move-to (line-start text cursor)))
+        (:end (move-to (line-end text cursor)))
+        (:shift-home (move-to (line-start text cursor) t))
+        (:shift-end (move-to (line-end text cursor) t))
+        (:up (move-editor-line text state -1))
+        (:down (move-editor-line text state 1))
+        ((:word-left :shift-word-left)
+         (move-to (word-position text cursor -1) (eq key :shift-word-left)))
+        ((:word-right :shift-word-right)
+         (move-to (word-position text cursor 1) (eq key :shift-word-right)))
+        (:select-all
+         (setf (edit-state-anchor state) 0
+               (edit-state-cursor state) (length text)))
+        (otherwise (return-from editor-motion-p nil)))))
+  t)
+
+(fn (edit-text-key string)
+    ((text string) (state edit-state) (key symbol)
+     (start integer) (end integer))
+  "Apply a text-editing KEY, preserving kill accumulation and caret movement."
+  (when (editor-motion-p text state key start end)
+    (return-from edit-text-key text))
+  (let ((cursor (edit-state-cursor state)))
+    (case key
+      (:backspace
+       (when (= start end) (setf start (max 0 (1- cursor))))
+       (setf text (replace-editor-selection text state start end "")))
+      (:delete
+       (when (= start end) (setf end (min (length text) (1+ cursor))))
+       (setf text (replace-editor-selection text state start end "")))
+      (:kill-end
+       (when (= start end)
+         (setf end (line-end text cursor))
+         (when (and (< end (length text)) (= cursor end)) (incf end)))
+       (setf text (kill-editor-selection text state start end nil)))
+      (:kill-start
+       (when (= start end) (setf start (line-start text cursor)))
+       (setf text (kill-editor-selection text state start end t)))
+      (:kill-word
+       (when (= start end) (setf start (word-position text cursor -1 t)))
+       (setf text (kill-editor-selection text state start end t)))
+      (:kill-word-forward
+       (when (= start end) (setf end (word-position text cursor 1)))
+       (setf text (kill-editor-selection text state start end nil)))
+      (:yank
+       (setf text (replace-editor-selection
+                   text state start end (edit-state-kill state))))
+      (:transpose
+       (when (and (plusp cursor) (> (length text) 1))
+         (let ((right (min cursor (1- (length text)))))
+           (setf text (copy-seq text))
+           (rotatef (char text (1- right)) (char text right))
+           (move-editor-cursor text state (1+ right)))))
+      (otherwise nil)))
+  text)
+
+(fn (edit-text string) ((text string) (state edit-state) (events sequence))
+  "Apply ordered editor EVENTS to TEXT using mutable caret/selection STATE.
+Return the new text; preserve the editor's kill/yank state between frames.
+Events include semantic Readline keys, text insertion, and replacement changes."
+  (loop :for event-index :below (length events)
+        :for event := (elt events event-index) :do
+        (move-editor-cursor text state (edit-state-cursor state) t)
+        (setf (edit-state-anchor state)
+              (max 0 (min (length text) (edit-state-anchor state))))
+        (let ((start (min (edit-state-cursor state) (edit-state-anchor
+                                                     state)))
+              (end (max (edit-state-cursor state) (edit-state-anchor state))))
+          (case (event-kind event)
+            (:change
+             (when (stringp (event-value event))
+               (setf text (event-value event))
+               (move-editor-cursor text state (length text))))
+            (:text
+             (setf text (replace-editor-selection
+                         text state start end (event-value event))))
+            (:key
+             (setf text (edit-text-key text state (event-key event) start
+                                       end)))
+            (otherwise nil)))
+        (setf (edit-state-last-command state)
+              (and (eq (event-kind event) :key) (event-key event))))
+  text)
+
+(fn (slider-value real)
+    ((id object-id) (value real) (options list) (events (vector event)))
+  "Apply slider input, then clamp and snap the value to the configured step."
+  (let ((minimum (getf options :minimum 0))
+        (maximum (getf options :maximum 1))
+        (step (getf options :step 0.01f0))
+        (box (previous-box id)))
+    (assert (and (< minimum maximum) (> step 0)))
+    (loop :for event :across events :do
+          (case (event-kind event)
+            (:change
+             (when (realp (event-value event))
+               (setf value (event-value event))))
+            ((:press :move)
+             (when (and box (plusp (box-width box))
+                        (eq (event-button event) :primary)
+                        (or (eq (event-kind event) :press)
+                            (event-dragging-p event)))
+               (setf value
+                     (+ minimum
+                        (* (- maximum minimum)
+                           (/ (- (event-x event) (box-x box))
+                              (box-width box)))))))
+            (:key
+             (case (event-key event)
+               ((:right :up) (incf value step))
+               ((:left :down) (decf value step))
+               (:home (setf value minimum))
+               (:end (setf value maximum))
+               (otherwise nil)))
+            (otherwise nil)))
+    (max minimum
+         (min maximum
+              (+ minimum
+                 (* step (round (/ (- value minimum) step))))))))
+
+(fn (value-widget (values t boolean))
+    ((kind symbol) (style symbol) (id object-id) (value t) (text string)
+     (options list))
+  "Declare a value control, apply its current input, and return the updated value.
+KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword plist."
+  (let ((original value)
+        (events (if (getf options :disabled-p) #() (events-for id))))
+
+    ;; Apply queued input to the supplied or retained value before drawing.
+    (ecase kind
+      (:checkbox
+       (when (and (not (getf options :disabled-p)) (activated-p id))
+         (setf value (not value)))
+       (loop :for event :across events :do
+             (when (eq (event-kind event) :change)
+               (setf value (not (null (event-value event)))))))
+      (:radio
+       (when (and (not (getf options :disabled-p)) (activated-p id))
+         (setf value (getf options :choice)))
+       (loop :for event :across events :do
+             (when (eq (event-kind event) :change)
+               (setf value (event-value event)))))
+      (:slider
+       (setf value (slider-value id value options events)))
+      (:text-field
+       (let ((state
+              (or (gethash id (context-state *context*))
+                  (setf (gethash id (context-state *context*))
+                        (make-edit-state :cursor (length value)
+                                         :anchor (length value))))))
+         (setf value (edit-text value state events)))))
+
+    ;; Present radio choices as selected state, without leaking :choice.
+    (apply #'declare-widget kind style id text
+           :value (if (eq kind :radio)
+                      (equal value (getf options :choice))
+                      ;; else
+                      value)
+           (if (eq kind :radio)
+               (loop :for (key option) :on options :by #'cddr
+                     :unless (eq key :choice) :append (list key option))
+
+               ;; else
+               options))
+
+    ;; Report changes against the original model value, not display state.
+    (values value (not (equal original value)))))
+
+
+(defstruct scrollbar-state
+  node
+  grab)
+
+(fn (scrollbar-thumb box) ((node element))
+  "Return the scrollbar thumb's solved screen bounds from its true extent."
+  (let* ((track (element-box node))
+         (value (widget-value (element-content node)))
+         (offset (first value))
+         (viewport (second value))
+         (extent (third value))
+         (height (min (box-height track)
+                      (max (* 2 (box-width track))
+                           (* (box-height track) (/ viewport extent))))))
+    (make-box :x (box-x track) :width (box-width track) :height height
+              :y (+ (box-y track)
+                    (* (- (box-height track) height)
+                       (/ offset (max 1 (- extent viewport))))))))
+
+(fn (scrollbar-input t) ((id object-id) (owner object-id))
+  "Translate scrollbar dragging, clicking, and keys into a scroll position."
+  (let* ((events (events-for id))
+         (state (when (plusp (length events)) (gethash id (context-state
+                                                           *context*))))
+         (old (when state (scrollbar-state-node state))))
+
+    ;; Use the previous solved track and thumb for pointer calculations.
+    (when old
+      (let* ((value (widget-value (element-content old)))
+             (offset (nth-value 1 (scroll-position owner)))
+             (handled nil)
+             (page (second value))
+             (limit (- (third value) page))
+             (track (element-box old))
+             (thumb (scrollbar-thumb old))
+             (travel (- (box-height track) (box-height thumb))))
+
+        ;; Process grab, drag, release, and keyboard movement in arrival order.
+        (loop :for event :across events :do
+              (case (event-kind event)
+                (:press
+                 (when (eq (event-button event) :primary)
+                   (setf handled t (scrollbar-state-grab state) nil)
+                   (if (<= (box-y thumb) (event-y event)
+                           (box-bottom thumb))
+                       (setf (scrollbar-state-grab state)
+                             (- (event-y event) (box-y thumb)))
+
+                       ;; else
+                       (incf offset (if (< (event-y event) (box-y thumb))
+                                        (- page)
+                                        ;; else
+                                        page)))))
+                (:move
+                 (when (and (scrollbar-state-grab state) (plusp travel)
+                            (event-dragging-p event))
+                   (setf handled t offset
+                         (* limit (/ (- (event-y event) (box-y track)
+                                        (scrollbar-state-grab state))
+                                     travel)))))
+                ((:release :cancel) (setf (scrollbar-state-grab state) nil))
+                (:key
+                 (when (member (event-key event)
+                               '(:up :left :down :right :page-up :page-down
+                                 :home :end))
+                   (setf handled t))
+                 (case (event-key event)
+                   ((:up :left) (decf offset (max 1 (/ page 10))))
+                   ((:down :right) (incf offset (max 1 (/ page 10))))
+                   (:page-up (decf offset page))
+                   (:page-down (incf offset page))
+                   (:home (setf offset 0))
+                   (:end (setf offset limit)) (otherwise nil))) (otherwise
+                 nil))
+              (setf offset (max 0 (min limit offset))))
+
+        ;; Commit the bounded offset once after the whole input batch.
+        (when handled (scroll-to owner (scroll-position owner) offset))))))
+
+(fn (decorate-scrollbar (or null element)) ((owner element) (id object-id))
+  "Attach scrollbar interaction and visuals to an overflowing container."
+  (when (plusp (element-scroll-limit-y owner))
+    (let* ((bounds (element-box owner))
+           (padding (element-padding owner))
+           (width (scroll-gutter owner))
+           (height (max 0 (- (box-height bounds) (* 2 padding))))
+           (widget (element-content owner))
+           (box (make-box :x (- (box-right bounds)
+                                padding width)
+                          :y (+ (box-y bounds) padding)
+                          :width width :height height))
+           (node (make-element
+                  :id id :box box :clip (intersect-boxes box
+                                                         (element-clip owner))
+                  :position :absolute :interactive-p t :pointer-focus-p t
+                  :content
+                  (make-widget
+                   :kind :scrollbar :style (widget-style widget)
+                   :palette (widget-palette widget)
+                   :text "Scroll" :opacity 1 :radius 0 :frost 0
+                   :background (widget-background widget)
+                   :foreground (widget-foreground widget)
+                   :accent (widget-accent widget)
+                   :value (list (element-scroll-y owner) height
+                                (+ height (element-scroll-limit-y owner))))))
+           (*parent* owner)
+           (state (or (gethash id (context-state *context*))
+                      (setf (gethash id (context-state *context*))
+                            (make-scrollbar-state)))))
+      (setf (scrollbar-state-node state) node)
+      (emit node))))
+
+(fn (declare-panel element) ((style symbol) (options list))
+  "Declare a styled layout container without introducing retained widgets."
+  (let ((appearance nil)
+        (layout nil))
+    (do ((tail options (cddr tail))) ((null tail))
+      (let ((key (car tail))
+            (value (cadr tail)))
+        (case key
+          ((:palette :foreground :background :radius :frost :opacity :accent
+                     :font-size :font-family :font-weight :painter
+                     :terminal-label :terminal-border
+                     :accessible-name)
+           (push key appearance)
+           (push value appearance))
+          (otherwise
+           (push key layout)
+           (push value layout)))))
+    (setf appearance (nreverse appearance) layout (nreverse layout))
+    (let* ((node (apply #'make-element
+                        :content (apply #'make-widget :kind :panel
+                                        :style style appearance)
+                        layout))
+           (enabled (and (element-scroll-p node)
+                         (getf options :scrollbar-p t)))
+           (width (getf options :scrollbar-width
+                        (if (context-text-mode-p *context*) 1 12))))
+      (when (and enabled (plusp width))
+        (setf (element-scrollbar-p node) t
+              (element-scrollbar-width node) width)
+        (let ((id (list :lui.scrollbar (element-id node))))
+          (scrollbar-input id (element-id node))
+          (push (lambda () (decorate-scrollbar node id))
+                (%lui.frame:context-after-layout *context*))))
+      (emit node))))

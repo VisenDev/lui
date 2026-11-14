@@ -1,7 +1,7 @@
-(defpackage #:lui.tests.docs
-  (:use #:cl #:lui.layout #:lui.frame #:lui.widgets #:lui.tests.support)
+(defpackage #:%lui.tests.docs
+  (:use #:cl #:%lui.layout #:%lui.frame #:%lui.widgets #:%lui.tests.support)
   (:export #:run-tests))
-(in-package #:lui.tests.docs)
+(in-package #:%lui.tests.docs)
 
 (defun nodes (context predicate)
   (let ((result nil))
@@ -21,23 +21,41 @@
   (with-frame (context 100 40 :events events) (funcall draw)))
 
 (defun node-with-id (context id)
-  (first (nodes context (lambda (node) (equal id (element-id node))))))
+  (first (nodes context (lambda (node) (equal id (lui:widget-key (element-id
+                node)))))))
 
 (defun test-live-widgets ()
   (let* ((lui:*unit* 1) (context (make-test-context))
-         (draw (lui.docs:make-docs)) (other (lui.docs:make-docs))
+         (draw (%lui.docs:make-docs)) (other (%lui.docs:make-docs))
          (second (make-test-context)))
     (labels ((widget (id)
                (element-content (node-with-id context id)))
              (activate (id)
                (frame context draw (make-event :kind :activate :id id))))
       (frame context draw)
-      (assert (has-label context "Terminal: event-driven rendering"))
+      (assert (has-label context "FPS: measuring… · Layout: measuring…"))
+      ;; Cadence includes waits; layout time averages only measured work.
+      (let ((stats (%lui.frame::make-frame-statistics)))
+        (setf (%lui.frame::context-statistics context) stats)
+        (%lui.frame::record-frame-statistics stats 2 0)
+        (%lui.frame::record-frame-statistics stats 5 1)
+        (frame context draw)
+        (assert (has-label context "1.0 FPS · 3.5 ms/frame (layout)"))
+        ;; Once full, the rolling window discards the older samples.
+        (setf stats (%lui.frame::make-frame-statistics)
+              (%lui.frame::context-statistics context) stats)
+        (%lui.frame::record-frame-statistics stats 100 0)
+        (dotimes (i 30)
+          (%lui.frame::record-frame-statistics stats 4 (+ i 2)))
+        (frame context draw)
+        (assert (has-label context "1.0 FPS · 4.0 ms/frame (layout)")))
       ;; Symbols and details each retain an independent tall viewport.
       (let ((list (element-box (node-with-id context :docs-entries)))
             (detail (element-box (node-with-id context :docs-detail))))
         (assert (> (box-height list) 20))
         (assert (>= (box-x detail) (+ (box-x list) (box-width list)))))
+      (activate '(:docs-guide :positioning))
+      (assert (has-label context "Manual positioning"))
       (activate '(:docs-guide :previews))
       (dolist (kind '(:label :button :tab :checkbox :slider :text-field
                      :cell :list-item :gauge :canvas :panel))
@@ -78,8 +96,11 @@
       (dolist (palette '(:light :dark :ocean :forest :default))
         (activate :docs-palette)
         (frame context draw)
-        (assert (has-label context (format nil "Palette: ~A" (string-capitalize (symbol-name palette)))))
-        (assert (string= "Changed" (widget-value (widget :docs-preview-text)))))
+        (assert (has-label context (format nil "Palette: ~A"
+                (string-capitalize (symbol-name palette)))))
+        (assert (string= "Changed" (widget-value (widget
+                  :docs-preview-text)))))
+      (frame second other)
       (frame second other (make-event :kind :activate
                                       :id '(:docs-guide :previews)))
       (assert (has-label second "Button clicks: 0"))
@@ -90,9 +111,9 @@
 
 (defun test-narrow-reference ()
   (let* ((lui:*unit* 1) (context (make-test-context))
-         (draw (lui.docs:make-docs
+         (draw (%lui.docs:make-docs
                 :entries '((:package "lui" :name "BUTTON" :kind :function
-                            :signature "(button id text &optional options)"
+                              :signature "(button text &optional options)"
                             :documentation "Return activation.")))))
     (labels ((narrow (&rest events)
                (with-frame (context 60 40 :events events) (funcall draw))))
@@ -116,12 +137,12 @@
 
 (defun test-symbol-wrapping ()
   (assert (equal (format nil "lui:AVAILABLE-~%BACKENDS")
-                 (lui.docs::wrap-symbol "lui:AVAILABLE-BACKENDS" 18)))
+                 (%lui.docs::wrap-symbol "lui:AVAILABLE-BACKENDS" 18)))
   (assert (equal (format nil "abcdef~%ghij")
-                 (lui.docs::wrap-symbol "abcdefghij" 6)))
+                 (%lui.docs::wrap-symbol "abcdefghij" 6)))
   (let* ((lui:*unit* 8)
          (title "lui:AN-EXCEPTIONALLY-LONG-PUBLIC-SYMBOL-WITHOUT-TRUNCATION")
-         (draw (lui.docs:make-docs
+         (draw (%lui.docs:make-docs
                 :entries (list (list :package "lui" :name (subseq title 4)
                                      :kind :function :signature "()"
                                      :documentation "A long entry."))))
@@ -161,10 +182,11 @@
 
 (defun test-scrolled-selection ()
   (let* ((lui:*unit* 1) (context (make-test-context))
-         (draw (lui.docs:make-docs
+         (draw (%lui.docs:make-docs
                 :entries
                 (loop :for i :below 100
-                      :collect (list :package "lui" :name (format nil "ROW~D" i)
+                      :collect (list :package "lui" :name (format nil "ROW~D"
+                  i)
                                      :kind :function :signature "()"
                                      :documentation "An entry.")))))
     (frame context draw)
@@ -179,7 +201,8 @@
       (frame context draw
              (make-event :kind :activate :id '(:docs-entry 1))
              (make-event :kind :scroll :x (+ (box-x box) 1)
-                         :y (+ (box-y box) 1) :value 100 :scroll-mode :immediate)))
+                         :y (+ (box-y box) 1) :value 100 :scroll-mode
+            :immediate)))
     (assert (null (node-with-id context '(:docs-entry 1))))
     (assert (has-label context "lui:ROW1"))
     (frame context draw (make-event :kind :move :x 99 :y 39))
@@ -188,9 +211,9 @@
 (defun test-debugger-guide ()
   (let* ((lui:*unit* 1) (context (make-test-context))
          (other (make-test-context))
-         (draw (lui.docs:make-docs)) (second (lui.docs:make-docs)))
+         (draw (%lui.docs:make-docs)) (second (%lui.docs:make-docs)))
     (frame context draw)
-    (assert (string= "Show debugger"
+    (assert (string= "Show Debugger"
                      (widget-text
                       (element-content (node-with-id context :docs-debug)))))
     (frame context draw
@@ -211,7 +234,25 @@
     (frame context draw (make-event :kind :activate :id :docs-debug))
     (assert (lui.debug:debugger-enabled-p context))))
 
+(defun test-shared-gallery ()
+  (let ((lui:*unit* 1)
+        (context (make-test-context))
+        (draw (%lui.docs:make-docs)))
+    (frame context draw)
+    (frame context draw (make-event :kind :activate :id :docs-demo))
+    (frame context draw)
+    (assert (has-label context "LUI feature gallery"))
+    (dolist (page '(:controls :editing :layout :scroll :styles :menus :seven))
+      (frame context draw
+             (make-event :kind :activate :id (list :page page)))
+      (frame context draw)
+      (assert (node-with-id context (list :body page))))
+    (frame context draw (make-event :kind :activate :id :docs-back))
+    (frame context draw)
+    (assert (has-label context "Getting started"))))
+
 (defun run-tests ()
+  (test-shared-gallery)
   (test-debugger-guide)
   (test-scrolled-selection)
   (test-symbol-wrapping)
@@ -229,8 +270,8 @@
                            (format nil "~{~A ~}"
                                    (make-list 1000 :initial-element "Long"))
                            (format nil "Documentation ~D" index)))))
-         (draw (lui.docs:make-docs :entries entries))
-         (other (lui.docs:make-docs :entries entries))
+         (draw (%lui.docs:make-docs :entries entries))
+         (other (%lui.docs:make-docs :entries entries))
          (context (make-test-context))
          (second (make-test-context)))
     (frame context draw)
@@ -243,14 +284,16 @@
     (assert (plusp (element-scroll-limit-y
                    (first (nodes context
                                  (lambda (node)
-                                   (eq :docs-detail (element-id node))))))))
+                                (eq :docs-detail (lui:widget-key
+                                                   (element-id node)))))))))
     (let ((rows (nodes context
                        (lambda (node)
-                         (let ((id (element-id node)))
+                    (let ((id (lui:widget-key (element-id node))))
                            (and (consp id) (eq (first id) :docs-entry)))))))
       ;; A large reference declares only a viewport of actual control rows.
       (assert (< 0 (length rows) 20))
-      (assert (every (lambda (node) (evenp (second (element-id node))))
+      (assert (every (lambda (node) (evenp (second (lui:widget-key
+                                                     (element-id node)))))
                      rows)))
     (frame context draw (make-event :kind :change :id :docs-search
                                     :value "Documentation 198"))
@@ -263,7 +306,8 @@
     (assert (has-label second "Getting started"))
     (assert (not (has-label second "No matching entries."))))
   (let ((lui:*unit* 1) (context (make-test-context))
-        (draw (lui.docs:make-docs :entries nil)))
+        (draw (%lui.docs:make-docs :entries nil)))
+    (frame context draw)
     (frame context draw (make-event :kind :activate
                                     :id '(:docs-package nil)))
     (assert (has-label context "0 API entries"))

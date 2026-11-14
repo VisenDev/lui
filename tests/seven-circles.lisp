@@ -1,27 +1,27 @@
-(defpackage #:lui.tests.seven.circles
-  (:use #:cl #:lui.fn #:lui #:lui.layout #:lui.frame #:lui.tests.support
-        #:lui.seven.model)
+(defpackage #:%lui.tests.seven.circles
+  (:use #:cl #:%lui.fn #:lui #:%lui.layout #:%lui.frame #:%lui.tests.support
+        #:%lui.seven.model)
   (:export #:run-tests))
-(in-package #:lui.tests.seven.circles)
+(in-package #:%lui.tests.seven.circles)
 
 (fn run-tests ()
   (let* ((state
-           (lui.example.seven.circles:make-state))
-         (model (lui.example.seven.circles:state-model
+           (%lui.example.seven.circles:make-state))
+         (model (%lui.example.seven.circles:state-model
                  state))
          (context (make-test-context)) (*unit* 2))
     (labels ((frame (&rest events)
                (with-frame (context 240 100 :events events)
-                 (lui.example.seven.circles:draw state)))
+                 (%lui.example.seven.circles:draw state)))
              (node (id)
                (let ((found nil))
                  (walk-elements (context-root context)
                                 (lambda (node)
-                                  (when (equal id (element-id node))
+                     (when (equal id (lui:widget-key (element-id node)))
                                     (setf found node))))
                  found))
              (disabled (id)
-               (lui.widgets:widget-disabled-p (element-content (node id))))
+               (%lui.widgets:widget-disabled-p (element-content (node id))))
              (activate (id)
                (frame (make-event :kind :activate :id id))))
       (frame)
@@ -36,7 +36,7 @@
           (frame (make-event :kind :press :x (+ x 30) :y y))
           (assert (= 2 (length (circles-items model))))
           (frame (make-event :kind :move :x x :y y))
-          (let ((command (first (lui.widgets:widget-value
+          (let ((command (first (%lui.widgets:widget-value
                                  (element-content (node :circle-canvas))))))
             (assert (= 20 (second command) (third command)))
             (assert (= 5 (fourth command)))
@@ -45,8 +45,9 @@
           (frame (make-event :kind :press :x x :y y))
           (assert (= 2 (length (circles-items model))))
           (frame (make-event :kind :press :button :secondary :x x :y y))
-          (assert (lui.example.seven.circles:modal-p state))
-          (assert (eq :circle-diameter (context-focus context)))
+          (assert (%lui.example.seven.circles:modal-p state))
+          (assert (eq :circle-diameter (lui:widget-key (context-focus
+                    context))))
           (assert (disabled :circle-canvas))
           (assert (disabled :circle-undo))
           (assert (disabled :circle-redo))
@@ -55,9 +56,10 @@
           (assert (= 7 (circle-radius circle)))
           (assert (= 2 (length (circles-undo model))))
           (activate :circle-apply)
-          (assert (not (lui.example.seven.circles:modal-p state)))
+          (assert (not (%lui.example.seven.circles:modal-p state)))
           (frame)
-          (assert (eq :circle-canvas (context-focus context)))
+          (assert (eq :circle-canvas (lui:widget-key (context-focus
+                    context))))
           (assert (= 3 (length (circles-undo model))))
           (frame)
           (activate :circle-undo)
@@ -67,7 +69,7 @@
           (frame (make-event :kind :press :button :secondary :x x :y y))
           (frame (make-event :kind :change :id :circle-diameter :value 18))
           (frame (make-event :kind :key :id :circle-diameter :key :escape))
-          (assert (not (lui.example.seven.circles:modal-p state)))
+          (assert (not (%lui.example.seven.circles:modal-p state)))
           (assert (= 7 (circle-radius circle)))
           (assert (= 3 (length (circles-undo model))))
           (activate :circle-undo)

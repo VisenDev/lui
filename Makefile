@@ -9,12 +9,9 @@ RUNNER ?=
 RUN_ARGS ?=
 PYTHON ?= python3
 JSCL ?= $(HOME)/clone/jscl
-MIRICL ?= $(HOME)/clone/miricl
-MIRICL_RUNTIME ?= $(MIRICL)
-WEB_RUNTIME ?= jscl
-MIRICL_MODE ?= native
-export MIRICL MIRICL_RUNTIME MIRICL_MODE
-WEB_DIRECTORY := $(if $(filter miricl,$(WEB_RUNTIME)),build/miricl,build)
+ECL ?= $(if $(wildcard build/deps/ecl-host/bin/ecl),$(CURDIR)/build/deps/ecl-host/bin/ecl,ecl)
+EMCC ?= emcc
+ECL_WASM ?= $(CURDIR)/build/deps/ecl-wasm
 PORT ?= 8000
 BENCH_FRAMES ?= 240
 WARMUP ?= 30
@@ -29,23 +26,26 @@ ASDF_OUTPUT_TRANSLATIONS ?= (:output-translations (t ("$(CURDIR)/build/cache/" :
 export ASDF_OUTPUT_TRANSLATIONS
 
 NATIVE_PLATFORMS := terminal x11 wayland win32 cocoa
-TEST_PLATFORMS := $(NATIVE_PLATFORMS) web core native gl
+TEST_PLATFORMS := $(NATIVE_PLATFORMS) web web-ecl core native gl
 SOURCES := $(wildcard src/*.lisp examples/*.lisp) lui.asd \
 	scripts/setup.lisp scripts/build.lisp
 SUFFIX := $(if $(filter win32,$(PLATFORM)),.exe,)
 DEMO := build/bin/demo-$(PLATFORM)$(SUFFIX)
+MANUAL_DEMO := build/bin/manual-demo-$(PLATFORM)$(SUFFIX)
 
-DOC_SOURCES := $(wildcard src/*.lisp) examples/docs.lisp lui.asd
+DOC_SOURCES := $(wildcard src/*.lisp examples/*.lisp) lui.asd
 DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
-.PHONY: docs docs-html docs-pages test-docs test-terminal-parity help check-platform build demo pdf pdf-demo test test-platform \
+.PHONY: manual-demo docs docs-html docs-pages test-docs test-terminal-parity help check-platform build demo pdf pdf-demo test test-platform \
 	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform
 help:
 	@echo 'make docs                 Build and open the native documentation browser'
-	@echo 'make docs-html            Build standalone build/docs.html with JSCL'
+	@echo 'make docs-html            Build standalone build/docs.html with ECL/wasm'
+	@echo 'make docs-miricl          Build experimental standalone MiriCL docs'
 	@echo 'make docs-pages           Refresh docs/index.html from the standalone page'
 	@echo 'make demo                 Build and run the tabbed demo executable'
+	@echo 'make manual-demo          Run the explicit-position-only native demo'
 	@echo 'make build                Save the demo executable in build/bin/'
 	@echo 'make pdf                  Build and open build/pdf-demo.pdf'
 	@echo 'make test                 Test platform; progress/results in build/logs/'
@@ -55,9 +55,9 @@ help:
 	@echo 'make loc                  Report source line counts with cloc'
 	@echo 'make web-demo             Build and serve the browser demo at /'
 	@echo 'make terminal-demo        Build and run the terminal demo'
-	@echo 'make web-build            Build the browser demo (WEB_RUNTIME=jscl|miricl)'
-	@echo 'MiriCL: MIRICL_RUNTIME points to built miricl.js and miricl.wasm'
-	@echo 'PLATFORM=terminal|x11|wayland|win32|cocoa|web (auto-detected by default)'
+	@echo 'make web-build            Build the JSCL browser demo'
+	@echo 'make web-ecl-build        Compile the ECL / Emscripten browser demo'
+	@echo 'PLATFORM=terminal|x11|wayland|win32|cocoa|web|web-ecl (auto-detected by default)'
 	@echo 'Test-only platforms: core native gl. Options: SBCL, SBCL_FLAGS, JSCL, PYTHON'
 
 check-platform:
@@ -67,11 +67,23 @@ check-platform:
 ifeq ($(PLATFORM),web)
 build: web-build
 demo: web-demo
+else ifeq ($(PLATFORM),web-ecl)
+build: web-ecl-build
+demo: web-ecl-demo
 else
 build: $(DEMO)
 demo: $(DEMO)
 	$(RUNNER) "$(DEMO)" $(RUN_ARGS)
 endif
+
+manual-demo: $(MANUAL_DEMO)
+	$(RUNNER) "$(MANUAL_DEMO)" $(RUN_ARGS)
+
+$(MANUAL_DEMO): $(SOURCES) | check-platform
+	@case ' $(NATIVE_PLATFORMS) ' in *' $(PLATFORM) '*) ;; \
+	  *) echo 'manual-demo needs a native PLATFORM (including terminal)' >&2; exit 2;; esac
+	@mkdir -p build/bin
+	LUI_DEMO=manual-demo LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build.lisp
 
 pdf pdf-demo: build/pdf-demo.pdf
 ifeq ($(OS),Windows_NT)
@@ -96,10 +108,10 @@ docs: $(DOC_BIN)
 test-docs: build/docs.html
 	LUI_DOCS_LIBRARY_ONLY=1 $(SBCL) $(SBCL_FLAGS) --load scripts/setup.lisp \
 		--load scripts/docs-data.lisp --load tests/docs-data.lisp \
-		--eval '(lui.tests.docs-data:run-tests)' \
-		--eval '(asdf:load-system "lui/debug")' \
+		--eval '(%lui.tests.docs-data:run-tests)' \
+		--eval '(asdf:load-system "lui/demo")' \
 		--load examples/docs.lisp --load tests/support.lisp --load tests/docs.lisp \
-		--eval '(lui.tests.docs:run-tests)'
+		--eval '(%lui.tests.docs:run-tests)'
 	$(PYTHON) -u tests/docs-web.py
 
 docs-html: build/docs.html
@@ -116,9 +128,13 @@ build/jscl.js: $(JSCL)/dist/jscl.js
 	@mkdir -p build
 	cp "$<" "$@"
 
-build/docs.html: $(DOC_DATA) $(DOC_SOURCES) scripts/build-docs-web.lisp \
-		build/jscl.js $(JSCL)/dist/jscl-node.js
-	node "$(JSCL)/dist/jscl-node.js" scripts/build-docs-web.lisp
+build/docs.html: $(DOC_DATA) $(DOC_SOURCES) scripts/start-docs-web.lisp \
+		scripts/build-web-ecl.sh scripts/build-web-ecl.lisp \
+		scripts/ecl-web-reader.lisp scripts/package-web-ecl.py \
+		src/backend-ecl-emscripten.lisp scripts/ecl-web.c scripts/ecl-web.js \
+		examples/web-ecl.html
+	ECL="$(ECL)" EMCC="$(EMCC)" ECL_WASM="$(ECL_WASM)" PYTHON="$(PYTHON)" \
+		bash scripts/build-web-ecl.sh docs
 
 $(DOC_BIN): $(DOC_DATA) $(DOC_SOURCES) scripts/build-docs.lisp
 	@mkdir -p build/bin
@@ -130,22 +146,29 @@ test-macos:
 terminal-demo:
 	$(MAKE) --no-print-directory demo PLATFORM=terminal
 
-ifeq ($(WEB_RUNTIME),miricl)
-web-build:
-	node scripts/build-miricl.mjs
-else ifeq ($(WEB_RUNTIME),jscl)
 web-build: build/jscl.js
 	@mkdir -p build
 	node "$(JSCL)/dist/jscl-node.js" scripts/build-web.lisp
 	sed 's#../build/##g' examples/web.html > build/index.html
-else
-web-build:
-	@echo 'Unknown WEB_RUNTIME=$(WEB_RUNTIME); use jscl or miricl' >&2; exit 2
-endif
 
 web-demo: web-build
 	@echo 'Open http://localhost:$(PORT)/'
-	$(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 --directory $(WEB_DIRECTORY)
+	$(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 --directory build
+
+.PHONY: web-ecl-toolchain web-ecl-build web-ecl-demo benchmark-web-parity
+benchmark-web-parity:
+	$(PYTHON) -u tests/benchmark-web-parity.py
+
+web-ecl-toolchain:
+	bash scripts/build-ecl-toolchain.sh
+
+web-ecl-build:
+	ECL="$(ECL)" EMCC="$(EMCC)" ECL_WASM="$(ECL_WASM)" PYTHON="$(PYTHON)" \
+		bash scripts/build-web-ecl.sh
+
+web-ecl-demo: web-ecl-build
+	@echo 'Open http://localhost:$(PORT)/'
+	$(PYTHON) -m http.server $(PORT) --bind 127.0.0.1 --directory build/web-ecl
 
 test benchmark: check-platform
 	@mkdir -p build/logs
@@ -172,18 +195,17 @@ test-terminal-parity:
 
 test-platform: check-platform
 ifeq ($(PLATFORM),web)
-ifeq ($(WEB_RUNTIME),miricl)
-	$(MAKE) --no-print-directory web-build
-	node tests/miricl.mjs --bundle
-else
 	@echo '[JSCL core] RUN'
 	node "$(JSCL)/dist/jscl-node.js" tests/run.lisp
 	@echo '[JSCL core] PASS'
 	$(MAKE) --no-print-directory web-build
-endif
 	@echo '[browser] RUN'
-	LUI_WEB_PAGE=/$(WEB_DIRECTORY)/index.html $(PYTHON) -u tests/web.py
+	$(PYTHON) -u tests/web.py
 	@echo '[browser] PASS'
+else ifeq ($(PLATFORM),web-ecl)
+	ECL_WEB_APP=tests/web-ecl-app.lisp $(MAKE) --no-print-directory web-ecl-build
+	$(PYTHON) -u tests/web-ecl.py
+	$(PYTHON) -u tests/web-ecl-startup.py
 else
 	$(MAKE) --no-print-directory test-core
 ifneq ($(filter $(PLATFORM),x11 wayland win32 cocoa gl native),)
@@ -229,9 +251,34 @@ loc:
 
 benchmark-platform: check-platform
 ifeq ($(PLATFORM),web)
-	@test "$(WEB_RUNTIME)" = jscl || { echo "The web benchmark currently requires WEB_RUNTIME=jscl" >&2; exit 2; }
 	$(MAKE) --no-print-directory web-build
 	$(PYTHON) -u tests/benchmark-web.py
+else ifeq ($(PLATFORM),web-ecl)
+	$(MAKE) --no-print-directory web-build web-ecl-build
+	$(PYTHON) -u tests/benchmark-web-parity.py
 else
 	$(SBCL) $(SBCL_FLAGS) --load scripts/benchmark.lisp
 endif
+
+.PHONY: lint
+lint:
+	$(PYTHON) scripts/lint.py
+
+# Experimental MiriCL builds require a matching, prebuilt runtime distribution.
+MIRICL ?= $(HOME)/clone/miricl
+MIRICL_RUNTIME ?= $(if $(wildcard build/deps/miricl-runtime/miricl.js),$(CURDIR)/build/deps/miricl-runtime,$(MIRICL))
+export MIRICL MIRICL_RUNTIME
+.PHONY: web-miricl-build docs-miricl
+web-miricl-build:
+	node scripts/build-miricl.mjs gallery
+
+docs-miricl: $(DOC_DATA)
+	node scripts/build-miricl.mjs docs
+
+.PHONY: test-miricl benchmark-docs-parity
+test-miricl: docs-miricl
+	node tests/miricl.mjs
+	LUI_DOCS_PAGE=build/docs-miricl/index.html $(PYTHON) tests/docs-web.py
+
+benchmark-docs-parity:
+	$(PYTHON) tests/benchmark-docs-parity.py

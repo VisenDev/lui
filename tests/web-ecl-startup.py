@@ -1,0 +1,101 @@
+"""Check both ECL HTML entry points and visible asset-loading failures."""
+import functools
+import http.server
+from pathlib import Path
+import shutil
+import threading
+import tempfile
+import unittest
+
+from playwright.sync_api import sync_playwright, expect
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class QuietHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+
+class StartupTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.server = http.server.ThreadingHTTPServer(
+            ("127.0.0.1", 0), functools.partial(QuietHandler, directory=ROOT))
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.playwright = sync_playwright().start()
+        cls.browser = cls.playwright.chromium.launch(
+            executable_path=shutil.which("chromium-browser") or shutil.which("chromium"),
+            args=["--no-sandbox"])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.browser.close()
+        cls.playwright.stop()
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join()
+
+    def url(self, path):
+        return f"http://127.0.0.1:{self.server.server_port}/{path}"
+
+    def test_both_entry_points_start(self):
+        paths = ("examples/web-ecl.html", "build/web-ecl/index.html")
+        urls = [self.url(path) for path in paths]
+        urls += [(ROOT / path).as_uri() for path in paths]
+        for url in urls:
+            with self.subTest(url=url):
+                page = self.browser.new_page()
+                errors = []
+                wasm_requests = []
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                page.on("request", lambda request: wasm_requests.append(request.url)
+                        if request.url.endswith(".wasm") else None)
+                try:
+                    page.goto(url)
+                    expect(page.get_by_role("button", name="Say hello", exact=True)).to_have_count(
+                        1, timeout=60000)
+                    expect(page.locator("#loading")).to_have_count(0)
+                    self.assertEqual(errors, [])
+                    self.assertEqual(wasm_requests, [])
+                finally:
+                    page.close()
+
+    def test_missing_assets_show_errors(self):
+        for asset in ("lui.js",):
+            with self.subTest(asset=asset):
+                page = self.browser.new_page()
+                try:
+                    page.route("**/" + asset, lambda route: route.abort())
+                    page.goto(self.url("examples/web-ecl.html"))
+                    expect(page.get_by_role("alert")).to_contain_text(
+                        "LUI could not start:", timeout=15000)
+                    expect(page.locator("#loading")).not_to_contain_text("Loading LUI")
+                finally:
+                    page.close()
+
+    def test_standalone_html_without_network_or_companion_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            standalone = Path(directory) / "lui.html"
+            shutil.copyfile(ROOT / "build/web-ecl/index.html", standalone)
+            context = self.browser.new_context(offline=True)
+            page = context.new_page()
+            requests, errors = [], []
+            page.on("request", lambda request: requests.append(request.url))
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            try:
+                page.goto(standalone.as_uri())
+                button = page.get_by_role("button", name="Say hello", exact=True)
+                expect(button).to_have_count(1, timeout=60000)
+                button.evaluate("button => button.click()")
+                expect(page.get_by_text("Hello Common Lisp (1)", exact=True)).to_have_count(1)
+                self.assertEqual(page.locator("script[src]").count(), 0)
+                self.assertEqual(requests, [standalone.as_uri()])
+                self.assertEqual(errors, [])
+            finally:
+                context.close()
+
+
+if __name__ == "__main__":
+    unittest.main()

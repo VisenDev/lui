@@ -1,5 +1,5 @@
-(defpackage #:lui.benchmark (:use #:cl))
-(in-package #:lui.benchmark)
+(defpackage #:%lui.benchmark (:use #:cl))
+(in-package #:%lui.benchmark)
 
 (load "scripts/setup.lisp")
 
@@ -13,15 +13,15 @@
                      (concatenate 'string "lui/" *platform*)))
 (asdf:load-system "lui/demo")
 
-(defparameter *gallery* (lui.example:make-gallery))
+(defparameter *gallery* (%lui.example.demo:make-gallery))
 
 (defparameter *cases*
-  (loop :for toolkit :in lui.example::*toolkits*
-        :append (loop :for (page title) :in lui.example::*pages*
+  (loop :for toolkit :in %lui.example.demo::*toolkits*
+        :append (loop :for (page title) :in %lui.example.demo::*pages*
                       :append
                       (if (eq page :seven)
                           (loop :for (task label)
-                                  :in lui.example.seven::*tasks*
+                                  :in %lui.example.seven::*tasks*
                                 :collect (list toolkit page task))
                           (list (list toolkit page))))))
 (let ((name (uiop:getenvp "BENCH_CASE")))
@@ -82,11 +82,11 @@
                        (floor (* (- index *warmup*) (length *cases*))
                               *frames*))
                    *cases*)))
-    (setf (lui.example::gallery-toolkit *gallery*) (first case)
-          (lui.example::gallery-page *gallery*) (second case))
+    (setf (%lui.example.demo::gallery-toolkit *gallery*) (first case)
+          (%lui.example.demo::gallery-page *gallery*) (second case))
     (when (third case)
-      (setf (lui.example.seven:state-task
-             (lui.example::gallery-seven *gallery*))
+      (setf (%lui.example.seven:state-task
+             (%lui.example.demo::gallery-seven *gallery*))
             (third case)))
     case))
 
@@ -114,8 +114,10 @@
                    started now))
            (incf index)
            ;; Case selection and previous-sample storage are excluded.
-           (multiple-value-setq (bytes gc-time) (counters))
-           (lui.example:draw *gallery*)))
+           (multiple-value-bind (current-bytes current-gc-time) (counters)
+             (setf bytes current-bytes
+                   gc-time current-gc-time))
+           (%lui.example.demo:draw *gallery*)))
        :backend (intern (string-upcase *platform*) :keyword)
        :min-fps 240 :max-fps 240
        :title "LUI benchmark" :width *width* :height *height*))))
@@ -129,31 +131,33 @@
         (when (>= index *warmup*)
           (sample-since case (- (ticks) started) bytes gc-time))))))
 
-(lui.fn:fn benchmark-core ()
+(%lui.fn:fn benchmark-core ()
   (let ((context
-          (lui.frame:make-context
+          (%lui.frame:make-context
            :text-mode-p t
            :measure
            (lambda (widget width)
-             (let ((lines (lui.text:wrap-lines
-                           (lui.widgets:widget-terminal-text widget) width
+             (let ((lines (%lui.text:wrap-lines
+                           (%lui.widgets:widget-terminal-text widget) width
                            (lambda (text start end)
                              (declare (ignore text)) (- end start)))))
-               (values (max (if (eq (lui.widgets:widget-kind widget) :slider) 12 0)
-                            (loop for line across lines maximize (length line)))
+               (values (max (if (eq (%lui.widgets:widget-kind widget) :slider)
+                      12 0)
+                            (loop for line across lines maximize (length
+                        line)))
                        (length lines))))))
         (lui:*unit* 1))
     (benchmark-loop
      (lambda ()
-       (lui.frame:with-frame (context *width* *height*)
-         (lui.example:draw *gallery*))))))
+       (%lui.frame:with-frame (context *width* *height*)
+         (%lui.example.demo:draw *gallery*))))))
 
 (defun benchmark-terminal ()
   (let ((context (call :lui.terminal :make-terminal-context)) (lui:*unit* 1))
     (benchmark-loop
      (lambda ()
-       (lui.frame:with-frame (context *width* *height*)
-         (lui.example:draw *gallery*))
+       (%lui.frame:with-frame (context *width* *height*)
+         (%lui.example.demo:draw *gallery*))
        (call :lui.terminal :render-terminal context)))))
 
 (defun benchmark-gl ()
@@ -161,12 +165,12 @@
          (gpu nil) (lui:*unit* 8))
     (unwind-protect
          (progn
-           (setf gpu (call :lui.gl :open-gpu nil nil font *width* *height*))
-           (let* ((renderer (call :lui.gl :gpu-renderer gpu))
+           (setf gpu (call :%lui.gl :open-gpu nil nil font *width* *height*))
+           (let* ((renderer (call :%lui.gl :gpu-renderer gpu))
                   (context
-                    (lui.frame:make-context
+                    (%lui.frame:make-context
                      :measure (lambda (widget width)
-                                (call :lui.draw :measure-widget
+                                (call :lui.draw :%measure-widget
                                       renderer widget width))))
                   ;; Compile CFFI only on the GL path; CORE stays dependency-free.
                   (finish (compile nil
@@ -175,13 +179,13 @@
                                 "glFinish" :void)))))
              (benchmark-loop
               (lambda ()
-                (lui.frame:with-frame (context *width* *height*)
-                  (lui.example:draw *gallery*))
-                (call :lui.gl :begin-gpu-frame gpu)
-                (call :lui.draw :paint-frame renderer context)
-                (call :lui.gl :present-gpu gpu)
+                (%lui.frame:with-frame (context *width* *height*)
+                  (%lui.example.demo:draw *gallery*))
+                (call :%lui.gl :begin-gpu-frame gpu)
+                (call :lui.draw :%paint-frame renderer context)
+                (call :%lui.gl :present-gpu gpu)
                 (funcall finish)))))
-      (when gpu (call :lui.gl :close-gpu gpu))
+      (when gpu (call :%lui.gl :close-gpu gpu))
       (call :lui.font :close-font font))))
 
 (defun percentile (sorted fraction)
@@ -235,7 +239,13 @@
             #+sbcl "SBCL" #-sbcl "unsupported")
     (cond ((string= *platform* "core") (benchmark-core))
           ((string= *platform* "terminal") (benchmark-terminal))
-          ((string= *platform* "gl") (benchmark-gl))
+          ((string= *platform* "gl")
+           ;; Mesa may raise floating-point flags inside foreign drawing calls.
+           #+sbcl
+           (sb-int:with-float-traps-masked
+               (:invalid :divide-by-zero :overflow :underflow :inexact)
+             (benchmark-gl))
+           #-sbcl (benchmark-gl))
           (t (benchmark-window)))
     (assert (= *frames*
                (loop :for values :being :the :hash-values :of *samples*
