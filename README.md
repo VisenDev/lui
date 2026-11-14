@@ -1,6 +1,14 @@
 # Demo and Docs
 https://visendev.github.io/lui/
 
+# Hello World
+
+```lisp
+(lui:run (lambda () (lui:panel (lui:opt :width (lui:grow)
+                                        :height (lui:grow))
+           (lui:label "hello world"))))
+```
+
 # FAQ
 
 - What is this? 
@@ -24,6 +32,11 @@ https://visendev.github.io/lui/
   another 10kloc for backends, and various widget styling toolkits. I have
   kept the codebase small that way it is easy for me to manually review all 
   of the code.
+  
+  The layout engine is based on a lisp port of the excellent 
+  [CLAY](https://github.com/nicbarker/clay) UI layout library by Nic Barker.
+  And the windowing backends are based on my [incomplete (human written)
+  common lisp windowing library](https://github.com/visendev/clgfw).
   
 - What dependencies does Lui require?
   The core has no external dependencies, most backends require cffi though. 
