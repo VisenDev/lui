@@ -193,6 +193,10 @@ the change and report material limitations instead of claiming untested support.
   generated constructor/writer slot checks but retains slot metadata and
   initializer checks. Native Lisp builds use their standard `defstruct`.
 
+Host selection uses `trivial-features` as an ASDF definition dependency; core
+source loading remains dependency-free. Native systems weakly depend on
+`font-discovery`: ASDF loads it when available but does not require installation.
+
 ## Build and validation workflow
 
 Run commands from the repository root. GNU Make, Bash, and SBCL drive the
@@ -204,6 +208,7 @@ benchmark targets. Scripts discover optional dependency checkouts under
 | Task | Command / notes |
 | --- | --- |
 | Core and native drawing | `make test-core test-native` |
+| Fonts without discovery | `sbcl --script tests/font-discovery.lisp /path/to/font.ttf` (fresh process) |
 | Portable source runner | `sbcl --script tests/run.lisp`, `clisp -q -q tests/run.lisp`, `ecl -shell tests/run.lisp` |
 | JSCL source runner | `node /path/to/jscl/dist/jscl-node.js tests/run.lisp` |
 | Browser build / serve | `make web-build` / `make web-demo`; `JSCL` defaults to `~/clone/jscl`, `PORT` to 8000 |
@@ -236,7 +241,7 @@ and embeds the WebAssembly runtime and app for offline use; `docs/index.html` is
 
 - Native measurement/painting requires CFFI, zpb-ttf, and an available TrueType
   font. Set font configuration before opening a window. Saved executables accept
-  `LUI_FONT` and `LUI_FONT_DIR`; font faces are cached and closed with the base
+  `LUI_FONT`; font faces are cached and closed with the base
   font. Browser measurement and painting must use matching family/weight.
 - Use uncursed 0.7.0 or later; Quicklisp 0.3.0 is too old. Its source is
   https://github.com/Plisp/uncursed. It requires CFFI grovel and a C compiler;
@@ -445,8 +450,10 @@ output into `docs/index.html`. GitHub Pages serves the repository's `/docs` fold
 as warnings. Logs are timestamped; Bash pipefail preserves pipeline failures.
 
 For fonts, set `*font-path*` for the base face, `*font-paths*` for exact
-family/weight overrides, and `*font-directories*`/`*font-names*` for ordered
-search. Directory strings should end in a slash. Supported families are
+family/weight overrides. Optional `font-discovery` supplies automatic system
+lookup when installed; without it, configure explicit TrueType paths. Directory
+and filename search settings, including `LUI_FONT_DIR`, have been removed.
+Supported families are
 `:sans-serif`/`:monospace`, weights `:normal`/`:bold`. PDF uses points (72/inch),
 defaults to 612×792, and renders one display-free frame. Use `render-pdf` directly
 or bind `*pdf-output*` (default `lui.pdf`) and run with `:backend :pdf`.

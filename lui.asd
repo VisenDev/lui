@@ -1,29 +1,5 @@
 (in-package #:asdf-user)
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  ;; Some implementations report only :UNIX. Detect the OS before dependency
-  ;; planning, without loading a portability library into the zero-dep core.
-  (let ((os (uiop:operating-system)))
-    (when (or (eq os :unix) (and (null os) (member :unix *features*)))
-      (setf os (ignore-errors
-                 (intern (string-upcase
-                          (string-trim '(#\Space #\Newline #\Return)
-                                       (uiop:run-program '("uname" "-s")
-                                                         :output :string)))
-                         :keyword))))
-    (dolist (flag '(:lui-linux-host :lui-bsd-host :lui-darwin-host
-                   :lui-windows-host :lui-posix-host))
-      (setf *features* (remove flag *features*)))
-    (case os
-      (:linux (pushnew :lui-linux-host *features*))
-      ((:darwin :macos :macosx) (pushnew :lui-darwin-host *features*))
-      ((:bsd :freebsd :openbsd :netbsd) (pushnew :lui-bsd-host *features*))
-      ((:win :windows :win32 :mswindows)
-       (pushnew :lui-windows-host *features*)))
-    (when (intersection '(:lui-linux-host :lui-darwin-host :lui-bsd-host)
-                        *features*)
-      (pushnew :lui-posix-host *features*))))
-
 (defsystem "lui/core"
   :description "Portable dependency-free immediate-mode UI core"
   :version "0.1.0"
@@ -49,12 +25,13 @@
 
 (defsystem "lui"
   :description "LUI core with this host's supported backends"
+  :defsystem-depends-on ("trivial-features")
   :version "0.1.0"
   :depends-on ("lui/core" "lui/terminal"
-               #+(or lui-linux-host lui-bsd-host) "lui/x11"
-               #+lui-linux-host "lui/wayland"
-               #+lui-windows-host "lui/win32"
-               #+(and lui-darwin-host sbcl) "lui/cocoa")
+               (:feature (:or :linux (:and :bsd (:not :darwin))) "lui/x11")
+               (:feature :linux "lui/wayland")
+               (:feature :windows "lui/win32")
+               (:feature (:and :darwin :sbcl) "lui/cocoa"))
   :components ((:module "src" :components ((:file "backend-host"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
 
@@ -105,6 +82,7 @@
              (uiop:symbol-call :%lui.tests.seven.cells :run-tests)))
 
 (defsystem "lui/native"
+  :weakly-depends-on ("font-discovery")
   :depends-on ("lui/core" "cffi" "zpb-ttf")
   :components ((:module "src"
                 :serial t

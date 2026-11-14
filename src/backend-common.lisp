@@ -2,8 +2,7 @@
   (:use #:cl #:%lui.fn #:%lui.layout)
   (:export #:font #:open-font #:close-font #:font-size #:%font-loader
            #:text-width #:line-height #:baseline #:wrap-text #:glyph-polygons
-           #:*font-path* #:*font-paths* #:*font-directories*
-           #:*font-names* #:font-face #:%font-css))
+           #:*font-path* #:*font-paths* #:font-face #:%font-css))
 
 (in-package #:lui.font)
 
@@ -12,8 +11,6 @@
 (progn
   (defvar *font-path* nil)
   (defvar *font-paths* nil)
-  (defvar *font-directories* nil)
-  (defvar *font-names* nil)
 
   (defstruct font
     "A browser font face with a Canvas context for measuring text."
@@ -119,7 +116,7 @@
 ;;; Native fonts measure and outline text through zpb-ttf.
 #-(or jscl lui-ecl-web)
 (progn
-  (defvar *font-path* nil "Override the default TrueType font pathname.")
+  (defvar *font-path* nil "Override the base TrueType file; otherwise use LUI_FONT or optional font-discovery.")
 
   (defvar *font-paths* nil
     "Optional ((family weight) . pathname) overrides for additional font faces.")
@@ -133,46 +130,34 @@
     (size 16 :type real)
     (cache (make-hash-table) :type hash-table))
 
-  (defvar *font-directories*
-    '("/usr/share/fonts/dejavu-sans-fonts/"
-      "/usr/share/fonts/dejavu-sans-mono-fonts/"
-      "/usr/share/fonts/truetype/dejavu/"
-      "/usr/share/fonts/liberation-sans-fonts/"
-      "/usr/share/fonts/liberation-mono-fonts/"
-      "/usr/share/fonts/truetype/liberation2/"
-      "/usr/share/fonts/truetype/liberation/"
-      "C:/Windows/Fonts/" "/System/Library/Fonts/Supplemental/")
-    "Ordered font directories, as directory pathnames or namestrings.")
-
-  (defvar *font-names*
-    '(((:sans-serif :normal) "DejaVuSans.ttf" "arial.ttf" "Arial.ttf"
-       "LiberationSans-Regular.ttf")
-      ((:sans-serif :bold) "DejaVuSans-Bold.ttf" "arialbd.ttf" "Arial Bold.ttf"
-       "LiberationSans-Bold.ttf")
-      ((:monospace :normal) "LiberationMono-Regular.ttf" "DejaVuSansMono.ttf"
-       "cour.ttf" "Courier New.ttf")
-      ((:monospace :bold) "LiberationMono-Bold.ttf" "DejaVuSansMono-Bold.ttf"
-       "courbd.ttf" "Courier New Bold.ttf"))
-    "Candidate filenames in preference order for each (family weight).")
+  (fn (discover-face (or null pathname)) ((family symbol) (weight symbol))
+    "Ask optional font-discovery for a standalone TrueType system face."
+    (let ((package (find-package :org.shirakumo.font-discovery)))
+      (when package
+        (let* ((mono (eq family :monospace))
+               (face (uiop:symbol-call
+                      package :find-font
+                      :family #+(or windows darwin)
+                              (if mono "Courier New" "Arial")
+                              #-(or windows darwin)
+                              (if mono "monospace" "sans-serif")
+                      :spacing (if mono :monospace :proportional)
+                      :slant :roman
+                      :weight (if (eq weight :bold) :bold :regular)))
+               (path (when face (uiop:symbol-call package :file face))))
+          ;; zpb-ttf cannot read OpenType/CFF fonts or font collections.
+          (when (and path (string-equal "ttf" (pathname-type path)))
+            path)))))
 
   (fn (resolve-face (or pathname string)) ((family symbol) (weight symbol))
+    "Resolve an explicit face override before optional system discovery."
     (let ((key (list family weight)))
       (or (cdr (assoc key *font-paths* :test #'equal))
-          (loop :with extra := (uiop:getenvp "LUI_FONT_DIR")
-                :with dirs := (if extra
-                                  (cons (uiop:ensure-directory-pathname extra)
-                                        *font-directories*)
-
-                                  ;; else
-                                  *font-directories*)
-                :for name :in (cdr (assoc key *font-names* :test #'equal))
-                :thereis (loop :for dir :in dirs
-                               :thereis (probe-file
-                                         (merge-pathnames name dir))))
+          (discover-face family weight)
           (error '%lui.conditions:font-error
                  :backend :native :request key
                  :operation :resolve-face
-                 :format-control "No TrueType font for ~S. Set lui.font:*FONT-PATHS*."
+                 :format-control "No TrueType font for ~S. Install font-discovery or set lui.font:*FONT-PATHS*."
                  :format-arguments (list key)))))
 
   (fn (default-font (or pathname string)) ()
