@@ -56,6 +56,11 @@ https://visendev.github.io/lui/
   Web via [JSCL](https://github.com/jscl-project/jscl),
   Web via ECL and EMSCRIPTEN,
   
+- What is the "Debugger"
+  Lui has a built in inspector you can use to examine the UI tree in real
+  time while your application is running. To test it out, just click
+  the "Show Debugger" button on [the docs page](https://visendev.github.io/lui/).
+  
 - What styles does the UI support?
   Lui has the concept of different widget "toolkits", with different
   toolkits each emulating the look and feel of various famous UI libraries
