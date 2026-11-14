@@ -629,6 +629,25 @@
                 (funcall paint renderer node))
       (setf (renderer-font renderer) font))))
 
+(fn (frame-background string) ((context context))
+  "Use the first declared widget's captured window color for the surface.
+Fall back to its background role, or the current toolkit for an empty frame."
+  (let ((palette nil))
+    (block found
+      (when (context-root context)
+        (walk-elements
+         (context-root context)
+         (lambda (node)
+           (let ((widget (element-content node)))
+             (when (widget-p widget)
+               (setf palette (widget-palette widget))
+               (return-from found)))))))
+    (unless palette
+      (setf palette (lui.toolkit:toolkit-palette)))
+    (or (palette-color palette :window-background)
+        (palette-color palette :background)
+        "#ffffff")))
+
 (fn (%paint-frame t)
     ((renderer renderer) (context context) &optional
      ((external-labels (or null hash-table)) nil)
@@ -638,7 +657,12 @@
     (setf (context-input-handler context)
           (lambda (context events)
             (selection-input renderer context events))))
-  (let ((*context* context))
+  (let ((*context* context)
+        (surface (or viewport
+                      (make-box :width (context-width context)
+                                :height (context-height context)))))
+    (funcall (renderer-clip renderer) surface)
+    (shape renderer surface 0 (frame-background context) 1)
     (visible-elements
      (context-root context)
      (lambda (node)

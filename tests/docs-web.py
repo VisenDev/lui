@@ -54,6 +54,11 @@ class DocsWebTests(unittest.TestCase):
                 ui = DocsUI(page)
                 ui.click_widget("Full demo")
                 ui.widget("LUI feature gallery")
+                # Uncovered space beside the back button follows Qt's palette.
+                pixel = page.locator("main canvas").evaluate("""canvas =>
+                    Array.from(canvas.getContext('2d').getImageData(
+                        canvas.width - 2, 2, 1, 1).data)""")
+                self.assertEqual(pixel, [239, 239, 239, 255])
                 for name in ["Editing", "Layout", "Scroll", "Styles", "Menus", "7GUIs"]:
                     ui.click_widget(name)
                     ui.frames()

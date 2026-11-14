@@ -286,7 +286,7 @@
             (edit-state-anchor state) 0
             (edit-state-cursor state) 2)
       (%paint-frame renderer context)
-      (assert (= 1 (length clips)))
+      (assert (= 2 (length clips)))
       (let ((selection
               (find-if (lambda (call)
                          (and (string= "#ff5500" (second call))
@@ -358,7 +358,7 @@
                         :box (make-box :width 100 :height 60)
                         :clip (make-box :width 100 :height 60)))
     (%paint-frame renderer context)
-    (assert (= calls 2))
+    (assert (= calls 3))
     (setf (widget-painter (element-content (context-root context)))
           (lambda (renderer node)
             (declare (ignore renderer node))
@@ -424,7 +424,7 @@
               (lui.draw:shape target (element-box element) 0 "#abcdef" 1)))
       (%paint-frame renderer context)
       (assert (null painted))
-      (assert (equal '("#abcdef") colors))
+      (assert (equal '("#abcdef") (butlast colors)))
       (assert (null texts)))))
 
 (defun test-button-feedback (font)
@@ -881,8 +881,8 @@
             (lui:opt :id :selected :width (fixed 100) :selected-p t))))
       (%paint-frame renderer context)
       (assert (zerop glass))
-      ;; Two flat fills and two hairlines; no bevel, stipple, or hard shadow.
-      (assert (= 4 (length paths)))
+      ;; Window background, two flat fills, and two hairlines; no shadows.
+      (assert (= 5 (length paths)))
       (assert (every (lambda (entry) (= 1 (third entry))) paths))
       (assert (every (lambda (entry)
                        (every (lambda (contour)
@@ -1035,7 +1035,7 @@
               (equal (fourth surface) "#ffffff") (null (fifth surface))))
             surfaces))
       (assert (notany (lambda (surface) (and (> (first surface) 30) (> (second
-                    surface) 10))) surfaces)))))
+                    surface) 10))) (butlast surfaces))))))
 
 (defun test-control-background-overrides (font)
   (dolist (palette '(:default :dark))
@@ -1127,7 +1127,7 @@
           (lui:spacer (lui:opt :height (fixed 4)))
           (lui:vr (lui:opt :foreground "#654321"))))
       (%paint-frame renderer context)
-      (assert (equal '("#654321" "#123456") colors)))))
+      (assert (equal '("#654321" "#123456") (butlast colors))))))
 
 (defun test-spinner-painting (font)
   (dolist (toolkit '(:glass :motif :macos :qt :garnet))
@@ -1137,8 +1137,8 @@
               :font font
               :polygons (lambda (contours color alpha)
                           (assert (plusp (length contours)))
-                          (assert (string= color "#123456"))
-                          (push alpha opacities))
+                          (when (string= color "#123456")
+                            (push alpha opacities)))
               :clip (lambda (box) (declare (ignore box)))))
            (context (%make-render-context renderer)))
       (lui:with-toolkit (toolkit)
@@ -1147,6 +1147,41 @@
       (%paint-frame renderer context)
       (assert (= 8 (length opacities)))
       (assert (= 8 (length (remove-duplicates opacities :test #'=)))))))
+
+(defun test-frame-background (font)
+  (let* ((fills nil)
+         (renderer
+           (%make-renderer
+            :font font
+            :text (lambda (&rest arguments)
+                    (declare (ignore arguments)))
+            :polygons (lambda (&rest arguments)
+                        (declare (ignore arguments)))
+            :surface (lambda (box radius color alpha)
+                       (declare (ignore radius))
+                       (push (list (box-width box) (box-height box)
+                                   color alpha) fills))
+            :clip (lambda (box) (declare (ignore box)))))
+         (context (%make-render-context renderer)))
+    ;; Capture colors inside the callback, then paint outside its scopes.
+    (dolist (toolkit '(:qt :glass :macos :motif :garnet))
+      (dolist (palette '(:default :dark :ocean))
+        (let ((expected nil))
+          (with-frame (context 320 200)
+            (lui:with-toolkit (toolkit)
+              (lui:with-palette (palette)
+                (let ((colors (lui.toolkit:toolkit-palette)))
+                  (setf expected (or (getf colors :window-background)
+                                     (getf colors :background))))
+                (lui:label "hello world"))))
+          (setf fills nil)
+          (%paint-frame renderer context)
+          (assert (equal (list 320 200 expected 1) (car (last fills)))))))
+    ;; A scrolled page clears exactly its visible surface.
+    (setf fills nil)
+    (%paint-frame renderer context nil
+                  (make-box :y 100 :width 320 :height 80))
+    (assert (equal '(320 80) (subseq (car (last fills)) 0 2)))))
 
 (defun run-tests ()
   (test-typed-vector)
@@ -1159,6 +1194,7 @@
   (let ((font (open-font)))
     (unwind-protect
          (progn
+           (test-frame-background font)
            (test-rule-painting font)
            (test-spinner-painting font)
            (test-password-presentation font)
