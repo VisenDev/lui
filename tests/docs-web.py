@@ -41,6 +41,43 @@ class DocsUI:
 
 
 class DocsWebTests(unittest.TestCase):
+    def test_dialogs(self):
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                executable_path=shutil.which("chromium-browser") or shutil.which("chromium"),
+                args=["--no-sandbox"])
+            page = browser.new_page(viewport={"width": 1100, "height": 820})
+            errors = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            try:
+                page.goto((ROOT / "build/docs.html").as_uri())
+                ui = DocsUI(page)
+                ui.search("popup")
+                ui.click_widget("lui:POPUP")
+                ui.click_widget("Show error")
+                expect(page.get_by_text("Could not save the file.", exact=True)).to_be_visible()
+                # Background accessibility activation cannot replace the preview.
+                page.get_by_role("button", name="Cycle Toolkit", exact=True).evaluate("el => el.click()")
+                ui.frames()
+                ui.widget("Toolkit: Qt")
+                page.set_viewport_size({"width": 900, "height": 700})
+                ui.frames()
+                expect(page.get_by_text("Could not save the file.", exact=True)).to_be_visible()
+                ui.click_widget("OK")
+                expect(page.get_by_text("Could not save the file.", exact=True)).to_have_count(0)
+                ui.search("confirm")
+                ui.click_widget("lui:CONFIRM")
+                ui.click_widget("Delete example")
+                page.keyboard.press("Escape")
+                ui.frames()
+                ui.widget("Confirmed: 0")
+                ui.click_widget("Delete example")
+                ui.click_widget("Delete")
+                ui.widget("Confirmed: 1")
+                self.assertEqual(errors, [])
+            finally:
+                browser.close()
+
     def test_shared_gallery_offline(self):
         with sync_playwright() as pw:
             browser = pw.chromium.launch(

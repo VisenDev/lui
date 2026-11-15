@@ -64,6 +64,7 @@
            #:tab #:checkbox #:radio #:slider #:text-field #:cell
            #:list-item #:gauge #:spinner #:canvas #:date-picker
            #:searchable-combobox
+           #:popup #:confirm
            #:menu-bar #:menu #:menu-item #:floating-expander
            #:%*default-backend-function*))
 (in-package #:lui)
@@ -453,6 +454,125 @@ No timer is retained after the spinner disappears from the frame."
             (%lui.layout:element-popup-content-width-p pane) content-width-p)
       (push pane (%lui.frame:context-popups *context*))
       pane)))
+
+(fn (dialog-buttons (member nil :confirm :cancel))
+    ((id object-id) (confirm-label string) (cancel-label (or null string)))
+  "Declare dialog actions and return the selected keyword, if any."
+  (let ((answer nil))
+    (row (opt :gap (units 1) :width (grow) :align :end)
+      (when (and cancel-label
+                 (%button (list id :cancel) cancel-label nil))
+        (setf answer :cancel))
+      (when (%button (list id :confirm) confirm-label nil)
+        (setf answer :confirm)))
+    answer))
+
+(fn (dialog-body (member nil :confirm :cancel))
+    ((id object-id) (text string) (title string)
+     (confirm-label string) (cancel-label (or null string)))
+  "Build a bounded, scrollable message pane inside the modal surface."
+  (let ((answer nil))
+    (panel (opt :id (list id :pane)
+                :width (fixed (min (context-width *context*) (units 50)))
+                :height (fit 0 (context-viewport-height *context*))
+                :padding (units 1) :gap (units 1) :opacity 1
+                :clip-p t :scroll-p t :accessible-name title)
+      (unless (zerop (length title))
+        (%label (list id :title) title (opt :font-weight :bold)))
+      (%label (list id :message) text (opt :width (grow)))
+      (setf answer (dialog-buttons id confirm-label cancel-label)))
+    answer))
+
+(fn (draw-dialog (member nil :confirm :cancel))
+    ((id object-id) (text string) (title string)
+     (confirm-label string) (cancel-label (or null string)))
+  "Declare one modal surface and return NIL, :CONFIRM, or :CANCEL."
+  (when (context-modal-declared-p *context*)
+    (error 'configuration-error :operation :confirm :setting :modal
+           :value id :format-control "Declare only one confirmation per frame."))
+  (let* ((previous (context-modal *context*))
+         (opening (not (and previous
+                            (equal id (%lui.layout:element-id previous)))))
+         (*parent* (%lui.layout:make-element))
+         (surface
+           (emit (%lui.layout:make-element
+                  :id id :position :fixed
+                  :width (fixed (context-width *context*))
+                  :height (fixed (context-viewport-height *context*))
+                  :align :center :cross-align :center :clip-p t
+                  :interactive-p t :keyboard-focus-p nil
+                  :pointer-focus-p nil)))
+         (answer nil))
+    (let ((*parent* surface))
+      (setf answer (dialog-body id text title confirm-label cancel-label)))
+    (when (some (lambda (event) (eq (event-key event) :escape))
+                (events-for id))
+      (setf answer :cancel))
+
+    ;; Capture focus once; redeclarations preserve the user's chosen button.
+    (unless previous
+      (setf (context-modal-focus *context*) (context-focus *context*)))
+    (setf (context-modal *context*) surface
+          (context-modal-declared-p *context*) (null answer))
+    (when opening
+      (setf (context-active *context*) nil
+            (context-hover *context*) nil
+            (context-selection *context*) nil
+            (context-floating-path *context*) #()))
+    (unless (modal-member-p *context* (context-focus *context*))
+      (setf (context-focus *context*)
+            (list id (if cancel-label :cancel :confirm))
+            (context-focus-visible-p *context*) t))
+    (when answer (request-frame))
+    answer))
+
+(defmacro confirm (text &key (title "Confirm") (confirm-label "OK")
+                            (cancel-label "Cancel") (id nil id-p))
+  "Declare a modal confirmation each frame while awaiting an answer.
+Return :CONFIRM, :CANCEL (including Escape), or NIL while waiting. Stop declaring
+it after an answer. IDs use call-site identity, WITH-KEY scopes, and optional ID.
+Only one confirmation may be declared per frame; retained messages wait behind
+it. Outside clicks do nothing, Tab stays inside, and Cancel initially has focus.
+TITLE, CONFIRM-LABEL, and CANCEL-LABEL are strings. This is an in-window overlay."
+  `(draw-dialog (call-site-id ',(gensym "CONFIRM")
+                             ,(when id-p `(list :id ,id)))
+                ,text ,title ,confirm-label ,cancel-label))
+
+(fn (draw-messages (values)) ()
+  "Draw the oldest retained message when no confirmation owns the surface."
+  (unless (or (context-modal-declared-p *context*)
+              (let ((modal (context-modal *context*)))
+                (and modal
+                     (eq modal (gethash (%lui.layout:element-id modal)
+                                        (context-ids *context*))))))
+    (let ((pending (first (context-messages *context*))))
+      (when (and pending (funcall pending))
+        (pop (context-messages *context*))
+        (request-frame))))
+  (values))
+
+(fn (popup (values)) ((text string) &key ((title string) "Message"))
+  "Queue TEXT once for an automatically redrawn modal message with an OK button.
+Call on the UI thread inside the target window's draw function or UI callback
+with an active frame context. Messages persist until OK or Escape and are shown
+in arrival order, after any application confirmation. Outside clicks do nothing.
+Capture the message, title, toolkit, and palette at the call; do not call every
+frame for the same error. Closing the window discards its pending messages."
+  (let ((id (gensym "MESSAGE"))
+        (message (copy-seq text))
+        (caption (copy-seq title))
+        (toolkit (current-toolkit))
+        (palette (apply #'make-palette
+                        (nth-value 1 (toolkit-defaults)))))
+    (setf (context-message-draw *context*) #'draw-messages
+          (context-messages *context*)
+          (nconc (context-messages *context*)
+                 (list (lambda ()
+                         (with-toolkit (toolkit)
+                           (with-palette (palette)
+                             (draw-dialog id message caption "OK" nil)))))))
+    (request-frame))
+  (values))
 
 (defstruct floating-state
   (id nil :type object-id)

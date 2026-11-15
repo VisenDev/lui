@@ -2,6 +2,8 @@
   (:use #:cl #:%lui.fn #:%lui.layout)
   (:export #:*min-fps* #:*max-fps* #:contains-p #:context-after-layout
            #:context-ids #:context-page-height-p #:context-page-top
+           #:context-modal #:context-modal-declared-p #:context-modal-focus
+           #:context-messages #:context-message-draw #:modal-member-p
            #:context-pointer-press #:context-popups
            #:context-popup-input #:context-floating-path #:focus-next
            #:context-requested-page-top #:context-viewport-height
@@ -80,6 +82,11 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (root nil :type (or null element))
   (text-mode-p nil :type boolean)
   popups
+  (modal nil :type (or null element))
+  (modal-declared-p nil :type boolean)
+  (modal-focus nil :type object-id)
+  (messages nil :type list)
+  (message-draw nil :type (or null function))
   (popup-input nil :type (or null function))
   (floating-path #() :type (vector object-id))
   pointer-press
@@ -350,6 +357,59 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
                          (setf found (element-id node))))))
     found))
 
+(fn (modal-member-p boolean) ((context context) (id object-id))
+  "Whether ID belongs to the active modal, or no modal restricts input."
+  (let ((modal (context-modal context))
+        (found nil))
+    (when modal
+      (walk-elements modal
+        (lambda (node)
+          (when (and id (equal id (element-id node))) (setf found t)))))
+    (or (null modal) found)))
+
+(fn (route-modal-event boolean) ((context context) (event event))
+  "Consume outside input and route Escape to the modal's root identity."
+  (let ((modal (context-modal context)))
+    (cond
+      ((null modal) nil)
+      ((and (eq (event-kind event) :key) (eq (event-key event) :escape))
+       (push event (gethash (element-id modal) (context-events context)))
+       t)
+      ((eq (event-kind event) :tab)
+       (focus-next context (eq (event-key event) :backward))
+       (setf (context-focus-visible-p context) t)
+       t)
+      (t
+       (not (modal-member-p context
+              (or (event-id event)
+                  (case (event-kind event)
+                    ((:move :release :cancel)
+                     (or (context-active context)
+                         (hit context (event-x event) (event-y event))))
+                    ((:press :scroll)
+                     (hit context (event-x event) (event-y event)))
+                    (otherwise (context-focus context))))))))))
+
+(fn (finish-modal (values)) ((context context))
+  "Attach the declared modal last, or restore focus when it was dismissed."
+  (let ((modal (context-modal context)))
+    (when modal
+      (cond
+        ((context-modal-declared-p context)
+         (append-child (context-root context) modal))
+        (t
+         (walk-elements modal
+           (lambda (node)
+             (when (eq node (gethash (element-id node)
+                                    (context-ids context)))
+               (remhash (element-id node) (context-ids context)))))
+         (setf (context-modal context) nil
+               (context-focus context) (context-modal-focus context)
+               (context-modal-focus context) nil
+               (context-active context) nil
+               (context-hover context) nil)))))
+  (values))
+
 (fn (focus-next object-id)
     ((context context) &optional ((backward boolean) nil)
      ((skip (or null function)) nil))
@@ -360,6 +420,7 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
                      (lambda (node)
                        (when (and (element-interactive-p node)
                                   (element-keyboard-focus-p node)
+                                  (modal-member-p context (element-id node))
                                   (not (and skip (funcall skip node))))
                          (push (element-id node) ids)))))
     (setf ids (if backward ids (nreverse ids))
@@ -589,8 +650,11 @@ ID types are unrestricted and may differ between vector elements."
   (when (event-id event)
     (setf event (copy-event event)
       (event-id event) (widget-id (event-id event) context)))
+  (when (route-modal-event context event)
+    (return-from route-frame-event (values)))
   ;; Open popups may consume navigation before normal focus and activation.
-  (when (context-popup-input context)
+  (when (and (null (context-modal context))
+             (context-popup-input context))
     (let ((routed (funcall (context-popup-input context)
                            context event resized)))
       (unless routed (return-from route-frame-event (values)))
@@ -628,7 +692,8 @@ ID types are unrestricted and may differ between vector elements."
          (setf (gethash (element-id node) (context-regions context))
                (element-box node))))))
   (clrhash (context-ids context))
-  (setf (context-after-layout context) nil
+  (setf (context-modal-declared-p context) nil
+        (context-after-layout context) nil
         (context-pending-memo context)
         (make-array 0 :element-type 'memo-entry :adjustable t :fill-pointer 0)
         (context-tabs-handled-p context) nil
@@ -656,7 +721,8 @@ clock, redraw deadline, declarations, and per-frame activation state."
   (setf (context-time context)
         (/ (get-internal-real-time) internal-time-units-per-second)
         (context-next-frame context) nil)
-  (when (context-input-handler context)
+  (when (and (context-input-handler context)
+             (null (context-modal context)))
     (if (and (= width (context-width context))
              (= height (context-viewport-height context)))
         (funcall (context-input-handler context) context events)
@@ -748,11 +814,11 @@ Subtract these from an absolute POSITION to opt into parent scrolling."
   "Whether ID was activated by this frame's pointer or keyboard input."
   (not (null (gethash (widget-id id) (context-activated *context*)))))
 
-(fn (end-frame element) ((context context))
-  "Complete CONTEXT: draw its overlay, solve layout, and retain input regions.
-Clear focus/hover for removed controls and return the completed root element."
-  (assert (context-building-p context))
-  (resolve-frame-identities context)
+(fn (append-overlays (values)) ((context context))
+  "Declare messages and append floating surfaces, debugger, then modal."
+  ;; Retained messages are declared after application-owned dialogs.
+  (when (context-message-draw context)
+    (funcall (context-message-draw context)))
 
   ;; Append floating content and the debugger before solving the tree.
   (dolist (popup (nreverse (context-popups context)))
@@ -761,6 +827,18 @@ Clear focus/hover for removed controls and return the completed root element."
     (let ((*context* context)
           (*parent* (context-root context)))
       (funcall (context-overlay context) (context-previous-root context))))
+
+  (finish-modal context)
+
+  (values))
+
+(fn (end-frame element) ((context context))
+  "Complete CONTEXT: draw its overlay, solve layout, and retain input regions.
+Clear focus/hover for removed controls and return the completed root element."
+  (assert (context-building-p context))
+  (resolve-frame-identities context)
+
+  (append-overlays context)
 
   ;; Solve once, record timing, then run callbacks that require geometry.
   (let ((page-top (when (context-page-height-p context)
@@ -834,6 +912,9 @@ An aborted drawing or layout invalidates geometry and clears frame state."
                 (context-building-p context) nil
                 (context-previous-root context) nil
                 (context-floating-path context) #()
+                (context-modal context) nil
+                (context-modal-declared-p context) nil
+                (context-modal-focus context) nil
                 (context-hover context) nil
                 (context-focus-visible-p context) nil
                 (context-active context) nil

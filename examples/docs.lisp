@@ -67,6 +67,15 @@
       "Up/Down and Home/End move among enabled items. Right opens a submenu; Left returns to its parent or changes the root menu. Escape closes one level. Tab leaves the menu, and clicking outside dismisses it."
       "FLOATING-EXPANDER accepts arbitrary content, including value controls that stay open while edited. Nest expanders to open child panes beside their parent. Set :open-on-hover-p to enable hover opening; :popup-width and :popup-height constrain the pane. The body is evaluated only while open, with its IDs scoped to the trigger. Menus and expanders return open state, changed flag, and resolved ID."
       "SPINNER is a noninteractive loading indicator. Declare it while work is pending; it schedules its own animation frames. :disabled-p pauses it, and removing it stops its redraw requests. Use :foreground, :width, and :height to customize it.")
+    (:dialogs "Messages and confirmations"
+     "POPUP queues a message once and redraws it until OK or Escape. Call it in response to an error on the UI thread, inside the target window's frame context. Messages are queued in order and capture the current toolkit and palette."
+     "(lui:popup \"Could not save the file.\" :title \"Save failed\")"
+     "CONFIRM is immediate mode: declare it every frame while awaiting the user's decision. It returns NIL while waiting, :CONFIRM when accepted, or :CANCEL on Cancel or Escape. Stop declaring it after a decision. Declare at most one confirmation per frame; queued messages wait behind it."
+     "(when deleting-p
+  (case (lui:confirm \"Delete this order?\" :confirm-label \"Delete\")
+    (:confirm (setf deleting-p nil) (delete-order order))
+    (:cancel (setf deleting-p nil))))"
+     "Both are modal overlays inside the current window. Outside clicks do nothing, Tab cycles inside the dialog, and previous focus is restored on close. Confirmations initially focus Cancel. Omission closes a confirmation without generating an answer.")
     (:layout "Layout and scrolling"
      "Rows arrange children horizontally; columns arrange them vertically. A fixed size uses backend coordinates, grow distributes available space, and fit measures content. Use lui:units for spacing that adapts to terminal cells and graphical pixels."
      "(lui:row (lui:opt :width (lui:grow)
@@ -107,6 +116,7 @@
   (demo-p nil :type boolean)
   (clicks 0 :type integer) (panel-clicks 0 :type integer)
   (date nil :type (or null string))
+  (confirm-p nil :type boolean)
   (checked-p t :type boolean) (cell-p nil :type boolean)
   (text "Edit this example" :type string) (value 0.4 :type real)
   (tab :one :type symbol) (item :one :type symbol)
@@ -229,7 +239,7 @@
                                  (:start "Start") (:debug "Debugger")
                                  (:frames "Frames") (:positioning "Positioning")
                                  (:widgets "Controls") (:layout "Layout")
-                                 (:menus "Menus")
+                                 (:menus "Menus") (:dialogs "Dialogs")
                                  (:toolkits "Toolkits") (:input "Input")
                                  (:backends "Backends")
                                  (otherwise (second guide)))
@@ -349,6 +359,7 @@
     ("PANEL" . :panel) ("ROW" . :row) ("COLUMN" . :column)
     ("SPACER" . :spacer) ("HR" . :hr) ("VR" . :vr)
     ("SPINNER" . :spinner) ("MENU" . :menu) ("MENU-BAR" . :menu)
+    ("POPUP" . :popup) ("CONFIRM" . :confirm)
     ("MENU-ITEM" . :menu) ("FLOATING-EXPANDER" . :floating-expander)))
 
 (defun canvas-preview (state)
@@ -469,6 +480,19 @@
          (lui:menu-item "Unavailable" (lui:opt :disabled-p t)))
        (when (lui:menu-item "Customers") (incf (browser-value state))))
      (lui:label (format nil "Actions: ~D" (round (browser-value state)))))
+    (:popup
+     (when (lui:button "Show error")
+       (lui:popup "Could not save the file." :title "Save failed")))
+    (:confirm
+     (when (lui:button "Delete example")
+       (setf (browser-confirm-p state) t))
+     (when (browser-confirm-p state)
+       (case (lui:confirm "Delete this order?" :confirm-label "Delete")
+         (:confirm
+          (setf (browser-confirm-p state) nil)
+          (incf (browser-clicks state)))
+         (:cancel (setf (browser-confirm-p state) nil))))
+     (lui:label (format nil "Confirmed: ~D" (browser-clicks state))))
     (:floating-expander
      (lui:floating-expander "Options" nil
        (lui:label "Ordinary controls in a floating pane")
