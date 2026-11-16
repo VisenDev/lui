@@ -139,6 +139,10 @@ the change and report material limitations instead of claiming untested support.
   Input is routed against the previous completed layout. IDs use `equal`:
   keep them stable and do not mutate compound IDs after declaration. Duplicate
   non-NIL IDs are errors.
+- Changed layout bounds, clips, identities, or child order block new pointer
+  presses until the pointer moves to different coordinates. Keyboard activation
+  remains available; captured drags can finish, but blocked releases do not
+  activate controls. Duplicate motion events do not rearm clicks.
 - Resize invalidates old pointer geometry. Removed widgets lose focus/capture;
   an aborted frame invalidates geometry. Layout structures are frame-local and
   should not be mutated after completion.

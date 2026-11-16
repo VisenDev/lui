@@ -475,7 +475,9 @@
                       :width (fixed 160) :height (fixed 40))))
               (with-frame (context 200 80) (draw))
               (with-frame (context 200 80
-                           :events (list (make-event :kind :press
+                           :events (list (make-event :kind :move :x 11 :y 10)
+                                         (make-event :kind :move :x 10 :y 10)
+                                         (make-event :kind :press
                                           :button :primary :id :control
                                           :x 10 :y 10)))
                 (draw))
@@ -750,12 +752,14 @@
         (assert (equal copied "Copy these error details")))
       ;; A drag over the background must not copy its text through the modal.
       (setf copied nil)
-      (frame (make-event :kind :press :x 0 :y 1)
+      (frame (make-event :kind :move :x 0 :y 1)
+             (make-event :kind :press :x 0 :y 1)
              (make-event :kind :release :x 100 :y 1))
       (frame (make-event :kind :key :key lui.key:copy))
       (assert (null copied))
       (frame (make-event :kind :key :key lui.key:escape))
-      (frame (make-event :kind :press :x 0 :y 1)
+      (frame (make-event :kind :move :x 0 :y 1)
+             (make-event :kind :press :x 0 :y 1)
              (make-event :kind :release :x 150 :y 1))
       (frame (make-event :kind :key :key lui.key:copy))
       (assert (equal copied "Background")))))
@@ -799,7 +803,8 @@
                (with-frame (context 400 200 :events events) (draw))
                (%paint-frame renderer context))
              (select-label ()
-               (frame (make-event :kind :press :x 0 :y 1)
+               (frame (make-event :kind :move :x 0 :y 1)
+             (make-event :kind :press :x 0 :y 1)
                       (make-event :kind :release :x 300 :y 1)))
              (anchor-p ()
                (let ((selection (context-selection context)))
@@ -808,7 +813,8 @@
       (frame)
       (setf cover :button)
       (frame)
-      (frame (make-event :kind :press :x 3 :y 1)
+      (frame (make-event :kind :move :x 3 :y 1)
+             (make-event :kind :press :x 3 :y 1)
              (make-event :kind :release :x 3 :y 1))
       (assert (= clicked 1))
       (assert (not (anchor-p)))
