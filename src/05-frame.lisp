@@ -18,7 +18,7 @@
            #:event-value #:event-key #:event-button #:event-clicks
            #:event-dragging-p #:event-buttons #:event-scroll-mode
            #:context-events #:context-pressed-keys #:events-for
-           #:previous-box
+           #:container-options #:previous-box
            #:context-state #:context-width #:context-height #:emit
            #:activated-p #:activated-ids #:record-activation
            #:make-event #:begin-frame #:end-frame #:context-hover #:hovered-p
@@ -123,6 +123,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (scroll-motion nil :type (or null scroll-motion))
   (activation-order nil :type list)
   (activated (make-hash-table :test 'equal) :type hash-table)
+  (container-scopes (make-hash-table :test 'eq) :type hash-table)
   (ids (make-hash-table :test 'equal) :type hash-table)
   (building-p nil :type boolean)
   (memo #() :type (vector memo-entry))
@@ -154,10 +155,25 @@ The backend supplies measurement, clipboard, and optional input callbacks."
     (or (eq (car id) :lui-widget-id)
       (resolved-widget-id-p (car id)))))
 
+(fn (parent-identity-scope list) ()
+  "Return the current container's stable identity path."
+  (when (and (boundp '*parent*) (boundp '*context*))
+    (gethash *parent* (context-container-scopes *context*))))
+
+(fn (container-options list) ((options list))
+  "Resolve an explicit container key within its enclosing container."
+  (let ((key (getf options :id)))
+    (if (and key (not (resolved-widget-id-p key)))
+        (list* :id (list :lui-widget-id :container *key-scope* key
+                         (parent-identity-scope)) options)
+        ;; else
+        options)))
+
 (fn (call-site-id list) ((site symbol) (options list))
   "Combine identity components, rejecting repeated declarations before state changes."
   (let* ((key (getf options :id site))
-         (id (list :lui-widget-id site *key-scope* key)))
+         (id (list :lui-widget-id site *key-scope* key
+                   (parent-identity-scope))))
     (when (gethash id (context-ids *context*))
       (error '%lui.conditions:configuration-error
              :operation :declare-widget :setting :id :value key
@@ -183,24 +199,36 @@ The backend supplies measurement, clipboard, and optional input callbacks."
 
 (fn (lookup-widget-id object-id) ((key object-id) (table hash-table))
   "Find KEY in TABLE within this scope; signal an error for ambiguous keys."
-  (let ((found nil))
+  (let ((found nil)
+        (local-found nil)
+        (ambiguous nil)
+        (local-ambiguous nil))
     (maphash
       (lambda (id value)
         (declare (ignore value))
         (when (and (equal key (widget-key id))
                 (equal *key-scope* (id-scope id)))
           (when (and found (not (equal found id)))
-            (error '%lui.conditions:configuration-error
-              :operation :widget-id :setting :id :value key
-              :format-control "Ambiguous widget key ~S; use a resolved ID."
-              :format-arguments (list key)))
-          (setf found id)))
+            (setf ambiguous t))
+          (setf found id)
+          (when (equal (when (and (consp id) (eq (car id) :lui-widget-id))
+                         (fifth id))
+                       (parent-identity-scope))
+            (when (and local-found (not (equal local-found id)))
+              (setf local-ambiguous t))
+            (setf local-found id))))
       table)
-    found))
+    (when (if local-found local-ambiguous ambiguous)
+      (error '%lui.conditions:configuration-error
+        :operation :widget-id :setting :id :value key
+        :format-control "Ambiguous widget key ~S; use a resolved ID."
+        :format-arguments (list key)))
+    (or local-found found)))
 
 (fn (widget-id object-id)
     ((key object-id) &optional ((context context) *context*))
-  "Resolve KEY in the current key scope to a widget ID, or return KEY if absent.
+  "Resolve KEY in the current container and key scope, or return KEY if absent.
+A unique key elsewhere in the key scope can also be resolved.
 Opaque IDs pass through unchanged. A key shared by call sites is ambiguous;
 use the third value returned by a widget instead. IDs are local to CONTEXT."
   (if (or (resolved-widget-id-p key) (gethash key (context-ids context))) key
@@ -695,6 +723,7 @@ ID types are unrestricted and may differ between vector elements."
          (setf (gethash (element-id node) (context-regions context))
                (element-box node))))))
   (clrhash (context-ids context))
+  (clrhash (context-container-scopes context))
   (setf (context-modal-declared-p context) nil
         (context-after-layout context) nil
         (context-pending-memo context)
@@ -775,8 +804,12 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
   (assert (context-building-p *context*))
   (when (element-interactive-p node) (assert (element-id node)))
   (when (element-id node)
-    (assert (not (gethash (element-id node) (context-ids *context*))) ()
-            "Duplicate UI ID: ~S" (element-id node))
+    (when (gethash (element-id node) (context-ids *context*))
+      (error '%lui.conditions:configuration-error
+        :operation :declare-widget :setting :id
+        :value (widget-key (element-id node))
+        :format-control "Duplicate widget ID in the same container: ~S."
+        :format-arguments (list (widget-key (element-id node)))))
     (setf (gethash (element-id node) (context-ids *context*)) node))
   (when (element-scroll-p node)
     (assert (element-id node))
@@ -784,6 +817,9 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
       (when offset
         (setf (element-scroll-x node) (car offset)
               (element-scroll-y node) (cdr offset)))))
+  (setf (gethash node (context-container-scopes *context*))
+        (cons (or (element-id node) (length (element-children *parent*)))
+              (parent-identity-scope)))
   (append-child *parent* node))
 
 (fn (parent-scroll-position (values real real)) ()
@@ -793,11 +829,12 @@ Subtract these from an absolute POSITION to opt into parent scrolling."
 
 (fn (scroll-position (values real real)) ((id object-id))
   "Return the retained horizontal and vertical scroll offsets."
-  (let ((offset (gethash id (context-scroll *context*))))
+  (let ((offset (gethash (widget-id id) (context-scroll *context*))))
     (values (or (car offset) 0) (or (cdr offset) 0))))
 
 (fn (scroll-to (or null real)) ((id object-id) (x real) (y real))
   "Set scroll offsets; layout clamps them to the content extent."
+  (setf id (widget-id id))
   (setf (context-scroll-motion *context*) nil)
   (let ((offset (cons (max 0 x) (max 0 y))))
     (setf (gethash id (context-scroll *context*)) offset)
@@ -937,14 +974,18 @@ An aborted drawing or layout invalidates geometry and clears frame state."
 
 (defmacro row (options &body body)
   "Lay out BODY horizontally using an OPTIONS expression, such as OPT.
-OPTIONS evaluates once to a list of element options."
+OPTIONS evaluates once. Child identities are scoped to this container;
+use :ID for stable identity on reorder, otherwise identity follows position."
   `(let ((*parent* (emit
-                   (apply #'make-element :direction :row ,options))))
+                   (apply #'make-element :direction :row
+                          (container-options ,options)))))
      ,@body))
 
 (defmacro column (options &body body)
   "Lay out BODY vertically using an OPTIONS expression, such as OPT.
-OPTIONS evaluates once to a list of element options."
+OPTIONS evaluates once. Child identities are scoped to this container;
+use :ID for stable identity on reorder, otherwise identity follows position."
   `(let ((*parent* (emit
-                   (apply #'make-element :direction :column ,options))))
+                   (apply #'make-element :direction :column
+                          (container-options ,options)))))
      ,@body))

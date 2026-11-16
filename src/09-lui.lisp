@@ -159,10 +159,14 @@ Offsets on automatic widgets shift their drawing without changing their slot."
   `(list ,@forms))
 
 (defmacro panel (options &body body)
-  "Draw a styled container and attach widgets declared in BODY as children."
+  "Draw a styled container and attach widgets declared in BODY as children.
+Containers scope child identities automatically, including without an :ID.
+Use stable :ID keys for containers that can move; anonymous ones use position."
   `(let ((%lui.frame:*parent*
           (%lui.widgets:declare-panel
-           %*toolkit* (append ,options (toolkit-defaults)))))
+           %*toolkit*
+           (append (%lui.frame:container-options ,options)
+                   (toolkit-defaults)))))
      ,@body))
 
 (fn (widget-options list) ((options list))
@@ -306,7 +310,8 @@ OPT :width sets thickness; :height controls length. :foreground sets its color."
   `(let ((%lui.frame:*parent*
           (%lui.frame:emit
            (apply #'%lui.layout:make-element
-                  :direction :column :table-p t ,options))))
+                  :direction :column :table-p t
+                  (%lui.frame:container-options ,options)))))
      ,@rows))
 
 (defmacro table-row (options &body cells)
@@ -314,7 +319,8 @@ OPT :width sets thickness; :height controls length. :foreground sets its color."
 Each direct child occupies one column by default."
   `(let ((%lui.frame:*parent*
           (%lui.frame:emit
-           (apply #'%lui.layout:make-element :direction :row ,options))))
+           (apply #'%lui.layout:make-element :direction :row
+                  (%lui.frame:container-options ,options)))))
      ,@cells))
 
 (defmacro table-cell (options &body contents)
@@ -323,7 +329,7 @@ Each direct child occupies one column by default."
   `(let ((%lui.frame:*parent*
           (%lui.frame:emit
            (apply #'%lui.layout:make-element :direction :column
-                  (append ,options
+                  (append (%lui.frame:container-options ,options)
                           (list :height (%lui.layout:grow) :clip-p t))))))
      ,@contents))
 

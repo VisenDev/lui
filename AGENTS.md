@@ -138,7 +138,9 @@ the change and report material limitations instead of claiming untested support.
 - `with-frame` executes the application body once and returns its solved root.
   Input is routed against the previous completed layout. IDs use `equal`:
   keep them stable and do not mutate compound IDs after declaration. Duplicate
-  non-NIL IDs are errors.
+  non-NIL IDs within one container scope are errors. Containers automatically
+  scope child identities. Explicit container keys preserve identity on reorder;
+  anonymous containers use their position under their parent.
 - Resize invalidates old pointer geometry. Removed widgets lose focus/capture;
   an aborted frame invalidates geometry. Layout structures are frame-local and
   should not be mutated after completion.
@@ -334,7 +336,8 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   site, so different control sites may share a key. Use stable item keys rather
   than indices when rows can move. Repeated unkeyed sites or duplicate instance
   keys signal `configuration-error` before state is reused. Recompiling a call
-  site creates a new identity. IDs are scoped to a context and may be any object.
+  site creates a new identity. IDs are scoped to their parent container and may be any object.
+  Containers without explicit keys scope children by their sibling position.
 - `widget-id` resolves a unique key in the current key scope; ambiguous keys
   signal `configuration-error`. `widget-key` extracts the declared key;
   `focus-widget` requests focus; `reset-editor` resets owned text and caret.
