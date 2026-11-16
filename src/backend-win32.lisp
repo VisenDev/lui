@@ -247,7 +247,8 @@
            (make-event :kind :tab :key (when shift :backward)))
           ((and (= code 32) activation-p (not control) (not alt))
            (make-event :kind :activate))
-          ((and (not alt) (= code 13)) (make-event :kind :activate))
+          ((and (not alt) (= code 13))
+           (make-event :kind :activate :key :enter))
           ((and key (not alt))
            (make-event
             :kind :key :key

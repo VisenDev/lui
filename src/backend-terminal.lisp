@@ -466,7 +466,7 @@
        (setf events
              (cond ((null line) nil)
                    ((string= line ":next") (list (make-event :kind :tab)))
-                   ((string= line "") (list (make-event :kind :activate)))
+                   ((string= line "") (list (make-event :kind :activate :key :enter)))
                    (t (list (make-event :kind :text :value line)))))))))
 
 ;; Terminal state, terminal capabilities and input decoding belong to uncursed.
@@ -647,7 +647,7 @@
        (push (make-event :kind :tab :key (when shift :backward))
              (input-events input)))
       ((or (eql kind #\Newline) (eql kind #\Return))
-       (push (make-event :kind :activate) (input-events input)))
+       (push (make-event :kind :activate :key :enter) (input-events input)))
       (command (key-event input command))
       ((or (eql kind #\Rubout) (eq key :backspace))
        (key-event input :backspace))

@@ -4,6 +4,21 @@
 (in-package #:%lui.tests.interaction)
 
 (defun test-shared-helpers ()
+  ;; Activation remains observable before and after a control consumes input.
+  (let ((context (make-test-context)))
+    (with-frame (context 20 5 :events
+                         (vector (make-event :kind :activate :key :enter
+                                             :id :editor)))
+      (assert (lui:key-pressed-p :enter))
+      (assert (lui:activated-p :editor))
+      (lui:take-events :editor)
+      (assert (lui:key-pressed-p :enter)))
+    (with-frame (context 20 5 :events
+                         (vector (make-event :kind :activate :key :enter)))
+      (assert (lui:key-pressed-p :enter)))
+    (with-frame (context 20 5)
+      (assert (not (lui:key-pressed-p :enter)))))
+
   (assert (= 1 (%lui.interaction:list-index :down 0 3)))
   (assert (= 2 (%lui.interaction:list-index :down 2 3)))
   (assert (= 0 (%lui.interaction:list-index :home 2 3)))

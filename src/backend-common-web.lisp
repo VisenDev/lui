@@ -494,7 +494,9 @@
                   (activation-focused-p input)))
          (input-stop event)
          (input-send session (make-event :kind
-                                         :activate)))
+                                         :activate
+                                         :key (if (string= key "Enter")
+                                                  :enter nil))))
         (command
          (input-stop event)
          (input-send session (make-event

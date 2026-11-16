@@ -323,7 +323,7 @@
             ((and (= code 32) context
                   (%lui.widgets:activation-focused-p context))
              (make-event :kind :activate))
-            ((= code #xff0d) (make-event :kind :activate))
+            ((= code #xff0d) (make-event :kind :activate :key :enter))
             (key (make-event :kind :key
                              :key
                              (%lui.widgets:horizontal-selection-key key

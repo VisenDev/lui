@@ -781,7 +781,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
             ((and (= symbol 32) context
                   (%lui.widgets:activation-focused-p context))
              (queue-input :activate))
-            ((= symbol #xff0d) (queue-input :activate))
+            ((= symbol #xff0d) (queue-input :activate :key :enter))
             (command (queue-input :key :key command))
             (t
 

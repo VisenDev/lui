@@ -17,7 +17,7 @@
            #:row #:column #:event #:event-kind #:event-x #:event-y #:event-id
            #:event-value #:event-key #:event-button #:event-clicks
            #:event-dragging-p #:event-buttons #:event-scroll-mode
-           #:context-events #:events-for
+           #:context-events #:context-pressed-keys #:events-for
            #:previous-box
            #:context-state #:context-width #:context-height #:emit
            #:activated-p #:activated-ids #:record-activation
@@ -116,6 +116,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (values (make-hash-table :test 'equal) :type hash-table)
   (state (make-hash-table :test 'equal) :type hash-table)
   (regions (make-hash-table :test 'equal) :type hash-table)
+  (pressed-keys #() :type (vector symbol))
   (events (make-hash-table :test 'equal) :type hash-table)
   (scroll (make-hash-table :test 'equal) :type hash-table)
   (scroll-motion nil :type (or null scroll-motion))
@@ -733,6 +734,14 @@ clock, redraw deadline, declarations, and per-frame activation state."
   (setf (context-pointer-press context) nil (context-popups context) nil)
   (clrhash (context-activated context))
   (clrhash (context-events context))
+  ;; Preserve key identity independently of routing and event consumption.
+  (setf (context-pressed-keys context)
+        (map '(vector symbol) #'event-key
+             (remove-if-not
+              (lambda (event)
+                (and (member (event-kind event) '(:key :activate))
+                     (event-key event)))
+              events)))
   ;; Old hit regions are invalid after resizing. Establish new geometry first.
   (let ((resized (or (/= width (context-width context))
                      (/= height (context-viewport-height context)))))

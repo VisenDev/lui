@@ -11,12 +11,9 @@
 
 (fn (key-pressed-p boolean)
     ((key symbol) &optional ((context context) *context*))
-  "Whether this frame contains a press of the semantic KEY."
-  (loop :for events :being :the :hash-values :of (context-events context)
-        :thereis (some (lambda (event)
-                         (and (eq (event-kind event) :key)
-                              (eq (event-key event) key)))
-                       events)))
+  "Whether KEY was pressed this frame, regardless of focus or consumption.
+Activation keys retain their key identity alongside their control action."
+  (not (null (find key (context-pressed-keys context)))))
 
 (fn (take-events (vector event)) ((id object-id))
   "Return and consume a vector of a control's ordered frame events."

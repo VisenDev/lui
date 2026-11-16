@@ -370,7 +370,8 @@
           ((and (= code 49) activation-p
                 (not (logtest flags #xc0000)))
            (make-event :kind :activate))
-          ((member code '(36 76)) (make-event :kind :activate))
+          ((member code '(36 76))
+           (make-event :kind :activate :key :enter))
           (key (make-event :kind :key
                            :key (%lui.widgets:horizontal-selection-key key
                                                                       shift)))
