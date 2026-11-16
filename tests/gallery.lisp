@@ -175,7 +175,7 @@
       (frame)
       (setf (context-focus context) (lui:widget-id '(:page :controls)
                                       context))
-      (frame (list (make-event :kind :key :key :right)))
+      (frame (list (make-event :kind :key :key lui.key:right)))
       (assert (eq (%lui.example.demo::gallery-page gallery) :editing))
       (frame)
       (assert (gethash (lui:widget-id :editor context)

@@ -507,7 +507,7 @@ No timer is retained after the spinner disappears from the frame."
          (answer nil))
     (let ((*parent* surface))
       (setf answer (dialog-body id text title confirm-label cancel-label)))
-    (when (some (lambda (event) (eq (event-key event) :escape))
+    (when (some (lambda (event) (eq (event-key event) lui.key:escape))
                 (events-for id))
       (setf answer :cancel))
 
@@ -732,12 +732,14 @@ frame for the same error. Closing the window discards its pending messages."
          (index (position (context-focus context) items :test #'equal)))
     (if (zerop count)
         (setf (floating-state-focus-edge state)
-              (if (member key '(:up :end)) :last :first))
+              (if (member key '(lui.key:up lui.key:end)) :last :first))
 
         ;; else
         (let ((next (case key
-                      (:home 0) (:end (1- count))
-                      (:up (if index (mod (1- index) count) (1- count)))
+                      (lui.key:home 0)
+                      (lui.key:end (1- count))
+                      (lui.key:up (if index (mod (1- index) count) (1-
+                                                                    count)))
                       (otherwise (if index (mod (1+ index) count) 0)))))
           (setf (context-focus context) (aref items next))))
     (setf (context-focus-visible-p context) t)
@@ -767,14 +769,15 @@ frame for the same error. Closing the window discards its pending messages."
       (return-from menu-key-input nil))
 
     (case key
-      ((:up :down :home :end) (navigate-menu-items context owner key) t)
-      (:left
+      ((lui.key:up lui.key:down lui.key:home lui.key:end)
+       (navigate-menu-items context owner key) t)
+      (lui.key:left
        (if (> depth 1)
            (close-floating context (1- depth))
            ;; else
            (cycle-root-menu context -1))
        t)
-      (:right
+      (lui.key:right
        (if (and trigger (floating-state-parent trigger))
            (open-floating context trigger :first)
            ;; else
@@ -788,15 +791,15 @@ frame for the same error. Closing the window discards its pending messages."
         (depth (length (context-floating-path context))))
     (cond
       ;; All expanders can open from their focused trigger.
-      ((and trigger (member key '(:up :down :right))
+      ((and trigger (member key '(lui.key:up lui.key:down lui.key:right))
             (not (floating-open-p context (floating-state-id trigger))))
-       (open-floating context trigger (if (eq key :up) :last :first))
+       (open-floating context trigger (if (eq key lui.key:up) :last :first))
        t)
 
       ((zerop depth) nil)
 
       ;; Escape closes one level even when the pane contains ordinary controls.
-      ((eq key :escape)
+      ((eq key lui.key:escape)
        (close-floating context (1- depth))
        t)
 
@@ -858,7 +861,7 @@ frame for the same error. Closing the window discards its pending messages."
     (when (plusp (length (context-floating-path context)))
       (case (event-kind event)
         (:tab
-         (tab-from-floating context (eq (event-key event) :backward))
+         (tab-from-floating context (eq (event-key event) lui.key:backward))
          (return-from floating-input nil))
         (:cancel (close-floating context 0))
         (:press
@@ -1105,14 +1108,14 @@ OPT :disabled-p disables it. The third return value is its resolved ID.")
 (fn (completion-navigation-p boolean) ((event event))
   "Recognize up/down keyboard events that navigate completion choices."
   (and (eq :key (event-kind event))
-       (not (null (member (event-key event) '(:up :down))))))
+       (not (null (member (event-key event) '(lui.key:up lui.key:down))))))
 
 (fn (completion-next-index (or null integer))
     ((matches sequence) (index (or null integer)) (last integer)
      (event event))
   "Advance the highlighted completion index, retaining NIL for an empty result set."
   (when (plusp (length matches))
-    (if (eq :down (event-key event))
+    (if (eq lui.key:down (event-key event))
         (min last (1+ (or index -1)))
         ;; else
         (max 0 (1- (or index (1+ last)))))))
@@ -1137,10 +1140,10 @@ OPT :disabled-p disables it. The third return value is its resolved ID.")
         (case (event-kind event)
           (:key
            (case (event-key event)
-             ((:up :down)
+             ((lui.key:up lui.key:down)
               (setf (combobox-state-open-p state) t
                     index (completion-next-index matches index last event)))
-             (:escape (setf (combobox-state-open-p state) nil))
+             (lui.key:escape (setf (combobox-state-open-p state) nil))
              (otherwise nil)))
 
           (:activate
@@ -1320,7 +1323,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         (loop :for event :across (events-for focus) :do
               (let ((step (and (eq (event-kind event) :key)
                                (case (event-key event)
-                                 (:left -1) (:right 1) (:up -7) (:down 7)
+                                 (lui.key:left -1)
+                                 (lui.key:right 1)
+                                 (lui.key:up -7)
+                                 (lui.key:down 7)
                                  (otherwise nil)))))
                 (when step
                   (multiple-value-bind (y m next)
@@ -1494,7 +1500,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                     (not (%lui.frame:contains-p bounds (event-x press)
                                                 (event-y press))))
                (setf (picker-state-open-p state) nil))
-              ((find :escape (events-for focus) :key #'event-key)
+              ((find lui.key:escape (events-for focus) :key #'event-key)
                (setf (picker-state-open-p state) nil (context-focus
                                                       *context*) trigger))
               ((and bounds focus (not (and (consp focus) (equal (first focus)

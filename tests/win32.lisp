@@ -22,17 +22,20 @@
   (get-pixel (%lui.win32::win-window-dc window) x y))
 
 (%lui.fn:fn test-readline-keys ()
-  (dolist (entry '((65 . :home) (69 . :end) (66 . :left) (70 . :right)
-                   (68 . :delete) (72 . :backspace) (75 . :kill-end)
-                   (85 . :kill-start) (87 . :kill-word) (89 . :yank)
-                   (84 . :transpose)))
+  (dolist (entry '((65 . lui.key:home) (69 . lui.key:end) (66 . lui.key:left)
+                   (70 . lui.key:right)
+                   (68 . lui.key:delete) (72 . lui.key:backspace) (75 .
+                                                                   lui.key:kill-end)
+                   (85 . lui.key:kill-start) (87 . lui.key:kill-word) (89 .
+                                                                       lui.key:yank)
+                   (84 . lui.key:transpose)))
     (assert (eq (cdr entry)
                 (event-key (%lui.win32::key-input (car entry) t nil nil t)))))
-  (assert (eq :select-all
+  (assert (eq lui.key:select-all
               (event-key (%lui.win32::key-input 65 t nil t t))))
-  (assert (eq :word-left
+  (assert (eq lui.key:word-left
               (event-key (%lui.win32::key-input 66 nil t nil t))))
-  (assert (eq :word-right
+  (assert (eq lui.key:word-right
               (event-key (%lui.win32::key-input 39 t nil nil t))))
   (assert (null (%lui.win32::key-input 65 t nil nil nil)))
   (assert (null (%lui.win32::key-input 13 nil t nil nil)))
@@ -53,7 +56,7 @@
            (predicted (pending-input-context context events 400 200)))
       (assert (null (lui:widget-key (context-focus context))))
       (assert (eq :edit (lui:widget-key (context-focus predicted))))
-      (assert (eq :select-all
+      (assert (eq lui.key:select-all
                   (event-key
                    (%lui.win32::key-input
                     65 t nil t
@@ -118,7 +121,7 @@
       (setf (%lui.win32::win-window-events window) saved))))
 
 (%lui.fn:fn test-navigation-and-cursors ()
-  (assert (eq :backward
+  (assert (eq lui.key:backward
               (event-key (%lui.win32::key-input 9 nil nil t nil))))
   (assert (eq :activate
               (event-kind (%lui.win32::key-input 32 nil nil nil nil t))))

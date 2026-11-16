@@ -103,7 +103,7 @@
           (%lui.frame:context-focus-visible-p %lui.frame:*context*)
       (state-focus-visible-p state)
           (state-restore-focus-p state) nil))
-  (when (and (modal-p state) (lui:key-pressed-p :escape))
+  (when (and (modal-p state) (lui:key-pressed-p lui.key:escape))
     (finish-adjust state nil))
   (unless (modal-p state) (canvas-input state))
   (let ((model (state-model state)))

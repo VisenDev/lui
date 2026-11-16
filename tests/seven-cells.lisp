@@ -101,7 +101,7 @@
         (frame (make-event :kind :text :value (string (code-char 5)))
                (make-event :kind :text :value (string (code-char 8))))
         (assert (equal "X" (%lui.widgets:widget-value (widget-at 0))))
-        (frame (key :escape))
+        (frame (key lui.key:escape))
         (edit 0)
         ;; Batched final text and Enter must commit the latest draft exactly once.
         (frame (change "10") (activate))
@@ -113,7 +113,7 @@
         (edit 2)
         (assert (equal "=sum(A0:B0)"
                        (%lui.widgets:widget-value (widget-at 2))))
-        (frame (change "discard this") (key :escape))
+        (frame (change "discard this") (key lui.key:escape))
         (assert (null (state-editing state)))
         (value-is "C0" 13)
         (assert (equal "=sum(A0:B0)"
@@ -132,16 +132,16 @@
         (assert (eql 2 (state-editing state)))
         (frame (change "=div(1,0)") (activate))
         (assert (equal "#DIV/0!" (%lui.widgets:widget-text (widget-at 2))))
-        (frame (key :right))
+        (frame (key lui.key:right))
         (assert (= 3 (state-selected state)))
-        (frame (key :down))
+        (frame (key lui.key:down))
         (assert (= 29 (state-selected state)))
-        (frame (key :left))
+        (frame (key lui.key:left))
         (assert (= 28 (state-selected state)))
-        (frame (key :up))
+        (frame (key lui.key:up))
         (assert (= 2 (state-selected state)))
         ;; End reaches the far corner without constructing the full grid.
-        (frame (key :end))
+        (frame (key lui.key:end))
         (assert (= 2599 (state-selected state)))
         (assert (equal (cell-id 2599) (lui:widget-key (context-focus
                   context))))
@@ -157,7 +157,7 @@
         (frame (activate))
         (frame (change "=sum(A0:B0)") (activate))
         (value-is "Z99" 14)
-        (frame (key :home))
+        (frame (key lui.key:home))
         (assert (= 0 (state-selected state)))
         (let ((grid (gethash (lui:widget-id :seven-grid context)
                       (%lui.frame::context-ids context))))

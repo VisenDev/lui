@@ -36,7 +36,7 @@
          (with-frame (context 400 200)
         (lui.glass:button "Button" (lui:opt :id :button)))
       (setf (context-focus context) (lui:widget-id :button context))
-         (assert (eq :backward
+         (assert (eq lui.key:backward
                      (event-key (translated-key display #xff09 1 context))))
          (assert (eq :activate
                      (event-kind (translated-key display 32 0 context))))
@@ -56,7 +56,7 @@
                 (predicted (pending-input-context context (list press))))
         (assert (null (lui:widget-key (context-focus context))))
         (assert (eq :edit (lui:widget-key (context-focus predicted))))
-           (assert (eq :select-all
+        (assert (eq lui.key:select-all
                        (event-key (translated-key display #x41 5 predicted))))
            ;; A queued Tab follows the same focus order without mutating it.
            (assert (eq :edit

@@ -951,7 +951,7 @@ Fall back to its background role, or the current toolkit for an empty frame."
               (or (and (eq (event-kind event) :press)
                        (eq (event-button event) :primary))
                   (and (eq (event-kind event) :key)
-                       (eq (event-key event) :copy))))
+                       (eq (event-key event) lui.key:copy))))
             events)))
 
 (fn (selection-input (values))
@@ -979,7 +979,7 @@ Fall back to its background role, or the current toolkit for an empty frame."
                        (member kind '(:move :release)))
               (setf target (nearest-selection-node nodes x y)))
             (cond
-              ((and (eq kind :key) (eq (event-key event) :copy))
+              ((and (eq kind :key) (eq (event-key event) lui.key:copy))
                (setf (text-selection-pending-copy-p selection) t))
               ((and (eq kind :press) (eq (event-button event) :primary))
                (setf selection
@@ -1073,7 +1073,7 @@ Fall back to its background role, or the current toolkit for an empty frame."
                (some (lambda (event)
                        (or (member (event-kind event) '(:text :change))
                            (and (eq (event-kind event) :key)
-                                (not (eq (event-key event) :copy)))))
+                                (not (eq (event-key event) lui.key:copy)))))
                      focused))
       (setf (text-selection-anchor selection) nil
             (text-selection-focus selection) nil

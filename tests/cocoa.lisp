@@ -215,7 +215,7 @@
     (assert (%lui.cocoa::cocoa-focus-event nil))))
 
 (fn test-key-input ()
-  (assert (eq :backward
+  (assert (eq lui.key:backward
               (event-key (%lui.cocoa::cocoa-key-input 48 #x20000 ""))))
   (assert (eq :activate
               (event-kind (%lui.cocoa::cocoa-key-input
@@ -228,29 +228,29 @@
                  (%lui.cocoa::cursor-selector :resize-vertical)))
   (assert (equal "operationNotAllowedCursor"
                  (%lui.cocoa::cursor-selector :not-allowed)))
-  (assert (eq :home
+  (assert (eq lui.key:home
               (event-key (%lui.cocoa::cocoa-key-input 0 #x40000 "a" t))))
-  (assert (eq :kill-end
+  (assert (eq lui.key:kill-end
               (event-key (%lui.cocoa::cocoa-key-input 40 #x40000 "k" t))))
-  (assert (eq :word-left
+  (assert (eq lui.key:word-left
               (event-key (%lui.cocoa::cocoa-key-input 11 #x80000 "b" t))))
   (assert (null (%lui.cocoa::cocoa-key-input
                  0 #x40000 (string (code-char 1)))))
   (assert (null (%lui.cocoa::cocoa-key-input 0 #x100000 "a")))
 
-  (assert (eq :shift-left
+  (assert (eq lui.key:shift-left
               (event-key (%lui.cocoa::cocoa-key-input 123 #x20000 ""))))
-  (assert (eq :shift-right
+  (assert (eq lui.key:shift-right
               (event-key (%lui.cocoa::cocoa-key-input 124 #x20000 ""))))
-  (assert (eq :select-all
+  (assert (eq lui.key:select-all
               (event-key (%lui.cocoa::cocoa-key-input 0 #x100000 "a" t))))
   (assert (null (%lui.cocoa::cocoa-key-input 12 #x100000 "q")))
   (assert (eq :activate (event-kind (%lui.cocoa::cocoa-key-input 76 0 ""))))
   (assert (string= "λ日本"
                    (event-value (%lui.cocoa::cocoa-key-input 0 0 "λ日本"))))
-  (assert (eq :escape
+  (assert (eq lui.key:escape
               (event-key (%lui.cocoa::cocoa-key-input 53 0 ""))))
-  (assert (eq :copy
+  (assert (eq lui.key:copy
               (event-key (%lui.cocoa::cocoa-key-input 8 #x100000 "c")))))
 
 #+darwin

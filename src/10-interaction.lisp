@@ -10,7 +10,7 @@
 (in-package #:%lui.interaction)
 
 (fn (key-pressed-p boolean)
-    ((key symbol) &optional ((context context) *context*))
+    ((key lui.key:key) &optional ((context context) *context*))
   "Whether KEY was pressed this frame, regardless of focus or consumption.
 Activation keys retain their key identity alongside their control action."
   (not (null (find key (context-pressed-keys context)))))
@@ -58,7 +58,7 @@ outside editing. Return an event or NIL; printable input remains text."
         (cond
           ((and code (or (< code 32) (= code 127)))
            (when editing-p
-             (let ((key (if (= code 127) :backspace
+             (let ((key (if (= code 127) lui.key:backspace
                             ;; else
                             (%lui.widgets:readline-key
                              (string (code-char (+ code 64))) :control t))))
@@ -82,15 +82,16 @@ outside editing. Return an event or NIL; printable input remains text."
           (min count (1+ (ceiling (- (+ offset viewport) header) size)))))
 
 (fn (list-index (or null integer))
-    ((key symbol) (index integer) (count
+    ((key lui.key:key) (index integer) (count
                                    (integer 0
                                             *)))
   "Move a bounded list selection; return NIL for an unrelated key/empty list."
   (when (plusp count)
     (case key
-      (:up (max 0 (1- index)))
-      (:down (min (1- count) (1+ index)))
-      (:home 0) (:end (1- count)) (otherwise nil))))
+      (lui.key:up (max 0 (1- index)))
+      (lui.key:down (min (1- count) (1+ index)))
+      (lui.key:home 0)
+      (lui.key:end (1- count)) (otherwise nil))))
 
 (fn (reveal-offset real)
     ((start real) (size real) (offset real) (viewport real) (leading real))

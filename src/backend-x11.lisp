@@ -295,11 +295,12 @@
            (shift (logtest state 1))
            (text-p (and context (%lui.widgets:text-field-focused-p context)))
            (key (cdr (assoc code
-                            '((#xff51 . :left) (#xff53 . :right)
-                              (#xff52 . :up) (#xff54 . :down)
-                              (#xff50 . :home) (#xff57 . :end)
-                              (#xff08 . :backspace) (#xffff . :delete)
-                              (#xff1b . :escape)))))
+                            '((#xff51 . lui.key:left) (#xff53 . lui.key:right)
+                              (#xff52 . lui.key:up) (#xff54 . lui.key:down)
+                              (#xff50 . lui.key:home) (#xff57 . lui.key:end)
+                              (#xff08 . lui.key:backspace) (#xffff .
+                                                            lui.key:delete)
+                              (#xff1b . lui.key:escape)))))
            (name (case code
                    (#xff51 "ArrowLeft") (#xff53 "ArrowRight")
                    (#xff08 "Backspace")
@@ -313,17 +314,18 @@
 
       ;; Clipboard and editor commands take precedence over ordinary key input.
       (cond ((and control (not alt) (member code '(#x63 #x43)))
-             (make-event :kind :key :key :copy))
+             (make-event :kind :key :key lui.key:copy))
             (command (make-event :kind :key :key command))
 
             ;; Tab, activation, and navigation stay separate from text insertion.
             ((member code '(#xff09 #xfe20))
              (make-event :kind :tab
-                         :key (when (or shift (= code #xfe20)) :backward)))
+                         :key (when (or shift (= code #xfe20))
+                                 lui.key:backward)))
             ((and (= code 32) context
                   (%lui.widgets:activation-focused-p context))
              (make-event :kind :activate))
-            ((= code #xff0d) (make-event :kind :activate :key :enter))
+            ((= code #xff0d) (make-event :kind :activate :key lui.key:enter))
             (key (make-event :kind :key
                              :key
                              (%lui.widgets:horizontal-selection-key key

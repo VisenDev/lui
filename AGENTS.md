@@ -79,6 +79,9 @@ the change and report material limitations instead of claiming untested support.
   through `16-debug.lisp`). Palette and toolkit support precede the application
   facade in `07-palette.lisp`, `08-toolkit.lisp`, and `09-lui.lisp`.
   The debugger remains an optional ASDF system.
+- Keyboard constants live in `src/02-key.lisp` (`lui.key`), loaded before
+  text/frame support. Always qualify keycodes with `lui.key:`; do not use
+  or import that package. Keycode constants evaluate to their own symbols.
 - Each core file owns one matching package. Ignore numeric prefixes and
   the leading `%`, and map package dots to filename hyphens. Tests use
   `%lui.tests.` and gallery packages use `%lui.example.`; script packages also

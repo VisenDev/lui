@@ -22,6 +22,7 @@
 (defparameter *sources*
   '("src/01-fn.lisp"
     "src/02-conditions.lisp"
+    "src/02-key.lisp"
     "src/03-text.lisp"
     "src/backend-ecl-emscripten.lisp"
     "src/04-layout.lisp"
@@ -66,6 +67,7 @@
 
 (load "src/01-fn.lisp")
 (load "src/02-conditions.lisp")
+(load "src/02-key.lisp")
 (load "src/03-text.lisp")
 (let ((*features* (cons :lui-ecl-host *features*)))
   (load "src/backend-ecl-emscripten.lisp"))

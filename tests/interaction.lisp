@@ -4,29 +4,44 @@
 (in-package #:%lui.tests.interaction)
 
 (defun test-shared-helpers ()
+  ;; Key constants are package-owned symbols, including names shared with CL.
+  (dolist (key (list lui.key:enter lui.key:equal lui.key:quote lui.key:t
+                     lui.key:keypad-enter lui.key:shift-word-right))
+    (assert (eq (symbol-package key) (find-package :lui.key)))
+    (assert (eq key (symbol-value key)))
+    (assert (typep key 'lui.key:key)))
+  (assert (not (typep :enter 'lui.key:key)))
+  (assert (char= #\a (lui.key:key->char lui.key:a)))
+  (assert (null (lui.key:key->char lui.key:f1)))
+  (assert (equal (list lui.key:a lui.key:left-shift)
+                 (multiple-value-list (lui.key:char->key #\A))))
+  (assert (eq lui.key:enter (lui.key:char->key #\Newline)))
+  (assert (null (lui.key:char->key (code-char 955))))
   ;; Activation remains observable before and after a control consumes input.
   (let ((context (make-test-context)))
     (with-frame (context 20 5 :events
-                         (vector (make-event :kind :activate :key :enter
+                         (vector (make-event :kind :activate :key
+                                             lui.key:enter
                                              :id :editor)))
-      (assert (lui:key-pressed-p :enter))
+      (assert (lui:key-pressed-p lui.key:enter))
       (assert (lui:activated-p :editor))
       (lui:take-events :editor)
-      (assert (lui:key-pressed-p :enter)))
+      (assert (lui:key-pressed-p lui.key:enter)))
     (with-frame (context 20 5 :events
-                         (vector (make-event :kind :activate :key :enter)))
-      (assert (lui:key-pressed-p :enter)))
+                         (vector (make-event :kind :activate :key
+                                             lui.key:enter)))
+      (assert (lui:key-pressed-p lui.key:enter)))
     (with-frame (context 20 5)
-      (assert (not (lui:key-pressed-p :enter)))))
+      (assert (not (lui:key-pressed-p lui.key:enter)))))
 
-  (assert (= 1 (%lui.interaction:list-index :down 0 3)))
-  (assert (= 2 (%lui.interaction:list-index :down 2 3)))
-  (assert (= 0 (%lui.interaction:list-index :home 2 3)))
-  (assert (null (%lui.interaction:list-index :down 0 0)))
+  (assert (= 1 (%lui.interaction:list-index lui.key:down 0 3)))
+  (assert (= 2 (%lui.interaction:list-index lui.key:down 2 3)))
+  (assert (= 0 (%lui.interaction:list-index lui.key:home 2 3)))
+  (assert (null (%lui.interaction:list-index lui.key:down 0 0)))
   (let* ((control (make-event :kind :text :value (string (code-char 1))))
          (normalized (%lui.interaction:text-input-event control t)))
     (assert (eq :key (event-kind normalized)))
-    (assert (eq :home (event-key normalized)))
+    (assert (eq lui.key:home (event-key normalized)))
     (assert (null (%lui.interaction:text-input-event control nil))))
   (multiple-value-bind (first end)
       (%lui.interaction:visible-span 999 20 10 4 26)
@@ -59,9 +74,9 @@
                (emit (make-element :width (fixed 100) :height (fixed 100))))))
       (with-frame (context 20 20) (draw))
       (with-frame (context 20 20 :events
-                           (list (make-event :kind :key :key :escape
+                           (list (make-event :kind :key :key lui.key:escape
                                              :id :key)))
-        (assert (%lui.interaction:key-pressed-p :escape))
+        (assert (%lui.interaction:key-pressed-p lui.key:escape))
         (assert (%lui.interaction:reveal-rect :view 30 40 4 4
                                             :leading-x 2 :leading-y 1))
         (draw))
@@ -129,7 +144,7 @@
     (assert (null (%lui.frame::context-scroll-motion context)))
     (scroll-frame context (wheel 32))
     (let ((position (scroll-offset context)))
-      (scroll-frame context (make-event :kind :key :key :down))
+      (scroll-frame context (make-event :kind :key :key lui.key:down))
       (assert (= position (scroll-offset context)))
       (assert (null (context-next-frame context))))
     (scroll-frame context (wheel 32))
@@ -354,7 +369,7 @@
                 :input)))
         (assert (gethash (lui:widget-id '(:date :popup) context)
                   (%lui.frame::context-ids context)))
-        (frame (make-event :kind :key :key :escape))
+        (frame (make-event :kind :key :key lui.key:escape))
         (assert (null (gethash (lui:widget-id '(:date :popup) context)
                         (%lui.frame::context-ids context)))))
       (frame (make-event :kind :change :id '(:date :input) :value
@@ -440,7 +455,7 @@
                    (list (make-event :kind :activate :id '(:date :calendar))))
         (draw))
       (with-frame (context 80 40 :events (list (make-event :kind :key :key
-                :right)))
+                                                           lui.key:right)))
         (draw))
       (assert (equal (lui:widget-key (context-focus context)) '(:date :day
               1)))

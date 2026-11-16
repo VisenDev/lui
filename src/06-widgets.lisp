@@ -156,7 +156,8 @@ An optional terminal-label callback overrides the standard kind-based label."
 (fn (tab-arrow-p boolean) ((event event))
   "Recognize directional keyboard input used to navigate a tab group."
   (and (eq (event-kind event) :key)
-       (not (null (member (event-key event) '(:left :right :home :end))))))
+       (not (null (member (event-key event) '(lui.key:left lui.key:right
+                                              lui.key:home lui.key:end))))))
 
 (fn (interactive-tab-p boolean) ((node element))
   "Recognize enabled tabs that participate in their parent's keyboard group."
@@ -170,9 +171,10 @@ An optional terminal-label callback overrides the standard kind-based label."
                               :key #'element-id :test #'equal) 0))
          (count (length tabs))
          (next (ecase (event-key event)
-                 (:home 0) (:end (1- count))
-                 (:left (mod (1- index) count))
-                 (:right (mod (1+ index) count))))
+                 (lui.key:home 0)
+                 (lui.key:end (1- count))
+                 (lui.key:left (mod (1- index) count))
+                 (lui.key:right (mod (1+ index) count))))
          (target (element-id (aref tabs next))))
     ;; A batch of arrows leaves only its final destination activated.
     (loop :for node :across tabs
@@ -344,48 +346,60 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
               (setf cursor (widget-cursor widget)))))))
     cursor))
 
-(fn (horizontal-selection-key symbol) ((key symbol) (extend boolean))
+(fn (horizontal-selection-key lui.key:key)
+    ((key lui.key:key) (extend boolean))
   "Map horizontal arrows to selection-extending commands when EXTEND is true."
   (if extend
-      (case key (:left :shift-left) (:right :shift-right) (otherwise key))
+      (case key
+        (lui.key:left lui.key:shift-left)
+        (lui.key:right lui.key:shift-right)
+        (otherwise key))
       ;; else
       key))
 
-(fn (readline-key symbol)
+(fn (readline-key (or null lui.key:key))
     ((key string) &key ((control boolean) nil) ((alt boolean) nil)
      ((shift boolean) nil))
   "Translate modified keys to shared editor commands; NIL leaves native handling."
   (let* ((name (string-downcase key))
          (arrow (cond ((member name '("left" "arrowleft") :test #'string=)
-                       :word-left)
+                       lui.key:word-left)
                       ((member name '("right" "arrowright") :test #'string=)
-                       :word-right))))
+                       lui.key:word-right))))
 
     ;; Handle shared clipboard and word-navigation shortcuts first.
     (cond
-      ((and control (string= name "c")) :copy)
-      ((and control shift (string= name "a")) :select-all)
+      ((and control (string= name "c")) lui.key:copy)
+      ((and control shift (string= name "a")) lui.key:select-all)
       ((and (or control alt) arrow)
        (if shift
-           (if (eq arrow :word-left) :shift-word-left :shift-word-right)
+           (if (eq arrow lui.key:word-left) lui.key:shift-word-left
+               lui.key:shift-word-right)
            ;; else
            arrow))
 
       ;; Control bindings implement readline-style editing and movement.
       (control
        (let ((command (cdr (assoc name
-                                  '(("a" . :home) ("e" . :end)
-                                    ("b" . :left) ("f" . :right)
-                                    ("p" . :up) ("n" . :down)
-                                    ("d" . :delete) ("h" . :backspace)
-                                    ("k" . :kill-end) ("u" . :kill-start)
-                                    ("w" . :kill-word) ("y" . :yank)
-                                    ("t" . :transpose))
+                                  '(("a" . lui.key:home) ("e" . lui.key:end)
+                                    ("b" . lui.key:left) ("f" . lui.key:right)
+                                    ("p" . lui.key:up) ("n" . lui.key:down)
+                                    ("d" . lui.key:delete)
+                                    ("h" . lui.key:backspace)
+                                    ("k" . lui.key:kill-end)
+                                    ("u" . lui.key:kill-start)
+                                    ("w" . lui.key:kill-word)
+                                    ("y" . lui.key:yank)
+                                    ("t" . lui.key:transpose))
                                   :test #'string=))))
          (if shift
              (case command
-               (:home :shift-home) (:end :shift-end)
-               (:left :shift-left) (:right :shift-right)
+               (lui.key:home lui.key:shift-home)
+               (lui.key:end
+                lui.key:shift-end)
+               (lui.key:left lui.key:shift-left)
+               (lui.key:right
+                lui.key:shift-right)
                (otherwise command))
 
              ;; else
@@ -393,9 +407,9 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
 
       ;; Alt keeps the smaller set of word movement and deletion commands.
       (alt
-       (cdr (assoc name '(("b" . :word-left) ("f" . :word-right)
-                          ("d" . :kill-word-forward)
-                          ("backspace" . :kill-word))
+       (cdr (assoc name '(("b" . lui.key:word-left) ("f" . lui.key:word-right)
+                          ("d" . lui.key:kill-word-forward)
+                          ("backspace" . lui.key:kill-word))
                    :test #'string=))))))
 
 (fn (line-start integer) ((text string) (cursor integer))
@@ -450,8 +464,9 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
     (let ((killed (subseq text start end)))
       (setf (edit-state-kill state)
             (if (member (edit-state-last-command state)
-                        '(:kill-end :kill-start :kill-word
-                          :kill-word-forward))
+                        '(lui.key:kill-end lui.key:kill-start
+                          lui.key:kill-word
+                          lui.key:kill-word-forward))
                 (if backward
                     (concatenate 'string killed (edit-state-kill state))
                     ;; else
@@ -478,65 +493,67 @@ Kinds include :DEFAULT, :POINTER, :TEXT, both resize directions, and :NOT-ALLOWE
   (values))
 
 (fn (editor-motion-p boolean)
-    ((text string) (state edit-state) (key symbol)
+    ((text string) (state edit-state) (key lui.key:key)
      (start integer) (end integer))
   "Apply a caret-motion KEY and report whether it was handled."
   (let ((cursor (edit-state-cursor state)))
     (flet ((move-to (position &optional extend)
              (move-editor-cursor text state position extend)))
       (case key
-        (:left (move-to (if (< start end) start (1- cursor))))
-        (:right (move-to (if (< start end) end (1+ cursor))))
-        (:shift-left (move-to (1- cursor) t))
-        (:shift-right (move-to (1+ cursor) t))
-        (:home (move-to (line-start text cursor)))
-        (:end (move-to (line-end text cursor)))
-        (:shift-home (move-to (line-start text cursor) t))
-        (:shift-end (move-to (line-end text cursor) t))
-        (:up (move-editor-line text state -1))
-        (:down (move-editor-line text state 1))
-        ((:word-left :shift-word-left)
-         (move-to (word-position text cursor -1) (eq key :shift-word-left)))
-        ((:word-right :shift-word-right)
-         (move-to (word-position text cursor 1) (eq key :shift-word-right)))
-        (:select-all
+        (lui.key:left (move-to (if (< start end) start (1- cursor))))
+        (lui.key:right (move-to (if (< start end) end (1+ cursor))))
+        (lui.key:shift-left (move-to (1- cursor) t))
+        (lui.key:shift-right (move-to (1+ cursor) t))
+        (lui.key:home (move-to (line-start text cursor)))
+        (lui.key:end (move-to (line-end text cursor)))
+        (lui.key:shift-home (move-to (line-start text cursor) t))
+        (lui.key:shift-end (move-to (line-end text cursor) t))
+        (lui.key:up (move-editor-line text state -1))
+        (lui.key:down (move-editor-line text state 1))
+        ((lui.key:word-left lui.key:shift-word-left)
+         (move-to (word-position text cursor -1)
+                  (eq key lui.key:shift-word-left)))
+        ((lui.key:word-right lui.key:shift-word-right)
+         (move-to (word-position text cursor 1)
+                  (eq key lui.key:shift-word-right)))
+        (lui.key:select-all
          (setf (edit-state-anchor state) 0
                (edit-state-cursor state) (length text)))
         (otherwise (return-from editor-motion-p nil)))))
   t)
 
 (fn (edit-text-key string)
-    ((text string) (state edit-state) (key symbol)
+    ((text string) (state edit-state) (key lui.key:key)
      (start integer) (end integer))
   "Apply a text-editing KEY, preserving kill accumulation and caret movement."
   (when (editor-motion-p text state key start end)
     (return-from edit-text-key text))
   (let ((cursor (edit-state-cursor state)))
     (case key
-      (:backspace
+      (lui.key:backspace
        (when (= start end) (setf start (max 0 (1- cursor))))
        (setf text (replace-editor-selection text state start end "")))
-      (:delete
+      (lui.key:delete
        (when (= start end) (setf end (min (length text) (1+ cursor))))
        (setf text (replace-editor-selection text state start end "")))
-      (:kill-end
+      (lui.key:kill-end
        (when (= start end)
          (setf end (line-end text cursor))
          (when (and (< end (length text)) (= cursor end)) (incf end)))
        (setf text (kill-editor-selection text state start end nil)))
-      (:kill-start
+      (lui.key:kill-start
        (when (= start end) (setf start (line-start text cursor)))
        (setf text (kill-editor-selection text state start end t)))
-      (:kill-word
+      (lui.key:kill-word
        (when (= start end) (setf start (word-position text cursor -1 t)))
        (setf text (kill-editor-selection text state start end t)))
-      (:kill-word-forward
+      (lui.key:kill-word-forward
        (when (= start end) (setf end (word-position text cursor 1)))
        (setf text (kill-editor-selection text state start end nil)))
-      (:yank
+      (lui.key:yank
        (setf text (replace-editor-selection
                    text state start end (edit-state-kill state))))
-      (:transpose
+      (lui.key:transpose
        (when (and (plusp cursor) (> (length text) 1))
          (let ((right (min cursor (1- (length text)))))
            (setf text (copy-seq text))
@@ -598,10 +615,10 @@ Events include semantic Readline keys, text insertion, and replacement changes."
                               (box-width box)))))))
             (:key
              (case (event-key event)
-               ((:right :up) (incf value step))
-               ((:left :down) (decf value step))
-               (:home (setf value minimum))
-               (:end (setf value maximum))
+               ((lui.key:right lui.key:up) (incf value step))
+               ((lui.key:left lui.key:down) (decf value step))
+               (lui.key:home (setf value minimum))
+               (lui.key:end (setf value maximum))
                (otherwise nil)))
             (otherwise nil)))
     (max minimum
@@ -721,16 +738,21 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
                 ((:release :cancel) (setf (scrollbar-state-grab state) nil))
                 (:key
                  (when (member (event-key event)
-                               '(:up :left :down :right :page-up :page-down
-                                 :home :end))
+                               '(lui.key:up lui.key:left lui.key:down
+                                 lui.key:right lui.key:page-up
+                                 lui.key:page-down
+                                 lui.key:home lui.key:end))
                    (setf handled t))
                  (case (event-key event)
-                   ((:up :left) (decf offset (max 1 (/ page 10))))
-                   ((:down :right) (incf offset (max 1 (/ page 10))))
-                   (:page-up (decf offset page))
-                   (:page-down (incf offset page))
-                   (:home (setf offset 0))
-                   (:end (setf offset limit)) (otherwise nil))) (otherwise
+                   ((lui.key:up lui.key:left) (decf offset (max 1 (/ page
+                                                                     10))))
+                   ((lui.key:down lui.key:right) (incf offset (max 1 (/ page
+                                                                        10))))
+                   (lui.key:page-up (decf offset page))
+                   (lui.key:page-down (incf offset page))
+                   (lui.key:home (setf offset 0))
+                   (lui.key:end (setf offset limit)) (otherwise nil)))
+                (otherwise
                  nil))
               (setf offset (max 0 (min limit offset))))
 

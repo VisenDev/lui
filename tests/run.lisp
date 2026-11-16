@@ -7,6 +7,7 @@
 
 (dolist (file '("src/01-fn.lisp"
                 "src/02-conditions.lisp"
+                "src/02-key.lisp"
                 "src/03-text.lisp"
                 "src/04-layout.lisp"
                 "src/05-frame.lisp"

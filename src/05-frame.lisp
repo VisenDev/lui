@@ -36,6 +36,7 @@
   "Backend-neutral input: a kind, target ID, optional key/value, and coordinates.
 BUTTONS is NIL when unknown; otherwise bit 0 means primary and bit 1 secondary,
 with zero meaning no buttons held. :CANCEL ends capture without activation.
+KEY holds a LUI.KEY constant; LUI.KEY:BACKWARD marks reverse Tab traversal.
 DRAGGING-P is resolved from capture and the supplied physical button state."
   (kind :move :type
         (member :move :press :release :tab :activate :change
@@ -49,7 +50,7 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
   (scroll-mode :auto :type (member :auto :smooth :immediate))
   (id nil :type object-id)
   value
-  key
+  (key nil :type (or null lui.key:key))
   (x 0 :type real)
   (y 0 :type real))
 
@@ -116,7 +117,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (values (make-hash-table :test 'equal) :type hash-table)
   (state (make-hash-table :test 'equal) :type hash-table)
   (regions (make-hash-table :test 'equal) :type hash-table)
-  (pressed-keys #() :type (vector symbol))
+  (pressed-keys #() :type (vector lui.key:key))
   (events (make-hash-table :test 'equal) :type hash-table)
   (scroll (make-hash-table :test 'equal) :type hash-table)
   (scroll-motion nil :type (or null scroll-motion))
@@ -373,11 +374,12 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
   (let ((modal (context-modal context)))
     (cond
       ((null modal) nil)
-      ((and (eq (event-kind event) :key) (eq (event-key event) :escape))
+      ((and (eq (event-kind event) :key) (eq (event-key event)
+                                             lui.key:escape))
        (push event (gethash (element-id modal) (context-events context)))
        t)
       ((eq (event-kind event) :tab)
-       (focus-next context (eq (event-key event) :backward))
+       (focus-next context (eq (event-key event) lui.key:backward))
        (setf (context-focus-visible-p context) t)
        t)
       (t
@@ -446,7 +448,7 @@ Native key translators use this to interpret a key after a batched click or Tab.
               :for event := (elt events event-index) :do
               (case (event-kind event)
                 (:tab (focus-next
-                       predicted (eq (event-key event) :backward)))
+                       predicted (eq (event-key event) lui.key:backward)))
                 (:press
                  (let* ((id (hit predicted (event-x event) (event-y event)))
                         (node (gethash id (context-ids predicted))))
@@ -637,7 +639,7 @@ ID types are unrestricted and may differ between vector elements."
        (setf (context-active context) nil)))
     (:tab
      (setf (context-focus-visible-p context) t)
-     (focus-next context (eq (event-key event) :backward)))
+     (focus-next context (eq (event-key event) lui.key:backward)))
     (:key (setf (context-focus-visible-p context) t))
     (:activate
      (let ((id (or (event-id event) (context-focus context))))
@@ -736,7 +738,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
   (clrhash (context-events context))
   ;; Preserve key identity independently of routing and event consumption.
   (setf (context-pressed-keys context)
-        (map '(vector symbol) #'event-key
+        (map '(vector lui.key:key) #'event-key
              (remove-if-not
               (lambda (event)
                 (and (member (event-kind event) '(:key :activate))

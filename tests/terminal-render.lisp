@@ -142,11 +142,11 @@
       (assert (search "|" (render-terminal context)))
       (setf (context-focus context) trigger)
       (with-frame (context 30 8 :events
-                           (list (make-event :kind :key :key :down)))
+                           (list (make-event :kind :key :key lui.key:down)))
         (draw))
       (assert (search "Open document" (render-terminal context)))
       (with-frame (context 30 8 :events
-                           (list (make-event :kind :key :key :escape)))
+                           (list (make-event :kind :key :key lui.key:escape)))
         (draw))
       (assert (not (search "Open document" (render-terminal context))))))
   (let ((context (make-terminal-context)))

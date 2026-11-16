@@ -443,16 +443,16 @@
         (readline-key key :control control
                       :alt alt :shift shift))
       (cdr (assoc key
-                  '(("ArrowLeft" . :left)
-                    ("ArrowRight" . :right)
-                    ("ArrowUp" . :up)
-                    ("ArrowDown" . :down)
-                    ("Home" . :home) ("End" . :end)
-                    ("PageUp" . :page-up)
-                    ("PageDown" . :page-down)
-                    ("Backspace" . :backspace)
-                    ("Delete" . :delete)
-                    ("Escape" . :escape))
+                  '(("ArrowLeft" . lui.key:left)
+                    ("ArrowRight" . lui.key:right)
+                    ("ArrowUp" . lui.key:up)
+                    ("ArrowDown" . lui.key:down)
+                    ("Home" . lui.key:home) ("End" . lui.key:end)
+                    ("PageUp" . lui.key:page-up)
+                    ("PageDown" . lui.key:page-down)
+                    ("Backspace" . lui.key:backspace)
+                    ("Delete" . lui.key:delete)
+                    ("Escape" . lui.key:escape))
                   :test #'string=))))
 
 (fn (handle-browser-keydown t)
@@ -488,7 +488,7 @@
         ((string= key "Tab")
          (input-stop event)
          (input-send session (make-event :kind :tab
-                                         :key (when shift :backward))))
+                                         :key (when shift lui.key:backward))))
         ((or (string= key "Enter")
              (and (string= key " ")
                   (activation-focused-p input)))
@@ -496,17 +496,17 @@
          (input-send session (make-event :kind
                                          :activate
                                          :key (if (string= key "Enter")
-                                                  :enter nil))))
+                                                  lui.key:enter nil))))
         (command
          (input-stop event)
          (input-send session (make-event
                               :kind :key
                               :key (if (and editing shift)
                                        (case command
-                                         (:left :shift-left)
-                                         (:right :shift-right)
-                                         (:home :shift-home)
-                                         (:end :shift-end)
+                                         (lui.key:left lui.key:shift-left)
+                                         (lui.key:right lui.key:shift-right)
+                                         (lui.key:home lui.key:shift-home)
+                                         (lui.key:end lui.key:shift-end)
                                          (otherwise command))
 
                                        ;; else
@@ -584,7 +584,7 @@
                    (/= (edit-state-anchor state)
                        (edit-state-cursor state)))
           (input-send session (make-event :kind :key
-                                          :key :backspace)))))))
+                                          :key lui.key:backspace)))))))
 
 (fn (handle-browser-blur t)
     ((session input-session) event)

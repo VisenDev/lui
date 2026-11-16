@@ -761,27 +761,28 @@ Free all interface allocations on return or error; proxies must not outlive it."
            (editor (editor-command state symbol context))
            (command
             (cdr (assoc symbol
-                        '((#xff51 . :left) (#xff53 . :right)
-                          (#xff52 . :up) (#xff54 . :down)
-                          (#xff50 . :home) (#xff57 . :end)
-                          (#xff08 . :backspace) (#xffff . :delete)
-                          (#xff1b . :escape))))))
+                        '((#xff51 . lui.key:left) (#xff53 . lui.key:right)
+                          (#xff52 . lui.key:up) (#xff54 . lui.key:down)
+                          (#xff50 . lui.key:home) (#xff57 . lui.key:end)
+                          (#xff08 . lui.key:backspace) (#xffff .
+                                                        lui.key:delete)
+                          (#xff1b . lui.key:escape))))))
 
       ;; Shared editor commands and activation take precedence over text.
       (cond ((and (member symbol '(#x63 #x43))
                   (modifier-active-p state "Control")
                   (not (modifier-active-p state "Mod1")))
-             (queue-input :key :key :copy))
+             (queue-input :key :key lui.key:copy))
             (editor (queue-input :key :key editor))
             ((member symbol '(#xff09 #xfe20))
              (queue-input :tab :key
                           (when (or (= symbol #xfe20)
                                     (modifier-active-p state "Shift"))
-                            :backward)))
+                            lui.key:backward)))
             ((and (= symbol 32) context
                   (%lui.widgets:activation-focused-p context))
              (queue-input :activate))
-            ((= symbol #xff0d) (queue-input :activate :key :enter))
+            ((= symbol #xff0d) (queue-input :activate :key lui.key:enter))
             (command (queue-input :key :key command))
             (t
 

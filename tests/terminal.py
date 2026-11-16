@@ -146,7 +146,7 @@ def script(error=False, debug=False):
               (reverse (lui.terminal::input-events input)))
           (draw))
         (assert (= value (second entry)))))
-    (dolist (entry '((:home 0) (:end 1) (:left 0.75) (:right 1)))
+    (dolist (entry '((lui.key:home 0) (lui.key:end 1) (lui.key:left 0.75) (lui.key:right 1)))
       (%lui.frame:with-frame
           (context 20 2 :events
             (list (%lui.frame:make-event :kind :key :id :slide

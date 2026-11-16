@@ -466,7 +466,8 @@
        (setf events
              (cond ((null line) nil)
                    ((string= line ":next") (list (make-event :kind :tab)))
-                   ((string= line "") (list (make-event :kind :activate :key :enter)))
+                   ((string= line "")
+                    (list (make-event :kind :activate :key lui.key:enter)))
                    (t (list (make-event :kind :text :value line)))))))))
 
 ;; Terminal state, terminal capabilities and input decoding belong to uncursed.
@@ -502,7 +503,7 @@
   "Test whether the current input target is a text editor."
   (text-field-focused-p (pending-input-context context (input-events input))))
 
-(fn (key-event (values)) ((input input) (key symbol))
+(fn (key-event (values)) ((input input) (key lui.key:key))
   "Queue a semantic keyboard event in the terminal input state."
   (push (make-event :kind :key :key key) (input-events input))
   (values))
@@ -620,12 +621,16 @@
   (and control (characterp kind) (not (null
                                        (find kind "cq" :test #'char-equal)))))
 
-(fn (terminal-navigation-key symbol)
+(fn (terminal-navigation-key (or null lui.key:key))
     (kind)
-  "Map uncursed arrow names to shared keys and preserve other keyword events."
-  (case kind (:left-arrow :left) (:right-arrow :right)
-        (:up-arrow :up) (:down-arrow :down)
-        (otherwise (when (keywordp kind) kind))))
+  "Translate uncursed key names, including function keys, to LUI constants."
+  (case kind
+    (:left-arrow lui.key:left) (:right-arrow lui.key:right)
+    (:up-arrow lui.key:up) (:down-arrow lui.key:down)
+    (otherwise
+     (let ((key (when (keywordp kind)
+                  (find-symbol (symbol-name kind) :lui.key))))
+       (when (typep key 'lui.key:key) key)))))
 
 (fn (decode-event (values)) ((input input) event (context context))
   "Translate an uncursed event into LUI input or terminal lifecycle state."
@@ -644,19 +649,21 @@
       ((terminal-quit-p kind control)
        (setf (input-quit-p input) t))
       ((terminal-tab-p kind control)
-       (push (make-event :kind :tab :key (when shift :backward))
+       (push (make-event :kind :tab :key (when shift lui.key:backward))
              (input-events input)))
       ((or (eql kind #\Newline) (eql kind #\Return))
-       (push (make-event :kind :activate :key :enter) (input-events input)))
+       (push (make-event :kind :activate :key lui.key:enter) (input-events
+                                                              input)))
       (command (key-event input command))
-      ((or (eql kind #\Rubout) (eq key :backspace))
-       (key-event input :backspace))
-      ((eql kind #\Escape) (key-event input :escape))
+      ((or (eql kind #\Rubout) (eq key lui.key:backspace))
+       (key-event input lui.key:backspace))
+      ((eql kind #\Escape) (key-event input lui.key:escape))
       (key
        (key-event input (if shift
-                            (case key (:left :shift-left) (:right
-                                                           :shift-right)
-                                  (:home :shift-home) (:end :shift-end)
+                            (case key (lui.key:left lui.key:shift-left)
+                                  (lui.key:right lui.key:shift-right)
+                                  (lui.key:home lui.key:shift-home)
+                                  (lui.key:end lui.key:shift-end)
                                   (otherwise key))
 
                             ;; else
@@ -715,7 +722,7 @@
            (cond ((and (input-escape-time input)
                        (>= (- now (input-escape-time input))
                            (* 0.1f0 internal-time-units-per-second)))
-                  (key-event input :escape)
+                  (key-event input lui.key:escape)
                   (setf (input-pending input) ""
                         (input-escape-time input) nil))
                  ((null (input-escape-time input))

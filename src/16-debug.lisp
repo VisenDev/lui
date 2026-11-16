@@ -435,8 +435,9 @@
                     (and (debugger-state-grab state)
                          (member (event-kind event) '(:move :release)))
                     (and (eq (event-kind event) :key)
-                         (member (event-key event) '(:left :right :home
-                                                     :end))))
+                         (member (event-key event)
+                                 '(lui.key:left lui.key:right
+                                   lui.key:home lui.key:end))))
             (case (event-kind event)
               (:press
                (setf (debugger-state-grab state) (- (event-x event) (- window
@@ -449,9 +450,11 @@
                  (setf (debugger-state-grab state) nil)))
               (:key
                (case (event-key event)
-                 (:left (incf width (units 2)))
-                 (:right (decf width (units 2)))
-                 (:home (setf width minimum)) (:end (setf width maximum))
+                 (lui.key:left (incf width (units 2)))
+                 (lui.key:right (decf width (units 2)))
+                 (lui.key:home (setf width minimum))
+                 (lui.key:end (setf width
+                                    maximum))
                  (otherwise nil))) (otherwise nil))
             (setf width (min maximum (max minimum width))
                   (debugger-state-width state) (/ width *unit*))
@@ -505,7 +508,9 @@
                     (and (debugger-state-details-grab state)
                          (member (event-kind event) '(:move :release)))
                     (and (eq (event-kind event) :key)
-                         (member (event-key event) '(:up :down :home :end))))
+                         (member (event-key event)
+                                 '(lui.key:up lui.key:down
+                                   lui.key:home lui.key:end))))
             (case (event-kind event)
               (:press
                (setf (debugger-state-details-grab state) (cons (event-y
@@ -519,8 +524,12 @@
                  (setf (debugger-state-details-grab state) nil)))
               (:key
                (case (event-key event)
-                 (:up (incf height (units 2))) (:down (decf height (units 2)))
-                 (:home (setf height maximum)) (:end (setf height 0))
+                 (lui.key:up (incf height (units 2)))
+                 (lui.key:down (decf
+                                height (units 2)))
+                 (lui.key:home (setf height maximum))
+                 (lui.key:end (setf
+                               height 0))
                  (otherwise nil)))
               (otherwise nil))
 

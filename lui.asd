@@ -8,6 +8,7 @@
                 :serial t
                 :components ((:file "01-fn")
                              (:file "02-conditions")
+                             (:file "02-key")
                              (:file "03-text")
                              (:file "04-layout")
                              (:file "05-frame")

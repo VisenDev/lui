@@ -104,7 +104,7 @@
                        :action))))
       ;; App tab navigation consumes the frame root; the debugger must persist.
       (setf (context-focus context) (lui:widget-id :tab-a context))
-      (frame (make-event :kind :key :key :right))
+      (frame (make-event :kind :key :key lui.key:right))
       (assert (eq page :b))
       (assert (node (lui.debug::id :debugger)))
       ;; Background capture must not introduce a keyboard focus stop.
@@ -112,7 +112,7 @@
       (frame (make-event :kind :tab))
       (assert (equal (lui:widget-key (context-focus context)) (lui.debug::id
               :close)))
-      (frame (make-event :kind :tab :key :backward))
+      (frame (make-event :kind :tab :key lui.key:backward))
       (assert (eq (lui:widget-key (context-focus context)) :tab-b))
       ;; Visible disclosure controls really collapse and expand their subtree.
       (frame (make-event :kind :activate
@@ -175,13 +175,17 @@
       (setf window 80)
       (frame) (frame)
       (assert (= 60 (width)))
-      (frame (make-event :kind :key :id (lui.debug::id :resize) :key :home))
+      (frame (make-event :kind :key :id (lui.debug::id :resize) :key
+                         lui.key:home))
       (assert (= 25 (width)))
-      (frame (make-event :kind :key :id (lui.debug::id :resize) :key :left))
+      (frame (make-event :kind :key :id (lui.debug::id :resize) :key
+                         lui.key:left))
       (assert (= 27 (width)))
-      (frame (make-event :kind :key :id (lui.debug::id :resize) :key :end))
+      (frame (make-event :kind :key :id (lui.debug::id :resize) :key
+                         lui.key:end))
       (assert (= 68 (width)))
-      (frame (make-event :kind :key :id (lui.debug::id :resize) :key :right))
+      (frame (make-event :kind :key :id (lui.debug::id :resize) :key
+                         lui.key:right))
       (assert (= 66 (width))))))
 
 (fn test-properties ()
@@ -240,13 +244,13 @@
                    (element-content (node :details-resize)))))
       (let ((split (box-height (element-box (node :property-pane)))))
         (frame (make-event :kind :key :id (lui.debug::id :details-resize)
-                           :key :up))
+                           :key lui.key:up))
         (assert (> (box-height (element-box (node :property-pane))) split))
         (frame (make-event :kind :key :id (lui.debug::id :details-resize)
-                           :key :down))
+                           :key lui.key:down))
         (assert (= (box-height (element-box (node :property-pane))) split)))
       (frame (make-event :kind :key :id (lui.debug::id :details-resize)
-                         :key :home))
+                         :key lui.key:home))
       (assert (node :tree))
       (assert (equal (list :id (lui:widget-id :field context))
                 (lui.debug:debugger-state-selected state)))
@@ -353,7 +357,7 @@
       (select)
       (assert (> (box-height (element-box (node :property-pane))) 6))
       (frame (make-event :kind :key :id (lui.debug::id :details-resize)
-                         :key :end))
+                         :key lui.key:end))
       (assert (null (node :details)))
       (assert (null (lui.debug:debugger-state-selected state))))))
 
@@ -406,7 +410,7 @@
           ;; Check the reported width and the narrow, wrapped-title variant.
           (dolist (sidebar-width '(40 25))
             (setf (lui.debug:debugger-state-width state) sidebar-width)
-            (frame (make-event :kind :key :key :home
+            (frame (make-event :kind :key :key lui.key:home
                                :id (lui.debug::id :details-resize)))
             (fully-visible (node :close))
             (fully-visible (aref (element-children (node :header)) 0))

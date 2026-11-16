@@ -68,7 +68,8 @@
           (assert (= 7 (circle-radius circle)))
           (frame (make-event :kind :press :button :secondary :x x :y y))
           (frame (make-event :kind :change :id :circle-diameter :value 18))
-          (frame (make-event :kind :key :id :circle-diameter :key :escape))
+          (frame (make-event :kind :key :id :circle-diameter :key
+                             lui.key:escape))
           (assert (not (%lui.example.seven.circles:modal-p state)))
           (assert (= 7 (circle-radius circle)))
           (assert (= 3 (length (circles-undo model))))

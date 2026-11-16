@@ -228,9 +228,11 @@
                                  &optional activation-p)
   "Translate a Windows virtual key and modifiers into a LUI input event."
   (let* ((key (cdr (assoc code
-                          '((37 . :left) (38 . :up) (39 . :right)
-                            (40 . :down) (36 . :home) (35 . :end)
-                            (8 . :backspace) (46 . :delete) (27 . :escape)))))
+                          '((37 . lui.key:left) (38 . lui.key:up)
+                            (39 . lui.key:right) (40 . lui.key:down)
+                            (36 . lui.key:home) (35 . lui.key:end)
+                            (8 . lui.key:backspace) (46 . lui.key:delete)
+                            (27 . lui.key:escape)))))
          (name (case code
                  (37 "ArrowLeft") (39 "ArrowRight") (8 "Backspace")
                  (otherwise (if (<= 32 code 126)
@@ -241,14 +243,14 @@
                     (%lui.widgets:readline-key name :control control
                                               :alt alt :shift shift))))
     (cond ((and control (not alt) (= code 67))
-           (make-event :kind :key :key :copy))
+           (make-event :kind :key :key lui.key:copy))
           (command (make-event :kind :key :key command))
           ((and (not alt) (= code 9))
-           (make-event :kind :tab :key (when shift :backward)))
+           (make-event :kind :tab :key (when shift lui.key:backward)))
           ((and (= code 32) activation-p (not control) (not alt))
            (make-event :kind :activate))
           ((and (not alt) (= code 13))
-           (make-event :kind :activate :key :enter))
+           (make-event :kind :activate :key lui.key:enter))
           ((and key (not alt))
            (make-event
             :kind :key :key
