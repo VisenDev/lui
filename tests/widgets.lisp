@@ -710,6 +710,43 @@
             (setf id (element-id node))))))
     id))
 
+(defun test-dialog-overflow ()
+  "Keep dialog actions visible while long messages scroll independently."
+  (let ((context (make-test-context))
+        (text (format nil "~{~A~%~}"
+                      (make-list 30 :initial-element "Error details"))))
+    (labels ((frame (&rest events)
+               (with-frame (context 40 10 :events events)
+                 (lui:confirm text)))
+             (check-actions ()
+               (dolist (caption '("Cancel" "OK"))
+                 (let* ((id (dialog-action-id context caption))
+                        (node (gethash id (context-ids context)))
+                        (box (element-box node))
+                        (clip (element-clip node)))
+                   (assert (plusp (box-height box)))
+                   (assert (= (box-height box) (box-height clip)))
+                   (assert (= (box-width box) (box-width clip)))))))
+      (frame)
+      (check-actions)
+      (frame (make-event :kind :tab))
+      (check-actions)
+      (assert (equal (context-focus context)
+                     (dialog-action-id context "OK")))
+      (let ((scroller nil))
+        (walk-elements (context-modal context)
+          (lambda (node)
+            (when (element-scroll-p node) (setf scroller node))))
+        (assert (plusp (element-scroll-limit-y scroller)))
+        (let ((id (element-id scroller))
+              (box (element-box scroller)))
+          (frame (make-event :kind :scroll :value 5
+                            :x (+ (box-x box) 1)
+                            :y (+ (box-y box) 1)))
+          (assert (plusp (element-scroll-y
+                          (gethash id (context-ids context)))))))
+      (check-actions))))
+
 (defun test-dialogs ()
   "Exercise confirmation results, modal routing, lifetime, and retained queues."
   (let ((context (make-test-context))
@@ -821,6 +858,7 @@
   (format t "Confirmation and retained message dialogs passed.~%"))
 
 (defun run-tests ()
+  (test-dialog-overflow)
   (test-dialogs)
   (test-menu-bar-actions)
   (test-floating-placement)

@@ -668,7 +668,7 @@ Fall back to its background role, or the current toolkit for an empty frame."
 
 (fn (%selectable-nodes (values (vector element) (or null hash-table)))
     ((context context) &optional ((keys-p boolean) nil))
-  "Collect visible selectable text nodes in layout order."
+  "Collect selectable text in layout order, restricted to the active modal."
   (let ((nodes (make-array 0 :element-type 'element :adjustable t
                            :fill-pointer 0))
         (keys (when keys-p
@@ -690,14 +690,15 @@ Fall back to its background role, or the current toolkit for an empty frame."
                (loop :for child :across (element-children node)
                      :for index :from 0
                      :do (visit child anchor (when keys (cons index path))))))
-      (when (context-root context) (visit (context-root context) nil nil)))
+      (let ((root (or (context-modal context) (context-root context))))
+        (when root (visit root nil nil))))
     (values nodes keys)))
 
 (fn (selection-target (or null element)) ((context context) (x real) (y real))
   "Find the selectable text node under a pointer position."
   (let ((target nil))
     (walk-elements
-     (context-root context)
+     (or (context-modal context) (context-root context))
      (lambda (node)
        (when (and (widget-p (element-content node))
                   (%lui.frame:contains-p (element-clip node) x y))

@@ -75,7 +75,7 @@
   (case (lui:confirm \"Delete this order?\" :confirm-label \"Delete\")
     (:confirm (setf deleting-p nil) (delete-order order))
     (:cancel (setf deleting-p nil))))"
-     "Both are modal overlays inside the current window. Outside clicks do nothing, Tab cycles inside the dialog, and previous focus is restored on close. Confirmations initially focus Cancel. Omission closes a confirmation without generating an answer.")
+     "Both are modal overlays inside the current window. Outside clicks do nothing, Tab cycles inside the dialog, and previous focus is restored on close. Confirmations initially focus Cancel. Omission closes a confirmation without generating an answer. Long messages scroll independently of the title and action buttons. Dialog text remains selectable for copying error details.")
     (:layout "Layout and scrolling"
      "Rows arrange children horizontally; columns arrange them vertically. A fixed size uses backend coordinates, grow distributes available space, and fit measures content. Use lui:units for spacing that adapts to terminal cells and graphical pixels."
      "(lui:row (lui:opt :width (lui:grow)

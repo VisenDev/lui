@@ -470,16 +470,18 @@ No timer is retained after the spinner disappears from the frame."
 (fn (dialog-body (member nil :confirm :cancel))
     ((id object-id) (text string) (title string)
      (confirm-label string) (cancel-label (or null string)))
-  "Build a bounded, scrollable message pane inside the modal surface."
+  "Build a bounded dialog with scrolling text and visible actions."
   (let ((answer nil))
     (panel (opt :id (list id :pane)
                 :width (fixed (min (context-width *context*) (units 50)))
                 :height (fit 0 (context-viewport-height *context*))
                 :padding (units 1) :gap (units 1) :opacity 1
-                :clip-p t :scroll-p t :accessible-name title)
+                :clip-p t :accessible-name title)
       (unless (zerop (length title))
         (%label (list id :title) title (opt :font-weight :bold)))
-      (%label (list id :message) text (opt :width (grow)))
+      (column (opt :id (list id :text) :width (grow) :height (grow)
+                   :clip-p t :scroll-p t)
+        (%label (list id :message) text (opt :width (grow))))
       (setf answer (dialog-buttons id confirm-label cancel-label)))
     answer))
 
