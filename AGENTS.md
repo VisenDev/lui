@@ -194,8 +194,8 @@ the change and report material limitations instead of claiming untested support.
   initializer checks. Native Lisp builds use their standard `defstruct`.
 
 Host selection uses `trivial-features` as an ASDF definition dependency; core
-source loading remains dependency-free. Native systems weakly depend on
-`font-discovery`: ASDF loads it when available but does not require installation.
+source loading remains dependency-free. Native font lookup searches configured
+directories and filenames without an additional discovery library.
 
 ## Build and validation workflow
 
@@ -208,7 +208,7 @@ benchmark targets. Scripts discover optional dependency checkouts under
 | Task | Command / notes |
 | --- | --- |
 | Core and native drawing | `make test-core test-native` |
-| Fonts without discovery | `sbcl --script tests/font-discovery.lisp /path/to/font.ttf` (fresh process) |
+| Font lookup | `sbcl --script tests/font-search.lisp` (fresh process) |
 | Portable source runner | `sbcl --script tests/run.lisp`, `clisp -q -q tests/run.lisp`, `ecl -shell tests/run.lisp` |
 | JSCL source runner | `node /path/to/jscl/dist/jscl-node.js tests/run.lisp` |
 | Browser build / serve | `make web-build` / `make web-demo`; `JSCL` defaults to `~/clone/jscl`, `PORT` to 8000 |
@@ -450,9 +450,9 @@ output into `docs/index.html`. GitHub Pages serves the repository's `/docs` fold
 as warnings. Logs are timestamped; Bash pipefail preserves pipeline failures.
 
 For fonts, set `*font-path*` for the base face, `*font-paths*` for exact
-family/weight overrides. Optional `font-discovery` supplies automatic system
-lookup when installed; without it, configure explicit TrueType paths. Directory
-and filename search settings, including `LUI_FONT_DIR`, have been removed.
+family/weight overrides. `*font-directories*` and `*font-names*` configure the
+ordered directory and family/weight filename search. `LUI_FONT_DIR` prepends a
+search directory; `LUI_FONT` overrides the base face.
 Supported families are
 `:sans-serif`/`:monospace`, weights `:normal`/`:bold`. PDF uses points (72/inch),
 defaults to 612×792, and renders one display-free frame. Use `render-pdf` directly
