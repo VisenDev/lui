@@ -46,18 +46,17 @@
 
 (defun draw-fixture ()
   (lui:with-toolkit (:qt)
-    (lui:column (lui:opt :width (lui:grow) :gap 8)
+    (lui:column (:width (lui:grow) :gap 8)
       (let ((value
             (lui:text-field
-              (lui:opt
-                :id 0
-                :default-value "initial"
-                :width (lui:grow)
-                :accessible-name "Fixture text"))))
+              :id 0
+              :default-value "initial"
+              :width (lui:grow)
+              :accessible-name "Fixture text")))
         (lui:label (format nil "Value: ~A" value)))
-      (when (lui:button "Increment" (lui:opt :id :count)) (incf *count*))
+      (when (lui:button "Increment" :id :count) (incf *count*))
       (lui:label (format nil "Count: ~D" *count*))
-      (when (lui:button "Collect garbage" (lui:opt :id :gc))
+      (when (lui:button "Collect garbage" :id :gc)
         (ext:gc t)
         (setf (%lui.ecl-emscripten:oget (%lui.ecl-emscripten:global "window") "eclLiveRoots")
               (hash-table-count %lui.ecl-emscripten::*roots*))))))

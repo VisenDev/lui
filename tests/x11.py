@@ -364,7 +364,7 @@ class X11Tests(unittest.TestCase):
 (%lui.x11:run-x11
  (lambda ()
    (setf *clipboard-text*
-     (lui.motif:text-field (lui:opt :id :copy :value *clipboard-text*)))
+     (lui.motif:text-field :id :copy :value *clipboard-text*))
    (when (%lui.frame:previous-box :copy)
      (let ((box (%lui.frame:previous-box :copy)))
        (with-open-file (stream STATE_PATH :direction :output
@@ -418,7 +418,7 @@ class X11Tests(unittest.TestCase):
      (when first
        (setf first nil)
        (lui.debug:set-debugger-enabled t :state state))
-     (lui:button "Target" (lui:opt :id :target))
+     (lui:button "Target" :id :target)
      (let ((rail (%lui.frame:previous-box '(:lui.debug :details-resize nil)))
            (pane (%lui.frame:previous-box '(:lui.debug :property-pane nil))))
        (when (and rail pane)
@@ -544,7 +544,7 @@ class X11Tests(unittest.TestCase):
         source = r'''
 (%lui.x11:run-x11
  (lambda ()
-   (lui.glass:button "" (lui:opt :id :blur :width (%lui.layout:grow) :height (%lui.layout:grow)
+   (lui.glass:button "" :id :blur :width (%lui.layout:grow) :height (%lui.layout:grow)
                       :painter
                       (lambda (renderer node)
                         (let* ((box (%lui.layout:element-box node))
@@ -561,7 +561,7 @@ class X11Tests(unittest.TestCase):
                                              (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
                           (funcall (lui.draw:renderer-backdrop-effect renderer)
                                    (%lui.layout:make-box :width width :height height)
-                                   20 FROST))))))
+                                   20 FROST)))))
  :title WINDOW_TITLE :width 241 :height 123)
 '''
         variances = []
@@ -596,8 +596,8 @@ class X11Tests(unittest.TestCase):
         source = r'''
 (%lui.x11:run-x11
  (lambda ()
-   (%lui.frame:column (:width (%lui.layout:grow))
-     (lui.glass:button "" (lui:opt :id :blur :width (%lui.layout:fixed 240) :height (%lui.layout:fixed 120)
+   (lui:column (:width (%lui.layout:grow))
+     (lui.glass:button "" :id :blur :width (%lui.layout:fixed 240) :height (%lui.layout:fixed 120)
                         :painter
                         (lambda (renderer node)
                           (declare (ignore node))
@@ -613,7 +613,7 @@ class X11Tests(unittest.TestCase):
                                              (if (evenp (/ x 8)) "#000000" "#ffffff") 1))
                           (funcall (lui.draw:renderer-backdrop-effect renderer)
                                    (%lui.layout:make-box :x 40 :y 20 :width 160 :height 80)
-                                   20 8))))))
+                                   20 8)))))
  :title WINDOW_TITLE :width 240 :height 120)
 '''
         with self.application("glass", source) as (window, path):

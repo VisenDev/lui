@@ -163,11 +163,11 @@
 (fn (properties (values)) ((title string) (width real) &rest (pairs list))
   "Declare a titled group of property name/value rows within WIDTH."
   (let ((accent (getf (toolkit-defaults) :accent "#258bff")))
-    (row (opt :width (grow) :gap (units 0.5f0))
-      (lui:label "—" (lui:opt :width (fixed (units 2)) :font-size 14
-                              :foreground accent))
-      (lui:label title (lui:opt :width (grow) :font-size 14 :font-weight :bold
-                                :foreground accent))))
+    (row (:width (grow) :gap (units 0.5f0))
+      (lui:label "—" :width (fixed (units 2)) :font-size 14
+        :foreground accent)
+      (lui:label title :width (grow) :font-size 14 :font-weight :bold
+        :foreground accent)))
   (dolist (pair pairs)
     (when pair
       (let* ((stacked (< width (units 32)))
@@ -177,11 +177,11 @@
                                                           :row)
                                            :gap (if stacked 0 (units 1))))))
         (lui:label (concatenate 'string (first pair) ":")
-                   (lui:opt :width (if stacked (grow) (fixed (units 13)))
-                            :font-size 14 :font-weight :bold))
+          :width (if stacked (grow) (fixed (units 13)))
+          :font-size 14 :font-weight :bold)
         (lui:label (property-text (second pair))
-                   (lui:opt :width (grow) :font-size 14
-                            :font-weight :normal)))))
+          :width (grow) :font-size 14
+          :font-weight :normal))))
   (values))
 
 (fn (layout-details (values))
@@ -257,7 +257,7 @@
          (container (plusp (length (element-children node))))
          (focused (and node-id (equal node-id (context-focus *context*)))))
     (lui:label (caption node)
-               (lui:opt :width (grow) :font-size 14 :font-weight :bold))
+      :width (grow) :font-size 14 :font-weight :bold)
     (properties "Geometry" width
                 (list "Bounds" (box-label (element-box node)))
                 (list "Clip" (box-label (element-clip node))))
@@ -331,10 +331,10 @@
     ((state debugger-state) (width real) (step real) (index integer)
      (entry entry) (node element) (key list))
   "Declare one visible debugger tree row with indentation, collapse control, and selection."
-  (row (opt :position :absolute :offset-y (* index step)
-                    :width (grow) :height (fixed
+  (row (:position :absolute :offset-y (* index step)
+        :width (grow) :height (fixed
                                            step)
-                    :gap (units 0.25f0) :cross-align
+        :gap (units 0.25f0) :cross-align
                     :center)
 
     ;; Reserve indentation before the collapse control and row caption.
@@ -353,10 +353,9 @@
                    "+"
                    ;; else
                    "-")
-          (lui:opt
-            :id (id :collapse key)
-            :width (fixed (units 3))
-                        :height (fixed step)))
+          :id (id :collapse key)
+          :width (fixed (units 3))
+          :height (fixed step))
           (setf (gethash key
                          (debugger-state-collapsed state))
                 (not (gethash key
@@ -371,11 +370,10 @@
     (when
       (lui:list-item
         (caption node)
-        (lui:opt
-          :id (id :row key)
-          :width (grow)
-          :height (fixed step)
-          :selected-p (equal key (debugger-state-selected state))))
+        :id (id :row key)
+        :width (grow)
+        :height (fixed step)
+        :selected-p (equal key (debugger-state-selected state)))
       (if (equal key (debugger-state-selected state))
           (close-details state)
           ;; else
@@ -387,9 +385,9 @@
 
 (fn (tree (values)) ((state debugger-state) (width real))
   "Declare only the visible debugger tree rows while preserving tree scroll extent."
-  (lui:panel (lui:opt :id (id :tree) :width (grow) :height (grow)
-                      :scroll-p t :padding (units 1) :opacity 1
-                      :radius 0 :frost 0)
+  (lui:panel (:id (id :tree) :width (grow) :height (grow)
+              :scroll-p t :padding (units 1) :opacity 1
+              :radius 0 :frost 0)
     (let* ((rows (debugger-state-rows state))
            (step (units (if (context-text-mode-p *context*) 1 3)))
            (viewport (previous-box (id :tree)))
@@ -404,7 +402,7 @@
            (first (max 0 (floor (min offset limit) step)))
            (end (min (length rows) (+ first (ceiling height step)
                                       1))))
-      (column (opt :width (grow) :height (fixed (* step (length rows))))
+      (column (:width (grow) :height (fixed (* step (length rows))))
         (loop :for index :from first :below end
               :for entry := (aref rows index)
               :for node := (entry-node entry)
@@ -579,49 +577,48 @@
 (fn (debugger-property-pane (values))
     ((node element) (width real) (height real))
   "Declare the selected node's property pane and its close control."
-  (column (opt :id (id :property-pane) :width (grow)
-               :height (fixed height) :gap (units
+  (column (:id (id :property-pane) :width (grow)
+           :height (fixed height) :gap (units
                                             0.5f0))
-    (row (opt :width (grow) :gap (units 0.5f0)
-                 :cross-align
+    (row (:width (grow) :gap (units 0.5f0)
+          :cross-align
                  :center)
-      (lui:label "Properties" (lui:opt :width (grow)))
+      (lui:label "Properties" :width (grow))
       (lui:button
         "×"
-        (lui:opt
-          :id (id :close-details)
-          :width (fixed (units 5))
-                           :font-size 14
-                           :accessible-name "Close details")))
-    (lui:panel (lui:opt :id (id :details)
-                        :width (grow) :height (grow)
-                        :scroll-p t :padding (units 1)
-                        :gap (if (context-text-mode-p
+        :id (id :close-details)
+        :width (fixed (units 5))
+        :font-size 14
+        :accessible-name "Close details"))
+    (lui:panel (:id (id :details)
+                :width (grow) :height (grow)
+                :scroll-p t :padding (units 1)
+                :gap (if (context-text-mode-p
                                   *context*)
                                  0
                                  ;; else
                                  (units 0.25f0))
-                        :opacity 1 :radius 0 :frost 0)
+                :opacity 1 :radius 0 :frost 0)
       (details node width)))
   (values))
 
 (fn (debugger (or null element)) ((state debugger-state) (width real))
   "Declare the debugger overlay, tree, resize controls, and optional details."
   (when (activated-p (id :close-details)) (close-details state))
-  (lui:panel (lui:opt :id (id :debugger) :interactive-p t
-                      :keyboard-focus-p nil :position :absolute
-                      :offset-y (%lui.frame:context-page-top *context*)
-                      :offset-x (- (context-width *context*) width)
-                      :width (fixed width)
-                      :height (fixed (%lui.frame:context-viewport-height
+  (lui:panel (:id (id :debugger) :interactive-p t
+              :keyboard-focus-p nil :position :absolute
+              :offset-y (%lui.frame:context-page-top *context*)
+              :offset-x (- (context-width *context*) width)
+              :width (fixed width)
+              :height (fixed (%lui.frame:context-viewport-height
                                       *context*))
-                      :padding (units 1) :gap (units 0.5f0) :opacity 1
-                      :radius 0 :frost 0)
+              :padding (units 1) :gap (units 0.5f0) :opacity 1
+              :radius 0 :frost 0)
     (let ((header nil))
-      (row (opt :id (id :header) :width (grow) :gap (units 0.5f0))
+      (row (:id (id :header) :width (grow) :gap (units 0.5f0))
         (setf header *parent*)
-        (lui:label "Layout debugger" (lui:opt :width (grow)))
-        (when (lui:button "Close" (lui:opt :id (id :close)))
+        (lui:label "Layout debugger" :width (grow))
+        (when (lui:button "Close" :id (id :close))
           (setf (debugger-state-open-p state) nil)
           (request-frame)))
       (let* ((header-height
@@ -639,8 +636,8 @@
                  (details-divider height)
                  (debugger-property-pane node width height))
                 (t (lui:label "Select a tree row for properties."
-                              (lui:opt :width (grow) :font-size
-                                       14)))))))))
+                     :width (grow) :font-size
+                                       14))))))))
 
 (fn (draw-debugger (or null element)) ((state debugger-state) (toolkit
                                                                symbol)

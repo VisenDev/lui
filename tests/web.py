@@ -151,10 +151,10 @@ class WebTests(unittest.TestCase):
     def fixture(self, body=None, options=""):
         """Mount an isolated visible application; return its host selector."""
         body = body or '''
-          (%lui.frame:column (lui:opt :width (%lui.layout:grow) :gap 8)
+          (lui:column (:width (%lui.layout:grow) :gap 8)
             (setf *web-test-value*
-              (lui.glass:text-field (lui:opt :id :fixture :value *web-test-value* :width (%lui.layout:grow))))
-            (when (lui.glass:button "Fixture push" (lui:opt :id :push))
+              (lui.glass:text-field :id :fixture :value *web-test-value* :width (%lui.layout:grow)))
+            (when (lui.glass:button "Fixture push" :id :push)
               (incf *web-test-clicks*)))'''
         self.lisp(f'''
           (defvar *web-test-value* "original")
@@ -198,7 +198,7 @@ class WebTests(unittest.TestCase):
     def test_explicit_page_scroll_on_desktop(self):
         host = self.fixture("""
           (lui:label "Page policy"
-            (lui:opt :height (%lui.layout:fixed 1200)))
+            :height (%lui.layout:fixed 1200))
         """, options=":scroll-mode :page")
         self.assertGreater(self.page.locator(host).evaluate(
             "host => host.firstElementChild.getBoundingClientRect().height"), 1000)
@@ -277,7 +277,7 @@ class WebTests(unittest.TestCase):
                           (lambda ()
                             (incf *scroll-draws*)
                             (lui:label "Tall page"
-                              (lui:opt :height (%lui.layout:fixed 2400))))
+                              :height (%lui.layout:fixed 2400)))
                           :scroll-mode :page :min-fps 0.001))
                     ''')
                     ui.frames()
@@ -358,7 +358,7 @@ class WebTests(unittest.TestCase):
         host = self.fixture('''
           (lui:with-palette ((lui:make-palette :foreground "#124578" :outline "#cc2288"))
             (lui:with-toolkit (:inset-labels) (lui:label "Inset native text"))
-            (lui:with-toolkit (:garnet) (lui:button "Pattern" (lui:opt :id :pattern))))
+            (lui:with-toolkit (:garnet) (lui:button "Pattern" :id :pattern)))
         ''')
         node = self.widget(text="Inset native text", host=host)
         label = self.page.locator(host).get_by_text("Inset native text", exact=True)
@@ -402,7 +402,7 @@ class WebTests(unittest.TestCase):
 
     def test_native_label_selection_survives_frames_and_copies(self):
         host = self.fixture('''
-          (%lui.frame:column (lui:opt :width (%lui.layout:grow) :gap 8)
+          (lui:column (:width (%lui.layout:grow) :gap 8)
             (lui.glass:label "Selectable native label")
             (lui.glass:label "Read only and accessible"))''')
         label = self.page.get_by_text("Selectable native label", exact=True)
@@ -464,10 +464,10 @@ class WebTests(unittest.TestCase):
 
     def test_floating_control_covers_native_text(self):
         host = self.fixture('''
-          (%lui.frame:column (lui:opt :width (%lui.layout:fixed 240))
+          (lui:column (:width (%lui.layout:fixed 240))
             (lui:label "Under the popup")
             (when (zerop *web-test-clicks*)
-              (when (lui:button "Dismiss" (lui:opt :id :popup :position :absolute :width (%lui.layout:grow)))
+              (when (lui:button "Dismiss" :id :popup :position :absolute :width (%lui.layout:grow))
                 (incf *web-test-clicks*))))''')
         label = self.page.locator(host).get_by_text("Under the popup", exact=True)
         expect(label).to_have_count(0)
@@ -555,10 +555,10 @@ class WebTests(unittest.TestCase):
               (defvar *web-test-app*
                 (lui.web:mount *web-test-host*
                   (lambda ()
-                    (%lui.frame:column (lui:opt :width (%lui.layout:grow))
+                    (lui:column (:width (%lui.layout:grow))
                       (dotimes (i 60)
-                        (when (lui.glass:button (format nil "Row ~D" i) (lui:opt :id (list :row i) :height (%lui.layout:fixed 48)
-                                         :width (%lui.layout:grow)))
+                        (when (lui.glass:button (format nil "Row ~D" i) :id (list :row i) :height (%lui.layout:fixed 48)
+                                         :width (%lui.layout:grow))
                           (setf *web-test-clicks* i)))))))''')
             ui.frames()
             page.wait_for_function("document.documentElement.scrollHeight > innerHeight * 2")
@@ -625,10 +625,10 @@ class WebTests(unittest.TestCase):
               (#j:document:body:appendChild *mobile-port*)
               (lui.web:mount *mobile-port*
                 (lambda ()
-                  (%lui.frame:column (lui:opt :width (%lui.layout:grow))
+                  (lui:column (:width (%lui.layout:grow))
                     (dotimes (i 40)
                       (lui.glass:label (format nil "Embedded row ~D" i)
-                        (lui:opt :width (%lui.layout:grow) :height (%lui.layout:fixed 48)))))))''')
+                        :width (%lui.layout:grow) :height (%lui.layout:fixed 48))))))''')
             port = page.locator("#mobile-port")
             label = port.get_by_text("Embedded row 4", exact=True)
             expect(label).to_be_visible()
@@ -919,7 +919,7 @@ class WebTests(unittest.TestCase):
 
     def test_password_field(self):
         host = self.fixture(body='''(setf *web-test-value*
-          (lui:text-field (lui:opt :id :fixture :value *web-test-value* :password-p t :width (%lui.layout:grow))))''')
+          (lui:text-field :id :fixture :value *web-test-value* :password-p t :width (%lui.layout:grow)))''')
         self.replace_text(":FIXTURE", "secret界", host)
         self.assertEqual(self.text_value(":FIXTURE", host), "secret界")
         sink = self.page.locator(host + " textarea")
@@ -1021,11 +1021,11 @@ class WebTests(unittest.TestCase):
 
     def test_scroll_hit_testing_and_wheel(self):
         host = self.fixture('''
-          (%lui.frame:column (lui:opt :id :scroll :width (%lui.layout:grow)
+          (lui:column (:id :scroll :width (%lui.layout:grow)
                             :height (%lui.layout:fixed 280) :scroll-p t)
             (dotimes (i 30)
-              (when (lui.glass:button (format nil "Row ~D" i) (lui:opt :id (list :row i) :height (%lui.layout:fixed 32)
-                                :width (%lui.layout:grow)))
+              (when (lui.glass:button (format nil "Row ~D" i) :id (list :row i) :height (%lui.layout:fixed 32)
+                                :width (%lui.layout:grow))
                 (setf *web-test-clicks* i))))''')
         before = self.widget(text="Row 1", host=host)["y"]
         self.hover_widget(text="Row 1", host=host)

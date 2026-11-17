@@ -21,7 +21,7 @@
       "CALL-WITH-TOOLKIT" "CALL-WITH-PALETTE"
       "POSITION-MODE" "PARENT-SCROLL-POSITION"
       "OBJECT-ID" "WITH-KEY" "WIDGET-KEY" "WIDGET-ID" "FOCUS-WIDGET"
-     "CONTROL" "OPT" "PANEL" "LABEL" "BUTTON" "TAB"
+     "CONTROL" "PANEL" "LABEL" "BUTTON" "TAB"
      "SPACER" "HR" "VR" "SPINNER" "POPUP" "CONFIRM"
      "MENU-BAR" "MENU" "MENU-ITEM" "FLOATING-EXPANDER"
      "CHECKBOX" "DATE-PICKER" "SLIDER" "TEXT-FIELD" "CELL" "LIST-ITEM" "GAUGE"
@@ -214,6 +214,7 @@ are read for resolution; only explicitly selected exports enter the reference."
   (let ((packages (make-hash-table :test 'equal))
         (definitions (make-hash-table :test 'equal))
         (setters (make-hash-table :test 'equal))
+        (widget-option-groups nil)
         (current "cl-user") (source ""))
     (labels
         ((key (package name) (list package (local-name name)))
@@ -299,6 +300,14 @@ are read for resolution; only explicitly selected exports enter the reference."
                                           (getf (cddr slot) :read-only))
                                      "" " or set")
                                  slot-name name))))))
+         (widget-arguments (arguments groups keys)
+           (let* ((shared (loop :for group :in groups
+                                :append (cdr (assoc group widget-option-groups))))
+                  (keywords (append shared keys '(options))))
+             (if (member '&body arguments)
+                 (append (remove '&body arguments)
+                         (list (cons '&key keywords) '&body 'body))
+                 (append arguments (cons '&key keywords)))))
          (walk (form)
            (when (consp form)
              (let ((head (local-name (car form))))
@@ -311,23 +320,36 @@ are read for resolution; only explicitly selected exports enter the reference."
                  ((member head '("PROGN" "EVAL-WHEN") :test #'string=)
                   (mapc #'walk (if (string= head "PROGN") (cdr form)
                                   (cddr form))))
-               ((member head '("DEFUN" "DEFMACRO" "FN" "DEFINE-CONTROL" "DEFINE-WIDGET")
-                          :test #'string=)
+                 ((and (string= head "DEFPARAMETER")
+                       (named-p (second form) "*WIDGET-OPTION-GROUPS*"))
+                  (setf widget-option-groups (second (third form))))
+                 ((string= head "DEFINE-WIDGET-OPTIONS")
+                  (destructuring-bind (operator name args groups keys doc &rest body)
+                      form
+                    (declare (ignore operator body))
+                    (record name :macro (widget-arguments args groups keys) doc)))
+                 ((member head '("DEFINE-CONTROL" "DEFINE-WIDGET") :test #'string=)
+                  (destructuring-bind (operator name args keys doc &rest body) form
+                    (declare (ignore operator body))
+                    (let* ((value-p (find "VALUE" args :key #'local-name
+                                          :test #'string=))
+                           (positional (remove-if
+                                        (lambda (arg)
+                                          (member (local-name arg) '("ID" "VALUE")
+                                                  :test #'string=))
+                                        args))
+                           (groups (list* 'placement 'appearance
+                                          (when value-p '(value)))))
+                      (when (string= head "DEFINE-CONTROL")
+                        (push 'disabled-p keys))
+                      (record name :macro
+                              (widget-arguments positional groups keys) doc))))
+                 ((member head '("DEFUN" "DEFMACRO" "FN") :test #'string=)
                   (let* ((name (second form)) (args (third form))
-                         (kind (if (string= head "DEFMACRO") :macro
-                                   :function)))
+                         (kind (if (string= head "DEFMACRO") :macro :function)))
                     (when (string= head "FN")
                       (when (consp name) (setf name (car name)))
                       (setf args (typed-arguments args)))
-                  (when (member head '("DEFINE-CONTROL" "DEFINE-WIDGET")
-                          :test #'string=)
-                    (setf kind :macro
-                      args (append
-                             (remove-if
-                               (lambda (arg)
-                                 (member (local-name arg) '("ID" "VALUE")
-                                   :test #'string=)) args)
-                             '(&optional options))))
                     (record name kind args
                             (when (stringp (fourth form)) (fourth form)))))
                  ((string= head "DEFCFUN")

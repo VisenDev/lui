@@ -47,7 +47,7 @@
                              (declare (ignore widget width))
                              (values 160 30)))))
     (with-frame (context 400 200)
-      (lui.glass:text-field (lui:opt :id :edit :value "value")))
+      (lui.glass:text-field :id :edit :value "value"))
     (let* ((box (element-box
                   (gethash (lui:widget-id :edit context)
                     (%lui.frame::context-ids context))))

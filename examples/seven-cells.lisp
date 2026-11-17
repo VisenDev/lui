@@ -128,46 +128,43 @@
 (defun header (text x y width height)
   (lui:cell
     text
-    (lui:opt
-      :id text
-      :width (lui:fixed width)
-      :height (lui:fixed height)
-      :position :absolute
-      :offset-x x
-      :offset-y y
-      :disabled-p t
-      :padding (lui:units 0.5)
-      :background "#e5e9ee"
-      :foreground "#202430")))
+    :id text
+    :width (lui:fixed width)
+    :height (lui:fixed height)
+    :position :absolute
+    :offset-x x
+    :offset-y y
+    :disabled-p t
+    :padding (lui:units 0.5)
+    :background "#e5e9ee"
+    :foreground "#202430"))
 
 (defun draw-cell (state index x y width height)
   (if (eql index (state-editing state))
       (setf (state-draft state)
       (lui:text-field
-        (lui:opt
-          :id (cell-id index)
-          :value (state-draft state)
-          :width (lui:fixed width)
-                                     :height (lui:fixed height)
-          :position :absolute
-          :offset-x x
-          :offset-y y
-          :radius 0
-          :frost 0
-          :opacity 1
-                                     :background "#ffffff"
-                                     :foreground "#000000")))
-    (lui:cell
-      (%lui.seven.model:cell-display (%lui.seven.model:sheet-cell (state-sheet
-              state) index))
-      (lui:opt
         :id (cell-id index)
+        :value (state-draft state)
         :width (lui:fixed width)
         :height (lui:fixed height)
         :position :absolute
         :offset-x x
         :offset-y y
-                         :selected-p (= index (state-selected state))))))
+        :radius 0
+        :frost 0
+        :opacity 1
+        :background "#ffffff"
+        :foreground "#000000"))
+    (lui:cell
+      (%lui.seven.model:cell-display (%lui.seven.model:sheet-cell (state-sheet
+              state) index))
+      :id (cell-id index)
+      :width (lui:fixed width)
+      :height (lui:fixed height)
+      :position :absolute
+      :offset-x x
+      :offset-y y
+      :selected-p (= index (state-selected state)))))
 
 (defun draw-content (state)
   (when (or (/= (state-frame-width state) (%lui.frame:context-width
@@ -227,14 +224,13 @@
       (let* ((maximum (max 0 (- full-width view-width)))
              (next
             (lui:slider
-              (lui:opt
-                :id :seven-grid-horizontal
-                :value x
-                :minimum 0
-                :maximum (max 1 maximum)
-                :step 1
-                :width (lui:grow)
-                                        :disabled-p (zerop maximum)))))
+              :id :seven-grid-horizontal
+              :value x
+              :minimum 0
+              :maximum (max 1 maximum)
+              :step 1
+              :width (lui:grow)
+              :disabled-p (zerop maximum))))
         (unless (= x next)
           (setf x next)
           (lui:scroll-to :seven-grid x (if page-p 0 y))
@@ -243,20 +239,20 @@
           (lui:visible-span x view-width width header 26)
         (multiple-value-bind (first-row last-row)
             (lui:visible-span y view-height height height 100)
-          (lui:panel (lui:opt :id :seven-grid :width (lui:grow)
-                              :height (if page-p (lui:fixed full-height)
+          (lui:panel (:id :seven-grid :width (lui:grow)
+                      :height (if page-p (lui:fixed full-height)
                   (lui:grow))
-                              :scroll-p t :radius 0 :frost 0 :opacity 1)
-            (lui:column (lui:opt :width (lui:fixed full-width) :height
+                      :scroll-p t :radius 0 :frost 0 :opacity 1)
+            (lui:column (:width (lui:fixed full-width) :height
               (lui:fixed
                     full-height))
               ;; This clip also prevents clicks passing through headers.
-              (lui:column (lui:opt :width (lui:fixed (max 0 (- view-width
+              (lui:column (:width (lui:fixed (max 0 (- view-width
                 header)))
-                              :height (lui:fixed (max 0 (- view-height
+                           :height (lui:fixed (max 0 (- view-height
                           height)))
-                              :position :absolute :offset-x (+ x header)
-                              :offset-y (+ y height) :clip-p t)
+                           :position :absolute :offset-x (+ x header)
+                           :offset-y (+ y height) :clip-p t)
                 (do ((row first-row (1+ row))) ((>= row last-row))
                   (do ((column first-column (1+ column)))
                       ((>= column last-column))

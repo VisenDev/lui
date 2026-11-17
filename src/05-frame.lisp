@@ -14,7 +14,7 @@
            #:*context* #:*parent*
     #:with-frame #:with-key #:widget-key #:widget-id #:focus-widget
     #:call-with-frame #:call-with-key #:call-site-id #:context-values
-           #:row #:column #:event #:event-kind #:event-x #:event-y #:event-id
+           #:event #:event-kind #:event-x #:event-y #:event-id
            #:event-value #:event-key #:event-button #:event-clicks
            #:event-dragging-p #:event-buttons #:event-scroll-mode
            #:context-events #:context-pressed-keys #:events-for
@@ -179,7 +179,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
              :operation :declare-widget :setting :id :value key
              :format-control
              (if (eq key site)
-                 "This control call site ran more than once in a frame. Supply a distinct (lui:opt :id key) for each instance, or wrap repeated groups in (lui:with-key key ...)."
+                 "This control call site ran more than once in a frame. Supply a distinct :id key for each instance, or wrap repeated groups in (lui:with-key key ...)."
                  ;; else
                  "Repeated control key ~S at the same call site and key scope. Use distinct :id keys or WITH-KEY scopes for each instance.")
              :format-arguments (unless (eq key site) (list key))))
@@ -971,21 +971,3 @@ An aborted drawing or layout invalidates geometry and clears frame state."
   "Dispatch input, build and solve one frame, and return its root element."
   `(call-with-frame ,context ,width ,height (lambda () ,@body)
                     :events ,events))
-
-(defmacro row (options &body body)
-  "Lay out BODY horizontally using an OPTIONS expression, such as OPT.
-OPTIONS evaluates once. Child identities are scoped to this container;
-use :ID for stable identity on reorder, otherwise identity follows position."
-  `(let ((*parent* (emit
-                   (apply #'make-element :direction :row
-                          (container-options ,options)))))
-     ,@body))
-
-(defmacro column (options &body body)
-  "Lay out BODY vertically using an OPTIONS expression, such as OPT.
-OPTIONS evaluates once. Child identities are scoped to this container;
-use :ID for stable identity on reorder, otherwise identity follows position."
-  `(let ((*parent* (emit
-                   (apply #'make-element :direction :column
-                          (container-options ,options)))))
-     ,@body))

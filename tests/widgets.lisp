@@ -7,13 +7,13 @@
 (defun test-password ()
   (let ((context (make-test-context)) (value "a界b"))
     (with-frame (context 30 5)
-      (%lui.tests.support::draw-text-field (lui:opt :id :password :value value
+      (%lui.tests.support::draw-text-field (list :id :password :value value
                                             :password-p t)))
     (with-frame (context 30 5 :events
                          (list (make-event :kind :text :id :password
                                            :value "!")))
       (multiple-value-bind (updated changed)
-        (%lui.tests.support::draw-text-field (lui:opt :id :password :value
+        (%lui.tests.support::draw-text-field (list :id :password :value
                                               value :password-p t))
         (assert changed)
         (setf value updated)))
@@ -31,7 +31,7 @@
         (text "alpha beta gamma"))
     (labels ((draw () (setf text (lui:with-toolkit (:glass)
                                    (%lui.tests.support::draw-text-field
-                                     (lui:opt :id :edit :value text)))))
+                                     (list :id :edit :value text)))))
              (key (&rest keys)
                (with-frame
                    (context 60 5 :events
@@ -103,18 +103,18 @@
   (let ((context (make-test-context)) (value nil) changed disabled (top 0))
     (labels ((frame (&rest events)
                (with-frame (context 40 12 :events events)
-                 (column (lui:opt :height (fixed top)))
+                 (lui:column (:height (fixed top)))
                  ;; The suggestions must escape the clipped, one-line container.
-                 (column (lui:opt :width (fixed 24) :height (fixed 1) :clip-p
+                 (lui:column (:width (fixed 24) :height (fixed 1) :clip-p
                    t)
                    (multiple-value-bind (new-value changed-p)
                      (%lui.tests.support::draw-searchable-combobox
                       #("Alpha" "Beta" "Gamma" "Gamma")
-                      (lui:opt :id :combo :value value :width (grow)
+                      (list :id :combo :value value :width (grow)
                                :max-results 3 :disabled-p disabled))
                      (setf value new-value
                            changed changed-p)))
-                 (%lui.tests.support::draw-button "Next" (lui:opt :id :next))))
+                 (%lui.tests.support::draw-button "Next" (list :id :next))))
              (node (id) (gethash (lui:widget-id id context)
                           (%lui.frame::context-ids context)))
              (bounds (id) (element-box (node id)))
@@ -169,16 +169,16 @@
   (let ((context (make-test-context))
         (selected :one))
     (labels ((draw ()
-               (row (lui:opt)
+               (lui:row ()
                  (when (lui:with-toolkit (:glass)
-                         (%lui.tests.support::draw-tab "One" (lui:opt :id :one
+                         (%lui.tests.support::draw-tab "One" (list :id :one
                     :selected-p (eq selected :one))))
                    (setf selected :one))
                  (lui:with-toolkit (:glass)
                    (%lui.tests.support::draw-tab
-                    "Disabled" (lui:opt :id :disabled :disabled-p t)))
+                    "Disabled" (list :id :disabled :disabled-p t)))
                  (when (lui:with-toolkit (:glass)
-                         (%lui.tests.support::draw-tab "Two" (lui:opt :id :two
+                         (%lui.tests.support::draw-tab "Two" (list :id :two
                     :selected-p (eq selected :two))))
                    (setf selected :two))))
              (key (id &rest keys)
@@ -226,21 +226,21 @@
         (buttons 0) (tabs 0) (checked nil) (text "x"))
     (labels ((draw ()
                (when (lui:with-toolkit (:glass)
-                       (%lui.tests.support::draw-button "Button" (lui:opt :id
+                       (%lui.tests.support::draw-button "Button" (list :id
                   :button))) (incf buttons))
                (setf checked (lui:with-toolkit (:glass)
                                (%lui.tests.support::draw-checkbox "Check"
-                                 (lui:opt :id :check :value checked))))
+                                 (list :id :check :value checked))))
                (when (lui:with-toolkit (:glass)
                        (%lui.tests.support::draw-tab
-                        "Tab" (lui:opt :id :tab :selected-p t)))
+                        "Tab" (list :id :tab :selected-p t)))
                  (incf tabs))
                (setf text (lui:with-toolkit (:glass)
-                            (%lui.tests.support::draw-text-field (lui:opt :id
+                            (%lui.tests.support::draw-text-field (list :id
                   :text :value text))))
                (lui:with-toolkit (:glass)
                  (%lui.tests.support::draw-button
-                  "Disabled" (lui:opt :id :disabled :disabled-p t))))
+                  "Disabled" (list :id :disabled :disabled-p t))))
              (frame (&rest events)
                (with-frame (context 40 10 :events events) (draw))))
       (frame)
@@ -272,9 +272,9 @@
   (let ((context (make-test-context)) (value :first))
     (labels ((draw ()
                (setf value (%lui.tests.support::draw-radio :first "First"
-                             (lui:opt :id :first-radio :value value))
+                             (list :id :first-radio :value value))
                  value (%lui.tests.support::draw-radio :second "Second"
-                         (lui:opt :id :second-radio :value value)))))
+                         (list :id :second-radio :value value)))))
       (with-frame (context 40 4) (draw))
       (assert (eq :first value))
       (setf (%lui.frame:context-focus context) (lui:widget-id :first-radio
@@ -294,16 +294,16 @@
 (defun test-nested-scroll ()
   (let ((context (make-test-context)))
     (labels ((draw (bounded)
-               (column (lui:opt :id :outer :width (fixed 12) :height (fixed 3)
-                        :scroll-p t)
-                 (column (lui:opt :id :inner :width (grow) :scroll-p t
-                          :height (if bounded (fixed 2) (fit)))
+               (lui:column (:id :outer :width (fixed 12) :height (fixed 3)
+                            :scroll-p t)
+                 (lui:column (:id :inner :width (grow) :scroll-p t
+                              :height (if bounded (fixed 2) (fit)))
                    (dotimes (i 5)
                      (lui:with-toolkit (:glass)
                        (%lui.tests.support::draw-button (format nil "Row ~D" i)
-                         (lui:opt :id (list :row i) :width (grow) :height
+                         (list :id (list :row i) :width (grow) :height
                            (fixed 1))))))
-                 (lui.glass:label "after" (lui:opt :height (fixed 4)))))
+                 (lui.glass:label "after" :height (fixed 4))))
              (frame (bounded &rest events)
                (with-frame (context 12 8 :events events) (draw bounded)))
              (offset (id)
@@ -333,11 +333,11 @@
 (defun test-scrollbar ()
   (let ((context (make-test-context)) (visible t) (wide nil))
     (labels ((draw ()
-               (lui:panel (lui:opt :id :viewport :width (fixed 20)
-                                   :height (fixed 10) :padding 1 :scroll-p t
-                                   :scrollbar-p visible :scrollbar-width 2)
+               (lui:panel (:id :viewport :width (fixed 20)
+                           :height (fixed 10) :padding 1 :scroll-p t
+                           :scrollbar-p visible :scrollbar-width 2)
                  (dotimes (index 12)
-                   (%lui.tests.support::draw-button "Row" (lui:opt
+                   (%lui.tests.support::draw-button "Row" (list
                   :id (list :row index) :width (if wide (fixed 30) (grow))
                                         :height (fixed 3))))))
              (frame (&rest events)
@@ -394,7 +394,7 @@
   (let ((context (make-test-context)))
     (flet ((draw (step)
              (loop :for i :from 0 :below 32 :by step
-                   :do (%lui.tests.support::draw-text-field (lui:opt :id (list
+                   :do (%lui.tests.support::draw-text-field (list :id (list
                     :edit i) :value "Text")))))
       (with-frame (context 80 40) (draw 1))
       (let ((retained (gethash (lui:widget-id (list :edit 4) context)
@@ -419,11 +419,11 @@
 (defun test-container-options ()
   "Check option expressions, single evaluation, and container directions."
   (let ((context (make-test-context))
-        (options (lui:opt :id :column :gap 3))
+        (options (list :id :column :gap 3))
         (calls 0))
     (with-frame (context 30 10)
-      (lui:row (progn (incf calls) (lui:opt :id :row :gap 2))
-        (lui:column options)))
+      (lui:row (:options (progn (incf calls) (list :id :row :gap 2)))
+        (lui:column (:options options))))
     (assert (= calls 1))
     (let* ((row (gethash (lui:widget-id :row context) (context-ids context)))
            (column (gethash (lui:widget-id :column context)
@@ -437,21 +437,21 @@
 (defun test-spacing-controls ()
   (let ((context (make-test-context)) (left nil) (space nil) (right nil))
     (with-frame (context 30 10)
-      (lui:row (lui:opt :width (grow) :height (grow))
-        (setf left (lui:spacer (lui:opt :width (fixed 3))))
-        (setf space (lui:spacer (lui:opt :width (grow))))
-        (setf right (lui:spacer (lui:opt :width (fixed 5))))))
+      (lui:row (:width (grow) :height (grow))
+        (setf left (lui:spacer :width (fixed 3)))
+        (setf space (lui:spacer :width (grow)))
+        (setf right (lui:spacer :width (fixed 5)))))
     (assert (= 3 (box-width (element-box left))))
     (assert (= 22 (box-width (element-box space))))
     (assert (= 25 (box-x (element-box right))))
     (assert (null (element-content space)))
     (assert (not (element-interactive-p space)))
     (with-frame (context 30 10)
-      (lui:hr (lui:opt :id :horizontal))
-      (setf space (lui:spacer (lui:opt :height (grow))))
-      (lui:row (lui:opt :width (grow) :height (fixed 3))
-        (lui:vr (lui:opt :id :vertical))
-        (setf right (lui:spacer (lui:opt :padding 1)))))
+      (lui:hr :id :horizontal)
+      (setf space (lui:spacer :height (grow)))
+      (lui:row (:width (grow) :height (fixed 3))
+        (lui:vr :id :vertical)
+        (setf right (lui:spacer :padding 1))))
     (let ((horizontal (gethash (lui:widget-id :horizontal context)
                                (context-ids context)))
           (vertical (gethash (lui:widget-id :vertical context)
@@ -473,8 +473,8 @@
              (with-frame (context 20 10)
                (setf sample (lui:frame-time))
                (when visible
-                 (lui:spinner (lui:opt :id :loading
-                                       :disabled-p disabled))))))
+                 (lui:spinner :id :loading
+                   :disabled-p disabled)))))
       (draw t nil)
       (let* ((id (lui:widget-id :loading context))
              (node (gethash (lui:widget-id id context) (context-ids context)))
@@ -499,16 +499,16 @@
         (disabled nil))
     (labels ((remember (key id) (setf (gethash key ids) id))
              (draw ()
-               (lui:menu-bar (lui:opt :id :test-menu-bar)
+               (lui:menu-bar (:id :test-menu-bar)
                  (remember :file
                    (nth-value 2
-                     (lui:menu "File" (lui:opt :open-on-hover-p nil)
+                     (lui:menu "File" (:open-on-hover-p nil)
                        (remember :first
                          (nth-value 2 (lui:menu-item "First")))
-                       (lui:menu-item "Disabled" (lui:opt :disabled-p t))
+                       (lui:menu-item "Disabled" :disabled-p t)
                        (remember :sub
                          (nth-value 2
-                           (lui:menu "Sub" nil
+                           (lui:menu "Sub" ()
                              (multiple-value-bind (activated changed id)
                                  (lui:menu-item "Action")
                                (declare (ignore changed))
@@ -517,7 +517,7 @@
                              (lui:menu-item "After action")))))))
                  (remember :edit
                    (nth-value 2
-                     (lui:menu "Edit" (lui:opt :disabled-p disabled)
+                     (lui:menu "Edit" (:disabled-p disabled)
                        (lui:menu-item "Copy")))))
                (remember :after (nth-value 2 (lui:button "After"))))
              (frame (&rest events)
@@ -638,10 +638,10 @@
         (count 0))
     (labels ((frame (&rest events)
                (with-frame (context 60 20 :events events)
-                 (lui:menu-bar nil
+                 (lui:menu-bar ()
                    (multiple-value-bind (activated changed id)
                        (lui:menu-item "Customers"
-                         (lui:opt :disabled-p disabled))
+                         :disabled-p disabled)
                      (declare (ignore changed))
                      (setf action id)
                      (when activated (incf count))))))
@@ -680,13 +680,13 @@
                (setf root
                      (nth-value 2
                        (lui:menu "Root"
-                           (lui:opt :position :absolute :offset-x 38
-                                    :width (fixed 10)
-                                    :popup-width (fixed 20))
+                           (:position :absolute :offset-x 38
+                            :width (fixed 10)
+                            :popup-width (fixed 20))
                          (setf child
                                (nth-value 2
                                  (lui:menu "Child"
-                                     (lui:opt :popup-width (fixed 20))
+                                     (:popup-width (fixed 20))
                                    (setf item
                                          (nth-value 2
                                            (lui:menu-item "Action"))))))))))
@@ -766,7 +766,7 @@
         (answer nil)
         (background-count 0))
     (labels ((draw ()
-               (when (lui:button "Behind" (lui:opt :id :behind))
+               (when (lui:button "Behind" :id :behind)
                  (incf background-count))
                (when show
                  (setf answer (lui:confirm "Delete this order?"
@@ -901,12 +901,12 @@
     (flet ((draw ()
              (setf slider
                (lui:with-toolkit (:glass) (%lui.tests.support::draw-slider
-                (lui:opt :id :slider :value slider :width (fixed 20)))))
+                (list :id :slider :value slider :width (fixed 20)))))
              (setf checked (lui:with-toolkit (:glass)
                              (%lui.tests.support::draw-checkbox "Check"
-                               (lui:opt :id :check :value checked))))
+                               (list :id :check :value checked))))
              (setf text (lui:with-toolkit (:motif)
-                          (%lui.tests.support::draw-text-field (lui:opt :id
+                          (%lui.tests.support::draw-text-field (list :id
                   :text :value text))))))
       (with-frame (context 30 10) (draw))
       ;; Press/move/release can all arrive before the next UI invocation.
@@ -933,8 +933,8 @@
       (assert (string= text "replacement"))))
   (let ((context (make-test-context)))
     (flet ((draw ()
-             (column (lui:opt :id :scroll :width (fixed 10) :height (fixed 2)
-                      :scroll-p t)
+             (lui:column (:id :scroll :width (fixed 10) :height (fixed 2)
+                          :scroll-p t)
                (lui.glass:label "first")
                (lui.glass:label "second")
                (lui.glass:label "third"))))
@@ -979,9 +979,9 @@
     (flet ((draw ()
              (setf received (events-for :canvas))
              (lui:with-toolkit (:glass) (%lui.tests.support::draw-canvas nil
-              (lui:opt :id :canvas :width (fixed 10) :height (fixed 5))))
+              (list :id :canvas :width (fixed 10) :height (fixed 5))))
              (lui:with-toolkit (:glass) (%lui.tests.support::draw-gauge 0.5
-                                          (lui:opt :id :gauge)))))
+                                          (list :id :gauge)))))
       (with-frame (context 20 10) (draw))
       (assert (typep received '(vector event)))
       (assert (zerop (length received)))
@@ -1018,8 +1018,8 @@
                        (%lui.frame::context-ids context)))))))
   (let ((context (make-test-context)))
     (flet ((draw ()
-             (column (lui:opt :id :grid :width (fixed 5) :height (fixed 5)
-                      :scroll-p t)
+             (lui:column (:id :grid :width (fixed 5) :height (fixed 5)
+                          :scroll-p t)
                (emit (make-element :width (fixed 20)
                                    :height (fixed 20))))))
       (with-frame (context 10 10)
@@ -1038,8 +1038,8 @@
     (lui.toolkit:register-toolkit :terminal-square :defaults '(:radius 0))
     (with-frame (context 20 10)
       (lui:with-toolkit (:terminal-square)
-        (%lui.tests.support::draw-button "Square" (lui:opt :id :square))
-        (%lui.tests.support::draw-button "Round" (lui:opt :id :round :radius
+        (%lui.tests.support::draw-button "Square" (list :id :square))
+        (%lui.tests.support::draw-button "Round" (list :id :round :radius
                                                   4))))
     (flet ((text (id)
              (%lui.widgets:widget-terminal-text

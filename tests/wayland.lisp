@@ -67,7 +67,7 @@
     (lui.debug:set-debugger-enabled t :context context :state state)
     (labels ((frame ()
                (with-frame (context 200 80 :events (take-input))
-                 (lui:button "Target" (lui:opt :id :target))))
+                 (lui:button "Target" :id :target)))
              (node (name)
                (gethash (lui:widget-id (lui.debug::id name) context)
                         (%lui.frame::context-ids context)))
@@ -370,7 +370,7 @@
          (*context* context)
          (null (cffi:null-pointer)))
     (with-frame (context 400 200)
-      (lui.glass:text-field (lui:opt :id :edit :value "value")))
+      (lui.glass:text-field :id :edit :value "value"))
     (setf (context-focus context) (lui:widget-id :edit context))
     (unwind-protect
          (progn
@@ -410,11 +410,11 @@
              (modifiers 0)
              (expect 1 lui.key:escape)
              (with-frame (context 400 200)
-            (lui.glass:button "Button" (lui:opt :id :edit)))
+            (lui.glass:button "Button" :id :edit))
              (keyboard-key 57 1)
              (assert (eq :activate (event-kind (first (take-input)))))
              (with-frame (context 400 200)
-            (lui.glass:text-field (lui:opt :id :edit :value "value")))
+            (lui.glass:text-field :id :edit :value "value"))
              (keyboard-key 57 1)
              (assert (equal " " (event-value (first (take-input)))))
              (modifiers 4)
@@ -441,7 +441,7 @@
          (progn
            (install-us-keymap %lui.wayland::*window*)
            (with-frame (context 400 200)
-          (lui.glass:text-field (lui:opt :id :edit :value "value")))
+          (lui.glass:text-field :id :edit :value "value"))
            (let ((box (element-box
                      (gethash (lui:widget-id :edit context)
                        (%lui.frame::context-ids context)))))
@@ -463,7 +463,7 @@
            (let ((events (take-input)))
              (assert (eq lui.key:select-all (event-key (car (last events)))))
              (with-frame (context 400 200 :events events)
-            (lui.glass:text-field (lui:opt :id :edit :value "value"))))
+            (lui.glass:text-field :id :edit :value "value")))
         (assert (eq :edit (lui:widget-key (context-focus context))))
         (let ((state (gethash (lui:widget-id :edit context) (context-state
                     context))))

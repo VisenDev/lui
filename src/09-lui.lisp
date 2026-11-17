@@ -24,7 +24,7 @@
                 #:element-content)
   (:import-from #:%lui.frame
                 #:call-with-frame #:call-with-key
-                #:row #:column #:with-frame #:frame-time #:request-frame
+                #:with-frame #:frame-time #:request-frame
                 #:previous-box
                 #:parent-scroll-position #:scroll-position #:scroll-to
                 #:activated-p #:activated-ids
@@ -60,7 +60,7 @@
            #:+palette-default+ #:+palette-light+ #:+palette-dark+
            #:+palette-ocean+ #:+palette-forest+ #:control #:table
            #:table-row #:table-cell #:with-key #:widget-key #:widget-id
-           #:focus-widget #:opt #:panel #:label #:spacer #:hr #:vr #:button
+           #:focus-widget #:panel #:label #:spacer #:hr #:vr #:button
            #:tab #:checkbox #:radio #:slider #:text-field #:cell
            #:list-item #:gauge #:spinner #:canvas #:date-picker
            #:searchable-combobox
@@ -121,44 +121,58 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
     (funcall runner draw :title title :width width :height height
              :interactive interactive)))
 
-(defmacro opt (&rest forms &key width height padding gap align cross-align
-                             id direction column-gap column-span
-                             clip-p scroll-p scrollbar-p scrollbar-width
-                             position offset-x offset-y
-                             interactive-p keyboard-focus-p pointer-focus-p
-                             foreground background palette radius frost
-                             minimum maximum step
-                             font-size font-family font-weight opacity accent
-                             disabled-p
-                             painter terminal-label terminal-border
-                             accessible-name
-                             placeholder password-p max-results selected-p
-                             open-on-hover-p popup-width popup-height
-                text value default-value)
-  "Build widget options, preserving order, explicit NIL, and omitted keys.
-:POSITION defaults to :AUTOMATIC, which participates in row/column layout.
-:ABSOLUTE uses :OFFSET-X/Y from the parent's padded content origin and scrolls
-with its content. :FIXED uses the same offsets in logical client-surface
-coordinates, unaffected by ancestor scrolling. Ancestor clipping still applies.
-Both manual forms are outside normal flow: siblings and FIT container sizes
-ignore them. Reserve space with an automatic container when needed.
-PARENT-SCROLL-POSITION exposes the current parent's retained scroll offsets.
-Offsets on automatic widgets shift their drawing without changing their slot."
-  (declare (ignore width height padding gap align cross-align
-                   id direction column-gap column-span
-                   clip-p scroll-p scrollbar-p scrollbar-width
-                   position offset-x offset-y interactive-p
-                   keyboard-focus-p pointer-focus-p foreground background
-                   palette radius frost minimum maximum step font-size
-                   font-family
-                   font-weight opacity accent disabled-p painter
-                   terminal-label terminal-border accessible-name
-             placeholder password-p max-results selected-p text
-             open-on-hover-p popup-width popup-height
-             value default-value))
-  `(list ,@forms))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *widget-option-groups*
+    '((placement id width height padding position offset-x offset-y)
+      (flow align cross-align clip-p scroll-p scrollbar-p scrollbar-width)
+      (focus interactive-p keyboard-focus-p pointer-focus-p)
+      (appearance foreground background palette radius frost font-size
+                   font-family font-weight opacity accent painter terminal-label
+                   terminal-border accessible-name)
+      (value value default-value))
+    "Shared keyword sets for the public widget signatures."))
 
-(defmacro panel (options &body body)
+(fn (merge-widget-options list) ((options list))
+  "Apply explicit widget keywords before a supplied options plist."
+  (append (%without-option :options options) (getf options :options)))
+
+(defmacro define-widget-options (name arguments groups keys doc &body body)
+  "Define a widget signature. A final &BODY marker groups container keywords."
+  (let* ((container (member '&body arguments))
+         (positional (remove '&body arguments))
+         (keywords (append (loop :for group :in groups
+                                 :append (cdr (assoc group *widget-option-groups*)))
+                           keys '(options)))
+         (signature (list* '&rest 'forms '&key keywords)))
+    `(defmacro ,name (,@positional
+                     ,@(if container (list signature '&body 'body) signature))
+       ,doc
+       (declare (ignore ,@keywords))
+       (let ((options (if (loop :for key :in forms :by #'cddr
+                               :thereis (eq key :options))
+                          (list 'merge-widget-options (cons 'list forms))
+                          ;; else
+                          (cons 'list forms))))
+         ,@body))))
+
+(define-widget-options row (&body) (placement flow focus) (gap)
+  "Lay out BODY horizontally. Child identities are scoped to this container;
+use :ID for stable identity on reorder, otherwise identity follows position."
+  `(let ((*parent* (emit
+                   (apply #'%lui.layout:make-element :direction :row
+                          (container-options ,options)))))
+     ,@body))
+
+(define-widget-options column (&body) (placement flow focus) (gap)
+  "Lay out BODY vertically. Child identities are scoped to this container;
+use :ID for stable identity on reorder, otherwise identity follows position."
+  `(let ((*parent* (emit
+                   (apply #'%lui.layout:make-element :direction :column
+                          (container-options ,options)))))
+     ,@body))
+
+(define-widget-options panel (&body) (placement flow focus appearance)
+    (gap direction)
   "Draw a styled container and attach widgets declared in BODY as children.
 Containers scope child identities automatically, including without an :ID.
 Use stable :ID keys for containers that can move; anonymous ones use position."
@@ -206,7 +220,7 @@ Use stable :ID keys for containers that can move; anonymous ones use position."
               changed (not (equal value result))))
       (values result changed id))))
 
-(defmacro define-widget (name arguments doc)
+(defmacro define-widget (name arguments keys doc)
   "Define a call-site macro over the corresponding typed internal control function."
   (let ((internal (intern (concatenate 'string "%" (symbol-name name))))
         (value-p (not (null (member 'value arguments))))
@@ -215,13 +229,15 @@ Use stable :ID keys for containers that can move; anonymous ones use position."
                    ((text-field searchable-combobox) "")
                    (slider 0)
                    (otherwise nil))))
-    `(defmacro ,name (,@public &optional options)
+    `(define-widget-options ,name ,public
+          (placement appearance ,@(when value-p '(value)))
+          ,keys
        ,doc
        (list 'invoke-widget (list 'function ',internal)
              (list 'quote (gensym ,(symbol-name name)))
              (list* 'list (list ,@public)) options ,value-p ,default))))
 
-(defmacro define-control (name args doc &body body)
+(defmacro define-control (name args keys doc &body body)
   "Define a public widget macro and a typed implementation with resolved identity."
   (let ((kind (intern (symbol-name name) :keyword))
         (internal (intern (concatenate 'string "%" (symbol-name name)))))
@@ -244,34 +260,34 @@ Use stable :ID keys for containers that can move; anonymous ones use position."
                                                         %*toolkit* ,kind)
                  (declare (ignorable palette))
                    ,@body)))))
-       (define-widget ,name ,args ,doc))))
+       (define-widget ,name ,args (disabled-p ,@keys) ,doc))))
 
-(define-control label (id text)
-  "Display selectable text. OPT :id optionally names it; width determines wrapping."
+(define-control label (id text) ()
+  "Display selectable text. :id optionally names it. Width determines wrapping."
   (apply #'declare-widget :label style id text (append options defaults)))
 
-(define-control button (id text)
-  "Return true on activation. OPT :id supplies an instance key; the ID is returned third."
+(define-control button (id text) ()
+  "Return true on activation. :id supplies an instance key. Return the ID third."
   (apply #'declare-widget :button style id text (append options defaults)))
 
-(fn (spacer %lui.layout:element) (&optional ((options list) nil))
-  "Reserve empty layout space using OPT options, without painting or focus.
+(define-widget-options spacer () (placement) ()
+  "Reserve empty layout space without painting or focus.
 Use :width (grow) in a row or :height (grow) in a column to push siblings apart.
 Fixed dimensions reserve a specific amount; :padding adds space on every side.
 The default size is zero. For padding around children, use ROW or COLUMN."
-  (%lui.frame:emit (apply #'%lui.layout:make-element options)))
+  `(%lui.frame:emit (apply #'%lui.layout:make-element ,options)))
 
-(define-control hr (id)
+(define-control hr (id) ()
   "Draw a noninteractive horizontal rule, growing in width and one coordinate thick.
-OPT :height sets thickness; :width controls length. :foreground sets its color."
+:height sets thickness; :width controls length. :foreground sets its color."
   (apply #'declare-widget :hr style id ""
          (append options (list :width (grow) :height (fixed 1)
                                :foreground (palette-color palette :border))
                  defaults)))
 
-(define-control vr (id)
+(define-control vr (id) ()
   "Draw a noninteractive vertical rule, growing in height and one coordinate thick.
-OPT :width sets thickness; :height controls length. :foreground sets its color."
+:width sets thickness; :height controls length. :foreground sets its color."
   (apply #'declare-widget :vr style id ""
          (append options (list :width (fixed 1) :height (grow)
                                :foreground (palette-color palette :border))
@@ -296,44 +312,48 @@ OPT :width sets thickness; :height controls length. :foreground sets its color."
     (apply #'declare-widget kind style id text :value selected
            (nreconc appearance defaults))))
 
-(define-control tab (id text)
-  "Declare a tab. Supply :selected-p in OPT and update the page on activation."
+(define-control tab (id text) (selected-p)
+  "Declare a tab. Supply :selected-p and update the page on activation."
   (selectable :tab style id text options defaults))
 
-(define-control list-item (id text)
+(define-control list-item (id text) (selected-p)
   "Declare a selectable row and return activation. The caller owns selection."
   (selectable :list-item style id text options defaults))
 
-(defmacro table (options &body rows)
-  "Lay out TABLE-ROWs with shared content-sized columns using OPT options.
+(define-widget-options table (&body) (placement flow focus)
+    (gap column-gap)
+  "Lay out TABLE-ROWs with shared content-sized columns.
 :GAP separates rows; :COLUMN-GAP separates columns. Accepts layout options."
   `(let ((%lui.frame:*parent*
           (%lui.frame:emit
            (apply #'%lui.layout:make-element
                   :direction :column :table-p t
                   (%lui.frame:container-options ,options)))))
-     ,@rows))
+     ,@body))
 
-(defmacro table-row (options &body cells)
-  "Declare a table row using OPT layout options or NIL for defaults.
-Each direct child occupies one column by default."
+(define-widget-options table-row (&body) (placement flow focus)
+    ()
+  "Declare a table row.
+Each direct child occupies one column by default. TABLE sets the gaps."
   `(let ((%lui.frame:*parent*
           (%lui.frame:emit
            (apply #'%lui.layout:make-element :direction :row
                   (%lui.frame:container-options ,options)))))
-     ,@cells))
+     ,@body))
 
-(defmacro table-cell (options &body contents)
-  "Group widgets in a table cell using OPT layout options or NIL for defaults.
+(define-widget-options table-cell (&body) (placement flow focus)
+    (gap column-span)
+  "Group widgets in a table cell.
+:PADDING insets the cell contents; :GAP separates its children.
 :COLUMN-SPAN defaults to one. Height grows and content clips by default."
   `(let ((%lui.frame:*parent*
           (%lui.frame:emit
            (apply #'%lui.layout:make-element :direction :column
                   (append (%lui.frame:container-options ,options)
                           (list :height (%lui.layout:grow) :clip-p t))))))
-     ,@contents))
+     ,@body))
 
-(define-control cell (id text)
+(define-control cell (id text) (selected-p)
   "Display a compact grid cell. Use :selected-p to mark the active cell."
   (selectable :cell style id text options
               (list* :background (%lui.widgets:palette-color palette
@@ -344,39 +364,39 @@ Each direct child occupies one column by default."
                                                              "#202430")
                      defaults)))
 
-(define-control checkbox (id value text)
-  "Return the boolean, change flag, and ID. OPT :default-value initializes owned state.
-Use OPT :value for application-owned state; the default is NIL."
+(define-control checkbox (id value text) ()
+  "Return the boolean, change flag, and ID. :default-value initializes owned state.
+Use :value for application-owned state; the default is NIL."
   (value-widget :checkbox style id value text (append options defaults)))
 
-(define-control radio (id value choice text)
-  "Return the selected choice, change flag, and ID. Share OPT :value across a group.
+(define-control radio (id value choice text) ()
+  "Return the selected choice, change flag, and ID. Share :value across a group.
 Without :value, each control retains its own value, initially :default-value or NIL."
   (value-widget :radio style id value text
                 (list* :choice choice (append options defaults))))
 
-(define-control slider (id value)
-  "Return the number, change flag, and ID. OPT accepts :minimum, :maximum and :step.
-OPT :default-value initializes owned state (default 0); :value is controlled."
+(define-control slider (id value) (minimum maximum step text)
+  "Return the number, change flag, and ID. It accepts :minimum, :maximum and :step.
+:default-value initializes owned state (default 0); :value is controlled."
   (value-widget :slider style id value (getf options :text "")
                 (append (%without-option :text options) defaults)))
 
-(define-control text-field (id value)
+(define-control text-field (id value) (placeholder password-p)
   "Return text, a change flag, and the resolved ID. Text is retained by default.
-OPT :default-value initializes the string once (default empty); :value supplies
+:default-value initializes the string once (default empty); :value supplies
 application-owned text each frame. :password-p masks presentation and copying.
 Owned state is discarded when this widget is absent from a completed frame."
   (value-widget :text-field style id value (getf options :placeholder "")
                 (append (%without-option :placeholder options) defaults)))
 
-(define-control gauge (id fraction)
+(define-control gauge (id fraction) ()
   "Display a read-only progress fraction, clamped to the range zero to one."
   (apply #'declare-widget :gauge style id "" :value (max 0 (min 1 fraction))
          (append options defaults)))
 
-(define-control spinner (id)
+(define-control spinner (id) ()
   "Display an animated, noninteractive loading indicator while declared.
-OPT :width and :height set its size; :foreground sets its color. The default
+:width and :height set its size; :foreground sets its color. The default
 is two spacing units square, or one terminal cell. :disabled-p pauses it.
 No timer is retained after the spinner disappears from the frame."
   (let* ((disabled (getf options :disabled-p))
@@ -391,7 +411,7 @@ No timer is retained after the spinner disappears from the frame."
                          :accessible-name "Loading")
                    defaults))))
 
-(define-control canvas (id commands)
+(define-control canvas (id commands) ()
   "Display circle commands (kind x y radius stroke fill) in local coordinates."
   (apply #'declare-widget :canvas style id "" :value commands
          (append options defaults)))
@@ -409,9 +429,9 @@ No timer is retained after the spinner disappears from the frame."
        ,@(loop :for local :in names :for function :in functions :for a :in
                args
                :collect
-               `(defmacro ,local (,@a &optional options)
+               `(defmacro ,local (,@a &rest options)
                   (list 'with-toolkit (list ,name)
-                    (list ',function ,@a options))))
+                    (list* ',function ,@a options))))
        (defmacro ,panel-name (options &body body)
          (list 'with-toolkit (list ,name) (list* 'panel options body))))))
 
@@ -451,7 +471,7 @@ No timer is retained after the spinner disappears from the frame."
            (declare-panel
             %*toolkit*
             (append options
-                    (opt :id id :position :absolute :opacity 1 :scroll-p t
+                    (list :id id :position :absolute :opacity 1 :scroll-p t
                          :scrollbar-p nil :clip-p t :interactive-p t
                          :keyboard-focus-p nil :padding (units 1))
                     (toolkit-defaults)))))
@@ -465,7 +485,7 @@ No timer is retained after the spinner disappears from the frame."
     ((id object-id) (confirm-label string) (cancel-label (or null string)))
   "Declare dialog actions and return the selected keyword, if any."
   (let ((answer nil))
-    (row (opt :gap (units 1) :width (grow) :align :end)
+    (row (:gap (units 1) :width (grow) :align :end)
       (when (and cancel-label
                  (%button (list id :cancel) cancel-label nil))
         (setf answer :cancel))
@@ -478,16 +498,16 @@ No timer is retained after the spinner disappears from the frame."
      (confirm-label string) (cancel-label (or null string)))
   "Build a bounded dialog with scrolling text and visible actions."
   (let ((answer nil))
-    (panel (opt :id (list id :pane)
+    (panel (:id (list id :pane)
                 :width (fixed (min (context-width *context*) (units 50)))
                 :height (fit 0 (context-viewport-height *context*))
                 :padding (units 1) :gap (units 1) :opacity 1
                 :clip-p t :accessible-name title)
       (unless (zerop (length title))
-        (%label (list id :title) title (opt :font-weight :bold)))
-      (column (opt :id (list id :text) :width (grow) :height (grow)
+        (%label (list id :title) title (list :font-weight :bold)))
+      (column (:id (list id :text) :width (grow) :height (grow)
                    :clip-p t :scroll-p t)
-        (%label (list id :message) text (opt :width (grow))))
+        (%label (list id :message) text (list :width (grow))))
       (setf answer (dialog-buttons id confirm-label cancel-label)))
     answer))
 
@@ -922,7 +942,7 @@ frame for the same error. Closing the window discards its pending messages."
          (anchor (gethash id (context-ids *context*)))
          (pane (anchored-popup
                 (floating-popup-id id) anchor
-                (opt :width (getf options :popup-width (fit))
+                (list :width (getf options :popup-width (fit))
                      :height (getf options :popup-height (fit))
                      :padding (if (context-text-mode-p *context*)
                                   1
@@ -1023,16 +1043,18 @@ frame for the same error. Closing the window discards its pending messages."
       (setf (floating-state-last-open-p state) open)
       (values open (not (eql open before)) id))))
 
-(defmacro floating-expander (text options &body body)
+(define-widget-options floating-expander (text &body) (placement appearance)
+    (disabled-p open-on-hover-p popup-width popup-height)
   "Show BODY in a floating pane when its caption is activated.
-Nested expanders open beside their parent. OPT :open-on-hover-p also enables
+Nested expanders open beside their parent. :open-on-hover-p also enables
 hover opening and closing when the pointer leaves the trigger and popup chain.
 :popup-width and :popup-height constrain the pane. BODY IDs are scoped to this
 expander. Return open state, changed flag, and resolved ID."
   `(invoke-floating ',(gensym "EXPANDER") ,text ,options
                     (lambda () ,@body) nil))
 
-(defmacro menu (text options &body body)
+(define-widget-options menu (text &body) (placement appearance)
+    (disabled-p open-on-hover-p popup-width popup-height)
   "Declare a click/hover dropdown menu; nested menus open beside their parent.
 Use MENU-ITEM for actions and MENU for submenus. Arrow keys navigate, Escape
 closes one level, and Tab or an outside click dismisses the chain. Options
@@ -1050,7 +1072,7 @@ and return values match FLOATING-EXPANDER; hover opening defaults to true."
          (layout (append (list :id id :direction :row)
                          (widget-options options)
                          (when border appearance)
-                         (opt :width (grow) :padding 0 :gap 0)))
+                         (list :width (grow) :padding 0 :gap 0)))
          (*parent* (if border
                        (declare-panel %*toolkit* layout)
                        ;; else
@@ -1059,7 +1081,8 @@ and return values match FLOATING-EXPANDER; hover opening defaults to true."
     (call-with-key id draw))
   (values))
 
-(defmacro menu-bar (options &body body)
+(define-widget-options menu-bar (&body) (placement flow focus appearance)
+    (gap)
   "Lay out root menus in a row with toolkit-defined framing (beveled in Motif).
 Accept ROW options. Direct MENU-ITEM children act as compact action buttons.
 Left/Right cycle enabled menus in this bar."
@@ -1077,17 +1100,17 @@ Left/Right cycle enabled menus in this bar."
          (activated
            (%list-item id text
                        (append options
-                               (opt :width (if *floating-parent* (grow) (fit))
+                               (list :width (if *floating-parent* (grow) (fit))
                                     :selected-p selected)))))
     (when activated (close-floating *context* 0))
     (not (null activated))))
 
-(define-widget menu-item (id text)
+(define-widget menu-item (id text) (disabled-p selected-p)
   "Return true when this menu action is selected, then dismiss the menu chain.
 Use directly in MENU-BAR for a compact action with menu-style hover feedback,
 or inside MENU/FLOATING-EXPANDER for a popup action. Bar actions use intrinsic
 width and support button-style pointer and keyboard activation.
-OPT :disabled-p disables it. The third return value is its resolved ID.")
+:disabled-p disables it. The third return value is its resolved ID.")
 
 (fn (combobox-popup (values))
     ((id object-id) (matches (vector (cons integer string)))
@@ -1102,7 +1125,7 @@ OPT :disabled-p disables it. The third return value is its resolved ID.")
                                (car
                                 match))
           :do (%list-item row-id (cdr match)
-                         (opt :width (%lui.layout:grow) :selected-p
+                         (list :width (%lui.layout:grow) :selected-p
                            (eql i
                              index)))
           (let ((row (gethash row-id (%lui.frame:context-ids *context*))))
@@ -1308,7 +1331,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
 (fn (calendar-item boolean)
     ((id object-id) (text string) &rest (options list))
   "Declare one selectable calendar entry with its date-specific options."
-  (%list-item id text (append options (opt :font-size 14))))
+  (%list-item id text (append options (list :font-size 14))))
 
 (fn (calendar-day (values integer integer integer))
     ((year integer) (month (integer 1 12)) (day integer))
@@ -1350,7 +1373,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     ((id object-id) (state picker-state) (year integer) (month integer)
      (months boolean))
   "Declare month/year navigation and update the picker state when activated."
-  (row (opt :width (%lui.layout:grow))
+  (row (:width (%lui.layout:grow))
     (when (calendar-item (list id :month-menu)
                          (format nil "~A ~4,'0D ▼"
                                  (aref *month-names* (1-
@@ -1383,7 +1406,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     ((id object-id) (state picker-state) (month integer))
   "Declare the month chooser and switch back to the day grid after selection."
   (dotimes (r 4)
-    (row (opt :width (%lui.layout:grow))
+    (row (:width (%lui.layout:grow))
       (dotimes (c 3)
         (let ((m (+ 1 (* r 3) c)))
           (when (calendar-item (list id :month m) (subseq (aref
@@ -1420,12 +1443,12 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         (calendar-month-grid id state month)
         ;; else
         (let ((start (calendar-start year month)))
-          (row (opt :width (%lui.layout:grow))
+          (row (:width (%lui.layout:grow))
             (loop :for name :across "SMTWTFS" :do
-                  (row (opt :width width :align :center)
-                  (%label nil (string name) (opt :font-size 13)))))
+                  (row (:width width :align :center)
+                  (%label nil (string name) (list :font-size 13)))))
           (dotimes (week 6)
-            (row (opt :width (%lui.layout:grow))
+            (row (:width (%lui.layout:grow))
               (dotimes (column 7)
                 (multiple-value-bind (y m day)
                     (calendar-day year month
@@ -1444,10 +1467,10 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                         (values (make-date-parts y m day) t))))))))))
 
     ;; Footer actions clear the value or choose today without a day click.
-    (row (opt :width (%lui.layout:grow))
+    (row (:width (%lui.layout:grow))
       (when (calendar-item (list id :clear) "Clear" :foreground ink)
         (return-from picker-calendar (values nil t)))
-      (column (opt :width (%lui.layout:grow)))
+      (column (:width (%lui.layout:grow)))
       (when (calendar-item (list id :today) "Today" :foreground ink)
         (return-from picker-calendar (values (local-today) t))))
     (values nil nil)))
@@ -1514,7 +1537,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
                (setf (picker-state-open-p state) nil))
               (t
                (let ((*parent* (anchored-popup popup *parent*
-                                               (opt :width (%lui.layout:fixed
+                                               (list :width (%lui.layout:fixed
                                                             (if terminal 32
                                                                 ;; else
                                                                 260))))))
@@ -1552,13 +1575,12 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
                                            (or value ""))))
 
     ;; Keep incomplete typed text visible while preserving the model date.
-    (column (opt :id id :width (getf options :width (%lui.layout:fit)))
-      (panel (append (opt :id (list id :field) :interactive-p t
-                          :keyboard-focus-p nil)
-                     options (opt :direction :row :padding 1 :gap 0))
+    (column (:id id :width (getf options :width (%lui.layout:fit)))
+      (panel (:id (list id :field) :interactive-p t :keyboard-focus-p nil
+              :options (append options (list :direction :row :padding 1 :gap 0)))
              (let* ((old (picker-state-draft state))
                (draft (%text-field (list id :input) old
-                                       (opt :width (%lui.layout:grow)
+                                       (list :width (%lui.layout:grow)
                                             :accessible-name "Date"
                                             :placeholder "mm/dd/yyyy"))))
                (unless (equal old draft)
@@ -1588,9 +1610,10 @@ or NIL when cleared. An incomplete or invalid draft preserves the model value."
     result))
 
 (define-widget searchable-combobox (id value choices)
-  "Return editable text, a change flag, and ID; OPT :default-value initializes owned text.
+    (disabled-p placeholder max-results password-p)
+  "Return editable text, a change flag, and ID. :default-value initializes text.
 Use :value for application-owned text. CHOICES supplies autocomplete suggestions.")
 
-(define-widget date-picker (id value)
-  "Return a date, a change flag, and ID. OPT :default-value initializes an owned date.
+(define-widget date-picker (id value) ()
+  "Return a date, a change flag, and ID. :default-value initializes the date.
 Use :value for an application-owned YYYY-MM-DD date or NIL.")

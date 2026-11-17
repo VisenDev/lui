@@ -47,7 +47,7 @@
   (flet ((button ()
         (lui.motif:button
           "Hover"
-          (lui:opt :id :alpha :width (fixed 160) :height (fixed 50)))))
+          :id :alpha :width (fixed 160) :height (fixed 50))))
     (with-frame (context 720 520) (button))
     (begin-gpu-frame gpu)
     (%paint-frame renderer context)
@@ -65,12 +65,11 @@
   (with-frame (context 720 520)
     (lui.glass:button
       "Glass"
-      (lui:opt
-        :id :glass
-        :background "#c00000"
-        :opacity 0.35
-        :width (fixed 160)
-        :height (fixed 50))))
+      :id :glass
+      :background "#c00000"
+      :opacity 0.35
+      :width (fixed 160)
+      :height (fixed 50)))
   (begin-gpu-frame gpu)
   (funcall (renderer-clip renderer)
            (make-box :width 720 :height 520))
@@ -105,13 +104,13 @@
                       (%lui.widgets:widget-opacity widget)))))
   (labels ((contrast (frost opacity)
              (with-frame (context 720 520)
-               (column (lui:opt :width (grow) :height (grow))
+               (lui:column (:width (grow) :height (grow))
                  (lui:with-toolkit (:test-backdrop)
                    (lui:panel
-                    (lui:opt :position :absolute :offset-x 40 :offset-y 40
-                             :width (fixed 200) :height (fixed 120)
-                             :background "#606060" :opacity opacity
-                             :frost frost :radius 0)))))
+                    (:position :absolute :offset-x 40 :offset-y 40
+                     :width (fixed 200) :height (fixed 120)
+                     :background "#606060" :opacity opacity
+                     :frost frost :radius 0)))))
              (begin-gpu-frame gpu)
              (funcall (renderer-clip renderer)
                       (make-box :width 720 :height 520))

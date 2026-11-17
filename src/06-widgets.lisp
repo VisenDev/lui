@@ -237,7 +237,7 @@ An optional terminal-label callback overrides the standard kind-based label."
   "Declare a low-level widget in the current frame using STYLE and stable ID.
 Layout, typography, colors, optical effects, and backend extension callbacks
 are supplied as keywords. Return activation for enabled actionable kinds.
-Most applications should use the public LUI controls with lui:OPT instead."
+Most applications should use the public LUI controls."
 
   ;; Resolve tab navigation before reporting this frame's activation.
   (when (eq kind :tab) (navigate-tabs))

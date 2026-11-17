@@ -72,28 +72,27 @@
                          "#c8c8c8"))))
 
 (defun draw-dialog (state)
-  (lui:panel (lui:opt :id :circle-dialog :width (lui:grow)
-                      :padding (lui:units 1) :gap (lui:units 1))
+  (lui:panel (:id :circle-dialog :width (lui:grow)
+              :padding (lui:units 1) :gap (lui:units 1))
     (lui:label "Adjust circle diameter")
     (let* ((old (state-diameter state))
            (diameter
           (lui:slider
-            (lui:opt
-              :id :circle-diameter
-              :value old
-              :minimum 1
-              :maximum 20
-              :step 0.1
-              :width (lui:grow)))))
+            :id :circle-diameter
+            :value old
+            :minimum 1
+            :maximum 20
+            :step 0.1
+            :width (lui:grow))))
       (unless (= old diameter)
         (setf (state-diameter state) diameter)
         (%lui.seven.model:circle-preview (state-model state) (/ diameter 2))
         (lui:request-frame)))
     (lui:label (format nil "Diameter: ~,1F" (state-diameter state)))
-    (lui:row (lui:opt :gap (lui:units 1))
-      (when (lui:button "Apply" (lui:opt :id :circle-apply))
+    (lui:row (:gap (lui:units 1))
+      (when (lui:button "Apply" :id :circle-apply)
         (finish-adjust state t))
-      (when (lui:button "Cancel" (lui:opt :id :circle-cancel))
+      (when (lui:button "Cancel" :id :circle-cancel)
         (finish-adjust state nil)))))
 
 (defun draw (state)
@@ -107,34 +106,31 @@
     (finish-adjust state nil))
   (unless (modal-p state) (canvas-input state))
   (let ((model (state-model state)))
-    (lui:row (lui:opt :gap (lui:units 1))
+    (lui:row (:gap (lui:units 1))
       (when
         (lui:button
           "Undo"
-          (lui:opt
-            :id :circle-undo
-            :disabled-p
+          :id :circle-undo
+          :disabled-p
                                  (or (modal-p state)
-                  (null (%lui.seven.model:circles-undo model)))))
+                  (null (%lui.seven.model:circles-undo model))))
         (%lui.seven.model:circle-undo model)
         (lui:request-frame))
       (when
         (lui:button
           "Redo"
-          (lui:opt
-            :id :circle-redo
-            :disabled-p
+          :id :circle-redo
+          :disabled-p
                                  (or (modal-p state)
-                  (null (%lui.seven.model:circles-redo model)))))
+                  (null (%lui.seven.model:circles-redo model))))
         (%lui.seven.model:circle-redo model)
         (lui:request-frame)))
     (lui:label "Click empty space to add; right-click a circle to resize.")
     (lui:canvas
       (commands state)
-      (lui:opt
-        :id :circle-canvas
-        :background "#ffffff"
-        :width (lui:grow)
-        :height (lui:grow)
-        :disabled-p (modal-p state)))
+      :id :circle-canvas
+      :background "#ffffff"
+      :width (lui:grow)
+      :height (lui:grow)
+      :disabled-p (modal-p state))
     (when (modal-p state) (draw-dialog state))))

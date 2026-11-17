@@ -34,19 +34,19 @@
   (unwind-protect
        (progn
          (with-frame (context 400 200)
-        (lui.glass:button "Button" (lui:opt :id :button)))
+        (lui.glass:button "Button" :id :button))
       (setf (context-focus context) (lui:widget-id :button context))
          (assert (eq lui.key:backward
                      (event-key (translated-key display #xff09 1 context))))
          (assert (eq :activate
                      (event-kind (translated-key display 32 0 context))))
          (with-frame (context 400 200)
-        (lui.glass:text-field (lui:opt :id :button :value "value")))
+        (lui.glass:text-field :id :button :value "value"))
          (assert (equal " "
                         (event-value (translated-key display 32 0 context))))
       (setf (context-focus context) (lui:widget-id nil context))
          (with-frame (context 400 200)
-        (lui.glass:text-field (lui:opt :id :edit :value "value")))
+        (lui.glass:text-field :id :edit :value "value"))
          (let* ((box (element-box
                     (gethash (lui:widget-id :edit context)
                       (%lui.frame::context-ids context))))

@@ -101,7 +101,7 @@ the change and report material limitations instead of claiming untested support.
 ## Architecture and contracts
 
 - LUI is an immediate-mode Common Lisp UI library. Applications own their model
-  state; value controls retain local state unless OPT :value is supplied.
+  state; value controls retain local state unless `:value` is supplied.
   `lui:run` owns the backend lifecycle. The same gallery and widget logic
   run on native windows, the browser, and the terminal. Avoid demo-only fixes
   for behavior that should apply to all applications.
@@ -160,7 +160,7 @@ the change and report material limitations instead of claiming untested support.
   Percentages exclude padding and inter-child gaps. Fixed sizes and minimum
   bounds may overflow rather than silently shrink.
 - Control macros use quoted call-site IDs, combined with WITH-KEY scopes and
-  OPT :id instance keys (including numbers). OPT :default-value initializes
+  `:id` instance keys (including numbers). `:default-value` initializes
   owned values once; absent widgets lose owned state after a completed frame.
   Value widgets return the new value, a changed flag, and resolved ID.
   Preserve release
@@ -355,11 +355,12 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 - Combobox Up/Down selects suggestions; Enter accepts a highlighted suggestion.
   Enter without a highlight, Escape, and Tab preserve typed text. Suggestions
   are overlays; `:max-results` bounds their count.
-- `row` and `column` take an options expression, like `panel` and `table`.
-  Use `(lui:row (lui:opt :gap 1) ...)` or a stored options list; the expression
-  is evaluated once.
-- `spacer` reserves empty space with OPT sizing and padding. Use `:width (grow)`
-  in rows or `:height (grow)` in columns. `hr` and `vr` are noninteractive rules:
+- Controls take widget-specific keywords directly. Containers such as
+  `row`, `panel`, and `table` group keywords before their bodies. Use
+  `(lui:row (:gap 1) ...)` or `(lui:row (:options options) ...)`. Direct
+  keywords take precedence over the computed plist.
+- `spacer` reserves empty space with sizing and padding keywords. Use
+  `:width (grow)` in rows or `:height (grow)` in columns. `hr` and `vr` are noninteractive rules:
   the long axis grows, thickness defaults to one backend coordinate, and
   `:foreground` overrides the captured palette border color.
 - Table columns use the widest content across rows. Extra width is shared;
