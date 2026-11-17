@@ -694,6 +694,18 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
                     (* (- (box-height track) height)
                        (/ offset (max 1 (- extent viewport))))))))
 
+(fn (scrollbar-key-offset (or null real))
+    ((key lui.key:key) (offset real) (page real) (limit real))
+  "Return the offset requested by a scrollbar key, or NIL if unhandled."
+  (case key
+    ((lui.key:up lui.key:left) (- offset (max 1 (/ page 10))))
+    ((lui.key:down lui.key:right) (+ offset (max 1 (/ page 10))))
+    (lui.key:page-up (- offset page))
+    (lui.key:page-down (+ offset page))
+    (lui.key:home 0)
+    (lui.key:end limit)
+    (otherwise nil)))
+
 (fn (scrollbar-input t) ((id object-id) (owner object-id))
   "Translate scrollbar dragging, clicking, and keys into a scroll position."
   (let* ((events (events-for id))
@@ -737,23 +749,11 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
                                      travel)))))
                 ((:release :cancel) (setf (scrollbar-state-grab state) nil))
                 (:key
-                 (when (member (event-key event)
-                               '(lui.key:up lui.key:left lui.key:down
-                                 lui.key:right lui.key:page-up
-                                 lui.key:page-down
-                                 lui.key:home lui.key:end))
-                   (setf handled t))
-                 (case (event-key event)
-                   ((lui.key:up lui.key:left) (decf offset (max 1 (/ page
-                                                                     10))))
-                   ((lui.key:down lui.key:right) (incf offset (max 1 (/ page
-                                                                        10))))
-                   (lui.key:page-up (decf offset page))
-                   (lui.key:page-down (incf offset page))
-                   (lui.key:home (setf offset 0))
-                   (lui.key:end (setf offset limit)) (otherwise nil)))
-                (otherwise
-                 nil))
+                 (let ((next (scrollbar-key-offset
+                              (event-key event) offset page limit)))
+                   (when next
+                     (setf handled t offset next))))
+                (otherwise nil))
               (setf offset (max 0 (min limit offset))))
 
         ;; Commit the bounded offset once after the whole input batch.

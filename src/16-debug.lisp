@@ -525,11 +525,9 @@
               (:key
                (case (event-key event)
                  (lui.key:up (incf height (units 2)))
-                 (lui.key:down (decf
-                                height (units 2)))
+                 (lui.key:down (decf height (units 2)))
                  (lui.key:home (setf height maximum))
-                 (lui.key:end (setf
-                               height 0))
+                 (lui.key:end (setf height 0))
                  (otherwise nil)))
               (otherwise nil))
 

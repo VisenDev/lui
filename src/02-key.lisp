@@ -360,4 +360,5 @@ Ambiguous control characters also return an alternate key/modifier pair."
                         lui.key:five lui.key:left-control))
          (30 (cl:values lui.key:six lui.key:left-control))
          (31 (cl:values lui.key:minus lui.key:left-control
-                        lui.key:seven lui.key:left-control)))))))
+                        lui.key:seven lui.key:left-control))
+         (cl:otherwise cl:nil))))))
