@@ -127,9 +127,7 @@
         ;; A real pointer double-click enters raw formula editing.
         (let ((box (gethash (lui:widget-id (cell-id 2) context)
                             (%lui.frame::context-regions context))))
-          (frame (make-event :kind :move
-                             :x (+ (box-x box) 1) :y (+ (box-y box) 1))
-                 (make-event :kind :press :clicks 2
+          (frame (make-event :kind :press :clicks 2
                              :x (+ (box-x box) 1) :y (+ (box-y box) 1))))
         (assert (eql 2 (state-editing state)))
         (frame (change "=div(1,0)") (activate))

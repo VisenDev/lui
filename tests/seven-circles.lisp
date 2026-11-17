@@ -33,8 +33,7 @@
         (assert (= 1 (length (circles-items model))))
         (let ((circle (first (circles-items model))))
           (assert (= 10 (circle-x circle) (circle-y circle)))
-          (frame (make-event :kind :move :x (+ x 30) :y y)
-                 (make-event :kind :press :x (+ x 30) :y y))
+          (frame (make-event :kind :press :x (+ x 30) :y y))
           (assert (= 2 (length (circles-items model))))
           (frame (make-event :kind :move :x x :y y))
           (let ((command (first (%lui.widgets:widget-value
@@ -45,9 +44,7 @@
           ;; Pressing an existing circle never adds another.
           (frame (make-event :kind :press :x x :y y))
           (assert (= 2 (length (circles-items model))))
-          (frame (make-event :kind :move :x (+ x 1) :y y)
-                 (make-event :kind :move :x x :y y)
-                 (make-event :kind :press :button :secondary :x x :y y))
+          (frame (make-event :kind :press :button :secondary :x x :y y))
           (assert (%lui.example.seven.circles:modal-p state))
           (assert (eq :circle-diameter (lui:widget-key (context-focus
                     context))))
@@ -69,9 +66,7 @@
           (assert (= 2.5 (circle-radius circle)))
           (activate :circle-redo)
           (assert (= 7 (circle-radius circle)))
-          (frame (make-event :kind :move :x (+ x 1) :y y)
-                 (make-event :kind :move :x x :y y)
-                 (make-event :kind :press :button :secondary :x x :y y))
+          (frame (make-event :kind :press :button :secondary :x x :y y))
           (frame (make-event :kind :change :id :circle-diameter :value 18))
           (frame (make-event :kind :key :id :circle-diameter :key
                              lui.key:escape))

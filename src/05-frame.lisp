@@ -91,9 +91,6 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (popup-input nil :type (or null function))
   (floating-path #() :type (vector object-id))
   pointer-press
-  (pointer-blocked-p nil :type boolean)
-  (pointer-x nil :type (or null real))
-  (pointer-y nil :type (or null real))
   overlay-state
   (overlay nil :type (or null function))
   (after-layout nil :type list)
@@ -449,16 +446,14 @@ Native key translators use this to interpret a key after a batched click or Tab.
       (let ((predicted (copy-context context)))
         (loop :for event-index :downfrom (1- (length events)) :to 0
               :for event := (elt events event-index) :do
-              (unless (pointer-event-blocked-p predicted event)
-                (case (event-kind event)
-                  (:tab (focus-next
-                         predicted (eq (event-key event) lui.key:backward)))
-                  (:press
-                   (let* ((id (hit predicted (event-x event) (event-y event)))
-                          (node (gethash id (context-ids predicted))))
-                     (when (and node (element-pointer-focus-p node))
-                       (setf (context-focus predicted) id))))
-                  (otherwise nil))))
+              (case (event-kind event)
+                (:tab (focus-next
+                       predicted (eq (event-key event) lui.key:backward)))
+                (:press
+                 (let* ((id (hit predicted (event-x event) (event-y event)))
+                        (node (gethash id (context-ids predicted))))
+                   (when (and node (element-pointer-focus-p node))
+                     (setf (context-focus predicted) id)))) (otherwise nil)))
         predicted)
 
       ;; else
@@ -637,8 +632,7 @@ ID types are unrestricted and may differ between vector elements."
     (:press
      (route-pointer-press context event target))
     (:release
-     (when (and (not (context-pointer-blocked-p context))
-                (eq (event-button event) :primary)
+     (when (and (eq (event-button event) :primary)
                 target (equal target (context-active context)))
        (record-activation context target))
      (when (eq (event-button event) :primary)
@@ -653,45 +647,9 @@ ID types are unrestricted and may differ between vector elements."
          (record-activation context id))))
     (otherwise nil))  (values))
 
-(fn (pointer-event-blocked-p boolean) ((context context) (event event))
-  "Reject new pointer gestures after layout changes until actual motion."
-  (let ((kind (event-kind event)))
-    (when (member kind '(:move :press :release))
-      (when (and (eq kind :move)
-                 (or (null (context-pointer-x context))
-                     (/= (event-x event) (context-pointer-x context))
-                     (/= (event-y event) (context-pointer-y context))))
-        (setf (context-pointer-blocked-p context) nil))
-      (setf (context-pointer-x context) (event-x event)
-            (context-pointer-y context) (event-y event)))
-    (and (context-pointer-blocked-p context)
-         (or (eq kind :press)
-             (and (eq kind :release) (null (context-active context)))))))
-
-(fn (observable-pointer-events sequence)
-    ((context context) (events sequence))
-  "Filter blocked pointer input for selection without changing routing state."
-  (let ((predicted (copy-context context)))
-    (remove-if (lambda (event)
-                 (pointer-event-blocked-p predicted event)) events)))
-
-(fn (same-pointer-layout-p boolean) ((old element) (new element))
-  "Compare solved bounds, clips, identities, and child order across frames."
-  (and (equal (element-id old) (element-id new))
-       (eq (element-interactive-p old) (element-interactive-p new))
-       (equalp (element-box old) (element-box new))
-       (equalp (element-clip old) (element-clip new))
-       (= (length (element-children old)) (length (element-children new)))
-       (every #'same-pointer-layout-p
-              (element-children old) (element-children new))))
-
 (fn (route-frame-event (values)) ((context context) (event event) (resized
                                                                    boolean))
   "Route EVENT against completed geometry and enqueue it for its owning widget."
-  (when (pointer-event-blocked-p context event)
-    (when (eq (event-kind event) :press)
-      (update-pointer-capture context event (context-active context)))
-    (return-from route-frame-event (values)))
   (when (event-id event)
     (setf event (copy-event event)
       (event-id event) (widget-id (event-id event) context)))
@@ -769,8 +727,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
   (when (context-input-handler context)
     (if (and (= width (context-width context))
              (= height (context-viewport-height context)))
-        (funcall (context-input-handler context) context
-                 (observable-pointer-events context events))
+        (funcall (context-input-handler context) context events)
         ;; else
         (setf (context-selection context) nil)))
 
@@ -791,10 +748,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
   (let ((resized (or (/= width (context-width context))
                      (/= height (context-viewport-height context)))))
     (when resized
-      (setf (context-pointer-blocked-p context)
-            (or (context-pointer-blocked-p context)
-                (not (null (context-root context))))
-            (context-active context) nil (context-hover context) nil))
+      (setf (context-active context) nil (context-hover context) nil))
     (when (or resized
               (some (lambda (event)
                       (member (event-kind event)
@@ -910,13 +864,6 @@ Clear focus/hover for removed controls and return the completed root element."
   (dolist (decorate (nreverse (context-after-layout context)))
     (funcall decorate))
 
-  ;; A stationary pointer must not acquire a newly positioned click target.
-  (when (and (context-previous-root context)
-             (not (same-pointer-layout-p (context-previous-root context)
-                                         (context-root context))))
-    (setf (context-pointer-blocked-p context) t
-          (context-last-click context) nil))
-
   ;; Removed or disabled controls must release focus, hover, and capture.
   (flet ((interactive-p (id)
            (let ((node (gethash id (context-ids context))))
@@ -956,8 +903,6 @@ Clear focus/hover for removed controls and return the completed root element."
     ((context context) (width real) (height real) (draw function)
      &key ((events sequence) nil))
   "Dispatch EVENTS, call DRAW once, solve CONTEXT, and return its root.
-Changed layout blocks new pointer presses until the pointer moves again.
-Captured drags can finish; keyboard activation remains available.
 An aborted drawing or layout invalidates geometry and clears frame state."
   (let ((*context* context)
         (*key-scope* nil))
@@ -971,8 +916,7 @@ An aborted drawing or layout invalidates geometry and clears frame state."
              (setf complete t)
              (context-root context))
         (unless complete
-          (setf (context-pointer-blocked-p context) t
-                (context-root context) nil
+          (setf (context-root context) nil
                 (context-memo context) #()
                 (context-pending-memo context) #()
                 (context-building-p context) nil
