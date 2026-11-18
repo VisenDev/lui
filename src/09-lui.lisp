@@ -157,29 +157,32 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 
 (define-widget-options row (&body) (placement flow focus) (gap)
   "Lay out BODY horizontally. Child identities are scoped to this container;
-use :ID for stable identity on reorder, otherwise identity follows position."
+use a distinct :ID or WITH-KEY scope for each repeated instance."
   `(let ((*parent* (emit
                    (apply #'%lui.layout:make-element :direction :row
-                          (container-options ,options)))))
+                          (container-options ',(gensym "ROW")
+                                             ,options)))))
      ,@body))
 
 (define-widget-options column (&body) (placement flow focus) (gap)
   "Lay out BODY vertically. Child identities are scoped to this container;
-use :ID for stable identity on reorder, otherwise identity follows position."
+use a distinct :ID or WITH-KEY scope for each repeated instance."
   `(let ((*parent* (emit
                    (apply #'%lui.layout:make-element :direction :column
-                          (container-options ,options)))))
+                          (container-options ',(gensym "COLUMN")
+                                             ,options)))))
      ,@body))
 
 (define-widget-options panel (&body) (placement flow focus appearance)
     (gap direction)
   "Draw a styled container and attach widgets declared in BODY as children.
-Containers scope child identities automatically, including without an :ID.
-Use stable :ID keys for containers that can move; anonymous ones use position."
+The call site supplies a stable ID, including for scrolling panels.
+Use a distinct :ID or WITH-KEY scope for each repeated instance."
   `(let ((%lui.frame:*parent*
           (%lui.widgets:declare-panel
            %*toolkit*
-           (append (%lui.frame:container-options ,options)
+           (append (%lui.frame:container-options
+                    ',(gensym "PANEL") ,options)
                    (toolkit-defaults)))))
      ,@body))
 
@@ -206,9 +209,7 @@ Use stable :ID keys for containers that can move; anonymous ones use position."
     ((function function) (site symbol) (arguments list) (options list)
      (value-p boolean) (default t))
   "Resolve identity and owned values, invoke the control, and return its ID third."
-  (let* ((id (unless (and (eq function #'%label)
-                         (not (widget-option-p :id options)))
-               (call-site-id site options)))
+  (let* ((id (call-site-id site options))
          (appearance (widget-options options))
          (value (when value-p (owned-widget-value id options default))))
     (multiple-value-bind (result changed)
@@ -263,7 +264,8 @@ Use stable :ID keys for containers that can move; anonymous ones use position."
        (define-widget ,name ,args (disabled-p ,@keys) ,doc))))
 
 (define-control label (id text) ()
-  "Display selectable text. :id optionally names it. Width determines wrapping."
+  "Display selectable text. Use :ID for repeated labels at one call site.
+Width determines wrapping."
   (apply #'declare-widget :label style id text (append options defaults)))
 
 (define-control button (id text) ()
@@ -275,7 +277,9 @@ Use stable :ID keys for containers that can move; anonymous ones use position."
 Use :width (grow) in a row or :height (grow) in a column to push siblings apart.
 Fixed dimensions reserve a specific amount; :padding adds space on every side.
 The default size is zero. For padding around children, use ROW or COLUMN."
-  `(%lui.frame:emit (apply #'%lui.layout:make-element ,options)))
+  `(%lui.frame:emit
+    (apply #'%lui.layout:make-element
+           (container-options ',(gensym "SPACER") ,options))))
 
 (define-control hr (id) ()
   "Draw a noninteractive horizontal rule, growing in width and one coordinate thick.
@@ -328,7 +332,8 @@ The default size is zero. For padding around children, use ROW or COLUMN."
           (%lui.frame:emit
            (apply #'%lui.layout:make-element
                   :direction :column :table-p t
-                  (%lui.frame:container-options ,options)))))
+                  (%lui.frame:container-options
+                   ',(gensym "TABLE") ,options)))))
      ,@body))
 
 (define-widget-options table-row (&body) (placement flow focus)
@@ -338,7 +343,8 @@ Each direct child occupies one column by default. TABLE sets the gaps."
   `(let ((%lui.frame:*parent*
           (%lui.frame:emit
            (apply #'%lui.layout:make-element :direction :row
-                  (%lui.frame:container-options ,options)))))
+                  (%lui.frame:container-options
+                   ',(gensym "TABLE-ROW") ,options)))))
      ,@body))
 
 (define-widget-options table-cell (&body) (placement flow focus)
@@ -349,7 +355,8 @@ Each direct child occupies one column by default. TABLE sets the gaps."
   `(let ((%lui.frame:*parent*
           (%lui.frame:emit
            (apply #'%lui.layout:make-element :direction :column
-                  (append (%lui.frame:container-options ,options)
+                  (append (%lui.frame:container-options
+                           ',(gensym "TABLE-CELL") ,options)
                           (list :height (%lui.layout:grow) :clip-p t))))))
      ,@body))
 
@@ -1406,7 +1413,7 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
     ((id object-id) (state picker-state) (month integer))
   "Declare the month chooser and switch back to the day grid after selection."
   (dotimes (r 4)
-    (row (:width (%lui.layout:grow))
+    (row (:id r :width (%lui.layout:grow))
       (dotimes (c 3)
         (let ((m (+ 1 (* r 3) c)))
           (when (calendar-item (list id :month m) (subseq (aref
@@ -1444,11 +1451,12 @@ Enter accepts it. Escape dismisses the suggestions and keeps the typed text."
         ;; else
         (let ((start (calendar-start year month)))
           (row (:width (%lui.layout:grow))
-            (loop :for name :across "SMTWTFS" :do
-                  (row (:width width :align :center)
-                  (%label nil (string name) (list :font-size 13)))))
+            (loop :for name :across "SMTWTFS"
+                  :for index :from 0
+                  :do (row (:id index :width width :align :center)
+                        (%label nil (string name) (list :font-size 13)))))
           (dotimes (week 6)
-            (row (:width (%lui.layout:grow))
+            (row (:id week :width (%lui.layout:grow))
               (dotimes (column 7)
                 (multiple-value-bind (y m day)
                     (calendar-day year month

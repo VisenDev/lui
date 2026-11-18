@@ -163,7 +163,7 @@
 (fn (properties (values)) ((title string) (width real) &rest (pairs list))
   "Declare a titled group of property name/value rows within WIDTH."
   (let ((accent (getf (toolkit-defaults) :accent "#258bff")))
-    (row (:width (grow) :gap (units 0.5f0))
+    (row (:id title :width (grow) :gap (units 0.5f0))
       (lui:label "—" :width (fixed (units 2)) :font-size 14
         :foreground accent)
       (lui:label title :width (grow) :font-size 14 :font-weight :bold
@@ -171,7 +171,8 @@
   (dolist (pair pairs)
     (when pair
       (let* ((stacked (< width (units 32)))
-             (*parent* (emit (make-element :width (grow)
+             (key (id :property (list title (first pair))))
+             (*parent* (emit (make-element :id key :width (grow)
                                            :direction (if stacked :column
                                                           ;; else
                                                           :row)
@@ -331,7 +332,7 @@
     ((state debugger-state) (width real) (step real) (index integer)
      (entry entry) (node element) (key list))
   "Declare one visible debugger tree row with indentation, collapse control, and selection."
-  (row (:position :absolute :offset-y (* index step)
+  (row (:id (id :tree-row key) :position :absolute :offset-y (* index step)
         :width (grow) :height (fixed
                                            step)
         :gap (units 0.25f0) :cross-align

@@ -72,7 +72,7 @@
         (flet ((draw (show)
                  (lui:panel (:id :pane :scroll-p t :scrollbar-p show
                              :width (fixed 10) :height (fixed 8))
-                   (dotimes (i 24) (lui:label (write-to-string i))))))
+                   (dotimes (i 24) (lui:label (write-to-string i) :id i)))))
           (with-frame (context 10 8) (draw t))
           (let ((start (render-terminal context)))
             (assert (find #\█ start))

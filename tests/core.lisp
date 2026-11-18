@@ -266,10 +266,11 @@
       (assert (not (equal (cdar current) (cdadr current))))
       (with-frame (context 80 30)
         (dotimes (i 2)
-          (lui:panel ()
-            (lui:row (:id :row)
-              (lui:column ()
-                (lui:button "Anonymous")))))))
+          (lui:with-key i
+            (lui:panel ()
+              (lui:row (:id :row)
+                (lui:column ()
+                  (lui:button "Anonymous"))))))))
     (assert
      (handler-case
          (progn
@@ -280,7 +281,28 @@
        (lui:configuration-error () t))))
   (values))
 
+(defun test-default-scroll-panel-id ()
+  "Keep a scrolling panel's state when a sibling appears before it."
+  (let ((context (make-test-context)))
+    (flet ((frame (sibling &optional events)
+             (with-frame (context 40 20 :events events)
+               (when sibling (lui:spacer :height (fixed 1)))
+               (lui:panel (:scroll-p t :width (fixed 30) :height (fixed 8))
+                 (lui:label "Tall content" :height (fixed 24))))))
+      (let* ((first (aref (element-children (frame nil)) 0))
+             (id (element-id first))
+             (wheel (make-event :kind :scroll :scroll-mode :immediate
+                                :x 1 :y 2 :value 5))
+             (second (aref (element-children (frame t (list wheel))) 1))
+             (third (aref (element-children (frame t)) 1)))
+        (assert id)
+        (assert (equal id (element-id second)))
+        (assert (equal id (element-id third)))
+        (assert (= 5 (element-scroll-y third))))))
+  (values))
+
 (defun run-tests ()
+  (test-default-scroll-panel-id)
   (test-container-identities)
   (test-conditions)
   (test-side-effect-values)

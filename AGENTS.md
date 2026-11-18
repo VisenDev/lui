@@ -139,8 +139,8 @@ the change and report material limitations instead of claiming untested support.
   Input is routed against the previous completed layout. IDs use `equal`:
   keep them stable and do not mutate compound IDs after declaration. Duplicate
   non-NIL IDs within one container scope are errors. Containers automatically
-  scope child identities. Explicit container keys preserve identity on reorder;
-  anonymous containers use their position under their parent.
+  scope child identities. Container call sites supply default IDs. Use stable
+  keys for repeated instances, including scrolling containers.
 - Resize invalidates old pointer geometry. Removed widgets lose focus/capture;
   an aborted frame invalidates geometry. Layout structures are frame-local and
   should not be mutated after completion.
@@ -337,7 +337,6 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   than indices when rows can move. Repeated unkeyed sites or duplicate instance
   keys signal `configuration-error` before state is reused. Recompiling a call
   site creates a new identity. IDs are scoped to their parent container and may be any object.
-  Containers without explicit keys scope children by their sibling position.
 - `widget-id` resolves a unique key in the current key scope; ambiguous keys
   signal `configuration-error`. `widget-key` extracts the declared key;
   `focus-widget` requests focus; `reset-editor` resets owned text and caret.

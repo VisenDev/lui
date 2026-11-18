@@ -628,7 +628,7 @@ class WebTests(unittest.TestCase):
                   (lui:column (:width (%lui.layout:grow))
                     (dotimes (i 40)
                       (lui.glass:label (format nil "Embedded row ~D" i)
-                        :width (%lui.layout:grow) :height (%lui.layout:fixed 48))))))''')
+                        :id i :width (%lui.layout:grow) :height (%lui.layout:fixed 48))))))''')
             port = page.locator("#mobile-port")
             label = port.get_by_text("Embedded row 4", exact=True)
             expect(label).to_be_visible()

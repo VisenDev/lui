@@ -119,7 +119,7 @@
                   "Ctrl-Y: yank killed text; Ctrl-T: transpose"
                   "Ctrl-D / Ctrl-H: delete / backspace"
                   "Shift + arrows: select; Ctrl-Shift-A: select all"))
-    (lui:label line)))
+    (lui:label line :id line)))
 
 (defun positioning-scene (g)
   (let* ((previous (lui:previous-box :position-stage))
@@ -306,7 +306,8 @@
               :when
               (if (eq (gallery-toolkit g) :glass)
                   (sample id title color)
-                  (lui:panel (:width (lui:grow) :padding (lui:units 2)
+                  (lui:panel (:id (list :sample-panel title)
+                              :width (lui:grow) :padding (lui:units 2)
                               :gap (lui:units 1) :background color)
                     (lui:label title :foreground "#ffffff")
                     (sample id "Preview" color)))
@@ -336,7 +337,7 @@
                 (lui:row (:width (lui:grow) :height (lui:grow))
                   (dotimes (i 48)
                     (let ((color (if (evenp i) "#17304d" "#dbe7ed")))
-                      (lui:panel (:width (lui:grow) :height (lui:grow)
+                      (lui:panel (:id i :width (lui:grow) :height (lui:grow)
                                   :opacity 1 :radius 0 :frost 0
                                   :background color)))))
                 (lui:column (:position :absolute

@@ -311,7 +311,7 @@
 
 (defun draw-content (state)
   (dolist (tasks (list (subseq *tasks* 0 4) (subseq *tasks* 4)))
-    (lui:row (:width (lui:grow) :gap (lui:units 0.5))
+    (lui:row (:id (caar tasks) :width (lui:grow) :gap (lui:units 0.5))
       (dolist (task tasks)
         (when
           (lui:tab

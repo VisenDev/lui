@@ -160,15 +160,6 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (when (and (boundp '*parent*) (boundp '*context*))
     (gethash *parent* (context-container-scopes *context*))))
 
-(fn (container-options list) ((options list))
-  "Resolve an explicit container key within its enclosing container."
-  (let ((key (getf options :id)))
-    (if (and key (not (resolved-widget-id-p key)))
-        (list* :id (list :lui-widget-id :container *key-scope* key
-                         (parent-identity-scope)) options)
-        ;; else
-        options)))
-
 (fn (call-site-id list) ((site symbol) (options list))
   "Combine identity components, rejecting repeated declarations before state changes."
   (let* ((key (getf options :id site))
@@ -179,11 +170,21 @@ The backend supplies measurement, clipboard, and optional input callbacks."
              :operation :declare-widget :setting :id :value key
              :format-control
              (if (eq key site)
-                 "This control call site ran more than once in a frame. Supply a distinct :id key for each instance, or wrap repeated groups in (lui:with-key key ...)."
+                 "This widget call site ran more than once in a frame. Supply a distinct :id key for each instance, or wrap repeated groups in (lui:with-key key ...)."
                  ;; else
                  "Repeated control key ~S at the same call site and key scope. Use distinct :id keys or WITH-KEY scopes for each instance.")
              :format-arguments (unless (eq key site) (list key))))
     id))
+
+(fn (container-options list) ((site symbol) (options list))
+  "Resolve a layout widget's explicit container key or default call-site ID."
+  (let ((key (getf options :id)))
+    (list* :id
+           (cond ((null key) (call-site-id site options))
+                 ((resolved-widget-id-p key) key)
+                 (t (list :lui-widget-id :container *key-scope* key
+                          (parent-identity-scope))))
+           options)))
 
 (fn (widget-key object-id) ((id object-id))
   "Return the declared key of an opaque widget ID, including derived child keys."
@@ -817,8 +818,13 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
       (when offset
         (setf (element-scroll-x node) (car offset)
               (element-scroll-y node) (cdr offset)))))
-  (let ((scope (cons (or (element-id node) (length (element-children *parent*)))
-                     (parent-identity-scope))))
+  ;; A call-site ID already includes the enclosing scope.
+  (let* ((id (element-id node))
+         (scope (if (and (consp id) (eq (car id) :lui-widget-id))
+                    (list id)
+                    ;; else
+                    (cons (or id (length (element-children *parent*)))
+                          (parent-identity-scope)))))
     (setf (gethash node (context-container-scopes *context*)) scope))
   (append-child *parent* node))
 

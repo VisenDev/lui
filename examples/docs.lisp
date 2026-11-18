@@ -36,7 +36,7 @@
       (lui:label (format nil \"Count: ~D\" count))
       (when (lui:button \"Increment\" :id :increment)
         (incf count)))))"
-      "Control macros generate stable call-site IDs. In loops use :id with a stable item key (numbers are valid), or WITH-KEY around a reusable group. Keys are combined with the call site and enclosing scope. Index keys follow positions; stable item keys follow reordered items. Duplicate resolved IDs are errors. Removing a widget for a completed frame releases its state; recompiling its call site creates a fresh identity."
+      "Widget macros, including containers and labels, generate stable call-site IDs. In loops use :id with a stable item key (numbers are valid), or WITH-KEY around a reusable group. Default IDs are scoped to the enclosing container and WITH-KEY group. Index keys follow positions; stable item keys follow reordered items. Duplicate resolved IDs are errors. Removing a widget for a completed frame releases its state; recompiling its call site creates a fresh identity."
       "lui:frame-time returns this frame's clock snapshot. lui:request-frame schedules another redraw, optionally after a delay in seconds. Prefer requesting a deadline for timers over a busy loop; idle windows redraw at :min-fps (default 1). Set :max-fps (default 240) on lui:run to cap active rendering. Input wakes the window and explicit deadlines support animations.")
     (:positioning "Manual positioning"
       "Automatic widgets participate in row or column layout. Manual widgets do not change sibling positions or FIT container sizes. Their content is still measured, so a button can fit its text without automatic placement. Run make manual-demo for a standalone example."
@@ -96,7 +96,7 @@
       (lui:label \"Status\"))))"
      "lui:spacer reserves empty space without painting. Use (lui:spacer :width (lui:grow)) in a row, or :height (lui:grow) in a column, to push siblings apart. Use fixed sizes for explicit spacing. (lui:hr) and (lui:vr) draw horizontal and vertical rules; their long axis grows, their thickness defaults to one backend coordinate, and :foreground overrides the palette border color. Container :padding reserves an inner content area. :gap separates children; :align controls the main axis and :cross-align controls the other axis. :clip-p clips children to the padded content area. :scroll-p adds scrolling with the same clipping rules."
      "Scrolling panels show a scrollbar by default. :scrollbar-p NIL hides it; :scrollbar-width customizes the reserved track width in backend coordinates. The default is 12 graphical pixels or one terminal cell. Drag the thumb to move continuously, or click the track above/below it to page by a viewport. Wheel scrolling supports momentum; nested scrollers pass unused motion to an ancestor."
-     "A scrolling viewport needs a bounded size. Nested scrollers pass wheel input to an ancestor when they cannot scroll further. lui:previous-box exposes completed geometry; lui:scroll-position and scroll-to support application-controlled navigation. Virtualize very large lists instead of declaring every row.")
+     "A scrolling viewport needs a bounded size. A panel can scroll with its default call-site ID. Nested scrollers pass wheel input to an ancestor when they cannot scroll further. lui:previous-box exposes completed geometry; lui:scroll-position and scroll-to support application-controlled navigation. Virtualize very large lists instead of declaring every row.")
     (:toolkits "Toolkits"
       "The lui package contains application controls, layout, palettes, toolkit registration, and events. Palette accessors live in lui.palette; toolkit registration, rendering policies, and resolved defaults live in lui.toolkit. Both are included in lui/core. Internal-only packages have a leading %, such as %lui.frame. In dual-use packages, only internal exported symbols have a leading %, such as lui.toolkit:%find-toolkit. These internal interfaces are not application APIs. Everyday palette construction, presets, and palette/toolkit scopes stay in lui. Built-in defaults belong to their own packages, such as lui.qt:*qt-defaults*. Other specialized APIs live in lui.font (font configuration and metrics), lui.draw (custom painting and geometry), lui.debug (inspection), lui.terminal (snapshots), and lui.pdf (PDF output); load the corresponding optional systems before calling them. Choose a toolkit below the heading to try its widgets independently of the page style. Glass uses rounded translucent surfaces; Motif uses solid beveled controls; Garnet uses high-contrast square shapes, hard shadows, and bold monospace text. macOS uses warm surfaces, rounded controls, subtle borders, and blue accents; Qt uses restrained raised desktop controls. Cycle palette to try Default, Light, Dark, Ocean, and Forest on the page and live samples. A window background remains opaque."
      "(lui:with-toolkit (:motif)
@@ -387,7 +387,7 @@
 (defun preview (state kind)
   (lui:label (format nil "Live preview: ~A" (string-downcase
                                              (symbol-name kind)))
-    :width (lui:grow) :font-weight :bold)
+    :id kind :width (lui:grow) :font-weight :bold)
   (case kind
     (:date-picker
       (setf (browser-date state)
@@ -596,7 +596,7 @@
              (lui.debug:set-debugger-enabled t)))
          (dolist (paragraph (cddr guide))
            (lui:label paragraph
-             :width (lui:grow)
+             :id paragraph :width (lui:grow)
              :font-family
                                (if (and (plusp (length paragraph))
                                         (char= (char paragraph 0) #\())
