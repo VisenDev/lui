@@ -303,7 +303,7 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
 
 (fn (layout-clock real) ()
   "High-resolution elapsed-time clock in milliseconds."
-  #+jscl (#j:performance:now)
+  #+jscl ((jscl/ffi:oget (jscl::%js-vref "performance") "now"))
   #-jscl (* 1000 (/ (get-internal-real-time)
                     internal-time-units-per-second)))
 
@@ -817,9 +817,9 @@ Return NODE. Interactive and scrolling nodes require unique, non-NIL IDs."
       (when offset
         (setf (element-scroll-x node) (car offset)
               (element-scroll-y node) (cdr offset)))))
-  (setf (gethash node (context-container-scopes *context*))
-        (cons (or (element-id node) (length (element-children *parent*)))
-              (parent-identity-scope)))
+  (let ((scope (cons (or (element-id node) (length (element-children *parent*)))
+                     (parent-identity-scope))))
+    (setf (gethash node (context-container-scopes *context*)) scope))
   (append-child *parent* node))
 
 (fn (parent-scroll-position (values real real)) ()

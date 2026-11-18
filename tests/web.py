@@ -752,10 +752,12 @@ class WebTests(unittest.TestCase):
         self.page.mouse.move(*self.point(self.widget(id=":SEVEN-GRID")))
         self.page.mouse.wheel(0, 240)
         self.frames()
-        grid_offset = self.page.evaluate("""() => jscl.evaluateString(`
+        grid_offset = self.number("""
           (let* ((app (jscl/ffi:oget (#j:document:querySelector #j"main canvas") "luiApp"))
-                 (ids (%lui.frame::context-ids (lui.web::web-app-context app))))
-            (%lui.layout:element-scroll-y (gethash :seven-grid ids)))`)""")
+                 (context (lui.web::web-app-context app))
+                 (id (lui:widget-id :seven-grid context)))
+            (%lui.layout:element-scroll-y
+             (gethash id (%lui.frame:context-ids context))))""")
         self.assertGreater(grid_offset, 0)
         self.assertEqual(self.page.evaluate("getSelection().toString()"), "Selected: A0")
 

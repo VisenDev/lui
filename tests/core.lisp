@@ -347,8 +347,9 @@
                        (element-box (aref (element-children (aref rows row))
                           col))))
                 (check (= width (box-width (cell-box 0 0))))
-                (check (= 2 (- (box-x (cell-box 1 1))
-                               (box-width (cell-box 1 0)))))
+                (check (< (abs (- (box-x (cell-box 1 1))
+                                  (box-width (cell-box 1 0)) 2))
+                          0.000001d0))
                 (check (= (box-x (cell-box 1 1)) (box-x (cell-box 2 1))))
                 (check (= (box-width (cell-box 1 0)) (box-width (cell-box 3
                           0))))

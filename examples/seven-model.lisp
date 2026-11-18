@@ -66,14 +66,14 @@
         (arithmetic-error () nil)))))
 
 (defun parse-date (text)
-  "Validate DD.MM.YYYY and return an ordered YYYYMMDD integer or NIL."
-  (when (and (= 10 (length text)) (char= (char text 2) #\.)
-             (char= (char text 5) #\.)
-             (loop :for i :in '(0 1 3 4 6 7 8 9)
+  "Validate YYYY-MM-DD and return an ordered YYYYMMDD integer or NIL."
+  (when (and (stringp text) (= 10 (length text))
+             (char= (char text 4) #\-) (char= (char text 7) #\-)
+             (loop :for i :in '(0 1 2 3 5 6 8 9)
                    :always (digit-char-p (char text i))))
-    (let* ((day (parse-integer text :end 2))
-           (month (parse-integer text :start 3 :end 5))
-           (year (parse-integer text :start 6))
+    (let* ((year (parse-integer text :end 4))
+           (month (parse-integer text :start 5 :end 7))
+           (day (parse-integer text :start 8))
            (leap (or (zerop (mod year 400))
                      (and (zerop (mod year 4))
                           (not (zerop (mod year 100)))))))

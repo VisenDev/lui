@@ -73,14 +73,6 @@
   (fn (text-width real) ((font font) (text string))
     (jscl/ffi:oget (measure-text font text) "width"))
 
-  (fn (baseline real) ((font font))
-    (let ((ascent (jscl/ffi:oget (measure-text font "Mg")
-                                 "fontBoundingBoxAscent")))
-      (if (and (numberp ascent) (plusp ascent))
-          ascent
-          ;; else
-          (* (font-size font) 0.8f0))))
-
   (fn (line-height real) ((font font))
     (let* ((metrics (measure-text font "Mg"))
            (ascent (jscl/ffi:oget metrics "fontBoundingBoxAscent"))
@@ -90,6 +82,16 @@
           (max (* (font-size font) 1.2f0) (+ ascent descent))
           ;; else
           (* (font-size font) 1.2f0))))
+
+  (fn (baseline real) ((font font))
+    "Match the baseline of a native label with the same CSS line height."
+    (let* ((metrics (measure-text font "Mg"))
+           (ascent (jscl/ffi:oget metrics "fontBoundingBoxAscent"))
+           (descent (jscl/ffi:oget metrics "fontBoundingBoxDescent")))
+      (if (and (numberp ascent) (plusp ascent) (numberp descent))
+          (+ ascent (/ (- (line-height font) ascent descent) 2))
+          ;; else
+          (* (font-size font) 0.8f0))))
 
   (fn (glyph-polygons nil) ((font font) (char character))
     (declare (ignore font char))

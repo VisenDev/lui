@@ -23,14 +23,14 @@
   (assert (null (temperature "invalid" :celsius)))
   (assert (null (temperature "1e308" :celsius)))
   (assert (> (temperature "1e308" :fahrenheit) 1.0d307))
-  (assert (= 20000229 (parse-date "29.02.2000")))
-  (assert (= 20240229 (parse-date "29.02.2024")))
-  (dolist (text '("29.02.1900" "31.04.2024" "01.13.2024" "01.01.0000"
-                  "1.01.2024" "01/01/2024" "01.01.20xx"))
+  (assert (= 20000229 (parse-date "2000-02-29")))
+  (assert (= 20240229 (parse-date "2024-02-29")))
+  (dolist (text '("1900-02-29" "2024-04-31" "2024-13-01" "0000-01-01"
+                  "2024-01-1" "01/01/2024" "20xx-01-01" nil))
     (assert (null (parse-date text))))
-  (assert (flight-valid-p "01.01.2024" "invalid"))
-  (assert (flight-valid-p "01.01.2024" "01.01.2024" t))
-  (assert (not (flight-valid-p "02.01.2024" "01.01.2024" t))))
+  (assert (flight-valid-p "2024-01-01" "invalid"))
+  (assert (flight-valid-p "2024-01-01" "2024-01-01" t))
+  (assert (not (flight-valid-p "2024-01-02" "2024-01-01" t))))
 
 (fn test-timer ()
   (let ((timer (make-timer :duration 2)))

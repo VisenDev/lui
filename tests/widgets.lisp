@@ -484,7 +484,9 @@
         (assert (not (element-interactive-p node)))
         (assert (<= 0 (%lui.widgets:widget-value widget) 7))
         (assert (= 1 (length (%lui.widgets:widget-terminal-text widget))))
-        (assert (< sample (context-next-frame context) (+ sample 0.11))))
+        (assert (< 0 (- (context-next-frame context)
+                        #+jscl sample
+                        #-jscl (coerce sample 'double-float)) 0.11d0)))
 
       ;; Pausing or removing the spinner must stop animation deadlines.
       (draw t t)

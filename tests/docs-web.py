@@ -54,17 +54,20 @@ class DocsWebTests(unittest.TestCase):
                 ui = DocsUI(page)
                 ui.search("popup")
                 ui.click_widget("lui:POPUP")
+                toolkit = page.get_by_role("button", name="Cycle Toolkit", exact=True)
+                toolkit_handle = toolkit.element_handle()
                 ui.click_widget("Show error")
                 expect(page.get_by_text("Could not save the file.", exact=True)).to_be_visible()
                 # Background accessibility activation cannot replace the preview.
-                page.get_by_role("button", name="Cycle Toolkit", exact=True).evaluate("el => el.click()")
+                expect(toolkit).to_have_count(0)
+                toolkit_handle.evaluate("el => el.click()")
                 ui.frames()
-                ui.widget("Toolkit: Qt")
                 page.set_viewport_size({"width": 900, "height": 700})
                 ui.frames()
                 expect(page.get_by_text("Could not save the file.", exact=True)).to_be_visible()
                 ui.click_widget("OK")
-                expect(page.get_by_text("Could not save the file.", exact=True)).to_have_count(0)
+                ui.widget("Toolkit: Qt")
+                expect(page.get_by_text("Could not save the file.", exact=True)).to_be_hidden()
                 ui.search("confirm")
                 ui.click_widget("lui:CONFIRM")
                 ui.click_widget("Delete example")
@@ -107,6 +110,48 @@ class DocsWebTests(unittest.TestCase):
                 ui.click_widget("Back to documentation")
                 ui.widget("Getting started")
                 self.assertEqual(errors, [])
+            finally:
+                browser.close()
+
+    def test_menu_hover_keeps_label_baseline(self):
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                executable_path=shutil.which("chromium-browser") or shutil.which("chromium"),
+                args=["--no-sandbox"])
+            page = browser.new_page(viewport={"width": 1050, "height": 760})
+            try:
+                page.goto((ROOT / "build/docs.html").as_uri())
+                ui = DocsUI(page)
+                ui.click_widget("View Full Demo")
+                ui.click_widget("Menus")
+                label_text = "Choose a menu action"
+                label = page.get_by_text(label_text, exact=True)
+                expect(label).to_be_visible()
+                dom_baseline = label.evaluate("""el => {
+                    const marker = document.createElement("span");
+                    marker.style = "display:inline-block;width:0;height:0";
+                    el.prepend(marker);
+                    const y = marker.getBoundingClientRect().y;
+                    marker.remove();
+                    return y;
+                }""")
+                page.evaluate("""label => {
+                    const fillText = CanvasRenderingContext2D.prototype.fillText;
+                    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...args) {
+                        if (text === label) {
+                            window.menuLabelBaseline = this.canvas.getBoundingClientRect().y + y;
+                        }
+                        return fillText.call(this, text, x, y, ...args);
+                    };
+                }""", label_text)
+                for name in ("File", "Edit"):
+                    trigger = page.get_by_role("button", name=name, exact=True)
+                    trigger.hover(force=True)
+                    expect(trigger).to_have_attribute("aria-expanded", "true")
+                    expect(label).to_be_hidden()
+                    ui.frames()
+                    canvas_baseline = page.evaluate("window.menuLabelBaseline")
+                    self.assertAlmostEqual(dom_baseline, canvas_baseline, delta=0.5)
             finally:
                 browser.close()
 
