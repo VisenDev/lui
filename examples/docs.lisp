@@ -18,25 +18,31 @@
       "For portable layout and widgets, load lui/core. It has no external dependencies. To load a single backend, use its system, such as lui/x11 or lui/wayland. Browser builds use JSCL or ECL/Emscripten; the standalone documentation uses ECL/WebAssembly. Native graphics use zpb-ttf, CFFI, and platform libraries, with Xlib/GLX for X11 windowing and rendering. All terminal output uses lui/terminal and uncursed."
       "Use make demo for the gallery, make retained-demo for the data-driven playground, make docs for this browser, and make test for the detected platform. Backend availability depends on which systems are loaded; an explicit :backend argument selects one.")
     (:retained "Retained UI"
-      "Load lui/retained alongside your backend to describe an interface as reusable Lisp data. Call lui.retained:draw inside the callback passed to lui:run. The tree can be declared once with DEFPARAMETER and edited by ordinary functions; it can also be reconstructed each frame. LUI still solves layout and routes input each frame."
+      "Load lui/retained alongside your backend to describe an interface as mutable structures. Call lui.retained:draw inside the callback passed to lui:run. A tree can be declared once with DEFPARAMETER and edited through typed slot accessors. LUI still solves layout and routes input each frame."
       "(asdf:load-system \"lui\")
 (asdf:load-system \"lui/retained\")
 
-(defparameter *greeting* (list :label \"Hello!\"))
+(defparameter *greeting*
+  (lui.retained:node :label :text \"Hello!\"))
 (defun say-hello ()
-  (setf (second *greeting*) \"Hello from retained data!\"))
+  (setf (lui.retained:node-text *greeting*)
+        \"Hello from retained data!\"))
 
 (defparameter *ui*
-  (list (list :column (list :gap '(:units 1))
-              *greeting*
-              (list :button \"Say hello\" :id :hello
-                    :on-activate 'say-hello))))
+  (lui.retained:node
+   :column :gap '(:units 1)
+   :children
+   (lui.retained:nodes
+    *greeting*
+    (lui.retained:node :button :text \"Say hello\"
+                       :on-activate 'say-hello))))
 
 (lui:run (lambda () (lui.retained:draw *ui*)))"
-      "For editor completion, construct nodes with lui.retained:node and explicit keywords: (lui.retained:node :button :text \"Hello\" :on-activate 'say-hello). Containers use :children with a list of nodes. The constructor exposes the supported keyword names in its argument list for SLIME and returns ordinary data. Use CL:LIST to assemble the outer forest. The original format still works: leaves contain a keyword kind, the usual positional arguments, and keyword options. Containers contain a kind, an options plist, then child nodes. Ordinary styling options such as :padding, :foreground, :background, :font-size and :font-weight pass through to LUI. Numeric spacing accepts (:units NUMBER), resolved for the active backend each frame. Sizing options accept actual objects such as (lui:grow), evaluated when constructing the data; DRAW never evaluates Lisp forms."
-      "Use :id keys for siblings that can move. Without keys, identity follows position. Supply distinct DRAW :id values for multiple trees in one parent. :default-value initializes LUI-owned control state; :value supplies application-owned state. Removing a control for a completed frame releases its owned state."
-      ":on-activate takes a zero-argument function; :on-change receives the new value. Either can be a symbol naming a function: its SYMBOL-FUNCTION is looked up when dispatched, so redefining a function updates existing trees. DRAW queues callbacks during traversal, then invokes them in order after successful traversal and requests another frame. Callbacks can directly edit the tree: changes appear next frame, with no application callback queue required. A traversal error discards queued callbacks; a callback error stops dispatch without rolling back earlier edits."
-      "Run make retained-demo (or make retained-demo PLATFORM=terminal) to try nested layouts, editable keyed rows, live data changes, toolkit/palette switching, and FPS. This optional module has no additional core dependencies. Its standalone demo currently has native and terminal launchers; browser application builds must explicitly include the retained module.")
+      "NODE is a standard DEFSTRUCT constructor with explicit keyword arguments for SLIME completion. Its NODE-TEXT, NODE-VALUE, NODE-BACKGROUND and other slot accessors support SETF. Containers store a typed vector in NODE-CHILDREN; build one with NODES. DRAW accepts either one node or a typed vector of roots. List nodes and the old :options plist constructor are retired. KIND is read-only; create another node to change the control kind."
+      "Unkeyed nodes preserve their object identity when reordered within the same parent. Reconstructing an unkeyed node creates a new widget. Use :id to share identity between reconstructed nodes, and keep those keys unique among siblings. A node cannot appear twice in the same parent. Containers scope identities, so moving a node to another parent starts new state. Supply distinct DRAW :id values for separate trees in the same scope."
+      "Option slots default to +UNSPECIFIED+, preserving toolkit defaults. Explicit NIL remains an explicit option value. Assign +UNSPECIFIED+ to restore an omitted option. NODE-DEFAULT-VALUE initializes LUI-owned control state; assigning NODE-VALUE makes it application-controlled. Removing a control for a completed frame releases its owned state. Numeric spacing accepts (:units NUMBER), resolved for the active backend without changing the slot. Sizing slots accept actual objects such as (lui:grow)."
+      ":on-activate takes a zero-argument function; :on-change receives the new value. Either may be a symbol: SYMBOL-FUNCTION is looked up at dispatch, so redefinitions affect existing nodes. DRAW queues callbacks during traversal, then invokes them in order after successful traversal and requests another frame. Callbacks may update slots or replace child vectors; changes appear next frame. Traversal errors discard queued callbacks, and callback errors stop dispatch without undoing earlier edits."
+      "Run make retained-demo (or make retained-demo PLATFORM=terminal) to try nested layouts, editable keyed rows, live slot changes, toolkit/palette switching, and FPS. The module has no additional core dependencies. Browser application builds must explicitly include it. Structures avoid decoding list nodes during drawing; this is not a cross-backend performance guarantee.")
     (:debug "Debugger"
       "Show debugger opens this window's layout debugger. Close dismisses it. Each window owns its debugger state."
       "The tree shows the previous completed application frame. Click a row for details; - / + collapses or expands containers. Tree and details scroll independently. Debugger controls are excluded from their own tree."

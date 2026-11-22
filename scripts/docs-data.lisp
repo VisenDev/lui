@@ -41,7 +41,22 @@
      "REVEAL-RECT" "TAKE-EVENTS" "EVENT-TARGETS" "RESET-EDITOR" "EDIT-VALUE"
      "MOUNT" "UNMOUNT" "REFRESH"
      "TABLE" "TABLE-ROW" "TABLE-CELL" "SEARCHABLE-COMBOBOX")
-    ("lui.retained" "DRAW" "NODE")
+    ("lui.retained"
+     "DRAW" "NODE" "NODE-P" "NODES"
+     "+UNSPECIFIED+" "NODE-KIND" "NODE-ID" "NODE-CHILDREN"
+     "NODE-ON-ACTIVATE" "NODE-ON-CHANGE" "NODE-TEXT" "NODE-CHOICE"
+     "NODE-CHOICES" "NODE-FRACTION" "NODE-COMMANDS" "NODE-WIDTH"
+     "NODE-HEIGHT" "NODE-PADDING" "NODE-POSITION" "NODE-OFFSET-X"
+     "NODE-OFFSET-Y" "NODE-FLOW" "NODE-ALIGN" "NODE-CROSS-ALIGN"
+     "NODE-CLIP-P" "NODE-SCROLL-P" "NODE-SCROLLBAR-P" "NODE-SCROLLBAR-WIDTH"
+     "NODE-INTERACTIVE-P" "NODE-KEYBOARD-FOCUS-P" "NODE-POINTER-FOCUS-P" "NODE-FOREGROUND"
+     "NODE-BACKGROUND" "NODE-PALETTE" "NODE-RADIUS" "NODE-FROST"
+     "NODE-FONT-SIZE" "NODE-FONT-FAMILY" "NODE-FONT-WEIGHT" "NODE-OPACITY"
+     "NODE-ACCENT" "NODE-PAINTER" "NODE-TERMINAL-LABEL" "NODE-TERMINAL-BORDER"
+     "NODE-ACCESSIBLE-NAME" "NODE-VALUE" "NODE-DEFAULT-VALUE" "NODE-DISABLED-P"
+     "NODE-SELECTED-P" "NODE-GAP" "NODE-DIRECTION" "NODE-COLUMN-GAP"
+     "NODE-COLUMN-SPAN" "NODE-MINIMUM" "NODE-MAXIMUM" "NODE-STEP"
+     "NODE-PLACEHOLDER" "NODE-PASSWORD-P" "NODE-MAX-RESULTS")
     ("lui.key" . :all)
     ("lui.palette"
      "PALETTE-THUMB" "PALETTE-CONTROL-BACKGROUND" "PALETTE-BACKGROUND"
@@ -281,7 +296,8 @@ are read for resolution; only explicitly selected exports enter the reference."
                                         (if (consp slot)
                                             (list (first slot) (second slot))
                                             slot)) slots)))
-                    (format nil "Construct a ~A." name)))))
+                    (if (and (eq (second constructor) name) doc)
+                        doc (format nil "Construct a ~A." name))))))
              (dolist (pair `((:predicate ,(concatenate 'string (string name)
                                                        "-P") (object))
                             (:copier ,(concatenate 'string "COPY-"

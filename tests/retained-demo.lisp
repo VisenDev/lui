@@ -40,7 +40,7 @@
 
 (defun run-tests ()
   "Exercise real demo callbacks and check the following completed frame."
-  (assert (consp %lui.example.retained-demo:*tree*))
+  (assert (typep %lui.example.retained-demo:*tree* '(vector lui.retained:node)))
   (let ((tree %lui.example.retained-demo:*tree*))
     (%lui.example.retained-demo:reset-demo)
     (assert (eq tree %lui.example.retained-demo:*tree*)))

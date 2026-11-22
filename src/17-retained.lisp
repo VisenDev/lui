@@ -1,11 +1,158 @@
 (defpackage #:lui.retained
   (:use #:cl #:%lui.fn)
-  (:export #:draw #:node))
+  (:export
+   #:draw #:node #:node-p
+   #:nodes #:+unspecified+ #:node-kind
+   #:node-id #:node-children #:node-on-activate
+   #:node-on-change #:node-text #:node-choice
+   #:node-choices #:node-fraction #:node-commands
+   #:node-width #:node-height #:node-padding
+   #:node-position #:node-offset-x #:node-offset-y
+   #:node-flow #:node-align #:node-cross-align
+   #:node-clip-p #:node-scroll-p #:node-scrollbar-p
+   #:node-scrollbar-width #:node-interactive-p #:node-keyboard-focus-p
+   #:node-pointer-focus-p #:node-foreground #:node-background
+   #:node-palette #:node-radius #:node-frost
+   #:node-font-size #:node-font-family #:node-font-weight
+   #:node-opacity #:node-accent #:node-painter
+   #:node-terminal-label #:node-terminal-border #:node-accessible-name
+   #:node-value #:node-default-value #:node-disabled-p
+   #:node-selected-p #:node-gap #:node-direction
+   #:node-column-gap #:node-column-span #:node-minimum
+   #:node-maximum #:node-step #:node-placeholder
+   #:node-password-p #:node-max-results))
 (in-package #:lui.retained)
 
+(defstruct (unspecified (:constructor make-unspecified ()) (:copier nil))
+  "Marker distinguishing an omitted option from an explicitly supplied NIL.")
+
+(defvar +unspecified+ (make-unspecified)
+  "Assign this marker to an option slot to restore toolkit/default behavior.
+For NODE-VALUE it restores LUI-owned state. Do not rebind this variable.")
+
+(defstruct (node
+             (:constructor node
+                 (kind &key (id nil)
+                  (children (make-array 0 :element-type 'node))
+                  (on-activate nil) (on-change nil)
+                  (text +unspecified+)
+                  (choice +unspecified+)
+                  (choices +unspecified+)
+                  (fraction +unspecified+)
+                  (commands +unspecified+)
+                  (width +unspecified+)
+                  (height +unspecified+)
+                  (padding +unspecified+)
+                  (position +unspecified+)
+                  (offset-x +unspecified+)
+                  (offset-y +unspecified+)
+                  (flow +unspecified+)
+                  (align +unspecified+)
+                  (cross-align +unspecified+)
+                  (clip-p +unspecified+)
+                  (scroll-p +unspecified+)
+                  (scrollbar-p +unspecified+)
+                  (scrollbar-width +unspecified+)
+                  (interactive-p +unspecified+)
+                  (keyboard-focus-p +unspecified+)
+                  (pointer-focus-p +unspecified+)
+                  (foreground +unspecified+)
+                  (background +unspecified+)
+                  (palette +unspecified+)
+                  (radius +unspecified+)
+                  (frost +unspecified+)
+                  (font-size +unspecified+)
+                  (font-family +unspecified+)
+                  (font-weight +unspecified+)
+                  (opacity +unspecified+)
+                  (accent +unspecified+)
+                  (painter +unspecified+)
+                  (terminal-label +unspecified+)
+                  (terminal-border +unspecified+)
+                  (accessible-name +unspecified+)
+                  (value +unspecified+)
+                  (default-value +unspecified+)
+                  (disabled-p +unspecified+)
+                  (selected-p +unspecified+)
+                  (gap +unspecified+)
+                  (direction +unspecified+)
+                  (column-gap +unspecified+)
+                  (column-span +unspecified+)
+                  (minimum +unspecified+)
+                  (maximum +unspecified+)
+                  (step +unspecified+)
+                  (placeholder +unspecified+)
+                  (password-p +unspecified+)
+                  (max-results +unspecified+)))
+             (:copier nil))
+  "A mutable retained UI declaration, separate from frame-local layout.
+Construct with (node :button :text \"Hello\" :on-activate 'hello).
+Slots expose the control, layout and styling options for editor completion.
+Mutate text with (setf (node-text label) \"Updated\") and editor values with
+NODE-VALUE. +UNSPECIFIED+ means omitted; NIL is an explicit value.
+KIND is fixed at construction. Unkeyed nodes use stable object identity; ID
+allows separately constructed nodes to share identity in the same parent.
+CHILDREN is a typed vector made by NODES. Nodes must not form cycles."
+  (kind :label :type keyword :read-only t)
+  (id nil :type lui:object-id)
+  (children (make-array 0 :element-type 'node) :type (vector node))
+  (on-activate nil :type (or function symbol))
+  (on-change nil :type (or function symbol))
+  (text +unspecified+ :type (or unspecified null string))
+  (choice +unspecified+ :type t)
+  (choices +unspecified+ :type (or unspecified null (vector string)))
+  (fraction +unspecified+ :type (or unspecified null real))
+  (commands +unspecified+ :type (or unspecified list))
+  (width +unspecified+ :type (or unspecified null lui:sizing))
+  (height +unspecified+ :type (or unspecified null lui:sizing))
+  (padding +unspecified+ :type (or unspecified null real list))
+  (position +unspecified+ :type (or unspecified null keyword))
+  (offset-x +unspecified+ :type (or unspecified null real list))
+  (offset-y +unspecified+ :type (or unspecified null real list))
+  (flow +unspecified+ :type (or unspecified null keyword))
+  (align +unspecified+ :type (or unspecified null keyword))
+  (cross-align +unspecified+ :type (or unspecified null keyword))
+  (clip-p +unspecified+ :type (or unspecified boolean))
+  (scroll-p +unspecified+ :type (or unspecified boolean))
+  (scrollbar-p +unspecified+ :type (or unspecified boolean))
+  (scrollbar-width +unspecified+ :type (or unspecified null real))
+  (interactive-p +unspecified+ :type (or unspecified boolean))
+  (keyboard-focus-p +unspecified+ :type (or unspecified boolean))
+  (pointer-focus-p +unspecified+ :type (or unspecified boolean))
+  (foreground +unspecified+ :type (or unspecified null string))
+  (background +unspecified+ :type (or unspecified null string))
+  (palette +unspecified+ :type (or unspecified null lui:palette list symbol))
+  (radius +unspecified+ :type (or unspecified null real list))
+  (frost +unspecified+ :type (or unspecified null real))
+  (font-size +unspecified+ :type (or unspecified null real list))
+  (font-family +unspecified+ :type (or unspecified null keyword))
+  (font-weight +unspecified+ :type (or unspecified null keyword))
+  (opacity +unspecified+ :type (or unspecified null real))
+  (accent +unspecified+ :type (or unspecified null string))
+  (painter +unspecified+ :type (or unspecified null function))
+  (terminal-label +unspecified+ :type (or unspecified null function))
+  (terminal-border +unspecified+ :type (or unspecified null string))
+  (accessible-name +unspecified+ :type (or unspecified null string))
+  (value +unspecified+ :type t)
+  (default-value +unspecified+ :type t)
+  (disabled-p +unspecified+ :type (or unspecified boolean))
+  (selected-p +unspecified+ :type (or unspecified boolean))
+  (gap +unspecified+ :type (or unspecified null real list))
+  (direction +unspecified+ :type (or unspecified null keyword))
+  (column-gap +unspecified+ :type (or unspecified null real list))
+  (column-span +unspecified+ :type (or unspecified null integer))
+  (minimum +unspecified+ :type (or unspecified null real))
+  (maximum +unspecified+ :type (or unspecified null real))
+  (step +unspecified+ :type (or unspecified null real))
+  (placeholder +unspecified+ :type (or unspecified null string))
+  (password-p +unspecified+ :type (or unspecified boolean))
+  (max-results +unspecified+ :type (or unspecified null integer)))
+
+(fn (nodes (vector node)) (&rest (items list))
+  "Make a typed node vector for DRAW or a container's CHILDREN slot."
+  (make-array (length items) :element-type 'node :initial-contents items))
+
 (defstruct renderer
-  (arity 0 :type (integer 0 *))
-  (arguments nil :type list)
   (container-p nil :type boolean)
   (function #'identity :type function))
 
@@ -14,131 +161,135 @@
 (defvar *callbacks* nil)
 
 (fn (invalid-tree (values)) ((value t) (message string))
-  "Signal a configuration error for an invalid retained description."
+  "Signal a configuration error for an invalid retained declaration."
   (error 'lui:configuration-error :operation :retained-draw
          :setting :tree :value value :format-control "~A"
          :format-arguments (list message)))
 
-(fn (proper-list-p boolean) ((value t))
-  "Recognize finite proper lists without hanging on circular descriptions."
-  (and (listp value)
-       (handler-case (not (null (list-length value)))
-         (type-error () nil))))
-
-(fn (check-options (values)) ((options t))
-  "Require a proper keyword plist and callable event handlers."
-  (unless (and (proper-list-p options) (evenp (length options)))
-    (invalid-tree options "Expected an even keyword property list."))
-  (loop :for (key value) :on options :by #'cddr
-        :do (unless (keywordp key)
-              (invalid-tree options "Option names must be keywords."))
-            (when (and (member key '(:on-change :on-activate))
-                       value (not (or (functionp value) (symbolp value))))
-              (invalid-tree value "Event handlers must be functions, symbols or NIL.")))
-  (values))
-
 (fn (option-value t) ((value t))
-  "Resolve an explicit spacing descriptor without evaluating Lisp forms."
+  "Resolve a spacing descriptor without evaluating Lisp forms."
   (cond
     ((and (consp value) (eq (first value) :units))
-     (unless (and (proper-list-p value) (= (length value) 2)
+     (unless (and (consp (cdr value)) (null (cddr value))
                   (realp (second value)))
        (invalid-tree value "Expected (:units NUMBER)."))
      (lui:units (second value)))
 
     (t value)))
 
-(fn (control-options list) ((options list))
-  "Strip retained event handlers before passing options to LUI."
-  (loop :for (key value) :on options :by #'cddr
-        :unless (member key '(:on-change :on-activate))
-          :append (list key (if (member key '(:padding :gap
-                                           :offset-x :offset-y :radius
-                                           :font-size :column-gap))
-                                 (option-value value) value))))
+(defmacro collect-options (node &rest names)
+  "Read typed option slots directly and omit only the unspecified marker."
+  `(let ((options nil))
+     ,@(loop :for name :in names
+             :for reader := (intern (format nil "NODE-~A" name))
+             :for key := (intern (symbol-name name) :keyword)
+             :collect
+             `(let ((value (,reader ,node)))
+                (unless (eq value +unspecified+)
+                  (setf options
+                        (list* ,key
+                               ,(if (member name '(padding gap column-gap
+                                                  offset-x offset-y radius
+                                                  font-size))
+                                    '(option-value value) 'value)
+                               options)))))
+     options))
+
+(fn (control-options list) ((node node))
+  "Build the immediate control's options from slots, preserving explicit NIL."
+  (let ((options
+          (collect-options node
+            width height padding position offset-x offset-y
+            flow align cross-align clip-p scroll-p scrollbar-p
+            scrollbar-width interactive-p keyboard-focus-p pointer-focus-p
+            foreground background
+            palette radius frost font-size font-family font-weight
+            opacity accent painter terminal-label terminal-border
+            accessible-name
+            value default-value disabled-p selected-p gap direction
+            column-gap column-span minimum maximum step placeholder
+            password-p max-results)))
+    (when (node-id node)
+      (setf options (list* :id (node-id node) options)))
+    (when (and (eq (node-kind node) :slider)
+               (not (eq (node-text node) +unspecified+)))
+      (setf options (list* :text (node-text node) options)))
+    options))
+
+(fn (required-argument t) ((value t) (node node))
+  "Reject omitted positional control data before calling the immediate API."
+  (when (eq value +unspecified+)
+    (invalid-tree node "Missing required control data slot."))
+  value)
 
 (fn (invoke-callback (values))
     ((callback (or function symbol)) (arguments list))
-  "Resolve a symbol at dispatch time so redefinitions affect existing trees."
-  (apply (if (symbolp callback) (symbol-function callback) callback) arguments)
+  "Resolve a symbol at dispatch time so redefinitions affect existing nodes."
+  (apply (if (symbolp callback) (symbol-function callback) callback)
+         arguments)
   (values))
 
 (defmacro define-leaf (kind control arguments event)
-  "Register a compiled adapter to a public LUI control macro."
+  "Register a compiled adapter that reads its positional data directly."
   `(setf (gethash ,kind *renderers*)
          (make-renderer
-          :arity ,(length arguments)
-          :arguments ',(mapcar (lambda (name)
-                                 (intern (symbol-name name) :keyword))
-                               arguments)
           :function
-          (lambda (arguments options children)
-            (declare (ignore children))
-            (destructuring-bind ,arguments arguments
-              (multiple-value-bind (value changed)
-                  (,control ,@arguments :options (control-options options))
-                (declare (ignorable changed))
-                (let ((callback (getf options ,event)))
-                  (when (and callback ,(if (eq event :on-change)
-                                          'changed 'value))
-                    ,(if (eq event :on-change)
-                         '(push (lambda () (invoke-callback callback (list value)))
-                                *callbacks*)
-                         '(push (lambda () (invoke-callback callback nil))
-                                *callbacks*))))))))))
+          (lambda (node)
+            (multiple-value-bind (value changed)
+                (,control
+                 ,@(mapcar (lambda (name)
+                             `(required-argument
+                               (,(intern (format nil "NODE-~A" name)) node)
+                               node))
+                           arguments)
+                 :options (control-options node))
+              (declare (ignorable value changed))
+              ,(when event
+                 `(let ((callback
+                          (,(if (eq event :on-change)
+                                'node-on-change 'node-on-activate) node)))
+                    (when (and callback ,(if (eq event :on-change)
+                                            'changed 'value))
+                      (push (lambda ()
+                              (invoke-callback
+                               callback ,(when (eq event :on-change)
+                                           '(list value))))
+                            *callbacks*)))))))))
 
 (defmacro define-container (kind control)
-  "Register a container adapter that draws its child descriptions."
+  "Register a container adapter over the node's typed child vector."
   `(setf (gethash ,kind *renderers*)
          (make-renderer
           :container-p t
-          :function (lambda (arguments options children)
-                      (declare (ignore arguments))
-                      (,control (:options (control-options options))
-                        (draw-children children))))))
+          :function (lambda (node)
+                      (,control (:options (control-options node))
+                        (draw-children (node-children node)))))))
 
-(fn (node-parts (values renderer list list list)) ((node t))
-  "Parse a node into its adapter, positional arguments, options and children."
-  (unless (and (consp node) (proper-list-p node))
-    (invalid-tree node "Expected a nonempty proper node list."))
-  (when (member node *ancestors* :test #'eq)
-    (invalid-tree node "Container children must not contain an ancestor."))
-  (let ((renderer (gethash (first node) *renderers*))
-         (tail (rest node)))
-    (unless renderer
-      (invalid-tree node "Unknown retained control kind."))
-    (when (< (length tail) (renderer-arity renderer))
-      (invalid-tree node "Missing positional control arguments."))
-    (let* ((count (renderer-arity renderer))
-           (arguments (subseq tail 0 count))
-           (remaining (nthcdr count tail))
-           (options (if (renderer-container-p renderer)
-                        (first remaining) remaining))
-           (children (when (renderer-container-p renderer)
-                       (rest remaining))))
-      (check-options options)
-      (values renderer arguments options children))))
+(fn (draw-node (values)) ((node node) (seen hash-table))
+  "Validate identity and ancestry, then declare one retained node."
+  (let ((renderer (gethash (node-kind node) *renderers*))
+        (key (if (node-id node)
+                 (list :key (node-id node))
+                 node)))
+    (unless renderer (invalid-tree node "Unknown retained control kind."))
+    (when (member node *ancestors* :test #'eq)
+      (invalid-tree node "Container children must not contain an ancestor."))
+    (when (and (not (renderer-container-p renderer))
+               (plusp (length (node-children node))))
+      (invalid-tree node "Only containers accept children."))
+    (when (gethash key seen)
+      (invalid-tree node "Duplicate sibling identity."))
+    (setf (gethash key seen) t)
+    (lui:call-with-key
+     key (lambda ()
+           (let ((*ancestors* (cons node *ancestors*)))
+             (funcall (renderer-function renderer) node)))))
+  (values))
 
-(fn (draw-children (values)) ((nodes list))
-  "Draw siblings with stable explicit keys or positional fallback identities."
-  (unless (proper-list-p nodes)
-    (invalid-tree nodes "Expected a finite proper list of nodes."))
+(fn (draw-children (values)) ((children (vector node)))
+  "Traverse typed child references without decoding list nodes."
   (let ((seen (make-hash-table :test #'equal)))
-    (loop :for node :in nodes
-          :for index :from 0
-          :do (multiple-value-bind (renderer arguments options children)
-                  (node-parts node)
-                (let ((key (if (getf options :id)
-                               (list :key (getf options :id))
-                               (list :position index))))
-                  (when (gethash key seen)
-                    (invalid-tree node "Duplicate sibling identity."))
-                  (setf (gethash key seen) t)
-                  (lui:call-with-key
-                   key (lambda ()
-                         (let ((*ancestors* (cons node *ancestors*)))
-                           (funcall (renderer-function renderer)
-                                    arguments options children))))))))
+    (loop :for node :across children :do (draw-node node seen)))
   (values))
 
 (define-leaf :label lui:label (text) nil)
@@ -148,7 +299,8 @@
 (define-leaf :slider lui:slider () :on-change)
 (define-leaf :text-field lui:text-field () :on-change)
 (define-leaf :date-picker lui:date-picker () :on-change)
-(define-leaf :searchable-combobox lui:searchable-combobox (choices) :on-change)
+(define-leaf :searchable-combobox lui:searchable-combobox
+  (choices) :on-change)
 (define-leaf :gauge lui:gauge (fraction) nil)
 (define-leaf :spinner lui:spinner () nil)
 (define-leaf :spacer lui:spacer () nil)
@@ -165,151 +317,35 @@
 (define-container :table-row lui:table-row)
 (define-container :table-cell lui:table-cell)
 
-(fn (draw (values)) ((tree list) &key ((id lui:object-id) :retained))
-  "Draw a retained description inside the current LUI frame.
-Load the optional lui/retained system. NODE constructs nodes with keyword
-arguments for editor completion. TREE is a list of nodes, for example
-((:button \"hello\") (:label \"hi\")). Leaves contain a kind, the ordinary LUI
-positional arguments, then keyword options. Styling options pass through to LUI:
-(:text-field :padding 4 :font-size 16 :foreground \"#202430\" :width (lui:grow))
-uses the same styling and sizing rules as the immediate control. Numeric
-padding, gap, column-gap, offset-x/y, radius and font-size options accept
-(:units NUMBER), resolved against LUI:*UNIT* each frame. This lets trees be defined at load time for any backend. Supply actual
-sizing objects in constructed data, not unevaluated (lui:grow) forms.
-Containers contain a kind, an
-options plist, and child nodes: (:column (:gap 1) (:label \"Hello\")).
-Store and edit TREE between frames, or reconstruct it each time. No forms are
-evaluated and TREE is never modified by DRAW. LUI retains control values and
-focus. Use :ID on moving siblings; unkeyed nodes have positional identity.
-Changing a node kind resets its control identity. Use distinct DRAW :ID values
-for multiple trees in one parent scope. Removed controls lose LUI owned state.
-:ON-ACTIVATE takes a zero-argument function; :ON-CHANGE takes a function of the
-new value. Either callback can also be a symbol; its SYMBOL-FUNCTION is
-looked up when the callback runs. NIL disables the callback. DRAW queues callbacks while declaring widgets, then runs them in
-encounter order after successful traversal, before returning. Callbacks may edit
-the tree directly; their edits appear next frame. DRAW requests that frame
-when callbacks are queued. Traversal errors discard queued callbacks; callback
-errors propagate and stop dispatch without rolling back earlier edits.
-:VALUE and :DEFAULT-VALUE follow LUI semantics.
-This layer replays declarations every frame; it does not cache solved layout."
+(fn (draw (values))
+    ((tree (or node (vector node))) &key ((id lui:object-id) :retained))
+  "Declare a retained node or typed node vector inside the current LUI frame.
+Create data with NODE and NODES; edit it through standard SETF slot accessors.
+The former list-node format is not supported. A stored node keeps its identity
+when reordered within its parent. Supply :ID when reconstructing nodes; explicit
+keys must be stable and unique among siblings. Reusing a node twice in one
+parent is an error. Containers scope child identities; moving to another parent
+starts new LUI state. Removed nodes lose owned state after a completed frame.
+NODE-VALUE defaults to +UNSPECIFIED+ (LUI-owned state). Assigning any other
+value, including NIL, makes it controlled; NODE-DEFAULT-VALUE initializes
+owned state. Set an option slot back to +UNSPECIFIED+ to restore its default.
+Spacing slots accept (:units NUMBER), resolved for the active backend.
+Callbacks may be functions or symbols, resolved with SYMBOL-FUNCTION when
+invoked. On-activate receives no arguments; on-change receives the new value.
+Callbacks run in traversal order after successful declaration, before DRAW
+returns, and DRAW requests another frame. They may mutate slots or replace
+child vectors; changes appear next frame. Traversal failures discard callbacks.
+Callback errors stop dispatch without rolling back earlier edits. Use distinct
+DRAW :ID values for multiple roots in the same parent scope. DRAW still solves
+layout each frame; it does not cache layouts or automatically bind model data."
   (let ((*callbacks* nil))
-    (lui:call-with-key id (lambda () (draw-children tree)))
+    (lui:call-with-key
+     id (lambda ()
+          (if (node-p tree)
+              (draw-node tree (make-hash-table :test #'equal))
+              ;; else
+              (draw-children tree))))
     (when *callbacks*
       (lui:request-frame)
-      (dolist (callback (nreverse *callbacks*))
-        (funcall callback))))
+      (dolist (callback (nreverse *callbacks*)) (funcall callback))))
   (values))
-
-(fn (node-arguments list) ((renderer renderer) (options list))
-  "Extract required positional fields from constructor keywords."
-  (loop :for key :in (renderer-arguments renderer)
-        :collect (if (loop :for option :in options :by #'cddr
-                           :thereis (eq key option))
-                     (getf options key)
-                     ;; else
-                     (invalid-tree options
-                                   "Missing required node argument."))))
-
-(fn (construct-node list) ((kind keyword) (options list))
-  "Build the ordinary list representation without injecting omitted defaults."
-  (let ((renderer (gethash kind *renderers*)))
-    (unless renderer (invalid-tree kind "Unknown retained control kind."))
-    (check-options options)
-    (let* ((arguments (node-arguments renderer options))
-           (children (getf options :children))
-           (appearance
-             (loop :for (key value) :on options :by #'cddr
-                   :unless (or (eq key :children)
-                               (member key (renderer-arguments renderer)))
-                     :append (list key value))))
-      (unless (proper-list-p children)
-        (invalid-tree children "Children must be a finite proper list."))
-      (when (and children (not (renderer-container-p renderer)))
-        (invalid-tree children "Only containers accept children."))
-      (if (renderer-container-p renderer)
-          (list* kind appearance (copy-list children))
-          ;; else
-          (cons kind (append arguments appearance))))))
-
-(fn (node list)
-    ((kind keyword) &rest (fields list) &key
-     ((text (or null string)) nil)
-     ((choice t) nil)
-     ((choices (or null vector)) nil)
-     ((fraction (or null real)) nil)
-     ((commands list) nil)
-     ((children list) nil)
-     ((id lui:object-id) nil)
-     ((width (or null lui:sizing)) nil)
-     ((height (or null lui:sizing)) nil)
-     ((padding (or null real list)) nil)
-     ((position (or null keyword)) nil)
-     ((offset-x (or null real list)) nil)
-     ((offset-y (or null real list)) nil)
-     ((flow (or null keyword)) nil)
-     ((align (or null keyword)) nil)
-     ((cross-align (or null keyword)) nil)
-     ((clip-p boolean) nil)
-     ((scroll-p boolean) nil)
-     ((scrollbar-p boolean) nil)
-     ((scrollbar-width (or null real)) nil)
-     ((interactive-p boolean) nil)
-     ((keyboard-focus-p boolean) nil)
-     ((pointer-focus-p boolean) nil)
-     ((foreground (or null string)) nil)
-     ((background (or null string)) nil)
-     ((palette (or null lui:palette list symbol)) nil)
-     ((radius (or null real list)) nil)
-     ((frost (or null real)) nil)
-     ((font-size (or null real list)) nil)
-     ((font-family (or null keyword)) nil)
-     ((font-weight (or null keyword)) nil)
-     ((opacity (or null real)) nil)
-     ((accent (or null string)) nil)
-     ((painter (or null function)) nil)
-     ((terminal-label (or null function)) nil)
-     ((terminal-border (or null string)) nil)
-     ((accessible-name (or null string)) nil)
-     ((value t) nil)
-     ((default-value t) nil)
-     ((disabled-p boolean) nil)
-     ((selected-p boolean) nil)
-     ((gap (or null real list)) nil)
-     ((direction (or null keyword)) nil)
-     ((column-gap (or null real list)) nil)
-     ((column-span (or null integer)) nil)
-     ((minimum (or null real)) nil)
-     ((maximum (or null real)) nil)
-     ((step (or null real)) nil)
-     ((placeholder (or null string)) nil)
-     ((password-p boolean) nil)
-     ((max-results (or null integer)) nil)
-     ((on-activate (or function symbol)) nil)
-     ((on-change (or function symbol)) nil)
-     ((options list) nil))
-  "Construct one retained node using explicit keywords for editor completion.
-For example (node :button :text \"Hello\" :on-activate 'hello), or
-(node :column :gap '(:units 1) :children (list button label)).
-Returns the same ordinary list accepted by DRAW; use CL:LIST for a forest.
-Required fields follow the kind: :TEXT for labels/buttons/checkboxes/tabs/cells/
-list-items, :CHOICE and :TEXT for radio, :CHOICES for searchable-combobox,
-:FRACTION for gauge, and :COMMANDS for canvas. Other leaves take no positional
-fields. Containers accept :CHILDREN. Remaining keywords are the union of LUI
-control options; use those applicable to the chosen kind. Only supplied options
-are included, preserving defaults and explicit NIL. Callback symbols are
-resolved via SYMBOL-FUNCTION at dispatch time, so redefinition takes effect."
-  (declare (ignore text choice choices fraction commands children id width
-                   height padding position offset-x offset-y flow align
-                   cross-align clip-p scroll-p scrollbar-p scrollbar-width
-                   interactive-p keyboard-focus-p pointer-focus-p foreground
-                   background palette radius frost font-size font-family
-                   font-weight opacity accent painter terminal-label
-                   terminal-border accessible-name value default-value
-                   disabled-p selected-p gap direction column-gap column-span
-                   minimum maximum step placeholder password-p max-results
-                   on-activate on-change))
-  (check-options options)
-  (construct-node
-   kind (append (loop :for (key value) :on fields :by #'cddr
-                      :unless (eq key :options) :append (list key value))
-                options)))

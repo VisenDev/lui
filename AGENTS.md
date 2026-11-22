@@ -406,36 +406,37 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   measurement but excluding construction, painting, presentation, and pacing.
   `1000 / layout-ms` is only a layout throughput ceiling.
 
-### Retained descriptions
+### Retained nodes
 
-Load `lui/retained` separately from the host backend. `lui.retained:draw`
-accepts a reusable list of data nodes inside a frame, including the callback
-passed to `lui:run`. Leaves use `(:button "Hello" :id :hello ...)`;
-containers use `(:column (:gap 1) (:label "Hello") ...)`. Options and values
-are ordinary data; forms are never evaluated. `:on-activate` is a zero-argument
-function; `:on-change` receives the new value. Both accept symbol names, resolved
-through SYMBOL-FUNCTION when dispatched so redefinitions take effect.
-`lui.retained:node` constructs nodes using explicit keyword arguments for editor
-completion, e.g. `(lui.retained:node :button :text "Hello" :on-activate 'hello)`;
-containers use `:children`. Use CL:LIST for a forest or the original raw syntax. DRAW dispatches callbacks after
-successful tree traversal and requests a redraw automatically. Callbacks may
-edit stored trees directly; edits appear on the next frame.
-Explicit sibling IDs preserve state across reordering; otherwise identity is
-positional. Give separate trees distinct DRAW `:id` values. State, layout and
-input remain owned by the core; this module does not cache layout or provide
-reactive bindings. Test it with `(asdf:test-system "lui/retained")`.
-Run `make retained-demo` (or `PLATFORM=terminal`) for nested layouts, callbacks,
-and a live data preview. Nodes accept ordinary LUI styling keywords such as
-`:padding`, `:foreground`, `:background`, `:font-size`, and `:font-weight`.
-The demo includes toolkit/palette cycle buttons and the gallery FPS/layout
-readout; FPS includes pacing. The retained module owns callback dispatch; keyed
-editable rows demonstrate state preservation when reordered. This demo owns
-one global `*tree*` defined directly with DEFPARAMETER and top-level callbacks.
-MAIN resets model values once and passes an inline lambda to RUN. Numeric
-spacing options use `(:units NUMBER)` descriptors, resolved by retained DRAW
-for the active backend without rebuilding or modifying the data tree. Load
-`lui/retained-demo` and call `%lui.example.retained-demo:main` from a Lisp REPL
-with a backend loaded.
+Load `lui/retained` separately from the host backend. `lui.retained:node` is a
+standard typed DEFSTRUCT with a keyword constructor, and `node-text`,
+`node-value`, `node-children`, and styling accessors support SETF. KIND is
+read-only. Use `lui.retained:nodes` to build typed child/root vectors; DRAW also
+accepts a single root node. The former list-node and :options constructor forms
+are removed. Node mutation does not mutate completed frame layouts.
+
+Unkeyed node objects retain identity across sibling reordering. Explicit IDs
+support reconstruction and must remain unique and stable within a parent.
+A node may not occur twice among siblings or form an ancestor cycle. Moving a
+node to another parent changes its scoped identity. Absent nodes lose owned
+state after a completed frame. Supply different DRAW :id values for multiple
+trees in one parent. +UNSPECIFIED+ distinguishes omitted options from NIL;
+assign it to an option slot to restore defaults, or NODE-VALUE to restore
+LUI-owned control state. NODE-DEFAULT-VALUE initializes owned state once.
+
+Callbacks are functions or symbol names resolved through SYMBOL-FUNCTION at
+dispatch. DRAW invokes them after successful traversal and requests a redraw;
+they can mutate slots or replace child vectors directly. The current frame
+uses the declarations already made, and edits appear on the next frame.
+
+`make retained-demo` (including PLATFORM=terminal) demonstrates a global
+DEFPARAMETER tree, top-level callbacks, typed child vectors and mutable slots.
+Numeric spacing slots accept `(:units NUMBER)`, resolved per backend at draw
+time. The demo has toolkit/palette cycle buttons and the gallery FPS/layout
+readout; FPS includes pacing. Test with `(asdf:test-system "lui/retained")`.
+Load `lui/retained-demo` and call `%lui.example.retained-demo:main` with a backend
+loaded. Structure storage removes list-node parsing but does not imply a
+measured speedup on every backend.
 
 ### Future navigation work
 

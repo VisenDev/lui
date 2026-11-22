@@ -122,6 +122,12 @@
     (dolist (name '("RENDERER" "FONT" "SET-DEBUGGER-ENABLED"
                     "RENDER-TERMINAL" "RENDER-PDF"))
       (assert (null (entry entries "lui" name))))
+    (let ((node (entry entries "lui.retained" "NODE")))
+      (assert (search "(node kind &key" (getf node :signature)))
+      (assert (search "mutable retained UI" (getf node :documentation)))
+      (assert (entry entries "lui.retained" "NODE-TEXT"))
+      (assert (entry entries "lui.retained" "NODES"))
+      (assert (null (entry entries "lui.retained" "UNSPECIFIED"))))
     (assert (eq :macro (getf button :kind)))
     (assert (search "(button text &key id" (getf button :signature)))
     (assert (search "disabled-p options)" (getf button :signature)))
