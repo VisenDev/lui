@@ -408,12 +408,16 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 
 ### Retained nodes
 
-Load `lui/retained` separately from the host backend. `lui.retained:node` is a
-standard typed DEFSTRUCT with a keyword constructor, and `node-text`,
-`node-value`, `node-children`, and styling accessors support SETF. KIND is
-read-only. Use `lui.retained:nodes` to build typed child/root vectors; DRAW also
-accepts a single root node. The former list-node and :options constructor forms
-are removed. Node mutation does not mutate completed frame layouts.
+Load `lui/retained` separately from the host backend. Each widget has its own
+standard typed DEFSTRUCT and default keyword constructor: `make-label`, `make-button`,
+`make-text-field`, `make-slider`, `make-column`, etc. Each exposes only relevant slots, with
+SETF accessors such as `label-text`, `text-field-value`, `slider-minimum`, and
+`column-children`. Placement and appearance slots are shared through structure
+inclusion; concrete widgets also expose their inherited accessors. NODE is a
+common identity/placement base type with no constructor. There is no KIND slot
+or generic NODE constructor. Use `lui.retained:nodes` for typed child/root
+vectors; DRAW also accepts a single root. List nodes and :options constructor
+plists are retired. Node mutation does not mutate completed frame layouts.
 
 Unkeyed node objects retain identity across sibling reordering. Explicit IDs
 support reconstruction and must remain unique and stable within a parent.
@@ -421,8 +425,8 @@ A node may not occur twice among siblings or form an ancestor cycle. Moving a
 node to another parent changes its scoped identity. Absent nodes lose owned
 state after a completed frame. Supply different DRAW :id values for multiple
 trees in one parent. +UNSPECIFIED+ distinguishes omitted options from NIL;
-assign it to an option slot to restore defaults, or NODE-VALUE to restore
-LUI-owned control state. NODE-DEFAULT-VALUE initializes owned state once.
+assign it to an option slot to restore defaults, or a control's VALUE slot to restore
+LUI-owned control state. DEFAULT-VALUE initializes owned state once.
 
 Callbacks are functions or symbol names resolved through SYMBOL-FUNCTION at
 dispatch. DRAW invokes them after successful traversal and requests a redraw;

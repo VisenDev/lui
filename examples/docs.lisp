@@ -23,24 +23,23 @@
 (asdf:load-system \"lui/retained\")
 
 (defparameter *greeting*
-  (lui.retained:node :label :text \"Hello!\"))
+  (lui.retained:make-label :text \"Hello!\"))
 (defun say-hello ()
-  (setf (lui.retained:node-text *greeting*)
+  (setf (lui.retained:label-text *greeting*)
         \"Hello from retained data!\"))
 
 (defparameter *ui*
-  (lui.retained:node
-   :column :gap '(:units 1)
+  (lui.retained:make-column :gap '(:units 1)
    :children
    (lui.retained:nodes
     *greeting*
-    (lui.retained:node :button :text \"Say hello\"
+    (lui.retained:make-button :text \"Say hello\"
                        :on-activate 'say-hello))))
 
 (lui:run (lambda () (lui.retained:draw *ui*)))"
-      "NODE is a standard DEFSTRUCT constructor with explicit keyword arguments for SLIME completion. Its NODE-TEXT, NODE-VALUE, NODE-BACKGROUND and other slot accessors support SETF. Containers store a typed vector in NODE-CHILDREN; build one with NODES. DRAW accepts either one node or a typed vector of roots. List nodes and the old :options plist constructor are retired. KIND is read-only; create another node to change the control kind."
+      "Each widget has its own standard DEFSTRUCT and keyword constructor: MAKE-LABEL, MAKE-BUTTON, MAKE-TEXT-FIELD, MAKE-SLIDER, MAKE-COLUMN and so on. SLIME can show the arguments specific to that widget. Use SETF with LABEL-TEXT, BUTTON-ON-ACTIVATE, TEXT-FIELD-VALUE, SLIDER-MINIMUM or COLUMN-CHILDREN. Unrelated slots are absent: a button has no children or slider limits. Shared placement and appearance slots remain available through each widget's accessors. NODE is only the common base type, with no constructor or kind slot. Containers store typed child vectors made by NODES; DRAW accepts a single root or a vector of roots. The generic NODE constructor and list forms are retired."
       "Unkeyed nodes preserve their object identity when reordered within the same parent. Reconstructing an unkeyed node creates a new widget. Use :id to share identity between reconstructed nodes, and keep those keys unique among siblings. A node cannot appear twice in the same parent. Containers scope identities, so moving a node to another parent starts new state. Supply distinct DRAW :id values for separate trees in the same scope."
-      "Option slots default to +UNSPECIFIED+, preserving toolkit defaults. Explicit NIL remains an explicit option value. Assign +UNSPECIFIED+ to restore an omitted option. NODE-DEFAULT-VALUE initializes LUI-owned control state; assigning NODE-VALUE makes it application-controlled. Removing a control for a completed frame releases its owned state. Numeric spacing accepts (:units NUMBER), resolved for the active backend without changing the slot. Sizing slots accept actual objects such as (lui:grow)."
+      "Option slots default to +UNSPECIFIED+, preserving toolkit defaults. Explicit NIL remains an explicit option value. Assign +UNSPECIFIED+ to restore an omitted option. A control's DEFAULT-VALUE slot initializes LUI-owned state; assigning its VALUE slot makes it application-controlled. Removing a control for a completed frame releases its owned state. Numeric spacing accepts (:units NUMBER), resolved for the active backend without changing the slot. Sizing slots accept actual objects such as (lui:grow)."
       ":on-activate takes a zero-argument function; :on-change receives the new value. Either may be a symbol: SYMBOL-FUNCTION is looked up at dispatch, so redefinitions affect existing nodes. DRAW queues callbacks during traversal, then invokes them in order after successful traversal and requests another frame. Callbacks may update slots or replace child vectors; changes appear next frame. Traversal errors discard queued callbacks, and callback errors stop dispatch without undoing earlier edits."
       "Run make retained-demo (or make retained-demo PLATFORM=terminal) to try nested layouts, editable keyed rows, live slot changes, toolkit/palette switching, and FPS. The module has no additional core dependencies. Browser application builds must explicitly include it. Structures avoid decoding list nodes during drawing; this is not a cross-backend performance guarantee.")
     (:debug "Debugger"

@@ -29,33 +29,79 @@
   (%lui.frame:make-event :kind :activate :id (retained-id key context)))
 
 (defun test-node-slots ()
-  (let* ((label (lui.retained:node :label :text "Before"))
+  (let* ((label (lui.retained:make-label :text "Before"))
          (children (lui.retained:nodes label))
-         (panel (lui.retained:node :panel :children children))
+         (panel (lui.retained:make-panel :children children))
          (context (%lui.tests.support:make-test-context)))
     (assert (lui.retained:node-p label))
+    (assert (lui.retained:label-p label))
+    (assert (not (lui.retained:button-p label)))
     (assert (typep children '(vector lui.retained:node)))
-    (assert (eq label (aref (lui.retained:node-children panel) 0)))
+    (assert (eq label (aref (lui.retained:panel-children panel) 0)))
     (frame context panel)
     (let ((id (%lui.layout:element-id (element-with-value context "Before"))))
-      (setf (lui.retained:node-text label) "After")
+      (setf (lui.retained:label-text label) "After")
       (frame context panel)
       (assert (equal id (%lui.layout:element-id
                         (element-with-value context "After")))))
     (assert (eq label (aref children 0)))
     (assert (eq lui.retained:+unspecified+
-                (lui.retained:node-background label)))
-    (setf (lui.retained:node-background label) nil)
-    (assert (null (lui.retained:node-background label)))
-    (setf (lui.retained:node-background label) lui.retained:+unspecified+)))
+                (lui.retained:label-background label)))
+    (setf (lui.retained:label-background label) nil)
+    (assert (null (lui.retained:label-background label)))
+    (setf (lui.retained:label-background label) lui.retained:+unspecified+)))
+
+(defun test-widget-constructors ()
+  ;; Every concrete type uses its standard DEFSTRUCT constructor and adapter.
+  (let ((widgets
+          (lui.retained:nodes
+           (lui.retained:make-label :text "Label")
+           (lui.retained:make-button :text "Button")
+           (lui.retained:make-checkbox :text "Check")
+           (lui.retained:make-radio :choice :one :text "Radio")
+           (lui.retained:make-slider :minimum 0 :maximum 10 :step 1)
+           (lui.retained:make-text-field :placeholder "Text")
+           (lui.retained:make-date-picker)
+           (lui.retained:make-searchable-combobox
+            :choices (make-array 1 :element-type 'string
+                                  :initial-element "Choice"))
+           (lui.retained:make-gauge :fraction 0.5)
+           (lui.retained:make-spinner)
+           (lui.retained:make-spacer)
+           (lui.retained:make-hr)
+           (lui.retained:make-vr)
+           (lui.retained:make-cell :text "Cell")
+           (lui.retained:make-list-item :text "Item")
+           (lui.retained:make-tab :text "Tab")
+           (lui.retained:make-canvas :commands nil)
+           (lui.retained:make-row)
+           (lui.retained:make-column)
+           (lui.retained:make-panel)
+           (lui.retained:make-table
+            :children (lui.retained:nodes
+                       (lui.retained:make-table-row
+                        :children (lui.retained:nodes
+                                   (lui.retained:make-table-cell))))))))
+    (loop :for widget :across widgets
+          :do (frame (%lui.tests.support:make-test-context) widget)))
+  ;; Unrelated options are rejected by the constructors themselves.
+  (dolist (case '((lui.retained:make-button :children #())
+                  (lui.retained:make-label :minimum 0)
+                  (lui.retained:make-slider :password-p t)
+                  (lui.retained:make-text-field :on-activate identity)
+                  (lui.retained:make-column :text "Invalid")))
+    (assert (handler-case
+                (progn (apply (symbol-function (first case)) (rest case)) nil)
+              (error () t))))
+  (assert (not (fboundp 'lui.retained:node)))
+  (assert (not (fboundp 'lui.retained:button))))
 
 (defun test-object-identity ()
   (let* ((context (%lui.tests.support:make-test-context))
          (changes nil)
-         (field (lui.retained:node
-                 :text-field :default-value "start"
+         (field (lui.retained:make-text-field :default-value "start"
                  :on-change (lambda (value) (push value changes))))
-         (other (lui.retained:node :label :text "other"))
+         (other (lui.retained:make-label :text "other"))
          (tree (lui.retained:nodes field other)))
     (frame context tree)
     (let ((id (%lui.layout:element-id (element-with-value context "start"))))
@@ -70,7 +116,7 @@
                         (element-with-value context "start!")))))
     ;; A new unkeyed object is a new widget, even in the same position.
     (setf tree (lui.retained:nodes
-                other (lui.retained:node :text-field :default-value "fresh")))
+                other (lui.retained:make-text-field :default-value "fresh")))
     (frame context tree)
     (assert (%lui.tests.support:has-text-p context "fresh"))
     (assert (not (%lui.tests.support:has-text-p context "start!")))
@@ -81,29 +127,29 @@
 
 (defun test-explicit-identity ()
   (let* ((context (%lui.tests.support:make-test-context))
-         (field (lui.retained:node :text-field :id 0 :default-value "keyed")))
+         (field (lui.retained:make-text-field :id 0 :default-value "keyed")))
     (frame context field)
     (let ((id (retained-id 0 context)))
       (frame context field
              (list (%lui.frame:make-event :kind :text :id id :value "!")))
-      (setf field (lui.retained:node :text-field :id 0 :default-value "new"))
+      (setf field (lui.retained:make-text-field :id 0 :default-value "new"))
       (frame context field)
       (assert (equal id (retained-id 0 context)))
       (assert (%lui.tests.support:has-text-p context "keyed!")))))
 
 (defun test-value-ownership ()
   (let* ((context (%lui.tests.support:make-test-context))
-         (field (lui.retained:node :text-field :id :edit :default-value "owned"))
-         (check (lui.retained:node :checkbox :id :check :text "Check"
+         (field (lui.retained:make-text-field :id :edit :default-value "owned"))
+         (check (lui.retained:make-checkbox :id :check :text "Check"
                                   :default-value t :value nil))
          (tree (lui.retained:nodes field check)))
     (frame context tree)
     (let ((widget (%lui.layout:element-content (element-with-value context "Check"))))
       (assert (null (%lui.widgets:widget-value widget))))
-    (setf (lui.retained:node-value field) "controlled")
+    (setf (lui.retained:text-field-value field) "controlled")
     (frame context tree)
     (assert (%lui.tests.support:has-text-p context "controlled"))
-    (setf (lui.retained:node-value field) lui.retained:+unspecified+)
+    (setf (lui.retained:text-field-value field) lui.retained:+unspecified+)
     (frame context tree
            (list (%lui.frame:make-event :kind :key :key lui.key:end
                                        :id (retained-id :edit context))
@@ -113,7 +159,7 @@
     (assert (%lui.tests.support:has-text-p context "controlled!"))))
 
 (defun test-styling-and-units ()
-  (let ((label (lui.retained:node :label :text "Styled" :padding '(:units 2)
+  (let ((label (lui.retained:make-label :text "Styled" :padding '(:units 2)
                                  :font-size 18 :font-weight :bold
                                  :foreground "#123456" :background "#fedcba"
                                  :radius 4)))
@@ -137,23 +183,20 @@
     (lui:configuration-error () t)))
 
 (defun test-invalid-trees ()
-  (let ((child (lui.retained:node :label :text "same"))
-        (parent (lui.retained:node :column)))
+  (let ((child (lui.retained:make-label :text "same"))
+        (parent (lui.retained:make-column)))
     (frame (%lui.tests.support:make-test-context)
            (lui.retained:nodes child
                                #-jscl (copy-structure child)
-                               #+jscl (lui.retained:node :label :text "same")))
+                               #+jscl (lui.retained:make-label :text "same")))
     (assert (invalid-p (lui.retained:nodes child child)))
     (assert (invalid-p (lui.retained:nodes
-                        (lui.retained:node :button :text "A" :id :same)
-                        (lui.retained:node :label :text "B" :id :same))))
-    (setf (lui.retained:node-children parent) (lui.retained:nodes parent))
-    (assert (invalid-p parent))
-    (setf (lui.retained:node-children child) (lui.retained:nodes parent))
-    (assert (invalid-p child)))
-  (assert (invalid-p (lui.retained:node :unknown)))
-  (assert (invalid-p (lui.retained:node :button)))
-  (assert (invalid-p (lui.retained:node :label :text "Bad" :padding '(:units "x"))))
+                        (lui.retained:make-button :text "A" :id :same)
+                        (lui.retained:make-label :text "B" :id :same))))
+    (setf (lui.retained:column-children parent) (lui.retained:nodes parent))
+    (assert (invalid-p parent)))
+  (assert (invalid-p (lui.retained:make-button)))
+  (assert (invalid-p (lui.retained:make-label :text "Bad" :padding '(:units "x"))))
   ;; The obsolete list representation is rejected, not silently converted.
   (assert (handler-case
               (progn (funcall (symbol-function 'frame)
@@ -164,16 +207,16 @@
 (defun test-deferred-callbacks ()
   (let* ((context (%lui.tests.support:make-test-context))
          (order nil)
-         (parent (lui.retained:node :column :id :parent))
-         (first (lui.retained:node :button :text "First" :id :first
+         (parent (lui.retained:make-column :id :parent))
+         (first (lui.retained:make-button :text "First" :id :first
                                   :on-activate
                                   (lambda ()
                                     (push :first order)
-                                    (setf (lui.retained:node-children parent)
+                                    (setf (lui.retained:column-children parent)
                                           (lui.retained:nodes)))))
-         (second (lui.retained:node :button :text "Second" :id :second
+         (second (lui.retained:make-button :text "Second" :id :second
                                    :on-activate (lambda () (push :second order)))))
-    (setf (lui.retained:node-children parent)
+    (setf (lui.retained:column-children parent)
           (lui.retained:nodes first second))
     (frame context parent)
     (frame context parent
@@ -194,14 +237,13 @@
          (change (gensym "CHANGE"))
          (result nil)
          (tree (lui.retained:nodes
-                (lui.retained:node
-                 :button :text "Redefine" :id :first
+                (lui.retained:make-button :text "Redefine" :id :first
                  :on-activate (lambda ()
                                 (setf (symbol-function callback)
                                       (lambda () (push :new result)))))
-                (lui.retained:node :button :text "Call" :id :second
+                (lui.retained:make-button :text "Call" :id :second
                                   :on-activate callback)
-                (lui.retained:node :text-field :id :edit :on-change change))))
+                (lui.retained:make-text-field :id :edit :on-change change))))
     (unwind-protect
          (progn
            (setf (symbol-function callback) (lambda () (push :old result))
@@ -221,12 +263,12 @@
 (defun test-discarded-callbacks ()
   (let* ((context (%lui.tests.support:make-test-context))
          (calls 0)
-         (button (lui.retained:node :button :text "Go" :id :go
+         (button (lui.retained:make-button :text "Go" :id :go
                                    :on-activate (lambda () (incf calls))))
          (tree (lui.retained:nodes button)))
     (frame context tree)
     (let ((event (activate context :go)))
-      (setf tree (lui.retained:nodes button (lui.retained:node :unknown)))
+      (setf tree (lui.retained:nodes button (lui.retained:make-button)))
       (assert (handler-case (progn (frame context tree (list event)) nil)
                 (lui:configuration-error () t))))
     (assert (zerop calls))
@@ -235,6 +277,7 @@
 
 (defun run-tests ()
   (test-node-slots)
+  (test-widget-constructors)
   (test-object-identity)
   (test-explicit-identity)
   (test-value-ownership)
