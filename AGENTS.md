@@ -101,7 +101,8 @@ the change and report material limitations instead of claiming untested support.
 
 ## Architecture and contracts
 
-- LUI is an immediate-mode Common Lisp UI library. Applications own their model
+- LUI is a Common Lisp UI library with an immediate-mode core and an optional
+  data-driven retained layer (`lui/retained`). Applications own their model
   state; value controls retain local state unless `:value` is supplied.
   `lui:run` owns the backend lifecycle. The same gallery and widget logic
   run on native windows, the browser, and the terminal. Avoid demo-only fixes

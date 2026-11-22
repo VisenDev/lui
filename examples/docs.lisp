@@ -8,7 +8,7 @@
 
 (defparameter *guides*
   '((:start "Getting started"
-      "LUI draws the same immediate-mode interface on native windows, the browser, and a terminal. Load lui to register the backends for your host, then pass a drawing function to lui:run."
+      "LUI supports immediate-mode interfaces and an optional data-driven retained UI layer on top of the same core. Its layout and widgets run on native windows, the browser, and a terminal. Load lui to register the backends for your host, then pass a drawing function to lui:run."
      "(asdf:load-system \"lui\")
 (lui:run
  (lambda ()
@@ -16,7 +16,27 @@
      (when (lui:button \"Say hello\")
        (format t \"Hello ~A!~%\" name)))))"
       "For portable layout and widgets, load lui/core. It has no external dependencies. To load a single backend, use its system, such as lui/x11 or lui/wayland. Browser builds use JSCL or ECL/Emscripten; the standalone documentation uses ECL/WebAssembly. Native graphics use zpb-ttf, CFFI, and platform libraries, with Xlib/GLX for X11 windowing and rendering. All terminal output uses lui/terminal and uncursed."
-      "Use make demo for the gallery, make docs for this browser, and make test for the detected platform. Backend availability depends on which systems are loaded; an explicit :backend argument selects one.")
+      "Use make demo for the gallery, make retained-demo for the data-driven playground, make docs for this browser, and make test for the detected platform. Backend availability depends on which systems are loaded; an explicit :backend argument selects one.")
+    (:retained "Retained UI"
+      "Load lui/retained alongside your backend to describe an interface as reusable Lisp data. Call lui.retained:draw inside the callback passed to lui:run. The tree can be declared once with DEFPARAMETER and edited by ordinary functions; it can also be reconstructed each frame. LUI still solves layout and routes input each frame."
+      "(asdf:load-system \"lui\")
+(asdf:load-system \"lui/retained\")
+
+(defparameter *greeting* (list :label \"Hello!\"))
+(defun say-hello ()
+  (setf (second *greeting*) \"Hello from retained data!\"))
+
+(defparameter *ui*
+  (list (list :column (list :gap '(:units 1))
+              *greeting*
+              (list :button \"Say hello\" :id :hello
+                    :on-activate #'say-hello))))
+
+(lui:run (lambda () (lui.retained:draw *ui*)))"
+      "Leaves contain a keyword kind, the usual positional arguments, and keyword options. Containers contain a kind, an options plist, then child nodes. Ordinary styling options such as :padding, :foreground, :background, :font-size and :font-weight pass through to LUI. Numeric spacing accepts (:units NUMBER), resolved for the active backend each frame. Sizing options accept actual objects such as (lui:grow), evaluated when constructing the data; DRAW never evaluates Lisp forms."
+      "Use :id keys for siblings that can move. Without keys, identity follows position. Supply distinct DRAW :id values for multiple trees in one parent. :default-value initializes LUI-owned control state; :value supplies application-owned state. Removing a control for a completed frame releases its owned state."
+      ":on-activate takes a zero-argument function; :on-change receives the new value. DRAW queues callbacks during traversal, then invokes them in order after successful traversal and requests another frame. Callbacks can directly edit the tree: changes appear next frame, with no application callback queue required. A traversal error discards queued callbacks; a callback error stops dispatch without rolling back earlier edits."
+      "Run make retained-demo (or make retained-demo PLATFORM=terminal) to try nested layouts, editable keyed rows, live data changes, toolkit/palette switching, and FPS. This optional module has no additional core dependencies. Its standalone demo currently has native and terminal launchers; browser application builds must explicitly include the retained module.")
     (:debug "Debugger"
       "Show debugger opens this window's layout debugger. Close dismisses it. Each window owns its debugger state."
       "The tree shows the previous completed application frame. Click a row for details; - / + collapses or expands containers. Tree and details scroll independently. Debugger controls are excluded from their own tree."
@@ -236,7 +256,7 @@
           (if (< (lui:frame-width) (lui:units
                   105))
                                (case (first guide)
-                                 (:start "Start") (:debug "Debugger")
+                                 (:start "Start") (:retained "Retained UI") (:debug "Debugger")
                                  (:frames "Frames") (:positioning "Positioning")
                                  (:widgets "Controls") (:layout "Layout")
                                  (:menus "Menus") (:dialogs "Dialogs")
