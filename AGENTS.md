@@ -312,6 +312,15 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   pause. Unrelated threads can contribute. Foreign/GPU allocations are excluded;
   exact per-frame GC counts are unsupported. Unsupported implementations should
   report that fact, not zero. Browser retained-heap deltas are not allocations.
+- `make benchmark-retained` compares immediate declarations with retained object
+  and explicit-key identities on SBCL. It verifies content/geometry parity for
+  styled labels, nested controls and changing text, then rotates sample order.
+  Defaults: 300 warmup frames, seven samples of 2,000 frames. `BENCH_FRAMES`,
+  `WARMUP`, and the `BENCH_SAMPLES` environment variable override these values.
+  Measurements include core construction/layout and GC during samples, excluding
+  setup, painting, input, presentation and pacing. Logs include the retained
+  source hash; timings are machine-specific, and allocated bytes are not live
+  heap usage. The benchmark's stored trees and sizing objects are prebuilt.
 - Interactive runners default to 1 idle FPS and 240 maximum active FPS; input
   wakes rendering and animation deadlines schedule work. Confirm benchmark
   settings instead of attributing a pacing limit to rendering cost.
@@ -427,6 +436,13 @@ state after a completed frame. Supply different DRAW :id values for multiple
 trees in one parent. +UNSPECIFIED+ distinguishes omitted options from NIL;
 assign it to an option slot to restore defaults, or a control's VALUE slot to restore
 LUI-owned control state. DEFAULT-VALUE initializes owned state once.
+
+Retained explicit IDs use core parent scoping directly; do not repeat them in
+per-node WITH-KEY scopes. Unkeyed objects keep their own key scope. Sibling
+validation distinguishes explicit keys from object identities, including an
+explicit key that is itself another node. Its hash tables are local to DRAW
+and reused by traversal depth, cleared between sibling containers. Do not
+cache identity tables across frames or contexts without lifecycle tests.
 
 Callbacks are functions or symbol names resolved through SYMBOL-FUNCTION at
 dispatch. DRAW invokes them after successful traversal and requests a redraw;

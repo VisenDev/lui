@@ -391,6 +391,12 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
 (defvar *ancestors* nil)
 (defvar *callbacks* nil)
 
+(defstruct sibling-scope
+  (seen (make-hash-table :test #'equal) :type hash-table)
+  (children nil :type (or null sibling-scope)))
+
+(defvar *sibling-scope*)
+
 (fn (invalid-tree (values)) ((value t) (message string))
   "Signal a configuration error for an invalid retained declaration."
   (error 'lui:configuration-error :operation :retained-draw
@@ -487,28 +493,38 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
             (draw-children
              (,(intern (format nil "~A-CHILDREN" name)) node))))))
 
-(fn (draw-node (values)) ((node node) (seen hash-table))
+(fn (draw-node (values)) ((node node))
   "Validate identity and ancestry, then declare one retained node."
-  (let ((renderer (gethash (type-of node) *renderers*))
-        (key (if (node-id node)
-                 (list :key (node-id node))
-                 node)))
+  (let* ((seen (sibling-scope-seen *sibling-scope*))
+         (renderer (gethash (type-of node) *renderers*))
+         (key (or (node-id node) node))
+         (namespace (if (node-id node) :explicit :object))
+         (previous (gethash key seen)))
     (unless renderer (invalid-tree node "Unknown retained control kind."))
     (when (member node *ancestors* :test #'eq)
       (invalid-tree node "Container children must not contain an ancestor."))
-    (when (gethash key seen)
+    ;; An explicit key may itself be an unkeyed sibling's node object.
+    ;; Track both namespaces without allocating a tagged key per declaration.
+    (when (or (eq previous namespace) (eq previous :both))
       (invalid-tree node "Duplicate sibling identity."))
-    (setf (gethash key seen) t)
-    (lui:call-with-key
-     key (lambda ()
-           (let ((*ancestors* (cons node *ancestors*)))
-             (funcall renderer node)))))
+    (setf (gethash key seen) (if previous :both namespace))
+    (let ((*ancestors* (cons node *ancestors*)))
+      (if (node-id node)
+          ;; Explicit IDs already inherit their parent's identity in core.
+          (funcall renderer node)
+          ;; else
+          (lui:call-with-key node (lambda () (funcall renderer node))))))
   (values))
 
 (fn (draw-children (values)) ((children (vector node)))
-  "Traverse typed child references without decoding list nodes."
-  (let ((seen (make-hash-table :test #'equal)))
-    (loop :for node :across children :do (draw-node node seen)))
+  "Reuse a sibling identity table at each depth within the current DRAW."
+  (when (plusp (length children))
+    (let ((*sibling-scope*
+            (or (sibling-scope-children *sibling-scope*)
+                (setf (sibling-scope-children *sibling-scope*)
+                      (make-sibling-scope)))))
+      (clrhash (sibling-scope-seen *sibling-scope*))
+      (loop :for node :across children :do (draw-node node))))
   (values))
 
 (define-leaf label (text) nil (placement appearance) disabled-p)
@@ -565,13 +581,14 @@ child vectors; changes appear next frame. Traversal failures discard callbacks.
 Callback errors stop dispatch without rolling back earlier edits. Use distinct
 DRAW :ID values for multiple roots in the same parent scope. DRAW still solves
 layout each frame; it does not cache layouts or automatically bind model data."
-  (let ((*callbacks* nil))
+  (let ((*callbacks* nil)
+        (*sibling-scope* (make-sibling-scope)))
     (lui:call-with-key
      id (lambda ()
           (if (node-p tree)
-              (draw-node tree (make-hash-table :test #'equal))
+              (draw-node tree)
               ;; else
-              (draw-children tree))))
+              (loop :for node :across tree :do (draw-node node)))))
     (when *callbacks*
       (lui:request-frame)
       (dolist (callback (nreverse *callbacks*)) (funcall callback))))

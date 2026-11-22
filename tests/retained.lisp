@@ -22,8 +22,7 @@
 
 (defun retained-id (key context)
   (lui:with-key :retained
-    (lui:with-key (list :key key)
-      (lui:widget-id key context))))
+    (lui:widget-id key context)))
 
 (defun activate (context key)
   (%lui.frame:make-event :kind :activate :id (retained-id key context)))
@@ -136,6 +135,119 @@
       (frame context field)
       (assert (equal id (retained-id 0 context)))
       (assert (%lui.tests.support:has-text-p context "keyed!")))))
+
+(defun keyed-columns (left right)
+  "Rebuild equal compound parent keys around independently keyed fields."
+  (lui.retained:make-row
+   :id :root
+   :children
+   (lui.retained:nodes
+    (lui.retained:make-column :id (list :column (copy-seq "left"))
+                             :children (lui.retained:nodes left))
+    (lui.retained:make-column :id (list :column (copy-seq "right"))
+                             :children (lui.retained:nodes right))
+    (lui.retained:make-column :id :spare))))
+
+(defun value-id (context value)
+  "Return a field's resolved ID without depending on its internal shape."
+  (%lui.layout:element-id (element-with-value context value)))
+
+(defun test-keyed-parent-scopes ()
+  (let* ((context (%lui.tests.support:make-test-context))
+         (left (lui.retained:make-text-field
+                :id (list :edit 0) :default-value "Left"))
+         (right (lui.retained:make-text-field
+                 :id (list :edit 0) :default-value "Right"))
+         (tree (keyed-columns left right)))
+    (frame context tree)
+    (let ((left-id (value-id context "Left"))
+          (right-id (value-id context "Right")))
+      (assert (not (equal left-id right-id)))
+      (setf (%lui.frame:context-focus context) left-id)
+      (frame context tree
+             (list (%lui.frame:make-event :kind :text :id left-id :value "!")
+                   (%lui.frame:make-event :kind :text :id right-id :value "!")))
+      ;; New nodes and new EQUAL keys must preserve each parent's state.
+      (setf left (lui.retained:make-text-field
+                  :id (list :edit 0) :default-value "Reset left")
+            right (lui.retained:make-text-field
+                   :id (list :edit 0) :default-value "Reset right")
+            tree (keyed-columns left right))
+      (frame context tree)
+      (assert (equal left-id (value-id context "Left!")))
+      (assert (equal right-id (value-id context "Right!")))
+      (assert (equal left-id (%lui.frame:context-focus context)))
+      (let* ((children (lui.retained:row-children tree))
+             (left-parent (aref children 0))
+             (spare-parent (aref children 2)))
+        (setf (lui.retained:row-children tree) (reverse children))
+        (frame context tree)
+        (assert (equal left-id (value-id context "Left!")))
+        (assert (equal right-id (value-id context "Right!")))
+        ;; Moving the field to a different parent starts new owned state.
+        (setf (lui.retained:column-children left-parent) (lui.retained:nodes)
+              (lui.retained:column-children spare-parent)
+              (lui.retained:nodes left))
+        (frame context tree)
+        (assert (not (equal left-id (value-id context "Reset left"))))
+        (assert (null (%lui.frame:context-focus context)))
+        (assert (equal right-id (value-id context "Right!")))))))
+
+(defun test-key-namespaces ()
+  (let* ((context (%lui.tests.support:make-test-context))
+         (object (lui.retained:make-text-field :default-value "Object"))
+         (keyed (lui.retained:make-text-field
+                 :id object :default-value "Keyed"))
+         (tree (lui.retained:nodes object keyed)))
+    (frame context tree)
+    (let ((object-id (value-id context "Object"))
+          (keyed-id (value-id context "Keyed")))
+      (assert (not (equal object-id keyed-id)))
+      (frame context tree
+             (list (%lui.frame:make-event :kind :text :id object-id :value "!")
+                   (%lui.frame:make-event :kind :text :id keyed-id :value "!")))
+      (frame context (reverse tree))
+      (assert (equal object-id (value-id context "Object!")))
+      (assert (equal keyed-id (value-id context "Keyed!"))))
+    ;; Both orders exercise a shared hash key in the two identity namespaces.
+    (assert (invalid-p (lui.retained:nodes object keyed object)))
+    (assert (invalid-p (lui.retained:nodes keyed object keyed)))
+    (setf (lui.retained:node-id keyed) (list :changed 0))
+    (frame context tree)
+    (assert (%lui.tests.support:has-text-p context "Object!"))
+    (assert (%lui.tests.support:has-text-p context "Keyed"))))
+
+(defun test-shared-subtree-scopes ()
+  (let* ((context (%lui.tests.support:make-test-context))
+         (shared (lui.retained:make-column
+                  :id :branch
+                  :children (lui.retained:nodes
+                             (lui.retained:make-text-field
+                              :id :edit :default-value "Shared"))))
+         (first (lui.retained:make-panel
+                 :id :first :children (lui.retained:nodes shared)))
+         (second (lui.retained:make-panel
+                  :id :second :children (lui.retained:nodes shared)))
+         (tree (lui.retained:nodes first second))
+         (ids nil))
+    (frame context tree)
+    (%lui.layout:walk-elements
+     (%lui.frame:context-root context)
+     (lambda (element)
+       (let ((widget (%lui.layout:element-content element)))
+         (when (and (%lui.widgets:widget-p widget)
+                    (eq :text-field (%lui.widgets:widget-kind widget)))
+           (push (%lui.layout:element-id element) ids)))))
+    (assert (= 2 (length ids)))
+    (assert (not (equal (first ids) (second ids))))
+    (frame context tree
+           (list (%lui.frame:make-event
+                  :kind :text :id (first ids) :value "!")))
+    (frame context (reverse tree))
+    (assert (equal (first ids) (value-id context "Shared!")))
+    (assert (equal (second ids) (value-id context "Shared")))
+    ;; Traversing children must not clear the enclosing siblings' table.
+    (assert (invalid-p (lui.retained:nodes first second first)))))
 
 (defun test-value-ownership ()
   (let* ((context (%lui.tests.support:make-test-context))
@@ -280,6 +392,9 @@
   (test-widget-constructors)
   (test-object-identity)
   (test-explicit-identity)
+  (test-keyed-parent-scopes)
+  (test-key-namespaces)
+  (test-shared-subtree-scopes)
   (test-value-ownership)
   (test-styling-and-units)
   (test-invalid-trees)

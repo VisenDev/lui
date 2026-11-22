@@ -39,7 +39,7 @@ DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
 .PHONY: retained-demo manual-demo docs docs-html docs-pages test-docs test-terminal-parity help check-platform build demo pdf pdf-demo test test-platform \
-	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform
+	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform benchmark-retained
 help:
 	@echo 'make docs                 Build and open the native documentation browser'
 	@echo 'make docs-html            Build standalone build/docs.html with ECL/wasm'
@@ -53,6 +53,7 @@ help:
 	@echo 'make test-terminal-parity Compare terminal rendering against the pre-merge backend (SBCL)'
 	@echo 'make test-macos           Run Cocoa checks and saved executable smoke'
 	@echo 'make benchmark            Measure throughput and frame times'
+	@echo 'make benchmark-retained   Compare immediate/retained core time and allocation'
 	@echo 'make loc                  Report source line counts with cloc'
 	@echo 'make web-demo             Build and serve the browser demo at /'
 	@echo 'make terminal-demo        Build and run the terminal demo'
@@ -258,6 +259,13 @@ loc:
 	@mkdir -p build/logs
 	cloc src --by-file --report-file=build/logs/src-loc.txt
 	@cat build/logs/src-loc.txt
+
+benchmark-retained: BENCH_FRAMES = 2000
+benchmark-retained: WARMUP = 300
+benchmark-retained:
+	@mkdir -p build/logs
+	$(SBCL) $(SBCL_FLAGS) --load scripts/benchmark-retained.lisp 2>&1 | \
+		tee "build/logs/benchmark-retained-$$(date +%Y%m%d-%H%M%S)-$$$$.log"
 
 benchmark-platform: check-platform
 ifeq ($(PLATFORM),web)
