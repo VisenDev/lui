@@ -104,10 +104,61 @@
                           (%lui.widgets:widget-color widget :background)))))))
     (assert (= count 1))))
 
+(defun test-deferred-callbacks ()
+  (let* ((context (%lui.tests.support:make-test-context))
+         (order nil)
+         (tree nil))
+    (setf tree
+          (list (list :button "First" :id :first :on-activate
+                      (lambda ()
+                        (push :first order)
+                        (setf (cdr tree) nil)))
+                (list :button "Second" :id :second :on-activate
+                      (lambda () (push :second order)))
+                '(:label "Tail")))
+    (flet ((frame (&optional events)
+             (lui:with-frame (context 80 30 :events events)
+               (lui.retained:draw tree))))
+      (frame)
+      (frame (loop :for key :in '(:first :second)
+                   :collect (%lui.frame:make-event
+                             :kind :activate :id (retained-id key context))))
+      ;; A callback removing later siblings cannot skip their declarations.
+      (assert (equal (reverse order) '(:first :second)))
+      (assert (%lui.tests.support:has-text-p context "Tail"))
+      (assert (%lui.frame:context-next-frame context))
+      (frame)
+      (assert (not (%lui.tests.support:has-text-p context "Tail")))
+      (assert (equal (reverse order) '(:first :second))))))
+
+(defun test-discarded-callbacks ()
+  (let* ((context (%lui.tests.support:make-test-context))
+         (calls 0)
+         (tree (list (list :button "Go" :id :go :on-activate
+                           (lambda () (incf calls))))))
+    (lui:with-frame (context 80 30) (lui.retained:draw tree))
+    (let ((id (retained-id :go context)))
+      (setf (cdr tree) (list '(:unknown)))
+      (assert
+       (handler-case
+           (progn
+             (lui:with-frame
+                 (context 80 30 :events
+                          (list (%lui.frame:make-event :kind :activate :id id)))
+               (lui.retained:draw tree))
+             nil)
+         (lui:configuration-error () t))))
+    (assert (zerop calls))
+    (setf (cdr tree) nil)
+    (lui:with-frame (context 80 30) (lui.retained:draw tree))
+    (assert (zerop calls))))
+
 (defun run-tests ()
   (test-values-and-identity)
   (test-activation-and-containers)
   (test-invalid-trees)
   (test-circular-tree)
   (test-styling)
+  (test-deferred-callbacks)
+  (test-discarded-callbacks)
   (format t "Retained descriptions, callbacks, identity and removal passed.~%"))

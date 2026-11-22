@@ -10,6 +10,7 @@
 
 (defvar *renderers* (make-hash-table :test #'eq))
 (defvar *ancestors* nil)
+(defvar *callbacks* nil)
 
 (fn (invalid-tree (values)) ((value t) (message string))
   "Signal a configuration error for an invalid retained description."
@@ -57,8 +58,8 @@
                   (when (and callback ,(if (eq event :on-change)
                                           'changed 'value))
                     ,(if (eq event :on-change)
-                         '(funcall callback value)
-                         '(funcall callback))))))))))
+                         '(push (lambda () (funcall callback value)) *callbacks*)
+                         '(push callback *callbacks*))))))))))
 
 (defmacro define-container (kind control)
   "Register a container adapter that draws its child descriptions."
@@ -154,8 +155,17 @@ focus. Use :ID on moving siblings; unkeyed nodes have positional identity.
 Changing a node kind resets its control identity. Use distinct DRAW :ID values
 for multiple trees in one parent scope. Removed controls lose LUI owned state.
 :ON-ACTIVATE takes a zero-argument function; :ON-CHANGE takes a function of the
-new value. Callbacks run synchronously during drawing; edit the tree between
-frames, not during traversal. :VALUE and :DEFAULT-VALUE follow LUI semantics.
+new value. DRAW queues callbacks while declaring widgets, then runs them in
+encounter order after successful traversal, before returning. Callbacks may edit
+the tree directly; their edits appear next frame. DRAW requests that frame
+when callbacks are queued. Traversal errors discard queued callbacks; callback
+errors propagate and stop dispatch without rolling back earlier edits.
+:VALUE and :DEFAULT-VALUE follow LUI semantics.
 This layer replays declarations every frame; it does not cache solved layout."
-  (lui:call-with-key id (lambda () (draw-children tree)))
+  (let ((*callbacks* nil))
+    (lui:call-with-key id (lambda () (draw-children tree)))
+    (when *callbacks*
+      (lui:request-frame)
+      (dolist (callback (nreverse *callbacks*))
+        (funcall callback))))
   (values))

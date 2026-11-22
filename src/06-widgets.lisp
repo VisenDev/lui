@@ -294,7 +294,7 @@ Most applications should use the public LUI controls."
   (kill "" :type string)
   (last-command nil :type symbol))
 
-(fn (focused-widget (or null widget)) ((context context))
+(fn (focused-widget-data (or null widget)) ((context context))
   "Find the focused widget in the previous completed layout, or return NIL."
   (when (context-root context)
     (let ((node (gethash (context-focus context)
@@ -303,14 +303,14 @@ Most applications should use the public LUI controls."
 
 (fn (text-field-focused-p boolean) ((context context))
   "Whether CONTEXT focuses an enabled text field in its current completed tree."
-  (let ((widget (focused-widget context)))
+  (let ((widget (focused-widget-data context)))
     (and (widget-p widget) (eq (widget-kind widget) :text-field)
          (not (widget-disabled-p widget)))))
 
 (fn (activation-focused-p boolean) ((context context))
   "Whether CONTEXT focuses an enabled button, checkbox, tab, list item, or cell.
 Backends use this to activate controls with Space without stealing editor text."
-  (let ((widget (focused-widget context)))
+  (let ((widget (focused-widget-data context)))
     (and (widget-p widget) (not (widget-disabled-p widget))
          (not (null (member (widget-kind widget)
                             '(:button :checkbox :radio :tab :list-item

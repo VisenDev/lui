@@ -165,16 +165,16 @@
   (lui:scroll-to :docs-detail 0 0))
 
 (defun navigation-width ()
-  (min (lui:units (if (< (%lui.frame:context-width %lui.frame:*context*)
+  (min (lui:units (if (< (lui:frame-width)
             (lui:units 105)) 18 28))
-       (* 0.3 (%lui.frame:context-width %lui.frame:*context*))))
+       (* 0.3 (lui:frame-width))))
 
 (defun reference-width ()
-  (if (>= (%lui.frame:context-width %lui.frame:*context*) (lui:units 80))
+  (if (>= (lui:frame-width) (lui:units 80))
       (min (lui:units 40)
-           (* 0.44 (- (%lui.frame:context-width %lui.frame:*context*)
+           (* 0.44 (- (lui:frame-width)
                       (navigation-width) (lui:units 4))))
-      (- (%lui.frame:context-width %lui.frame:*context*) (navigation-width)
+      (- (lui:frame-width) (navigation-width)
         (lui:units 3))))
 
 (defun wrap-symbol (text columns)
@@ -193,22 +193,15 @@
 (defun symbol-rows (state)
   (let* ((width (reference-width))
          (key (list width (lui:current-toolkit)
-                    lui.toolkit:%*toolkit-revision* lui:*unit*
-                    (%lui.frame:context-text-mode-p %lui.frame:*context*))))
+                    (lui.toolkit:toolkit-revision) lui:*unit*
+                    (lui:text-mode-p))))
     (unless (equal key (browser-row-key state))
-      (let* ((defaults (lui.toolkit:toolkit-defaults))
-             (measure (%lui.frame:context-measure %lui.frame:*context*))
-             (text-p (%lui.frame:context-text-mode-p %lui.frame:*context*))
+      (let* ((text-p (lui:text-mode-p))
              (inset (if text-p 0 24)) (gutter (if text-p 1 12))
              (available (max 1 (- width (lui:units 1) gutter inset)))
              (top 0))
         (flet ((probe (text)
-                 (funcall measure
-                          (%lui.widgets:make-widget
-                           :kind :label :text text :font-family :monospace
-                           :font-size (getf defaults :font-size 16)
-                           :font-weight (getf defaults :font-weight :normal))
-                          nil)))
+                 (lui:measure-label text :font-family :monospace)))
           (multiple-value-bind (advance line-height) (probe "M")
             (let ((columns (max 1 (floor available (max 1 advance)))))
               (setf (browser-rows state)
@@ -233,14 +226,14 @@
   (lui:panel (:id :docs-navigation
               :width (lui:fixed (navigation-width))
               :height (lui:grow) :scroll-p (not
-          (%lui.frame::context-page-height-p %lui.frame:*context*))
+          (lui:page-scroll-p))
               :padding (lui:units 1)
               :gap (lui:units 0.5) :opacity 1 :frost 0)
     (lui:label "Guides")
     (dolist (guide *guides*)
       (when
         (lui:list-item
-          (if (< (%lui.frame:context-width %lui.frame:*context*) (lui:units
+          (if (< (lui:frame-width) (lui:units
                   105))
                                (case (first guide)
                                  (:start "Start") (:debug "Debugger")
@@ -294,29 +287,25 @@
             (browser-guide state) nil
             (browser-symbols-p state) nil)
       (lui:scroll-to :docs-detail 0 0)
-      (when (%lui.frame::context-page-height-p %lui.frame:*context*)
-        (setf (%lui.frame::context-requested-page-top
-               %lui.frame:*context*) 0))
+      (when (lui:page-scroll-p)
+        (lui:scroll-page-to 0))
       (lui:request-frame))))
 
 (defun entry-list (state height)
   (lui:panel (:id :docs-entries :width (lui:grow) :height height
-              :scroll-p (not (%lui.frame::context-page-height-p
-            %lui.frame:*context*))
+              :scroll-p (not (lui:page-scroll-p))
               :padding (lui:units 0.5) :opacity 1 :frost 0)
     (let* ((rows (symbol-rows state)) (count (length rows))
            (viewport (lui:previous-box :docs-entries))
-           (page-p (%lui.frame::context-page-height-p %lui.frame:*context*))
+           (page-p (lui:page-scroll-p))
            (offset (if page-p
                        (if viewport
-                           (- (%lui.frame::context-page-top
-                    %lui.frame:*context*)
+                           (- (lui:page-scroll-position)
                               (lui:box-y viewport) (lui:units 0.5))
                            0)
                        (nth-value 1 (lui:scroll-position :docs-entries))))
            (bottom (+ offset (if page-p
-                                 (%lui.frame::context-viewport-height
-                  %lui.frame:*context*)
+                                 (lui:viewport-height)
                                  (if viewport (lui:box-height viewport)
                   (lui:units 18)))))
            (start (max 0 (1- (or (position-if
@@ -329,11 +318,8 @@
            (total (if (plusp count)
                       (+ (third (aref rows (1- count)))
                          (fourth (aref rows (1- count)))) 0)))
-      (%lui.frame:emit
-       (%lui.layout:make-element
-        :height (lui:fixed (if (< start count)
-                               (third (aref rows start))
-                               total))))
+      (lui:spacer :height (lui:fixed (if (< start count)
+                                           (third (aref rows start)) total)))
       (loop :for i :from start :below end
             :for (index caption top height) := (aref rows i)
             :do
@@ -346,11 +332,10 @@
           :selected-p
                           (and (null (browser-guide state))
                                (= index (browser-selected state)))))
-      (%lui.frame:emit (%lui.layout:make-element
-             :height (lui:fixed (- total (if (plusp end)
-                                         (+ (third (aref rows (1- end)))
-                                            (fourth (aref rows (1- end))))
-                                         0)))))
+      (lui:spacer :height (lui:fixed (- total (if (plusp end)
+                                               (+ (third (aref rows (1- end)))
+                                                  (fourth (aref rows (1- end))))
+                                               0))))
       (when (zerop count) (lui:label "No matching entries.")))))
 
 (defparameter *preview-kinds*
@@ -368,7 +353,7 @@
 (defun canvas-preview (state)
   (let ((box (lui:previous-box :docs-preview-canvas)))
     (when box
-      (loop for event across (%lui.frame:events-for :docs-preview-canvas) do
+      (loop for event across (lui:events-for :docs-preview-canvas) do
         (when (and (eq (lui:event-kind event) :press)
                    (eq (lui:event-button event) :primary))
           (push (list (/ (- (lui:event-x event) (lui:box-x box)) lui:*unit*)
@@ -554,14 +539,13 @@
 (defun entry-preview-kind (entry)
   (when (member (getf entry :package)
                 '("lui" "lui.glass" "lui.motif" "lui.garnet"
-                  "lui.macos" "lui.qt" "%lui.frame")
+                  "lui.macos" "lui.qt")
                 :test #'string=)
     (cdr (assoc (getf entry :name) *preview-kinds* :test #'string-equal))))
 
 (defun detail (state)
   (lui:panel (:id :docs-detail :width (lui:grow) :height (lui:grow)
-              :scroll-p (not (%lui.frame::context-page-height-p
-            %lui.frame:*context*)) :padding (lui:units 1) :gap (lui:units 1)
+              :scroll-p (not (lui:page-scroll-p)) :padding (lui:units 1) :gap (lui:units 1)
               :opacity 1 :frost 0)
     (cond
       ((eq (browser-guide state) :previews)
@@ -688,11 +672,11 @@
                           (mod (1+ (position (browser-palette state) names))
                                (length names)))))
             (lui:request-frame))))
-      (lui:label (%lui.frame::frame-rate-label))
+      (lui:label (lui:frame-rate-label))
       (lui:row (:width (lui:grow) :height (lui:grow) :gap (lui:units
         1))
         (navigation state)
-          (if (>= (%lui.frame:context-width %lui.frame:*context*) (lui:units
+          (if (>= (lui:frame-width) (lui:units
                   80))
             (progn (references state) (detail state))
             (lui:column (:width (lui:grow) :height (lui:grow) :gap

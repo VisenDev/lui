@@ -1,6 +1,6 @@
 (defpackage #:%lui.example.seven.circles
   (:use #:cl)
-  (:export #:draw #:make-state #:state-model #:modal-p))
+  (:export #:state #:draw #:make-state #:state-model #:modal-p))
 (in-package #:%lui.example.seven.circles)
 
 (defstruct state
@@ -21,31 +21,28 @@
     (setf (state-diameter state)
       (* 2 (%lui.seven.model:circle-radius (%lui.seven.model:circle-find model
               id)))
-      (state-focus state) (lui:widget-key (%lui.frame:context-focus
-            %lui.frame:*context*))
-      (state-focus-visible-p state) (%lui.frame:context-focus-visible-p
-          %lui.frame:*context*)
-          (%lui.frame:context-focus %lui.frame:*context*) :circle-diameter
-          (%lui.frame:context-focus-visible-p %lui.frame:*context*) t)
+      (state-focus state) (lui:widget-key (lui:focused-widget))
+      (state-focus-visible-p state) (lui:focus-visible-p)
+          (lui:focused-widget) :circle-diameter
+          (lui:focus-visible-p) t)
     (lui:request-frame)))
 
 (defun finish-adjust (state commit-p)
   (if commit-p (%lui.seven.model:circle-commit (state-model state))
       (%lui.seven.model:circle-cancel (state-model state)))
-  (setf (%lui.frame:context-focus %lui.frame:*context*)
+  (setf (lui:focused-widget)
         (or (state-focus state) :circle-canvas)
-        (%lui.frame:context-focus-visible-p %lui.frame:*context*)
+        (lui:focus-visible-p)
     (state-focus-visible-p state)
         (state-restore-focus-p state) t)
   (lui:request-frame))
 
 (defun canvas-input (state)
-  (unless (equal (lui:widget-key (%lui.frame:context-hover
-            %lui.frame:*context*)) :circle-canvas)
+  (unless (lui:hovered-p :circle-canvas)
     (setf (state-hover state) nil))
   (let ((box (lui:previous-box :circle-canvas)) (model (state-model state)))
     (when box
-      (loop for event across (%lui.frame:events-for :circle-canvas) do
+      (loop for event across (lui:events-for :circle-canvas) do
         (when (and (not (modal-p state))
                    (member (lui:event-kind event) '(:move :press)))
           (let* ((x (/ (- (lui:event-x event) (lui:box-x box)) lui:*unit*))
@@ -97,9 +94,9 @@
 
 (defun draw (state)
   (when (state-restore-focus-p state)
-    (setf (%lui.frame:context-focus %lui.frame:*context*) (or (state-focus
+    (setf (lui:focused-widget) (or (state-focus
             state) :circle-canvas)
-          (%lui.frame:context-focus-visible-p %lui.frame:*context*)
+          (lui:focus-visible-p)
       (state-focus-visible-p state)
           (state-restore-focus-p state) nil))
   (when (and (modal-p state) (lui:key-pressed-p lui.key:escape))
