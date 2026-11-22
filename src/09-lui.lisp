@@ -23,7 +23,8 @@
                 #:element-box
                 #:element-content)
   (:import-from #:%lui.frame
-                #:frame-rate-label #:frame-width #:frame-height #:text-mode-p
+                #:frame-rate-limit #:set-frame-rate-limit
+           #:frame-rate-label #:frame-width #:frame-height #:text-mode-p
            #:focused-widget #:focus-visible-p #:events-for #:page-scroll-p
            #:page-scroll-position #:viewport-height #:scroll-page-to
            #:previous-frame-box
@@ -42,6 +43,7 @@
   ;; Application controls and layout live here; specialized APIs are exported
   ;; by their owning font, drawing, debugger, and backend packages.
   (:export
+           #:frame-rate-limit #:set-frame-rate-limit
            #:frame-rate-label #:frame-width #:frame-height #:text-mode-p
            #:focused-widget #:focus-visible-p #:events-for #:page-scroll-p
            #:page-scroll-position #:viewport-height #:scroll-page-to
@@ -104,14 +106,16 @@
 (fn (run t)
     ((draw function) &key ((backend symbol) *backend*) ((title string) "LUI")
      ((width (or null real)) nil) ((height (or null real)) nil)
-     ((interactive boolean) t) ((min-fps real) 1) ((max-fps real) 240))
+     ((interactive boolean) t) ((min-fps real) 1) ((max-fps (or null real)) 240))
   "Run the same immediate-mode DRAW function on any registered backend.
 Backend-specific window, DOM, input, frame, and lifetime management stay in LUI.
 WIDTH/HEIGHT are optional backend coordinates; omit them for sensible defaults.
-MIN-FPS sets idle redraws per second. MAX-FPS caps input and animation frames.
+MIN-FPS sets idle redraws per second. MAX-FPS caps input and animation frames;
+NIL removes the active limit.
+Display/compositor scheduling can still constrain presentation.
 INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
   (assert (< 0 min-fps))
-  (assert (<= min-fps max-fps))
+  (assert (or (null max-fps) (<= min-fps max-fps)))
   (let* ((%lui.frame:*min-fps* min-fps)
          (%lui.frame:*max-fps* max-fps)
          (name (or backend

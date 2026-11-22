@@ -39,7 +39,7 @@ DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
 .PHONY: retained-demo manual-demo docs docs-html docs-pages test-docs test-terminal-parity help check-platform build demo pdf pdf-demo test test-platform \
-	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform benchmark-retained
+	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform benchmark-retained benchmark-wayland benchmark-wayland-uncapped
 help:
 	@echo 'make docs                 Build and open the native documentation browser'
 	@echo 'make docs-html            Build standalone build/docs.html with ECL/wasm'
@@ -53,6 +53,8 @@ help:
 	@echo 'make test-terminal-parity Compare terminal rendering against the pre-merge backend (SBCL)'
 	@echo 'make test-macos           Run Cocoa checks and saved executable smoke'
 	@echo 'make benchmark            Measure throughput and frame times'
+	@echo 'make benchmark-wayland    Measure active rendering separately from presentation'
+	@echo 'make benchmark-wayland-uncapped  Measure continuous uncapped Wayland frames'
 	@echo 'make benchmark-retained   Compare immediate/retained core time and allocation'
 	@echo 'make loc                  Report source line counts with cloc'
 	@echo 'make web-demo             Build and serve the browser demo at /'
@@ -259,6 +261,17 @@ loc:
 	@mkdir -p build/logs
 	cloc src --by-file --report-file=build/logs/src-loc.txt
 	@cat build/logs/src-loc.txt
+
+benchmark-wayland-uncapped: export BENCH_UNCAPPED = 1
+benchmark-wayland-uncapped: benchmark-wayland
+
+benchmark-wayland: BENCH_FRAMES = 1300
+benchmark-wayland: WARMUP = 260
+benchmark-wayland:
+	@mkdir -p build/logs
+	PLATFORM=wayland LUI_BENCH_LIBRARY_ONLY=1 $(SBCL) $(SBCL_FLAGS) \
+		--load scripts/benchmark-wayland.lisp 2>&1 | \
+		tee "build/logs/benchmark-wayland-$$(date +%Y%m%d-%H%M%S)-$$$$.log"
 
 benchmark-retained: BENCH_FRAMES = 2000
 benchmark-retained: WARMUP = 300

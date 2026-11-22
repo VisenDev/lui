@@ -37,8 +37,10 @@
 
 (defstruct gpu
   "GL drawing resources and viewport dimensions for a current compatibility context."
+  (swap-interval -1 :type integer)
   display surface context renderer
   (geometry (make-hash-table :test 'equalp) :type hash-table)
+  (glyphs (make-hash-table :test 'eq) :type hash-table)
   (geometry-builds 0 :type integer)
   (program 0 :type integer)
   (clip (make-box) :type box)
@@ -136,13 +138,14 @@ void main() {
       (when (plusp fragment)
         (call-gl "glDeleteShader" :uint fragment :void)))))
 
-(fn (clear-geometry hash-table) ((gpu gpu))
-  "Delete cached OpenGL display lists and clear GPU's contour cache."
+(fn (clear-geometry hash-table)
+    ((gpu gpu) &optional ((cache hash-table) (gpu-geometry gpu)))
+  "Delete cached OpenGL display lists and clear the selected geometry cache."
   (maphash (lambda (key display-list)
              (declare (ignore key))
              (call-gl "glDeleteLists" :uint display-list :int 1 :void))
-           (gpu-geometry gpu))
-  (clrhash (gpu-geometry gpu)))
+           cache)
+  (clrhash cache))
 
 (fn (gl-color (values)) ((color string) (alpha real))
   "Set the current OpenGL color from a hexadecimal color and alpha."
@@ -152,14 +155,15 @@ void main() {
   (values))
 
 (fn (gl-geometry (values))
-    ((gpu gpu) (contours contours)
-     &optional ((key (or list contours)) contours))
-  "Draw filled contours, caching reusable geometry in GPU's display lists."
-  (let ((display-list (gethash key (gpu-geometry gpu))))
+    ((gpu gpu) (contours (or contours function))
+     &optional ((cache hash-table) (gpu-geometry gpu))
+     ((key (or list contours function)) contours))
+  "Cache filled contours or a triangle emitter in an OpenGL display list."
+  (let ((display-list (gethash key cache)))
     (unless display-list
       ;; Keep resize/animation variants bounded; glyphs use font-unit contours.
-      (when (>= (hash-table-count (gpu-geometry gpu)) 512)
-        (clear-geometry gpu))
+      (when (>= (hash-table-count cache) 512)
+        (clear-geometry gpu cache))
       (setf display-list (call-gl "glGenLists" :int 1 :uint))
       (when (zerop display-list) (error '%lui.conditions:backend-error
                                         :backend :gl
@@ -170,18 +174,21 @@ void main() {
            (progn
              (call-gl "glBegin" :uint 4 :void)
              (unwind-protect
-                  (%trapezoids
-                   contours
-                   (lambda (quad)
-                     (dolist (index '(0 1 2 0 2 3))
-                       (let ((point (aref quad index)))
-                         (call-gl "glVertex2f"
-                                  :float (float (car point) 1.0f0)
-                                  :float (float (cdr point) 1.0f0) :void)))))
+                  (if (functionp contours)
+                      (funcall contours)
+                      ;; else
+                      (%trapezoids
+                       contours
+                       (lambda (quad)
+                         (dolist (index '(0 1 2 0 2 3))
+                           (let ((point (aref quad index)))
+                             (call-gl "glVertex2f"
+                                      :float (float (car point) 1.0f0)
+                                      :float (float (cdr point) 1.0f0) :void))))))
                (call-gl "glEnd" :void)))
         (call-gl "glEndList" :void))
       (incf (gpu-geometry-builds gpu))
-      (setf (gethash key (gpu-geometry gpu)) display-list))
+      (setf (gethash key cache) display-list))
     (call-gl "glCallList" :uint display-list :void))
   (values))
 
@@ -274,7 +281,7 @@ void main() {
                             (surface-contours (box-width box)
                                               (box-height box)
                                               radius thickness)
-                            key)))
+                            (gpu-geometry gpu) key)))
       (call-gl "glPopMatrix" :void)))
   (values))
 
@@ -296,16 +303,45 @@ void main() {
            (call-gl "glScalef" :float scale :float (- scale) :float 1.0f0
                     :void)
            (loop :for char :across text
-                 :do (when previous
-                       (incf advance (zpb-ttf:kerning-offset
-                                      previous char loader))
-                       (call-gl "glTranslatef" :float (float advance 1.0f0)
-                                :float 0.0f0 :float 0.0f0 :void))
-                 (gl-geometry gpu (glyph-polygons font char))
-                 (setf advance (zpb-ttf:advance-width
-                                (zpb-ttf:find-glyph char loader))
-                       previous char)))
+                 :do (multiple-value-bind (width kerning)
+                         (%glyph-metrics font char previous)
+                       (when previous
+                         (call-gl "glTranslatef"
+                                  :float (float (+ advance kerning) 1.0f0)
+                                  :float 0.0f0 :float 0.0f0 :void))
+                       ;; Font-unit outlines are stable objects.
+                       (gl-geometry gpu (glyph-polygons font char)
+                                    (gpu-glyphs gpu))
+                       (setf advance width previous char))))
       (call-gl "glPopMatrix" :void)))
+  (values))
+
+(fn (gl-stipple (values))
+    ((gpu gpu) (box box) (border (or null real)) (color string))
+  "Draw cached checkerboard triangles without allocating or hashing contours."
+  (let* ((left (ceiling (box-x box)))
+         (top (ceiling (box-y box)))
+         (right (floor (box-right box)))
+         (bottom (floor (box-bottom box)))
+         (key (list :stipple left top right bottom border)))
+    (record-ink gpu (list key (copy-seq color)))
+    (gl-color color 1)
+    (gl-geometry
+     gpu
+     (lambda ()
+       (loop :for y :from top :below bottom
+             :do (loop :for x :from (+ left (mod (+ left y) 2))
+                       :below right :by 2
+                       :when (or (null border)
+                                 (< x (+ left border)) (>= x (- right border))
+                                 (< y (+ top border)) (>= y (- bottom border)))
+                       :do (dolist (corner '((0 . 0) (1 . 0) (1 . 1)
+                                             (0 . 0) (1 . 1) (0 . 1)))
+                             (call-gl "glVertex2f"
+                                      :float (float (+ x (car corner)) 1.0f0)
+                                      :float (float (+ y (cdr corner)) 1.0f0)
+                                      :void)))))
+     (gpu-geometry gpu) key))
   (values))
 
 (fn (pixel-box box) ((gpu gpu) (box box))
@@ -490,6 +526,8 @@ void main() {
          :font font
          :surface (lambda (box radius color alpha &optional thickness)
                     (gl-surface gpu box radius color alpha thickness))
+         :stipple (lambda (box border color)
+                    (gl-stipple gpu box border color))
          :polygons (lambda (contours color alpha)
                      (gl-shape gpu contours color alpha))
          :text (lambda (font text x y color)
@@ -637,8 +675,13 @@ void main() {
   (call-gl "glLoadIdentity" :void)
   (values))
 
-(fn (present-gpu integer) ((gpu gpu))
-  "Swap the EGL surface created by OPEN-GPU. GLX presents its own drawable."
+(fn (present-gpu integer) ((gpu gpu) &optional ((vsync-p boolean) t))
+  "Swap an EGL surface, requesting swap pacing only when VSYNC-P is true."
+  (let ((interval (if vsync-p 1 0)))
+    (unless (= interval (gpu-swap-interval gpu))
+      (egl-check (call-egl "eglSwapInterval" :pointer (gpu-display gpu)
+                           :int interval :uint) "eglSwapInterval")
+      (setf (gpu-swap-interval gpu) interval)))
   (egl-check
    (call-egl "eglSwapBuffers" :pointer (gpu-display gpu)
              :pointer (gpu-surface gpu) :uint)
@@ -647,6 +690,7 @@ void main() {
 (fn (close-gpu (or null integer)) ((gpu gpu))
   "Release cached geometry, shader, and texture; also release an owned EGL context."
   (clear-geometry gpu)
+  (clear-geometry gpu (gpu-glyphs gpu))
   (clear-backdrops gpu)
   (when (plusp (gpu-program gpu))
     (call-gl "glDeleteProgram" :uint (gpu-program gpu) :void))

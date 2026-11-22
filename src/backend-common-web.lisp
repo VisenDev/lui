@@ -1444,7 +1444,7 @@
                                                  (default-scroll-mode)))
   "Mount a Canvas 2D app in HOST. SCROLL-MODE is :PAGE for content expansion or
 :VIEWPORT for a fixed embedded view; the default is :PAGE on coarse pointers."
-  (assert (< 0 min-fps)) (assert (<= min-fps max-fps))
+  (assert (< 0 min-fps)) (assert (or (null max-fps) (<= min-fps max-fps)))
   (let* (#+lui-ecl-web (%lui.ecl-emscripten:*owner* (list :web-app))
                        (page-scroll-p (eq scroll-mode :page))
                        (port (and page-scroll-p (page-scrollport host)))

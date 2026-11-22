@@ -385,7 +385,11 @@
       (lui:button
         "Cycle palette"
         :id :palette :disabled-p (modal-p g)))
-    (lui:label (lui:frame-rate-label))
+    (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
+      (lui:label (lui:frame-rate-label) :width (lui:grow))
+      (when (lui:button (if (lui:frame-rate-limit) "Uncap FPS" "Cap FPS (240)")
+                       :id :fps-limit :disabled-p (modal-p g))
+        (lui:set-frame-rate-limit (if (lui:frame-rate-limit) nil 240))))
     (lui:row (:width (lui:grow) :gap (lui:units 1))
       (dolist (page *pages*)
         (when
@@ -422,7 +426,8 @@
                 names))))))
   (lui:with-toolkit ((gallery-toolkit g))
     (lui:with-palette ((gallery-palette g))
-      (draw-gallery g))))
+      (draw-gallery g)))
+  (unless (lui:frame-rate-limit) (lui:request-frame)))
 
 (defun make-demo (&optional (gallery (make-gallery)))
   (lambda () (draw gallery)))

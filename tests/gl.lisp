@@ -331,6 +331,36 @@
         (assert (equalp expected (frame-pixels))))))
   (format t "Glass gallery pages match cached and fresh rendering.~%"))
 
+(defun test-gallery-stipple (gpu renderer context gallery)
+  ;; Exercise the actual painter fallback, including its clipped scroll page.
+  (let ((fallback (%make-renderer
+                    :font (renderer-font renderer)
+                    :polygons (renderer-polygons renderer)
+                    :clip (renderer-clip renderer)
+                    :text (renderer-text renderer)
+                    :surface (%renderer-surface renderer)
+                    :backdrop-effect (renderer-backdrop-effect renderer))))
+    (unwind-protect
+         (progn
+           (setf (%lui.example.demo::gallery-toolkit gallery) :garnet)
+           (dolist (scale '(1 3/2))
+             (setf (gpu-logical-width gpu) (/ 720 scale)
+                   (gpu-logical-height gpu) (/ 520 scale))
+             (dolist (page '(:controls :editing :layout :scroll :styles :menus))
+               (setf (%lui.example.demo::gallery-page gallery) page)
+               (with-frame (context (/ 720 scale) (/ 520 scale))
+                 (%lui.example.demo:draw gallery))
+               (begin-gpu-frame gpu)
+               (%paint-frame fallback context)
+               (let ((expected (frame-pixels)))
+                 (dotimes (i 2)
+                   (begin-gpu-frame gpu)
+                   (%paint-frame renderer context)
+                   (assert (equalp expected (frame-pixels))))))))
+      (setf (gpu-logical-width gpu) 720
+            (gpu-logical-height gpu) 520)))
+  (format t "Garnet stipples match polygon fallback at 1x and 1.5x.~%"))
+
 (let* ((font (open-font))
        (gpu (open-gpu nil nil font 720 520))
        (renderer (gpu-renderer gpu))
@@ -348,6 +378,7 @@
          (test-backdrop-cache gpu renderer)
          (test-backdrop-cache-bounds gpu)
          (test-gallery-backdrop-cache gpu renderer context gallery)
+         (test-gallery-stipple gpu renderer context gallery)
          (test-translated-geometry-cache gpu renderer)
          (with-frame (context 720 520) (%lui.example.demo:draw gallery))
          (begin-gpu-frame gpu)

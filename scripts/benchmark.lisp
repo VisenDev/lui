@@ -1,4 +1,6 @@
-(defpackage #:%lui.benchmark (:use #:cl))
+(defpackage #:%lui.benchmark
+  (:use #:cl)
+  (:export #:*cases* #:*warmup* #:select-case #:run-benchmarks))
 (in-package #:%lui.benchmark)
 
 (load "scripts/setup.lisp")
@@ -12,6 +14,8 @@
 (asdf:load-system (if (string= *platform* "core") "lui/core"
                      (concatenate 'string "lui/" *platform*)))
 (asdf:load-system "lui/demo")
+
+(defparameter *uncapped* (equal (uiop:getenv "BENCH_UNCAPPED") "1"))
 
 (defparameter *gallery* (%lui.example.demo:make-gallery))
 
@@ -117,9 +121,11 @@
            (multiple-value-bind (current-bytes current-gc-time) (counters)
              (setf bytes current-bytes
                    gc-time current-gc-time))
-           (%lui.example.demo:draw *gallery*)))
+           (%lui.example.demo:draw *gallery*)
+           (when *uncapped* (lui:request-frame))))
        :backend (intern (string-upcase *platform*) :keyword)
-       :min-fps 240 :max-fps 240
+       :min-fps (if *uncapped* 1 240)
+       :max-fps (unless *uncapped* 240)
        :title "LUI benchmark" :width *width* :height *height*))))
 
 (defun benchmark-loop (frame)
@@ -230,6 +236,7 @@
                      "layout+terminal-render microbenchmark")
                     ((string= *platform* "gl")
                      "offscreen pipeline + glFinish")
+                    (*uncapped* "uncapped window loop; compositor may throttle")
                     (t "paced window loop; not raw GPU speed"))))
     (format t "BENCH backend=~A mode=~S frames=~D warmup=~D requested_size=~A timer_hz=~D~%"
             *platform* mode *frames* *warmup*

@@ -1201,7 +1201,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
           (update-cursor)
           (begin-gpu-frame gpu)
           (%paint-frame renderer context)
-          (present-gpu gpu)
+          (present-gpu gpu (not (null (frame-rate-limit))))
           (unless interactive (return context))
           (wait-wayland display context events))))
 

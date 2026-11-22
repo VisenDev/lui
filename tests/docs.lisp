@@ -40,7 +40,7 @@
         (%lui.frame::record-frame-statistics stats 2 0)
         (%lui.frame::record-frame-statistics stats 5 1)
         (frame context draw)
-        (assert (has-label context "1.0 FPS · 3.5 ms/frame (layout)"))
+        (assert (has-label context "1.0 FPS · 3.50 ms/frame (layout)"))
         ;; Once full, the rolling window discards the older samples.
         (setf stats (%lui.frame::make-frame-statistics)
               (%lui.frame::context-statistics context) stats)
@@ -48,7 +48,7 @@
         (dotimes (i 30)
           (%lui.frame::record-frame-statistics stats 4 (+ i 2)))
         (frame context draw)
-        (assert (has-label context "1.0 FPS · 4.0 ms/frame (layout)")))
+        (assert (has-label context "1.0 FPS · 4.00 ms/frame (layout)")))
       ;; Symbols and details each retain an independent tall viewport.
       (let ((list (element-box (node-with-id context :docs-entries)))
             (detail (element-box (node-with-id context :docs-detail))))

@@ -1,7 +1,8 @@
 (defpackage #:lui.font
   (:use #:cl #:%lui.fn #:%lui.layout)
   (:export #:font #:open-font #:close-font #:font-size #:%font-loader
-           #:text-width #:line-height #:baseline #:wrap-text #:glyph-polygons
+           #:%glyph-metrics #:text-width #:line-height #:baseline
+           #:wrap-text #:glyph-polygons
            #:*font-path* #:*font-paths* #:*font-directories*
            #:*font-names* #:font-face #:%font-css))
 
@@ -133,6 +134,7 @@
     (faces (make-array 4 :element-type '(or null font) :initial-element nil)
            :type (vector (or null font) 4))
     (size 16 :type real)
+    (metrics (make-hash-table) :type hash-table)
     (cache (make-hash-table) :type hash-table))
 
   (defvar *font-directories*
@@ -198,6 +200,7 @@
       (zpb-ttf:close-font-loader (font-loader font))
       (setf (font-loader font) nil))
     (clrhash (font-cache font))
+    (clrhash (font-metrics font))
     (values))
 
   (fn (scale-font real) ((font font))
@@ -214,20 +217,40 @@
           (- (zpb-ttf:descender (font-loader font)))
           (zpb-ttf:line-gap (font-loader font)))))
 
+  (defstruct glyph-metrics
+    "Font-unit advance and kerning for a character and its predecessor."
+    (advance 0 :type real)
+    (kerning 0 :type real))
+
+  (fn (%glyph-metrics (values real real))
+      ((font font) (char character) (previous (or null character)))
+    "Return cached font-unit advance and predecessor kerning."
+    (let* ((key (+ (char-code char)
+                   (* char-code-limit (if previous
+                                          (1+ (char-code previous)) 0))))
+           (cache (font-metrics font))
+           (metrics (gethash key cache)))
+      (unless metrics
+        (when (>= (hash-table-count cache) 4096) (clrhash cache))
+        (setf metrics
+              (make-glyph-metrics
+               :advance (zpb-ttf:advance-width
+                         (zpb-ttf:find-glyph char (font-loader font)))
+               :kerning (if previous
+                            (zpb-ttf:kerning-offset
+                             previous char (font-loader font)) 0))
+              (gethash key cache) metrics))
+      (values (glyph-metrics-advance metrics)
+              (glyph-metrics-kerning metrics))))
+
   (fn (text-width real) ((font font) (text string))
     "Measure a string using glyph advances and pair kerning at the current size."
     (let ((previous nil)
           (width 0))
       (loop :for char :across text
-            :do (incf width
-                      (+ (zpb-ttf:advance-width
-                          (zpb-ttf:find-glyph char (font-loader font)))
-                         (if previous
-                             (zpb-ttf:kerning-offset
-                              previous char (font-loader font))
-
-                             ;; else
-                             0)))
+            :do (multiple-value-bind (advance kerning)
+                    (%glyph-metrics font char previous)
+                  (incf width (+ advance kerning)))
             (setf previous char))
       (* (scale-font font) width)))
 
@@ -239,7 +262,8 @@
                            (text-width font (subseq text start end)))))
 
   (fn (glyph-polygons contours) ((font font) (char character))
-    "Flatten TrueType curves into geometric contours, never pixels. Cache in font units."
+    "Flatten TrueType curves into shared, cached font-unit contours.
+Copy the returned contours before modifying them."
     (let ((cached (gethash char (font-cache font)))
           (polygons nil))
       (when cached (return-from glyph-polygons cached))
@@ -554,24 +578,21 @@
                (cursor x)
                (previous nil))
           (loop :for char :across text
-                :do (when previous
-                      (incf cursor
-                            (* scale (zpb-ttf:kerning-offset
-                                      previous char (%font-loader font)))))
-                (funcall
-                 (renderer-polygons renderer)
-                 (map 'contours
-                      (lambda (points)
-                        (map 'contour (lambda (point)
-                                        (cons (+ cursor (* scale (car point)))
-                                              (- y (* scale (cdr point)))))
-                             points))
-                      (glyph-polygons font char))
-                 color 1)
-                (incf cursor
-                      (* scale (zpb-ttf:advance-width
-                                (zpb-ttf:find-glyph char
-                                                    (%font-loader font)))))
+                :do (multiple-value-bind (advance kerning)
+                        (%glyph-metrics font char previous)
+                      (incf cursor (* scale kerning))
+                      (funcall
+                       (renderer-polygons renderer)
+                       (map 'contours
+                            (lambda (points)
+                              (map 'contour
+                                   (lambda (point)
+                                     (cons (+ cursor (* scale (car point)))
+                                           (- y (* scale (cdr point)))))
+                                   points))
+                            (glyph-polygons font char))
+                       color 1)
+                      (incf cursor (* scale advance)))
                 (setf previous char))))))
 
 (fn (inset-box box) ((box box) (inset real))
@@ -762,7 +783,6 @@ Fall back to its background role, or the current toolkit for an empty frame."
   "Find the caret boundary nearest AT within a rendered line."
   (let ((left 0)
         #-(or jscl lui-ecl-web) (previous nil)
-        #-(or jscl lui-ecl-web) (loader (%font-loader font))
         #-(or jscl lui-ecl-web)
         (scale (/ (font-size font) (zpb-ttf:units/em (%font-loader font)))))
     (dotimes (i (length line) (length line))
@@ -770,15 +790,8 @@ Fall back to its background role, or the current toolkit for an empty frame."
       (let ((right #+(or jscl lui-ecl-web)
                    (text-width font (subseq line 0 (1+ i)))
                    #-(or jscl lui-ecl-web)
-                   (let* ((char (char line i))
-                          (glyph (zpb-ttf:find-glyph char loader))
-                          (advance (zpb-ttf:advance-width glyph))
-                          (kerning (if previous
-                                       (zpb-ttf:kerning-offset
-                                        previous char loader)
-
-                                       ;; else
-                                       0)))
+                   (multiple-value-bind (advance kerning)
+                       (%glyph-metrics font (char line i) previous)
                      (+ left (* scale (+ advance kerning))))))
         ;; Each glyph's midpoint separates the two adjacent caret positions.
         (when (< at (/ (+ left right) 2))

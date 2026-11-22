@@ -10,6 +10,7 @@
            #:frame-width #:frame-height #:text-mode-p #:focused-widget
            #:focus-visible-p #:page-scroll-p #:page-scroll-position
            #:viewport-height #:scroll-page-to #:previous-frame-box
+           #:frame-rate-limit #:set-frame-rate-limit
            #:frame-rate-label #:frame-wait #:hit #:limit-frame-rate #:memoized
            #:pointer-cancel-p
            #:context #:make-context #:context-root #:context-focus
@@ -109,7 +110,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   focus-input
   last-click
   (min-fps *min-fps* :type real)
-  (max-fps *max-fps* :type real)
+  (max-fps *max-fps* :type (or null real))
   (statistics (make-frame-statistics) :type frame-statistics)
   (time 0 :type real)
   (next-frame nil :type (or null real))
@@ -340,16 +341,32 @@ use the third value returned by a widget instead. IDs are local to CONTEXT."
     (if (zerop count)
         "FPS: measuring… · Layout: measuring…"
         ;; else
-        (format nil "~,1F FPS · ~,1F ms/frame (layout)"
+        (format nil "~,1F FPS · ~,2F ms/frame (layout)"
                 (frame-statistics-fps stats)
                 (/ (frame-statistics-total-ms stats) count)))))
+
+(fn (frame-rate-limit (or null real)) ()
+  "Return the current maximum active FPS, or NIL when uncapped."
+  (context-max-fps *context*))
+
+(fn (set-frame-rate-limit (values)) ((maximum (or null real)))
+  "Set the active FPS limit, or NIL to uncap it. Idle redraws are unchanged.
+Wayland also disables EGL swap pacing; the display system may still throttle.
+Browsers remain subject to their animation-frame scheduling."
+  (when (and maximum (< maximum (context-min-fps *context*)))
+    (error '%lui.conditions:configuration-error
+           :setting :max-fps :value maximum :operation :set-frame-rate-limit
+           :format-control "The active FPS limit must be at least MIN-FPS."))
+  (setf (context-max-fps *context*) maximum)
+  (values))
 
 (fn (frame-wait real)
     ((context context) &optional ((urgent (or boolean list)) nil)
      ((now real) (/ (get-internal-real-time) internal-time-units-per-second)))
   "Return seconds until the next allowed frame, honoring idle and active limits."
   (let* ((start (context-time context))
-         (first (+ start (/ 1 (context-max-fps context))))
+         (maximum (context-max-fps context))
+         (first (+ start (if maximum (/ 1 maximum) 0)))
          (idle (+ start (/ 1 (context-min-fps context))))
          (due (min idle (or (context-next-frame context) idle))))
     (max 0 (- (if urgent first (max first due)) now))))

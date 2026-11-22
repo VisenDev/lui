@@ -127,6 +127,25 @@
     (assert (equalp #("a" "" "b" "")
                    (wrap-text font (format nil "a~%~%b~%") nil)))))
 
+(defun test-cached-metrics (font)
+  (let ((loader (%font-loader font)))
+    (flet ((check (char previous)
+             (multiple-value-bind (advance kerning)
+                 (%glyph-metrics font char previous)
+               (assert (= advance (zpb-ttf:advance-width
+                                   (zpb-ttf:find-glyph char loader))))
+               (assert (= kerning (if previous
+                                      (zpb-ttf:kerning-offset
+                                       previous char loader) 0))))))
+      ;; Exceed the bounded cache, then revisit pairs with and without kerning.
+      (dotimes (pass 2)
+        (dotimes (i 70)
+          (dotimes (j 70)
+            (check (code-char (+ 32 i)) (code-char (+ 32 j)))))
+        (loop :for char :across "AVéΩ世界" :do
+          (check char nil)
+          (check char #\A))))))
+
 (defun test-shared-wrapping ()
   (flet ((measure (text start end)
            (declare (ignore text)) (- end start)))
@@ -1239,7 +1258,11 @@
            (test-password-presentation font)
            (test-winding)
            (test-outlines font)
-           (test-font-metrics font)
+           ;; The controlled kerning test mutates its private font loader.
+           (let ((isolated (open-font)))
+             (unwind-protect (test-font-metrics isolated)
+               (close-font isolated)))
+           (test-cached-metrics font)
            (test-measurement font)
            (test-measurement-cache)
            (test-toolkit-geometry font)

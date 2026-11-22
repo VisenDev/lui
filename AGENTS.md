@@ -308,6 +308,21 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   Offscreen GL uses `glFinish`; core uses deterministic metrics; terminal uses
   snapshot output. Do not compare these as equivalent display FPS. The gallery's
   frame interval also includes idle/pacing time.
+- `make benchmark-wayland` (SBCL/Linux) separately measures active frame work
+  across all 65 gallery cases: construction/layout, clear, and painting with
+  `glFinish`. Presentation keeps its normal pacing and is reported separately.
+  Defaults are 720×520, 1300 measured and 260 warmup frames. Build/layout and
+  GPU-finish columns are nested timings; do not add them to the active total.
+  `LUI_PROFILE=1` enables diagnostic CPU sampling; use unprofiled runs for
+  comparisons. The reciprocal of active time estimates uncapped throughput,
+  not delivered display FPS. Demo millisecond labels show layout time only,
+  now with two decimal places.
+- `make benchmark-wayland-uncapped` requests every next frame, sets
+  `:max-fps nil`, and disables EGL swap pacing. It reports both completed-frame
+  throughput and active time. Compare matching capped or uncapped workloads;
+  compositor/driver throttling may still apply. The gallery's Uncap FPS button
+  also requests continuous redraws, so its FPS display shows maximum throughput
+  without input. Restoring the cap restores ordinary idle scheduling.
 - SBCL allocation counters are process-wide; GC CPU time is not a wall-clock
   pause. Unrelated threads can contribute. Foreign/GPU allocations are excluded;
   exact per-frame GC counts are unsupported. Unsupported implementations should
@@ -332,6 +347,11 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   `lui/terminal`, `lui/pdf`, `lui/gl`, `lui/x11`, `lui/wayland`, `lui/win32`, and
   `lui/cocoa`. `lui:available-backends` lists loaded backends; `lui:run :backend`
   chooses one. Width/height use backend coordinates; omission uses defaults.
+- `lui:run :max-fps nil` removes the active frame limit. During drawing,
+  `lui:frame-rate-limit` reads it and `lui:set-frame-rate-limit` changes it.
+  A numeric limit must be at least `:min-fps`; NIL leaves idle scheduling
+  unchanged. Wayland requests EGL swap interval zero when uncapped; browser
+  animation callbacks and platform presentation may still constrain throughput.
 - Core application APIs use `lui:`. Font, drawing, debugger, terminal, and PDF
   helpers use `lui.font:`, `lui.draw:`, `lui.debug:`, `lui.terminal:`, and
   `lui.pdf:` respectively; load the corresponding optional system first.

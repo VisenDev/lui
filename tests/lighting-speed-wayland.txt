@@ -1,0 +1,342 @@
+Lighting speed measurements, 2026-11-22
+
+Commands: make benchmark-wayland / make benchmark-wayland-uncapped
+SBCL 2.6.9; Ryzen 7 7800X3D; Radeon RX 7800 XT; Wayland.
+Logical 720x520, physical 1080x780; 65 equally weighted cases;
+260 warmup frames, 1300 measured frames (20 per case).
+
+Baseline rendering: e681147, with the two-decimal layout label.
+Uncapped baseline additionally uses the new FPS toggle, nullable frame cap,
+and EGL swap-interval control; renderer/font optimizations are excluded.
+Optimized rendering: glyph identity cache, direct checkerboard triangles,
+and cached font-unit advances/kerning. Same viewport and sample schedule.
+
+ACTIVE = construction/layout + clear + painting through glFinish.
+Build/layout/GPU-finish columns are nested, not additive to ACTIVE.
+RESULT includes presentation and event processing. Uncapped runs request
+continuous frames and EGL interval zero. Actual display scanout is not FPS.
+Allocation counters are SBCL process-wide bytes; foreign allocations excluded.
+Timings vary by run and are evidence for this device, not guarantees.
+
+Uncapped matched comparison: 1.700 to 0.796 ms/frame (588 to 1256 FPS),
+active 1.652 to 0.743 ms/frame, allocation 630601 to 355790 bytes/frame.
+Additional optimized uncapped runs: 0.773 and 0.770 ms/frame,
+active 0.720 and 0.720 ms/frame. Normal presentation remains paced.
+
+
+Original paced gallery, before adding the FPS toggle
+BENCH backend=wayland mode="paced window loop; not raw GPU speed" frames=1300 warmup=260 requested_size=720x520 timer_hz=1000000000
+ALLOCATION counters=SBCL scope=process gc_time=cpu sample_storage=excluded
+DEVICE cpu="AMD Ryzen 7 7800X3D 8-Core Processor" pixels=1080x780 logical=720x520 gl="AMD Radeon RX 7800 XT (radeonsi, navi32, ACO, DRM 3.64, 7.3.4-201.nobara.fc44.x86_64)"
+RESULT toolkit=all page=all frames=1300 elapsed_s=7.771626 fps=167.28 mean_ms=5.978 p50_ms=5.880 p95_ms=6.780 max_ms=34.563
+ACTIVE (:GLASS :CONTROLS) frames=20 mean_ms=1.903089 bytes_mean=502563.2
+ACTIVE (:GLASS :EDITING) frames=20 mean_ms=1.929995 bytes_mean=369918.4
+ACTIVE (:GLASS :LAYOUT) frames=20 mean_ms=1.975013 bytes_mean=454992.8
+ACTIVE (:GLASS :SCROLL) frames=20 mean_ms=2.020386 bytes_mean=625144.0
+ACTIVE (:GLASS :STYLES) frames=20 mean_ms=1.836122 bytes_mean=626816.8
+ACTIVE (:GLASS :MENUS) frames=20 mean_ms=1.167172 bytes_mean=263580.0
+ACTIVE (:GLASS :SEVEN :COUNTER) frames=20 mean_ms=1.317099 bytes_mean=402759.2
+ACTIVE (:GLASS :SEVEN :TEMPERATURE) frames=20 mean_ms=1.237801 bytes_mean=378139.2
+ACTIVE (:GLASS :SEVEN :FLIGHT) frames=20 mean_ms=1.473825 bytes_mean=432157.6
+ACTIVE (:GLASS :SEVEN :TIMER) frames=20 mean_ms=1.383020 bytes_mean=407606.4
+ACTIVE (:GLASS :SEVEN :CRUD) frames=20 mean_ms=1.476800 bytes_mean=486132.8
+ACTIVE (:GLASS :SEVEN :CIRCLES) frames=20 mean_ms=1.398813 bytes_mean=381464.0
+ACTIVE (:GLASS :SEVEN :CELLS) frames=20 mean_ms=1.724687 bytes_mean=697172.8
+ACTIVE (:MOTIF :CONTROLS) frames=20 mean_ms=2.649291 bytes_mean=353285.6
+ACTIVE (:MOTIF :EDITING) frames=20 mean_ms=1.800920 bytes_mean=254405.6
+ACTIVE (:MOTIF :LAYOUT) frames=20 mean_ms=1.589673 bytes_mean=312564.0
+ACTIVE (:MOTIF :SCROLL) frames=20 mean_ms=1.827761 bytes_mean=471265.6
+ACTIVE (:MOTIF :STYLES) frames=20 mean_ms=1.068859 bytes_mean=238990.4
+ACTIVE (:MOTIF :MENUS) frames=20 mean_ms=0.879054 bytes_mean=193163.2
+ACTIVE (:MOTIF :SEVEN :COUNTER) frames=20 mean_ms=0.896453 bytes_mean=220974.4
+ACTIVE (:MOTIF :SEVEN :TEMPERATURE) frames=20 mean_ms=0.995633 bytes_mean=234062.4
+ACTIVE (:MOTIF :SEVEN :FLIGHT) frames=20 mean_ms=1.082783 bytes_mean=258669.6
+ACTIVE (:MOTIF :SEVEN :TIMER) frames=20 mean_ms=1.090309 bytes_mean=250381.6
+ACTIVE (:MOTIF :SEVEN :CRUD) frames=20 mean_ms=1.212153 bytes_mean=292912.8
+ACTIVE (:MOTIF :SEVEN :CIRCLES) frames=20 mean_ms=1.213079 bytes_mean=237341.6
+ACTIVE (:MOTIF :SEVEN :CELLS) frames=20 mean_ms=1.546532 bytes_mean=564683.2
+ACTIVE (:GARNET :CONTROLS) frames=20 mean_ms=3.780270 bytes_mean=1715020.0
+ACTIVE (:GARNET :EDITING) frames=20 mean_ms=3.043603 bytes_mean=1182741.6
+ACTIVE (:GARNET :LAYOUT) frames=20 mean_ms=3.323159 bytes_mean=2583071.2
+ACTIVE (:GARNET :SCROLL) frames=20 mean_ms=4.590048 bytes_mean=3715508.0
+ACTIVE (:GARNET :STYLES) frames=20 mean_ms=2.107417 bytes_mean=1452620.0
+ACTIVE (:GARNET :MENUS) frames=20 mean_ms=1.331892 bytes_mean=792006.4
+ACTIVE (:GARNET :SEVEN :COUNTER) frames=20 mean_ms=3.290407 bytes_mean=1390834.4
+ACTIVE (:GARNET :SEVEN :TEMPERATURE) frames=20 mean_ms=1.523187 bytes_mean=1090470.4
+ACTIVE (:GARNET :SEVEN :FLIGHT) frames=20 mean_ms=1.915689 bytes_mean=1343404.0
+ACTIVE (:GARNET :SEVEN :TIMER) frames=20 mean_ms=1.996420 bytes_mean=1657910.4
+ACTIVE (:GARNET :SEVEN :CRUD) frames=20 mean_ms=1.903124 bytes_mean=1299017.6
+ACTIVE (:GARNET :SEVEN :CIRCLES) frames=20 mean_ms=1.717020 bytes_mean=1169063.2
+ACTIVE (:GARNET :SEVEN :CELLS) frames=20 mean_ms=2.673439 bytes_mean=2116056.0
+ACTIVE (:MACOS :CONTROLS) frames=20 mean_ms=2.557515 bytes_mean=438380.8
+ACTIVE (:MACOS :EDITING) frames=20 mean_ms=1.767810 bytes_mean=263499.2
+ACTIVE (:MACOS :LAYOUT) frames=20 mean_ms=1.665314 bytes_mean=317482.4
+ACTIVE (:MACOS :SCROLL) frames=20 mean_ms=1.764554 bytes_mean=507279.2
+ACTIVE (:MACOS :STYLES) frames=20 mean_ms=1.025407 bytes_mean=232463.2
+ACTIVE (:MACOS :MENUS) frames=20 mean_ms=1.545669 bytes_mean=183767.2
+ACTIVE (:MACOS :SEVEN :COUNTER) frames=20 mean_ms=1.129800 bytes_mean=247151.2
+ACTIVE (:MACOS :SEVEN :TEMPERATURE) frames=20 mean_ms=1.432835 bytes_mean=217696.8
+ACTIVE (:MACOS :SEVEN :FLIGHT) frames=20 mean_ms=1.456318 bytes_mean=250325.6
+ACTIVE (:MACOS :SEVEN :TIMER) frames=20 mean_ms=1.495994 bytes_mean=265161.6
+ACTIVE (:MACOS :SEVEN :CRUD) frames=20 mean_ms=1.283882 bytes_mean=301086.4
+ACTIVE (:MACOS :SEVEN :CIRCLES) frames=20 mean_ms=1.215726 bytes_mean=224193.6
+ACTIVE (:MACOS :SEVEN :CELLS) frames=20 mean_ms=1.620174 bytes_mean=589094.4
+ACTIVE (:QT :CONTROLS) frames=20 mean_ms=1.505723 bytes_mean=325739.2
+ACTIVE (:QT :EDITING) frames=20 mean_ms=1.675546 bytes_mean=251982.4
+ACTIVE (:QT :LAYOUT) frames=20 mean_ms=1.619597 bytes_mean=299486.4
+ACTIVE (:QT :SCROLL) frames=20 mean_ms=2.976537 bytes_mean=606904.0
+ACTIVE (:QT :STYLES) frames=20 mean_ms=1.147043 bytes_mean=232362.4
+ACTIVE (:QT :MENUS) frames=20 mean_ms=0.937282 bytes_mean=176740.0
+ACTIVE (:QT :SEVEN :COUNTER) frames=20 mean_ms=1.143742 bytes_mean=248754.4
+ACTIVE (:QT :SEVEN :TEMPERATURE) frames=20 mean_ms=1.077970 bytes_mean=217692.8
+ACTIVE (:QT :SEVEN :FLIGHT) frames=20 mean_ms=1.108580 bytes_mean=260202.4
+ACTIVE (:QT :SEVEN :TIMER) frames=20 mean_ms=1.185496 bytes_mean=268396.0
+ACTIVE (:QT :SEVEN :CRUD) frames=20 mean_ms=1.248554 bytes_mean=296640.8
+ACTIVE (:QT :SEVEN :CIRCLES) frames=20 mean_ms=1.085042 bytes_mean=222566.4
+ACTIVE (:QT :SEVEN :CELLS) frames=20 mean_ms=1.586156 bytes_mean=549863.2
+PHASE FRAME count=1300 mean_ms=0.163224 bytes_mean=186914.1
+PHASE BUILD count=1300 mean_ms=0.080542 bytes_mean=145435.3
+PHASE LAYOUT count=1300 mean_ms=0.069049 bytes_mean=39993.9
+PHASE CLEAR count=1300 mean_ms=0.001982 bytes_mean=201.5
+PHASE PAINT-FINISH count=1300 mean_ms=1.529413 bytes_mean=419250.3
+PHASE PRESENT count=1300 mean_ms=4.216500 bytes_mean=829.4
+PHASE WAIT count=1300 mean_ms=0.062392 bytes_mean=378.0
+PHASE GPU-FINISH count=1300 mean_ms=0.313199 bytes_mean=0.0
+ACTIVE ALL frames=1300 mean_ms=1.694619 bytes_mean=606365.9
+
+Optimized paced gallery, before adding the FPS toggle
+BENCH backend=wayland mode="paced window loop; not raw GPU speed" frames=1300 warmup=260 requested_size=720x520 timer_hz=1000000000
+ALLOCATION counters=SBCL scope=process gc_time=cpu sample_storage=excluded
+DEVICE cpu="AMD Ryzen 7 7800X3D 8-Core Processor" pixels=1080x780 logical=720x520 gl="AMD Radeon RX 7800 XT (radeonsi, navi32, ACO, DRM 3.64, 7.3.4-201.nobara.fc44.x86_64)"
+RESULT toolkit=all page=all frames=1300 elapsed_s=7.647839 fps=169.98 mean_ms=5.883 p50_ms=5.883 p95_ms=6.677 max_ms=7.553
+ACTIVE (:GLASS :CONTROLS) frames=20 mean_ms=1.377593 bytes_mean=615582.4
+ACTIVE (:GLASS :EDITING) frames=20 mean_ms=0.988256 bytes_mean=369969.6
+ACTIVE (:GLASS :LAYOUT) frames=20 mean_ms=0.913234 bytes_mean=463205.6
+ACTIVE (:GLASS :SCROLL) frames=20 mean_ms=1.015075 bytes_mean=626736.8
+ACTIVE (:GLASS :STYLES) frames=20 mean_ms=0.936594 bytes_mean=625121.6
+ACTIVE (:GLASS :MENUS) frames=20 mean_ms=0.624320 bytes_mean=265175.2
+ACTIVE (:GLASS :SEVEN :COUNTER) frames=20 mean_ms=0.782678 bytes_mean=402685.6
+ACTIVE (:GLASS :SEVEN :TEMPERATURE) frames=20 mean_ms=0.825581 bytes_mean=377097.6
+ACTIVE (:GLASS :SEVEN :FLIGHT) frames=20 mean_ms=0.878598 bytes_mean=435228.8
+ACTIVE (:GLASS :SEVEN :TIMER) frames=20 mean_ms=0.878463 bytes_mean=409308.8
+ACTIVE (:GLASS :SEVEN :CRUD) frames=20 mean_ms=0.944608 bytes_mean=486071.2
+ACTIVE (:GLASS :SEVEN :CIRCLES) frames=20 mean_ms=0.798573 bytes_mean=381393.6
+ACTIVE (:GLASS :SEVEN :CELLS) frames=20 mean_ms=1.025678 bytes_mean=703731.2
+ACTIVE (:MOTIF :CONTROLS) frames=20 mean_ms=0.696536 bytes_mean=250384.8
+ACTIVE (:MOTIF :EDITING) frames=20 mean_ms=0.695144 bytes_mean=248745.6
+ACTIVE (:MOTIF :LAYOUT) frames=20 mean_ms=0.674471 bytes_mean=309167.2
+ACTIVE (:MOTIF :SCROLL) frames=20 mean_ms=0.766385 bytes_mean=464691.2
+ACTIVE (:MOTIF :STYLES) frames=20 mean_ms=0.486758 bytes_mean=237355.2
+ACTIVE (:MOTIF :MENUS) frames=20 mean_ms=0.444270 bytes_mean=193140.8
+ACTIVE (:MOTIF :SEVEN :COUNTER) frames=20 mean_ms=0.461880 bytes_mean=216020.0
+ACTIVE (:MOTIF :SEVEN :TEMPERATURE) frames=20 mean_ms=0.492954 bytes_mean=235682.4
+ACTIVE (:MOTIF :SEVEN :FLIGHT) frames=20 mean_ms=0.514443 bytes_mean=261878.4
+ACTIVE (:MOTIF :SEVEN :TIMER) frames=20 mean_ms=0.564852 bytes_mean=248775.2
+ACTIVE (:MOTIF :SEVEN :CRUD) frames=20 mean_ms=0.685550 bytes_mean=289979.2
+ACTIVE (:MOTIF :SEVEN :CIRCLES) frames=20 mean_ms=0.583919 bytes_mean=235686.4
+ACTIVE (:MOTIF :SEVEN :CELLS) frames=20 mean_ms=0.776875 bytes_mean=561352.0
+ACTIVE (:GARNET :CONTROLS) frames=20 mean_ms=1.029166 bytes_mean=322459.2
+ACTIVE (:GARNET :EDITING) frames=20 mean_ms=0.772501 bytes_mean=309358.4
+ACTIVE (:GARNET :LAYOUT) frames=20 mean_ms=0.894088 bytes_mean=383034.4
+ACTIVE (:GARNET :SCROLL) frames=20 mean_ms=1.104736 bytes_mean=551591.2
+ACTIVE (:GARNET :STYLES) frames=20 mean_ms=0.772248 bytes_mean=296316.0
+ACTIVE (:GARNET :MENUS) frames=20 mean_ms=0.613801 bytes_mean=237376.0
+ACTIVE (:GARNET :SEVEN :COUNTER) frames=20 mean_ms=0.595734 bytes_mean=297949.6
+ACTIVE (:GARNET :SEVEN :TEMPERATURE) frames=20 mean_ms=0.542264 bytes_mean=309422.4
+ACTIVE (:GARNET :SEVEN :FLIGHT) frames=20 mean_ms=0.689200 bytes_mean=350168.0
+ACTIVE (:GARNET :SEVEN :TIMER) frames=20 mean_ms=0.708680 bytes_mean=332322.4
+ACTIVE (:GARNET :SEVEN :CRUD) frames=20 mean_ms=0.727996 bytes_mean=381428.0
+ACTIVE (:GARNET :SEVEN :CIRCLES) frames=20 mean_ms=0.571230 bytes_mean=322488.0
+ACTIVE (:GARNET :SEVEN :CELLS) frames=20 mean_ms=1.005417 bytes_mean=689336.0
+ACTIVE (:MACOS :CONTROLS) frames=20 mean_ms=0.775318 bytes_mean=337253.6
+ACTIVE (:MACOS :EDITING) frames=20 mean_ms=0.705206 bytes_mean=258602.4
+ACTIVE (:MACOS :LAYOUT) frames=20 mean_ms=0.645656 bytes_mean=312551.2
+ACTIVE (:MACOS :SCROLL) frames=20 mean_ms=0.767653 bytes_mean=502370.4
+ACTIVE (:MACOS :STYLES) frames=20 mean_ms=0.543584 bytes_mean=230777.6
+ACTIVE (:MACOS :MENUS) frames=20 mean_ms=0.438463 bytes_mean=184968.0
+ACTIVE (:MACOS :SEVEN :COUNTER) frames=20 mean_ms=0.508427 bytes_mean=247131.2
+ACTIVE (:MACOS :SEVEN :TEMPERATURE) frames=20 mean_ms=0.453359 bytes_mean=216055.2
+ACTIVE (:MACOS :SEVEN :FLIGHT) frames=20 mean_ms=0.590301 bytes_mean=248735.2
+ACTIVE (:MACOS :SEVEN :TIMER) frames=20 mean_ms=0.574482 bytes_mean=256970.4
+ACTIVE (:MACOS :SEVEN :CRUD) frames=20 mean_ms=0.620653 bytes_mean=301144.0
+ACTIVE (:MACOS :SEVEN :CIRCLES) frames=20 mean_ms=0.542849 bytes_mean=227484.0
+ACTIVE (:MACOS :SEVEN :CELLS) frames=20 mean_ms=0.752587 bytes_mean=589104.8
+ACTIVE (:QT :CONTROLS) frames=20 mean_ms=0.840043 bytes_mean=317550.4
+ACTIVE (:QT :EDITING) frames=20 mean_ms=0.698437 bytes_mean=248767.2
+ACTIVE (:QT :LAYOUT) frames=20 mean_ms=0.706066 bytes_mean=299484.0
+ACTIVE (:QT :SCROLL) frames=20 mean_ms=0.900318 bytes_mean=461642.4
+ACTIVE (:QT :STYLES) frames=20 mean_ms=0.535772 bytes_mean=227453.6
+ACTIVE (:QT :MENUS) frames=20 mean_ms=0.459037 bytes_mean=178365.6
+ACTIVE (:QT :SEVEN :COUNTER) frames=20 mean_ms=0.731984 bytes_mean=347068.0
+ACTIVE (:QT :SEVEN :TEMPERATURE) frames=20 mean_ms=0.514303 bytes_mean=216043.2
+ACTIVE (:QT :SEVEN :FLIGHT) frames=20 mean_ms=0.569887 bytes_mean=263560.0
+ACTIVE (:QT :SEVEN :TIMER) frames=20 mean_ms=0.635761 bytes_mean=268439.2
+ACTIVE (:QT :SEVEN :CRUD) frames=20 mean_ms=0.629728 bytes_mean=299531.2
+ACTIVE (:QT :SEVEN :CIRCLES) frames=20 mean_ms=0.552968 bytes_mean=224179.2
+ACTIVE (:QT :SEVEN :CELLS) frames=20 mean_ms=0.890850 bytes_mean=546444.0
+PHASE FRAME count=1300 mean_ms=0.132910 bytes_mean=186317.0
+PHASE BUILD count=1300 mean_ms=0.074687 bytes_mean=145617.9
+PHASE LAYOUT count=1300 mean_ms=0.045925 bytes_mean=39517.0
+PHASE CLEAR count=1300 mean_ms=0.001837 bytes_mean=176.3
+PHASE PAINT-FINISH count=1300 mean_ms=0.579777 bytes_mean=159800.4
+PHASE PRESENT count=1300 mean_ms=5.159946 bytes_mean=1005.3
+PHASE GPU-FINISH count=1300 mean_ms=0.354743 bytes_mean=0.0
+ACTIVE ALL frames=1300 mean_ms=0.714524 bytes_mean=346293.7
+
+Original renderer, uncapped, with FPS toggle
+BENCH backend=wayland mode="uncapped window loop; compositor may throttle" frames=1300 warmup=260 requested_size=720x520 timer_hz=1000000000
+ALLOCATION counters=SBCL scope=process gc_time=cpu sample_storage=excluded
+DEVICE cpu="AMD Ryzen 7 7800X3D 8-Core Processor" pixels=1080x780 logical=720x520 gl="AMD Radeon RX 7800 XT (radeonsi, navi32, ACO, DRM 3.64, 7.3.4-201.nobara.fc44.x86_64)"
+RESULT toolkit=all page=all frames=1300 elapsed_s=2.209728 fps=588.31 mean_ms=1.700 p50_ms=1.464 p95_ms=2.714 max_ms=37.283
+ACTIVE (:GLASS :CONTROLS) frames=20 mean_ms=2.055219 bytes_mean=528620.8
+ACTIVE (:GLASS :EDITING) frames=20 mean_ms=1.894389 bytes_mean=386245.6
+ACTIVE (:GLASS :LAYOUT) frames=20 mean_ms=1.825636 bytes_mean=474620.0
+ACTIVE (:GLASS :SCROLL) frames=20 mean_ms=1.939629 bytes_mean=626456.8
+ACTIVE (:GLASS :STYLES) frames=20 mean_ms=1.693090 bytes_mean=638280.8
+ACTIVE (:GLASS :MENUS) frames=20 mean_ms=1.116230 bytes_mean=281601.6
+ACTIVE (:GLASS :SEVEN :COUNTER) frames=20 mean_ms=1.284114 bytes_mean=419125.6
+ACTIVE (:GLASS :SEVEN :TEMPERATURE) frames=20 mean_ms=1.371987 bytes_mean=389632.0
+ACTIVE (:GLASS :SEVEN :FLIGHT) frames=20 mean_ms=1.422594 bytes_mean=451773.6
+ACTIVE (:GLASS :SEVEN :TIMER) frames=20 mean_ms=1.420984 bytes_mean=423984.8
+ACTIVE (:GLASS :SEVEN :CRUD) frames=20 mean_ms=1.493443 bytes_mean=500922.4
+ACTIVE (:GLASS :SEVEN :CIRCLES) frames=20 mean_ms=1.528746 bytes_mean=396128.0
+ACTIVE (:GLASS :SEVEN :CELLS) frames=20 mean_ms=1.748826 bytes_mean=711990.4
+ACTIVE (:MOTIF :CONTROLS) frames=20 mean_ms=2.691481 bytes_mean=364664.8
+ACTIVE (:MOTIF :EDITING) frames=20 mean_ms=1.733504 bytes_mean=271689.6
+ACTIVE (:MOTIF :LAYOUT) frames=20 mean_ms=1.679628 bytes_mean=327174.4
+ACTIVE (:MOTIF :SCROLL) frames=20 mean_ms=1.649719 bytes_mean=472812.8
+ACTIVE (:MOTIF :STYLES) frames=20 mean_ms=1.087998 bytes_mean=248744.8
+ACTIVE (:MOTIF :MENUS) frames=20 mean_ms=0.963321 bytes_mean=199084.0
+ACTIVE (:MOTIF :SEVEN :COUNTER) frames=20 mean_ms=0.955245 bytes_mean=230776.8
+ACTIVE (:MOTIF :SEVEN :TEMPERATURE) frames=20 mean_ms=0.968160 bytes_mean=242236.0
+ACTIVE (:MOTIF :SEVEN :FLIGHT) frames=20 mean_ms=1.110263 bytes_mean=271717.6
+ACTIVE (:MOTIF :SEVEN :TIMER) frames=20 mean_ms=1.042729 bytes_mean=256954.4
+ACTIVE (:MOTIF :SEVEN :CRUD) frames=20 mean_ms=1.167786 bytes_mean=306037.6
+ACTIVE (:MOTIF :SEVEN :CIRCLES) frames=20 mean_ms=1.074110 bytes_mean=245493.6
+ACTIVE (:MOTIF :SEVEN :CELLS) frames=20 mean_ms=1.443781 bytes_mean=571107.2
+ACTIVE (:GARNET :CONTROLS) frames=20 mean_ms=3.894991 bytes_mean=1816008.8
+ACTIVE (:GARNET :EDITING) frames=20 mean_ms=2.901980 bytes_mean=1257530.4
+ACTIVE (:GARNET :LAYOUT) frames=20 mean_ms=3.211439 bytes_mean=2650348.0
+ACTIVE (:GARNET :SCROLL) frames=20 mean_ms=4.858261 bytes_mean=3787858.4
+ACTIVE (:GARNET :STYLES) frames=20 mean_ms=2.422286 bytes_mean=1535420.0
+ACTIVE (:GARNET :MENUS) frames=20 mean_ms=2.880398 bytes_mean=1100485.6
+ACTIVE (:GARNET :SEVEN :COUNTER) frames=20 mean_ms=1.716033 bytes_mean=1260616.8
+ACTIVE (:GARNET :SEVEN :TEMPERATURE) frames=20 mean_ms=1.600926 bytes_mean=1168022.4
+ACTIVE (:GARNET :SEVEN :FLIGHT) frames=20 mean_ms=1.879826 bytes_mean=1420990.4
+ACTIVE (:GARNET :SEVEN :TIMER) frames=20 mean_ms=2.312194 bytes_mean=1739254.4
+ACTIVE (:GARNET :SEVEN :CRUD) frames=20 mean_ms=1.954396 bytes_mean=1383195.2
+ACTIVE (:GARNET :SEVEN :CIRCLES) frames=20 mean_ms=1.939957 bytes_mean=1254680.8
+ACTIVE (:GARNET :SEVEN :CELLS) frames=20 mean_ms=2.647899 bytes_mean=2140111.2
+ACTIVE (:MACOS :CONTROLS) frames=20 mean_ms=2.691734 bytes_mean=457580.8
+ACTIVE (:MACOS :EDITING) frames=20 mean_ms=1.661355 bytes_mean=271759.2
+ACTIVE (:MACOS :LAYOUT) frames=20 mean_ms=1.525754 bytes_mean=320712.8
+ACTIVE (:MACOS :SCROLL) frames=20 mean_ms=1.664661 bytes_mean=507468.0
+ACTIVE (:MACOS :STYLES) frames=20 mean_ms=1.042637 bytes_mean=242252.8
+ACTIVE (:MACOS :MENUS) frames=20 mean_ms=0.879406 bytes_mean=191550.4
+ACTIVE (:MACOS :SEVEN :COUNTER) frames=20 mean_ms=1.064361 bytes_mean=258076.0
+ACTIVE (:MACOS :SEVEN :TEMPERATURE) frames=20 mean_ms=0.922141 bytes_mean=224213.6
+ACTIVE (:MACOS :SEVEN :FLIGHT) frames=20 mean_ms=1.033250 bytes_mean=260183.2
+ACTIVE (:MACOS :SEVEN :TIMER) frames=20 mean_ms=1.088211 bytes_mean=270044.0
+ACTIVE (:MACOS :SEVEN :CRUD) frames=20 mean_ms=1.185230 bytes_mean=306088.8
+ACTIVE (:MACOS :SEVEN :CIRCLES) frames=20 mean_ms=1.086738 bytes_mean=235696.8
+ACTIVE (:MACOS :SEVEN :CELLS) frames=20 mean_ms=1.485483 bytes_mean=600724.8
+ACTIVE (:QT :CONTROLS) frames=20 mean_ms=1.521379 bytes_mean=338779.2
+ACTIVE (:QT :EDITING) frames=20 mean_ms=2.777978 bytes_mean=435164.8
+ACTIVE (:QT :LAYOUT) frames=20 mean_ms=1.477089 bytes_mean=314165.6
+ACTIVE (:QT :SCROLL) frames=20 mean_ms=1.721897 bytes_mean=471176.8
+ACTIVE (:QT :STYLES) frames=20 mean_ms=1.059377 bytes_mean=238902.4
+ACTIVE (:QT :MENUS) frames=20 mean_ms=0.891153 bytes_mean=186570.4
+ACTIVE (:QT :SEVEN :COUNTER) frames=20 mean_ms=0.949926 bytes_mean=250428.8
+ACTIVE (:QT :SEVEN :TEMPERATURE) frames=20 mean_ms=0.939158 bytes_mean=224206.4
+ACTIVE (:QT :SEVEN :FLIGHT) frames=20 mean_ms=1.068054 bytes_mean=256958.4
+ACTIVE (:QT :SEVEN :TIMER) frames=20 mean_ms=1.156604 bytes_mean=273324.0
+ACTIVE (:QT :SEVEN :CRUD) frames=20 mean_ms=1.223028 bytes_mean=307659.2
+ACTIVE (:QT :SEVEN :CIRCLES) frames=20 mean_ms=1.122877 bytes_mean=233344.0
+ACTIVE (:QT :SEVEN :CELLS) frames=20 mean_ms=1.539536 bytes_mean=559646.4
+PHASE FRAME count=1300 mean_ms=0.134168 bytes_mean=191069.9
+PHASE BUILD count=1300 mean_ms=0.063354 bytes_mean=149131.1
+PHASE LAYOUT count=1300 mean_ms=0.060330 bytes_mean=40603.1
+PHASE CLEAR count=1300 mean_ms=0.001350 bytes_mean=252.0
+PHASE PAINT-FINISH count=1300 mean_ms=1.516208 bytes_mean=439279.4
+PHASE PRESENT count=1300 mean_ms=0.045006 bytes_mean=1107.7
+PHASE GPU-FINISH count=1300 mean_ms=0.320667 bytes_mean=0.0
+ACTIVE ALL frames=1300 mean_ms=1.651726 bytes_mean=630601.2
+
+Optimized renderer, uncapped, continuous demo redraw
+BENCH backend=wayland mode="uncapped window loop; compositor may throttle" frames=1300 warmup=260 requested_size=720x520 timer_hz=1000000000
+ALLOCATION counters=SBCL scope=process gc_time=cpu sample_storage=excluded
+DEVICE cpu="AMD Ryzen 7 7800X3D 8-Core Processor" pixels=1080x780 logical=720x520 gl="AMD Radeon RX 7800 XT (radeonsi, navi32, ACO, DRM 3.64, 7.3.4-201.nobara.fc44.x86_64)"
+RESULT toolkit=all page=all frames=1300 elapsed_s=1.035194 fps=1255.80 mean_ms=0.796 p50_ms=0.715 p95_ms=1.059 max_ms=7.969
+ACTIVE (:GLASS :CONTROLS) frames=20 mean_ms=1.210745 bytes_mean=613890.4
+ACTIVE (:GLASS :EDITING) frames=20 mean_ms=0.850908 bytes_mean=389483.2
+ACTIVE (:GLASS :LAYOUT) frames=20 mean_ms=0.904841 bytes_mean=476297.6
+ACTIVE (:GLASS :SCROLL) frames=20 mean_ms=1.086828 bytes_mean=627376.8
+ACTIVE (:GLASS :STYLES) frames=20 mean_ms=0.991634 bytes_mean=639864.8
+ACTIVE (:GLASS :MENUS) frames=20 mean_ms=0.683822 bytes_mean=284852.8
+ACTIVE (:GLASS :SEVEN :COUNTER) frames=20 mean_ms=0.860746 bytes_mean=417456.0
+ACTIVE (:GLASS :SEVEN :TEMPERATURE) frames=20 mean_ms=0.780685 bytes_mean=389567.2
+ACTIVE (:GLASS :SEVEN :FLIGHT) frames=20 mean_ms=0.960891 bytes_mean=451802.4
+ACTIVE (:GLASS :SEVEN :TIMER) frames=20 mean_ms=0.846159 bytes_mean=422259.2
+ACTIVE (:GLASS :SEVEN :CRUD) frames=20 mean_ms=0.917304 bytes_mean=502491.2
+ACTIVE (:GLASS :SEVEN :CIRCLES) frames=20 mean_ms=0.776361 bytes_mean=396108.8
+ACTIVE (:GLASS :SEVEN :CELLS) frames=20 mean_ms=1.009857 bytes_mean=710316.8
+ACTIVE (:MOTIF :CONTROLS) frames=20 mean_ms=0.666654 bytes_mean=260239.2
+ACTIVE (:MOTIF :EDITING) frames=20 mean_ms=0.706200 bytes_mean=256965.6
+ACTIVE (:MOTIF :LAYOUT) frames=20 mean_ms=1.036503 bytes_mean=315746.4
+ACTIVE (:MOTIF :SCROLL) frames=20 mean_ms=0.757245 bytes_mean=468032.0
+ACTIVE (:MOTIF :STYLES) frames=20 mean_ms=0.567392 bytes_mean=242202.4
+ACTIVE (:MOTIF :MENUS) frames=20 mean_ms=0.517531 bytes_mean=202910.4
+ACTIVE (:MOTIF :SEVEN :COUNTER) frames=20 mean_ms=0.531391 bytes_mean=227533.6
+ACTIVE (:MOTIF :SEVEN :TEMPERATURE) frames=20 mean_ms=0.553662 bytes_mean=243891.2
+ACTIVE (:MOTIF :SEVEN :FLIGHT) frames=20 mean_ms=0.676670 bytes_mean=270035.2
+ACTIVE (:MOTIF :SEVEN :TIMER) frames=20 mean_ms=0.669809 bytes_mean=256931.2
+ACTIVE (:MOTIF :SEVEN :CRUD) frames=20 mean_ms=0.721810 bytes_mean=306102.4
+ACTIVE (:MOTIF :SEVEN :CIRCLES) frames=20 mean_ms=0.682945 bytes_mean=240679.2
+ACTIVE (:MOTIF :SEVEN :CELLS) frames=20 mean_ms=0.796472 bytes_mean=567859.2
+ACTIVE (:GARNET :CONTROLS) frames=20 mean_ms=1.141098 bytes_mean=338808.8
+ACTIVE (:GARNET :EDITING) frames=20 mean_ms=0.808887 bytes_mean=322464.0
+ACTIVE (:GARNET :LAYOUT) frames=20 mean_ms=0.941106 bytes_mean=394426.4
+ACTIVE (:GARNET :SCROLL) frames=20 mean_ms=1.177787 bytes_mean=564687.2
+ACTIVE (:GARNET :STYLES) frames=20 mean_ms=0.721083 bytes_mean=309355.2
+ACTIVE (:GARNET :MENUS) frames=20 mean_ms=0.686841 bytes_mean=249552.0
+ACTIVE (:GARNET :SEVEN :COUNTER) frames=20 mean_ms=0.648727 bytes_mean=311039.2
+ACTIVE (:GARNET :SEVEN :TEMPERATURE) frames=20 mean_ms=0.651044 bytes_mean=324092.8
+ACTIVE (:GARNET :SEVEN :FLIGHT) frames=20 mean_ms=0.665575 bytes_mean=363426.4
+ACTIVE (:GARNET :SEVEN :TIMER) frames=20 mean_ms=0.669901 bytes_mean=342126.4
+ACTIVE (:GARNET :SEVEN :CRUD) frames=20 mean_ms=0.691346 bytes_mean=394491.2
+ACTIVE (:GARNET :SEVEN :CIRCLES) frames=20 mean_ms=0.624518 bytes_mean=330692.0
+ACTIVE (:GARNET :SEVEN :CELLS) frames=20 mean_ms=1.003430 bytes_mean=654653.6
+ACTIVE (:MACOS :CONTROLS) frames=20 mean_ms=0.780476 bytes_mean=351980.0
+ACTIVE (:MACOS :EDITING) frames=20 mean_ms=0.699016 bytes_mean=266802.4
+ACTIVE (:MACOS :LAYOUT) frames=20 mean_ms=0.689815 bytes_mean=322406.4
+ACTIVE (:MACOS :SCROLL) frames=20 mean_ms=0.743473 bytes_mean=508997.6
+ACTIVE (:MACOS :STYLES) frames=20 mean_ms=0.557205 bytes_mean=242272.8
+ACTIVE (:MACOS :MENUS) frames=20 mean_ms=0.435900 bytes_mean=191522.4
+ACTIVE (:MACOS :SEVEN :COUNTER) frames=20 mean_ms=0.536125 bytes_mean=258704.8
+ACTIVE (:MACOS :SEVEN :TEMPERATURE) frames=20 mean_ms=0.497265 bytes_mean=229118.4
+ACTIVE (:MACOS :SEVEN :FLIGHT) frames=20 mean_ms=0.692324 bytes_mean=260819.2
+ACTIVE (:MACOS :SEVEN :TIMER) frames=20 mean_ms=0.591344 bytes_mean=258609.6
+ACTIVE (:MACOS :SEVEN :CRUD) frames=20 mean_ms=0.718557 bytes_mean=307748.8
+ACTIVE (:MACOS :SEVEN :CIRCLES) frames=20 mean_ms=0.526309 bytes_mean=229148.0
+ACTIVE (:MACOS :SEVEN :CELLS) frames=20 mean_ms=0.824746 bytes_mean=595698.4
+ACTIVE (:QT :CONTROLS) frames=20 mean_ms=0.777683 bytes_mean=335573.6
+ACTIVE (:QT :EDITING) frames=20 mean_ms=0.696779 bytes_mean=260300.0
+ACTIVE (:QT :LAYOUT) frames=20 mean_ms=0.710707 bytes_mean=307655.2
+ACTIVE (:QT :SCROLL) frames=20 mean_ms=0.836289 bytes_mean=466310.4
+ACTIVE (:QT :STYLES) frames=20 mean_ms=0.582007 bytes_mean=235632.0
+ACTIVE (:QT :MENUS) frames=20 mean_ms=0.471764 bytes_mean=183323.2
+ACTIVE (:QT :SEVEN :COUNTER) frames=20 mean_ms=0.540530 bytes_mean=255376.0
+ACTIVE (:QT :SEVEN :TEMPERATURE) frames=20 mean_ms=0.482457 bytes_mean=225838.4
+ACTIVE (:QT :SEVEN :FLIGHT) frames=20 mean_ms=0.859543 bytes_mean=384658.4
+ACTIVE (:QT :SEVEN :TIMER) frames=20 mean_ms=0.620096 bytes_mean=268446.4
+ACTIVE (:QT :SEVEN :CRUD) frames=20 mean_ms=0.711012 bytes_mean=307722.4
+ACTIVE (:QT :SEVEN :CIRCLES) frames=20 mean_ms=0.620133 bytes_mean=234035.2
+ACTIVE (:QT :SEVEN :CELLS) frames=20 mean_ms=0.903362 bytes_mean=556952.8
+PHASE FRAME count=1300 mean_ms=0.121879 bytes_mean=191714.7
+PHASE BUILD count=1300 mean_ms=0.067844 bytes_mean=149665.7
+PHASE LAYOUT count=1300 mean_ms=0.043239 bytes_mean=40740.7
+PHASE CLEAR count=1300 mean_ms=0.001526 bytes_mean=302.3
+PHASE PAINT-FINISH count=1300 mean_ms=0.619692 bytes_mean=163773.2
+PHASE PRESENT count=1300 mean_ms=0.047449 bytes_mean=1331.9
+PHASE GPU-FINISH count=1300 mean_ms=0.397149 bytes_mean=0.0
+ACTIVE ALL frames=1300 mean_ms=0.743097 bytes_mean=355790.2
