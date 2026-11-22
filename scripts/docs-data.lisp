@@ -41,7 +41,7 @@
      "REVEAL-RECT" "TAKE-EVENTS" "EVENT-TARGETS" "RESET-EDITOR" "EDIT-VALUE"
      "MOUNT" "UNMOUNT" "REFRESH"
      "TABLE" "TABLE-ROW" "TABLE-CELL" "SEARCHABLE-COMBOBOX")
-    ("lui.retained" "DRAW")
+    ("lui.retained" "DRAW" "LIST")
     ("lui.key" . :all)
     ("lui.palette"
      "PALETTE-THUMB" "PALETTE-CONTROL-BACKGROUND" "PALETTE-BACKGROUND"

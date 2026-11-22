@@ -170,12 +170,78 @@
         (assert found)))
     (assert (equal (getf (rest (first tree)) :padding) '(:units 2)))))
 
+(defun test-node-constructor ()
+  (let* ((button (lui.retained:list :button :text "Hello" :disabled-p nil))
+         (children (list button))
+         (panel (lui.retained:list :column :gap '(:units 1)
+                                  :children children)))
+    (assert (equal button '(:button "Hello" :disabled-p nil)))
+    (assert (equal panel '(:column (:gap (:units 1))
+                          (:button "Hello" :disabled-p nil))))
+    (assert (not (eq children (cddr panel)))))
+  (assert (equal (lui.retained:list :radio :choice nil :text "None")
+                 '(:radio nil "None")))
+  (assert (equal (lui.retained:list :slider :text "Volume" :value 0)
+                 '(:slider :text "Volume" :value 0)))
+  (assert (equal (lui.retained:list :text-field :value nil)
+                 '(:text-field :value nil)))
+  (assert (equal (lui.retained:list :button :text "Explicit"
+                                   :options '(:text "Fallback" :padding 2))
+                 '(:button "Explicit" :padding 2)))
+  (assert (handler-case (progn (lui.retained:list :button) nil)
+            (lui:configuration-error () t)))
+  (assert (handler-case
+              (progn (lui.retained:list :label :text "x"
+                                       :children '((:label "y"))) nil)
+            (lui:configuration-error () t)))
+  (assert (handler-case
+              (progn (apply (symbol-function 'lui.retained:list) '(:label :text "x" :typo 1))
+                     nil)
+            (program-error () t))))
+
+(defun test-symbol-callbacks ()
+  (let* ((context (%lui.tests.support:make-test-context))
+         (callback (gensym "CALLBACK"))
+         (change (gensym "CHANGE"))
+         (result nil)
+         (tree (list
+                (lui.retained:list
+                 :button :text "Redefine" :id :first
+                 :on-activate (lambda ()
+                                (setf (symbol-function callback)
+                                      (lambda () (push :new result)))))
+                (lui.retained:list :button :text "Call" :id :second
+                                  :on-activate callback)
+                (lui.retained:list :text-field :id :edit
+                                  :on-change change))))
+    (unwind-protect
+         (progn
+           ;; Unbound symbols can be stored as data before defining handlers.
+           (setf (symbol-function callback) (lambda () (push :old result))
+                 (symbol-function change) (lambda (text) (push text result)))
+           (lui:with-frame (context 80 30) (lui.retained:draw tree))
+           (lui:with-frame
+               (context 80 30 :events
+                        (list (%lui.frame:make-event
+                               :kind :activate :id (retained-id :first context))
+                              (%lui.frame:make-event
+                               :kind :activate :id (retained-id :second context))
+                              (%lui.frame:make-event
+                               :kind :text :id (retained-id :edit context)
+                               :value "changed")))
+             (lui.retained:draw tree))
+           (assert (equal (reverse result) '(:new "changed"))))
+      (fmakunbound callback)
+      (fmakunbound change))))
+
 (defun run-tests ()
   (test-values-and-identity)
   (test-activation-and-containers)
   (test-invalid-trees)
   (test-circular-tree)
   (test-styling)
+  (test-node-constructor)
+  (test-symbol-callbacks)
   (test-load-time-spacing)
   (test-deferred-callbacks)
   (test-discarded-callbacks)

@@ -413,7 +413,11 @@ accepts a reusable list of data nodes inside a frame, including the callback
 passed to `lui:run`. Leaves use `(:button "Hello" :id :hello ...)`;
 containers use `(:column (:gap 1) (:label "Hello") ...)`. Options and values
 are ordinary data; forms are never evaluated. `:on-activate` is a zero-argument
-function; `:on-change` receives the new value. DRAW dispatches callbacks after
+function; `:on-change` receives the new value. Both accept symbol names, resolved
+through SYMBOL-FUNCTION when dispatched so redefinitions take effect.
+`lui.retained:list` constructs nodes using explicit keyword arguments for editor
+completion, e.g. `(lui.retained:list :button :text "Hello" :on-activate 'hello)`;
+containers use `:children`. Use CL:LIST for a forest or the original raw syntax. DRAW dispatches callbacks after
 successful tree traversal and requests a redraw automatically. Callbacks may
 edit stored trees directly; edits appear on the next frame.
 Explicit sibling IDs preserve state across reordering; otherwise identity is
