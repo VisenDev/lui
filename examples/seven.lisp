@@ -22,9 +22,9 @@
   (timer (%lui.seven.model:make-timer) :type %lui.seven.model:timer)
   (crud (initial-records) :type %lui.seven.model:crud)
   (circles (%lui.example.seven.circles:make-state)
-           :type %lui.example.seven.circles::state)
+           :type %lui.example.seven.circles:state)
   (cells (%lui.example.seven.cells:make-state)
-         :type %lui.example.seven.cells::state)
+         :type %lui.example.seven.cells:state)
   (filter "" :type string) (name "" :type string) (surname "" :type string)
   reveal)
 
@@ -179,23 +179,22 @@
         (setf (state-reveal state) id)
         (lui:request-frame)))
     (when focus
-      (setf (%lui.frame:context-focus %lui.frame:*context*)
+      (setf (lui:focused-widget)
             (list :seven-person id)))))
 
 (defun select-record (state people)
   (let* ((model (state-crud state))
-         (focus (lui:widget-key (%lui.frame:context-focus
-              %lui.frame:*context*))))
+         (focus (lui:widget-key (lui:focused-widget))))
     (dolist (person people)
       (let ((id (list :seven-person (%lui.seven.model:person-id person))))
         (when (or (lui:activated-p id)
                   (some (lambda (event)
                           (and (eq (lui:event-kind event) :press)
                                (eq (lui:event-button event) :primary)))
-                        (%lui.frame:events-for id)))
+                        (lui:events-for id)))
           (select-person state (%lui.seven.model:person-id person) t))))
     (when (and people (person-id-p focus))
-      (loop for event across (%lui.frame:events-for focus) do
+      (loop for event across (lui:events-for focus) do
         (when (eq (lui:event-kind event) :key)
           (let* ((index (or (position (%lui.seven.model:crud-selected model)
                       people
@@ -205,7 +204,7 @@
             (when next
               (select-person state (%lui.seven.model:person-id (nth next
                       people)) t)
-              (setf (%lui.frame:context-focus-visible-p %lui.frame:*context*)
+              (setf (lui:focus-visible-p)
                 t))))))))
 
 (defun visible-people (state)
@@ -249,8 +248,7 @@
       (let* ((people (visible-people state))
              (index (position (%lui.seven.model:crud-selected model) people
                 :key #'%lui.seven.model:person-id))
-             (focused (person-id-p (lui:widget-key (%lui.frame:context-focus
-                    %lui.frame:*context*)))))
+             (focused (person-id-p (lui:widget-key (lui:focused-widget)))))
         (%lui.seven.model:crud-delete model (%lui.seven.model:crud-selected
               model))
         (setf people (visible-people state))

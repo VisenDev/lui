@@ -31,7 +31,8 @@ in `AGENTS.md` and application documentation in docstrings and
 - Use one package per core source file; backend files may group related
   packages. Implementation packages may use `:use`.
   Demos and examples must use only Common Lisp in `:use`; qualify their LUI API
-  references. Keep local variables and structure slot names ordinary local
+  references. Demos must not call internal LUI APIs or packages; use public
+  APIs and ordinary DEFUN for example functions. Keep local variables and structure slot names ordinary local
   symbols. Qualify or explicitly import other external API symbols.
 - Side-effect-only functions declare `(values)` and end with `(values)`,
   including early function exits; reserve `null` for an actual NIL result.
@@ -76,9 +77,9 @@ the change and report material limitations instead of claiming untested support.
 ## Source organization
 
 - Keep portable source files numbered in dependency order (`01-fn.lisp`
-  through `16-debug.lisp`). Palette and toolkit support precede the application
+  through `17-retained.lisp`). Palette and toolkit support precede the application
   facade in `07-palette.lisp`, `08-toolkit.lisp`, and `09-lui.lisp`.
-  The debugger remains an optional ASDF system.
+  The debugger and retained layer remain optional ASDF systems.
 - Keyboard constants live in `src/02-key.lisp` (`lui.key`), loaded before
   text/frame support. Always qualify keycodes with `lui.key:`; do not use
   or import that package. Keycode constants evaluate to their own symbols.
@@ -100,7 +101,8 @@ the change and report material limitations instead of claiming untested support.
 
 ## Architecture and contracts
 
-- LUI is an immediate-mode Common Lisp UI library. Applications own their model
+- LUI is a Common Lisp UI library with an immediate-mode core and an optional
+  data-driven retained layer (`lui/retained`). Applications own their model
   state; value controls retain local state unless `:value` is supplied.
   `lui:run` owns the backend lifecycle. The same gallery and widget logic
   run on native windows, the browser, and the terminal. Avoid demo-only fixes
@@ -403,6 +405,33 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   FPS includes pacing; layout time is a 30-frame rolling average including
   measurement but excluding construction, painting, presentation, and pacing.
   `1000 / layout-ms` is only a layout throughput ceiling.
+
+### Retained descriptions
+
+Load `lui/retained` separately from the host backend. `lui.retained:draw`
+accepts a reusable list of data nodes inside a frame, including the callback
+passed to `lui:run`. Leaves use `(:button "Hello" :id :hello ...)`;
+containers use `(:column (:gap 1) (:label "Hello") ...)`. Options and values
+are ordinary data; forms are never evaluated. `:on-activate` is a zero-argument
+function; `:on-change` receives the new value. DRAW dispatches callbacks after
+successful tree traversal and requests a redraw automatically. Callbacks may
+edit stored trees directly; edits appear on the next frame.
+Explicit sibling IDs preserve state across reordering; otherwise identity is
+positional. Give separate trees distinct DRAW `:id` values. State, layout and
+input remain owned by the core; this module does not cache layout or provide
+reactive bindings. Test it with `(asdf:test-system "lui/retained")`.
+Run `make retained-demo` (or `PLATFORM=terminal`) for nested layouts, callbacks,
+and a live data preview. Nodes accept ordinary LUI styling keywords such as
+`:padding`, `:foreground`, `:background`, `:font-size`, and `:font-weight`.
+The demo includes toolkit/palette cycle buttons and the gallery FPS/layout
+readout; FPS includes pacing. The retained module owns callback dispatch; keyed
+editable rows demonstrate state preservation when reordered. This demo owns
+one global `*tree*` defined directly with DEFPARAMETER and top-level callbacks.
+MAIN resets model values once and passes an inline lambda to RUN. Numeric
+spacing options use `(:units NUMBER)` descriptors, resolved by retained DRAW
+for the active backend without rebuilding or modifying the data tree. Load
+`lui/retained-demo` and call `%lui.example.retained-demo:main` from a Lisp REPL
+with a backend loaded.
 
 ### Future navigation work
 

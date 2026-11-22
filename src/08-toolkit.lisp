@@ -4,7 +4,7 @@
   (:export
            #:register-toolkit #:register-toolkit-rendering #:toolkit-paint
            #:toolkit-geometry #:toolkit-native-labels-p #:toolkit-palette
-           #:toolkit-defaults #:define-toolkit #:%*toolkit-revision*
+           #:toolkit-revision #:toolkit-defaults #:define-toolkit #:%*toolkit-revision*
            #:current-toolkit #:call-with-toolkit #:with-toolkit #:control
            #:%*toolkit* #:%*toolkit-definition* #:%find-toolkit #:%override
            #:%without-option))
@@ -183,3 +183,8 @@ For :MENU-BAR, prepend the toolkit's :menu-bar-options plist, including
 (defmacro with-toolkit ((designator) &body body)
   "Draw BODY with the named toolkit; nested bindings restore on exit."
   `(call-with-toolkit ,designator (lambda () ,@body)))
+
+(fn (toolkit-revision integer) ()
+  "Return the revision counter for toolkit definitions and defaults.
+Use it to invalidate application caches derived from toolkit configuration."
+  %*toolkit-revision*)

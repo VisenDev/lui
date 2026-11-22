@@ -52,6 +52,6 @@
           :width (lui:fixed (lui:units 30))
           :default-value "Move me; text stays")))))
 
-(defun main ()
+(defun main (&key (interactive t))
   "Open the manual-only demo on the selected backend."
-  (lui:run (make-demo) :title "LUI manual placement"))
+  (lui:run (make-demo) :title "LUI manual placement" :interactive interactive))

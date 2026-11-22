@@ -7,7 +7,10 @@
            #:context-pointer-press #:context-popups
            #:context-popup-input #:context-floating-path #:focus-next
            #:context-requested-page-top #:context-viewport-height
-           #:frame-wait #:hit #:limit-frame-rate #:memoized
+           #:frame-width #:frame-height #:text-mode-p #:focused-widget
+           #:focus-visible-p #:page-scroll-p #:page-scroll-position
+           #:viewport-height #:scroll-page-to #:previous-frame-box
+           #:frame-rate-label #:frame-wait #:hit #:limit-frame-rate #:memoized
            #:pointer-cancel-p
            #:context #:make-context #:context-root #:context-focus
            #:context-focus-input #:context-active #:context-measure
@@ -977,3 +980,56 @@ An aborted drawing or layout invalidates geometry and clears frame state."
   "Dispatch input, build and solve one frame, and return its root element."
   `(call-with-frame ,context ,width ,height (lambda () ,@body)
                     :events ,events))
+
+(fn (frame-width real) ()
+  "Return the current logical client width; call during a frame."
+  (context-width *context*))
+
+(fn (frame-height real) ()
+  "Return the current logical client height; call during a frame."
+  (context-height *context*))
+
+(fn (text-mode-p boolean) ()
+  "Whether the current frame uses terminal cell coordinates and text metrics."
+  (context-text-mode-p *context*))
+
+(fn (focused-widget object-id) ()
+  "Return the focused widget ID, or NIL. SETF requests an ID or key without
+changing focus-ring visibility; FOCUS-WIDGET also enables the focus ring."
+  (context-focus *context*))
+
+(fn ((setf focused-widget) object-id) ((id object-id))
+  "Request focus for ID or a unique key, or clear focus with NIL."
+  (setf (context-focus *context*) id))
+
+(fn (focus-visible-p boolean) ()
+  "Whether keyboard focus rings are visible. SETF restores saved visibility."
+  (context-focus-visible-p *context*))
+
+(fn ((setf focus-visible-p) boolean) ((visible boolean))
+  "Set keyboard focus-ring visibility without changing the focused widget."
+  (setf (context-focus-visible-p *context*) visible))
+
+(fn (page-scroll-p boolean) ()
+  "Whether the host page owns vertical scrolling for the current frame."
+  (context-page-height-p *context*))
+
+(fn (page-scroll-position real) ()
+  "Return the host page's current vertical offset in logical coordinates."
+  (context-page-top *context*))
+
+(fn (viewport-height real) ()
+  "Return the visible host viewport height in logical coordinates."
+  (context-viewport-height *context*))
+
+(fn (scroll-page-to (values)) ((top real))
+  "Request a nonnegative host page offset for presentation after this frame.
+Only page-scrolling backends act on this request."
+  (setf (context-requested-page-top *context*) (max 0 top))
+  (values))
+
+(fn (previous-frame-box (or null box)) ()
+  "Return the previous completed root bounds, or NIL if unavailable.
+Treat the returned box as read-only; its dimensions may precede a resize."
+  (let ((root (context-previous-root *context*)))
+    (when root (element-box root))))

@@ -23,6 +23,10 @@
                 #:element-box
                 #:element-content)
   (:import-from #:%lui.frame
+                #:frame-rate-label #:frame-width #:frame-height #:text-mode-p
+           #:focused-widget #:focus-visible-p #:events-for #:page-scroll-p
+           #:page-scroll-position #:viewport-height #:scroll-page-to
+           #:previous-frame-box
                 #:call-with-frame #:call-with-key
                 #:with-frame #:frame-time #:request-frame
                 #:previous-box
@@ -38,6 +42,10 @@
   ;; Application controls and layout live here; specialized APIs are exported
   ;; by their owning font, drawing, debugger, and backend packages.
   (:export
+           #:frame-rate-label #:frame-width #:frame-height #:text-mode-p
+           #:focused-widget #:focus-visible-p #:events-for #:page-scroll-p
+           #:page-scroll-position #:viewport-height #:scroll-page-to
+           #:previous-frame-box #:measure-label
            #:lui-error #:configuration-error #:backend-error #:font-error
            #:frame-state-error #:error-operation #:error-setting
            #:error-value #:error-backend #:error-font-request
@@ -1625,3 +1633,23 @@ Use :value for application-owned text. CHOICES supplies autocomplete suggestions
 (define-widget date-picker (id value) ()
   "Return a date, a change flag, and ID. :default-value initializes the date.
 Use :value for an application-owned YYYY-MM-DD date or NIL.")
+
+(fn (measure-label (values real real))
+    ((text string) &key ((width (or null real)) nil)
+     ((font-family symbol) :sans-serif)
+     ((font-size (or null real)) nil)
+     ((font-weight (or null symbol)) nil))
+  "Measure label text with current backend metrics and toolkit geometry.
+Call during a frame. WIDTH is available content width; NIL measures intrinsic
+size. Font size and weight default to the current toolkit's values. Returns
+width and height in logical backend coordinates without declaring a widget."
+  (let ((defaults (lui.toolkit:toolkit-defaults)))
+    (funcall (context-measure *context*)
+             (make-widget :kind :label :style (current-toolkit) :text text
+                          :font-family font-family
+                          :font-size (or font-size
+                                         (getf defaults :font-size 16))
+                          :font-weight (or font-weight
+                                           (getf defaults :font-weight
+                                                 :normal)))
+             width)))

@@ -263,7 +263,7 @@
 (defun styles-content (g)
   (lui:label "Customize the active toolkit.")
   (when (and (eq (gallery-toolkit g) :glass)
-             (not (%lui.frame:context-text-mode-p %lui.frame:*context*)))
+             (not (lui:text-mode-p)))
     (lui:label (format nil "Opacity: ~D%"
                        (round (* 100 (gallery-opacity g)))))
     (setf (gallery-opacity g)
@@ -285,7 +285,7 @@
         :maximum 24
         :step 1
         :width (lui:grow))))
-  (let* ((terminal (%lui.frame:context-text-mode-p %lui.frame:*context*))
+  (let* ((terminal (lui:text-mode-p))
          (opacity (if terminal 1 (gallery-opacity g)))
          (frost (if terminal 0 (gallery-frost g)))
          (radius (if terminal 0 (gallery-radius g))))
@@ -347,7 +347,7 @@
                   (preview)))))))))
 
 (defun styles-page (g)
-  (when (%lui.frame:context-text-mode-p %lui.frame:*context*)
+  (when (lui:text-mode-p)
     (lui:label
      "Terminal preview uses solid colors; no blur or transparency."))
   (styles-content g))
@@ -385,7 +385,7 @@
       (lui:button
         "Cycle palette"
         :id :palette :disabled-p (modal-p g)))
-    (lui:label (%lui.frame::frame-rate-label))
+    (lui:label (lui:frame-rate-label))
     (lui:row (:width (lui:grow) :gap (lui:units 1))
       (dolist (page *pages*)
         (when
@@ -427,5 +427,5 @@
 (defun make-demo (&optional (gallery (make-gallery)))
   (lambda () (draw gallery)))
 
-(defun main ()
-  (lui:run (make-demo) :title "LUI feature gallery"))
+(defun main (&key (interactive t))
+  (lui:run (make-demo) :title "LUI feature gallery" :interactive interactive))
