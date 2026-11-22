@@ -19,12 +19,12 @@
 
 (defun make-card (number)
   "Create a keyed nested row whose editable note survives sibling reordering."
-  (lui.retained:list
+  (lui.retained:node
    :row :id number :gap '(:units 1) :width (lui:grow)
    :children
-   (list (lui.retained:list :checkbox :text (format nil "Item ~D" number)
+   (list (lui.retained:node :checkbox :text (format nil "Item ~D" number)
                            :id :checked)
-         (lui.retained:list :text-field :id :note :width (lui:grow)
+         (lui.retained:node :text-field :id :note :width (lui:grow)
                            :padding '(:units 0.5)
                            :default-value (format nil "Note for item ~D"
                                                   number)))))
@@ -88,75 +88,75 @@
 ;; UI data: allocated at load time, independently of rendering.
 ;; Unit descriptors are resolved by the retained layer for the active backend.
 (defparameter *toolkit-button*
-  (lui.retained:list :button :text "Toolkit: Qt" :id :toolkit
+  (lui.retained:node :button :text "Toolkit: Qt" :id :toolkit
                      :on-activate 'cycle-toolkit))
 (defparameter *palette-button*
-  (lui.retained:list :button :text "Palette: Default" :id :palette
+  (lui.retained:node :button :text "Palette: Default" :id :palette
                      :on-activate 'cycle-palette))
-(defparameter *metrics* (lui.retained:list :label :text "" :id :metrics))
-(defparameter *greeting* (lui.retained:list :label :text "Hello, retained world!"))
-(defparameter *counter* (lui.retained:list :label :text "Clicks: 0"))
-(defparameter *preview* (lui.retained:list :label :text ""))
-(defparameter *status* (lui.retained:list :label :text "Ready."))
+(defparameter *metrics* (lui.retained:node :label :text "" :id :metrics))
+(defparameter *greeting* (lui.retained:node :label :text "Hello, retained world!"))
+(defparameter *counter* (lui.retained:node :label :text "Clicks: 0"))
+(defparameter *preview* (lui.retained:node :label :text ""))
+(defparameter *status* (lui.retained:node :label :text "Ready."))
 (defparameter *cards*
-  (lui.retained:list :column :id :items :gap '(:units 1) :width (lui:grow)
+  (lui.retained:node :column :id :items :gap '(:units 1) :width (lui:grow)
                      :children (list (make-card 1) (make-card 2))))
 
 (defparameter *tree*
   (list
-   (lui.retained:list
+   (lui.retained:node
     :panel :id :root :width (lui:grow) :height (lui:grow)
     :scroll-p t :padding '(:units 2) :gap '(:units 1)
     :radius 0 :frost 0 :opacity 1
     :children
     (list
-     (lui.retained:list :label :text "Retained data playground"
+     (lui.retained:node :label :text "Retained data playground"
                         :font-weight :bold)
-     (lui.retained:list :row :gap '(:units 1) :cross-align :center
+     (lui.retained:node :row :gap '(:units 1) :cross-align :center
                         :children (list *toolkit-button* *palette-button*))
      *metrics*
-     (lui.retained:list :label
+     (lui.retained:node :label
                         :text "Edit a stored tree and watch LUI redraw it.")
-     (lui.retained:list
+     (lui.retained:node
       :row :gap '(:units 2) :width (lui:grow)
       :children
       (list
-       (lui.retained:list
+       (lui.retained:node
         :panel :id :editor :width (lui:grow)
         :padding '(:units 2) :gap '(:units 1)
         :children
         (list
-         (lui.retained:list :label :text "Callbacks update data")
+         (lui.retained:node :label :text "Callbacks update data")
          *greeting*
-         (lui.retained:list :text-field :id :name
+         (lui.retained:node :text-field :id :name
                             :default-value "retained world"
                             :padding '(:units 0.5) :width (lui:grow)
                             :on-change 'rename-greeting)
-         (lui.retained:list
+         (lui.retained:node
           :row :gap '(:units 1)
           :children
-          (list (lui.retained:list :button :text "Count" :id :count
+          (list (lui.retained:node :button :text "Count" :id :count
                                   :on-activate 'increment)
                 *counter*))))
-       (lui.retained:list
+       (lui.retained:node
         :panel :id :data :width (lui:grow) :padding '(:units 2)
-        :children (list (lui.retained:list :label :text "Current tree data")
+        :children (list (lui.retained:node :label :text "Current tree data")
                         *preview*))))
-     (lui.retained:list
+     (lui.retained:node
       :panel :id :collection :width (lui:grow)
       :padding '(:units 2) :gap '(:units 1)
       :children
       (list
-       (lui.retained:list :label :text "Nested rows with stable IDs")
-       (lui.retained:list :label :text "Edit notes, then reverse the rows.")
-       (lui.retained:list
+       (lui.retained:node :label :text "Nested rows with stable IDs")
+       (lui.retained:node :label :text "Edit notes, then reverse the rows.")
+       (lui.retained:node
         :row :gap '(:units 1)
         :children
-        (list (lui.retained:list :button :text "Add row" :id :add
+        (list (lui.retained:node :button :text "Add row" :id :add
                                 :on-activate 'add-item)
-              (lui.retained:list :button :text "Reverse" :id :reverse
+              (lui.retained:node :button :text "Reverse" :id :reverse
                                 :on-activate 'reverse-items)
-              (lui.retained:list :button :text "Remove last" :id :remove
+              (lui.retained:node :button :text "Remove last" :id :remove
                                 :on-activate 'remove-item)))
        *cards*))
      *status*)))

@@ -1,12 +1,11 @@
 (defpackage #:lui.retained
   (:use #:cl #:%lui.fn)
-  (:shadow #:list)
-  (:export #:draw #:list))
+  (:export #:draw #:node))
 (in-package #:lui.retained)
 
 (defstruct renderer
   (arity 0 :type (integer 0 *))
-  (arguments nil :type cl:list)
+  (arguments nil :type list)
   (container-p nil :type boolean)
   (function #'identity :type function))
 
@@ -18,7 +17,7 @@
   "Signal a configuration error for an invalid retained description."
   (error 'lui:configuration-error :operation :retained-draw
          :setting :tree :value value :format-control "~A"
-         :format-arguments (cl:list message)))
+         :format-arguments (list message)))
 
 (fn (proper-list-p boolean) ((value t))
   "Recognize finite proper lists without hanging on circular descriptions."
@@ -49,17 +48,17 @@
 
     (t value)))
 
-(fn (control-options cl:list) ((options cl:list))
+(fn (control-options list) ((options list))
   "Strip retained event handlers before passing options to LUI."
   (loop :for (key value) :on options :by #'cddr
         :unless (member key '(:on-change :on-activate))
-          :append (cl:list key (if (member key '(:padding :gap
+          :append (list key (if (member key '(:padding :gap
                                            :offset-x :offset-y :radius
                                            :font-size :column-gap))
                                  (option-value value) value))))
 
 (fn (invoke-callback (values))
-    ((callback (or function symbol)) (arguments cl:list))
+    ((callback (or function symbol)) (arguments list))
   "Resolve a symbol at dispatch time so redefinitions affect existing trees."
   (apply (if (symbolp callback) (symbol-function callback) callback) arguments)
   (values))
@@ -83,7 +82,7 @@
                   (when (and callback ,(if (eq event :on-change)
                                           'changed 'value))
                     ,(if (eq event :on-change)
-                         '(push (lambda () (invoke-callback callback (cl:list value)))
+                         '(push (lambda () (invoke-callback callback (list value)))
                                 *callbacks*)
                          '(push (lambda () (invoke-callback callback nil))
                                 *callbacks*))))))))))
@@ -98,7 +97,7 @@
                       (,control (:options (control-options options))
                         (draw-children children))))))
 
-(fn (node-parts (values renderer cl:list cl:list cl:list)) ((node t))
+(fn (node-parts (values renderer list list list)) ((node t))
   "Parse a node into its adapter, positional arguments, options and children."
   (unless (and (consp node) (proper-list-p node))
     (invalid-tree node "Expected a nonempty proper node list."))
@@ -120,7 +119,7 @@
       (check-options options)
       (values renderer arguments options children))))
 
-(fn (draw-children (values)) ((nodes cl:list))
+(fn (draw-children (values)) ((nodes list))
   "Draw siblings with stable explicit keys or positional fallback identities."
   (unless (proper-list-p nodes)
     (invalid-tree nodes "Expected a finite proper list of nodes."))
@@ -130,8 +129,8 @@
           :do (multiple-value-bind (renderer arguments options children)
                   (node-parts node)
                 (let ((key (if (getf options :id)
-                               (cl:list :key (getf options :id))
-                               (cl:list :position index))))
+                               (list :key (getf options :id))
+                               (list :position index))))
                   (when (gethash key seen)
                     (invalid-tree node "Duplicate sibling identity."))
                   (setf (gethash key seen) t)
@@ -166,9 +165,9 @@
 (define-container :table-row lui:table-row)
 (define-container :table-cell lui:table-cell)
 
-(fn (draw (values)) ((tree cl:list) &key ((id lui:object-id) :retained))
+(fn (draw (values)) ((tree list) &key ((id lui:object-id) :retained))
   "Draw a retained description inside the current LUI frame.
-Load the optional lui/retained system. LIST constructs nodes with keyword
+Load the optional lui/retained system. NODE constructs nodes with keyword
 arguments for editor completion. TREE is a list of nodes, for example
 ((:button \"hello\") (:label \"hi\")). Leaves contain a kind, the ordinary LUI
 positional arguments, then keyword options. Styling options pass through to LUI:
@@ -201,7 +200,7 @@ This layer replays declarations every frame; it does not cache solved layout."
         (funcall callback))))
   (values))
 
-(fn (node-arguments cl:list) ((renderer renderer) (options cl:list))
+(fn (node-arguments list) ((renderer renderer) (options list))
   "Extract required positional fields from constructor keywords."
   (loop :for key :in (renderer-arguments renderer)
         :collect (if (loop :for option :in options :by #'cddr
@@ -211,7 +210,7 @@ This layer replays declarations every frame; it does not cache solved layout."
                      (invalid-tree options
                                    "Missing required node argument."))))
 
-(fn (construct-node cl:list) ((kind keyword) (options cl:list))
+(fn (construct-node list) ((kind keyword) (options list))
   "Build the ordinary list representation without injecting omitted defaults."
   (let ((renderer (gethash kind *renderers*)))
     (unless renderer (invalid-tree kind "Unknown retained control kind."))
@@ -222,7 +221,7 @@ This layer replays declarations every frame; it does not cache solved layout."
              (loop :for (key value) :on options :by #'cddr
                    :unless (or (eq key :children)
                                (member key (renderer-arguments renderer)))
-                     :append (cl:list key value))))
+                     :append (list key value))))
       (unless (proper-list-p children)
         (invalid-tree children "Children must be a finite proper list."))
       (when (and children (not (renderer-container-p renderer)))
@@ -232,21 +231,21 @@ This layer replays declarations every frame; it does not cache solved layout."
           ;; else
           (cons kind (append arguments appearance))))))
 
-(fn (list cl:list)
-    ((kind keyword) &rest (fields cl:list) &key
+(fn (node list)
+    ((kind keyword) &rest (fields list) &key
      ((text (or null string)) nil)
      ((choice t) nil)
      ((choices (or null vector)) nil)
      ((fraction (or null real)) nil)
-     ((commands cl:list) nil)
-     ((children cl:list) nil)
+     ((commands list) nil)
+     ((children list) nil)
      ((id lui:object-id) nil)
      ((width (or null lui:sizing)) nil)
      ((height (or null lui:sizing)) nil)
-     ((padding (or null real cl:list)) nil)
+     ((padding (or null real list)) nil)
      ((position (or null keyword)) nil)
-     ((offset-x (or null real cl:list)) nil)
-     ((offset-y (or null real cl:list)) nil)
+     ((offset-x (or null real list)) nil)
+     ((offset-y (or null real list)) nil)
      ((flow (or null keyword)) nil)
      ((align (or null keyword)) nil)
      ((cross-align (or null keyword)) nil)
@@ -259,10 +258,10 @@ This layer replays declarations every frame; it does not cache solved layout."
      ((pointer-focus-p boolean) nil)
      ((foreground (or null string)) nil)
      ((background (or null string)) nil)
-     ((palette (or null lui:palette cl:list symbol)) nil)
-     ((radius (or null real cl:list)) nil)
+     ((palette (or null lui:palette list symbol)) nil)
+     ((radius (or null real list)) nil)
      ((frost (or null real)) nil)
-     ((font-size (or null real cl:list)) nil)
+     ((font-size (or null real list)) nil)
      ((font-family (or null keyword)) nil)
      ((font-weight (or null keyword)) nil)
      ((opacity (or null real)) nil)
@@ -275,9 +274,9 @@ This layer replays declarations every frame; it does not cache solved layout."
      ((default-value t) nil)
      ((disabled-p boolean) nil)
      ((selected-p boolean) nil)
-     ((gap (or null real cl:list)) nil)
+     ((gap (or null real list)) nil)
      ((direction (or null keyword)) nil)
-     ((column-gap (or null real cl:list)) nil)
+     ((column-gap (or null real list)) nil)
      ((column-span (or null integer)) nil)
      ((minimum (or null real)) nil)
      ((maximum (or null real)) nil)
@@ -287,10 +286,10 @@ This layer replays declarations every frame; it does not cache solved layout."
      ((max-results (or null integer)) nil)
      ((on-activate (or function symbol)) nil)
      ((on-change (or function symbol)) nil)
-     ((options cl:list) nil))
+     ((options list) nil))
   "Construct one retained node using explicit keywords for editor completion.
-For example (list :button :text \"Hello\" :on-activate 'hello), or
-(list :column :gap '(:units 1) :children (cl:list button label)).
+For example (node :button :text \"Hello\" :on-activate 'hello), or
+(node :column :gap '(:units 1) :children (list button label)).
 Returns the same ordinary list accepted by DRAW; use CL:LIST for a forest.
 Required fields follow the kind: :TEXT for labels/buttons/checkboxes/tabs/cells/
 list-items, :CHOICE and :TEXT for radio, :CHOICES for searchable-combobox,
@@ -312,5 +311,5 @@ resolved via SYMBOL-FUNCTION at dispatch time, so redefinition takes effect."
   (check-options options)
   (construct-node
    kind (append (loop :for (key value) :on fields :by #'cddr
-                      :unless (eq key :options) :append (cl:list key value))
+                      :unless (eq key :options) :append (list key value))
                 options)))

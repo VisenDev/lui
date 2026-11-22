@@ -171,31 +171,31 @@
     (assert (equal (getf (rest (first tree)) :padding) '(:units 2)))))
 
 (defun test-node-constructor ()
-  (let* ((button (lui.retained:list :button :text "Hello" :disabled-p nil))
+  (let* ((button (lui.retained:node :button :text "Hello" :disabled-p nil))
          (children (list button))
-         (panel (lui.retained:list :column :gap '(:units 1)
+         (panel (lui.retained:node :column :gap '(:units 1)
                                   :children children)))
     (assert (equal button '(:button "Hello" :disabled-p nil)))
     (assert (equal panel '(:column (:gap (:units 1))
                           (:button "Hello" :disabled-p nil))))
     (assert (not (eq children (cddr panel)))))
-  (assert (equal (lui.retained:list :radio :choice nil :text "None")
+  (assert (equal (lui.retained:node :radio :choice nil :text "None")
                  '(:radio nil "None")))
-  (assert (equal (lui.retained:list :slider :text "Volume" :value 0)
+  (assert (equal (lui.retained:node :slider :text "Volume" :value 0)
                  '(:slider :text "Volume" :value 0)))
-  (assert (equal (lui.retained:list :text-field :value nil)
+  (assert (equal (lui.retained:node :text-field :value nil)
                  '(:text-field :value nil)))
-  (assert (equal (lui.retained:list :button :text "Explicit"
+  (assert (equal (lui.retained:node :button :text "Explicit"
                                    :options '(:text "Fallback" :padding 2))
                  '(:button "Explicit" :padding 2)))
-  (assert (handler-case (progn (lui.retained:list :button) nil)
+  (assert (handler-case (progn (lui.retained:node :button) nil)
             (lui:configuration-error () t)))
   (assert (handler-case
-              (progn (lui.retained:list :label :text "x"
+              (progn (lui.retained:node :label :text "x"
                                        :children '((:label "y"))) nil)
             (lui:configuration-error () t)))
   (assert (handler-case
-              (progn (apply (symbol-function 'lui.retained:list) '(:label :text "x" :typo 1))
+              (progn (apply (symbol-function 'lui.retained:node) '(:label :text "x" :typo 1))
                      nil)
             (program-error () t))))
 
@@ -205,14 +205,14 @@
          (change (gensym "CHANGE"))
          (result nil)
          (tree (list
-                (lui.retained:list
+                (lui.retained:node
                  :button :text "Redefine" :id :first
                  :on-activate (lambda ()
                                 (setf (symbol-function callback)
                                       (lambda () (push :new result)))))
-                (lui.retained:list :button :text "Call" :id :second
+                (lui.retained:node :button :text "Call" :id :second
                                   :on-activate callback)
-                (lui.retained:list :text-field :id :edit
+                (lui.retained:node :text-field :id :edit
                                   :on-change change))))
     (unwind-protect
          (progn
