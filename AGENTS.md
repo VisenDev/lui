@@ -76,9 +76,9 @@ the change and report material limitations instead of claiming untested support.
 ## Source organization
 
 - Keep portable source files numbered in dependency order (`01-fn.lisp`
-  through `16-debug.lisp`). Palette and toolkit support precede the application
+  through `17-retained.lisp`). Palette and toolkit support precede the application
   facade in `07-palette.lisp`, `08-toolkit.lisp`, and `09-lui.lisp`.
-  The debugger remains an optional ASDF system.
+  The debugger and retained layer remain optional ASDF systems.
 - Keyboard constants live in `src/02-key.lisp` (`lui.key`), loaded before
   text/frame support. Always qualify keycodes with `lui.key:`; do not use
   or import that package. Keycode constants evaluate to their own symbols.
@@ -403,6 +403,19 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   FPS includes pacing; layout time is a 30-frame rolling average including
   measurement but excluding construction, painting, presentation, and pacing.
   `1000 / layout-ms` is only a layout throughput ceiling.
+
+### Retained descriptions
+
+Load `lui/retained` separately from the host backend. `lui.retained:draw`
+accepts a reusable list of data nodes inside a frame, including the callback
+passed to `lui:run`. Leaves use `(:button "Hello" :id :hello ...)`;
+containers use `(:column (:gap 1) (:label "Hello") ...)`. Options and values
+are ordinary data; forms are never evaluated. `:on-activate` is a zero-argument
+function; `:on-change` receives the new value. Edit stored trees between frames.
+Explicit sibling IDs preserve state across reordering; otherwise identity is
+positional. Give separate trees distinct DRAW `:id` values. State, layout and
+input remain owned by the core; this module does not cache layout or provide
+reactive bindings. Test it with `(asdf:test-system "lui/retained")`.
 
 ### Future navigation work
 

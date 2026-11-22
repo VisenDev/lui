@@ -56,3 +56,7 @@
 (%lui.tests.seven.circles:run-tests)
 (load "tests/seven-cells.lisp")
 (%lui.tests.seven.cells:run-tests)
+
+(load "src/17-retained.lisp")
+(load "tests/retained.lisp")
+(%lui.tests.retained:run-tests)

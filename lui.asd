@@ -36,6 +36,21 @@
   :components ((:module "src" :components ((:file "backend-host"))))
   :in-order-to ((test-op (test-op "lui/tests"))))
 
+(defsystem "lui/retained"
+  :description "Data-driven retained trees over the immediate-mode core"
+  :depends-on ("lui/core")
+  :components ((:module "src" :components ((:file "17-retained"))))
+  :in-order-to ((test-op (test-op "lui/retained/tests"))))
+
+(defsystem "lui/retained/tests"
+  :depends-on ("lui/retained")
+  :serial t
+  :components ((:module "tests" :components ((:file "support")
+                                             (:file "retained"))))
+  :perform (test-op (operation component)
+             (declare (ignore operation component))
+             (uiop:symbol-call :%lui.tests.retained :run-tests)))
+
 (defsystem "lui/debug"
   :depends-on ("lui/core")
   :components ((:module "src" :components ((:file "16-debug")))))
