@@ -36,11 +36,25 @@
               (invalid-tree value "Event handlers must be functions or NIL.")))
   (values))
 
+(fn (option-value t) ((value t))
+  "Resolve an explicit spacing descriptor without evaluating Lisp forms."
+  (cond
+    ((and (consp value) (eq (first value) :units))
+     (unless (and (proper-list-p value) (= (length value) 2)
+                  (realp (second value)))
+       (invalid-tree value "Expected (:units NUMBER)."))
+     (lui:units (second value)))
+
+    (t value)))
+
 (fn (control-options list) ((options list))
   "Strip retained event handlers before passing options to LUI."
   (loop :for (key value) :on options :by #'cddr
         :unless (member key '(:on-change :on-activate))
-          :append (list key value)))
+          :append (list key (if (member key '(:padding :gap
+                                           :offset-x :offset-y :radius
+                                           :font-size :column-gap))
+                                 (option-value value) value))))
 
 (defmacro define-leaf (kind control arguments event)
   "Register a compiled adapter to a public LUI control macro."
@@ -145,7 +159,9 @@ Load the optional lui/retained system. TREE is a list of nodes, for example
 ((:button \"hello\") (:label \"hi\")). Leaves contain a kind, the ordinary LUI
 positional arguments, then keyword options. Styling options pass through to LUI:
 (:text-field :padding 4 :font-size 16 :foreground \"#202430\" :width (lui:grow))
-uses the same styling and sizing rules as the immediate control. Supply actual
+uses the same styling and sizing rules as the immediate control. Numeric
+padding, gap, column-gap, offset-x/y, radius and font-size options accept
+(:units NUMBER), resolved against LUI:*UNIT* each frame. This lets trees be defined at load time for any backend. Supply actual
 sizing objects in constructed data, not unevaluated (lui:grow) forms.
 Containers contain a kind, an
 options plist, and child nodes: (:column (:gap 1) (:label \"Hello\")).

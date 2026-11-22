@@ -40,7 +40,10 @@
 
 (defun run-tests ()
   "Exercise real demo callbacks and check the following completed frame."
-  (%lui.example.retained-demo:reset-demo)
+  (assert (consp %lui.example.retained-demo:*tree*))
+  (let ((tree %lui.example.retained-demo:*tree*))
+    (%lui.example.retained-demo:reset-demo)
+    (assert (eq tree %lui.example.retained-demo:*tree*)))
   (let ((context (%lui.tests.support:make-test-context))
         (draw #'%lui.example.retained-demo:draw))
     (labels ((frame (&optional events)

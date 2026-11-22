@@ -425,9 +425,10 @@ and a live data preview. Nodes accept ordinary LUI styling keywords such as
 The demo includes toolkit/palette cycle buttons and the gallery FPS/layout
 readout; FPS includes pacing. The retained module owns callback dispatch; keyed
 editable rows demonstrate state preservation when reordered. This demo owns
-one global `*tree*` and top-level callback functions. MAIN resets the demo once
-and passes an inline lambda to RUN; tree construction waits for the first frame
-so spacing uses the backend's units. Later frames reuse that tree. Load
+one global `*tree*` defined directly with DEFPARAMETER and top-level callbacks.
+MAIN resets model values once and passes an inline lambda to RUN. Numeric
+spacing options use `(:units NUMBER)` descriptors, resolved by retained DRAW
+for the active backend without rebuilding or modifying the data tree. Load
 `lui/retained-demo` and call `%lui.example.retained-demo:main` from a Lisp REPL
 with a backend loaded.
 
