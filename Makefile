@@ -31,19 +31,21 @@ SOURCES := $(wildcard src/*.lisp examples/*.lisp) lui.asd \
 	scripts/setup.lisp scripts/build.lisp
 SUFFIX := $(if $(filter win32,$(PLATFORM)),.exe,)
 DEMO := build/bin/demo-$(PLATFORM)$(SUFFIX)
+RETAINED_DEMO := build/bin/retained-demo-$(PLATFORM)$(SUFFIX)
 MANUAL_DEMO := build/bin/manual-demo-$(PLATFORM)$(SUFFIX)
 
 DOC_SOURCES := $(wildcard src/*.lisp examples/*.lisp) lui.asd
 DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
-.PHONY: manual-demo docs docs-html docs-pages test-docs test-terminal-parity help check-platform build demo pdf pdf-demo test test-platform \
+.PHONY: retained-demo manual-demo docs docs-html docs-pages test-docs test-terminal-parity help check-platform build demo pdf pdf-demo test test-platform \
 	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform
 help:
 	@echo 'make docs                 Build and open the native documentation browser'
 	@echo 'make docs-html            Build standalone build/docs.html with ECL/wasm'
 	@echo 'make docs-pages           Refresh docs/index.html from the standalone page'
 	@echo 'make demo                 Build and run the tabbed demo executable'
+	@echo 'make retained-demo        Run the retained data playground'
 	@echo 'make manual-demo          Run the explicit-position-only native demo'
 	@echo 'make build                Save the demo executable in build/bin/'
 	@echo 'make pdf                  Build and open build/pdf-demo.pdf'
@@ -74,6 +76,15 @@ build: $(DEMO)
 demo: $(DEMO)
 	$(RUNNER) "$(DEMO)" $(RUN_ARGS)
 endif
+
+retained-demo: $(RETAINED_DEMO)
+	$(RUNNER) "$(RETAINED_DEMO)" $(RUN_ARGS)
+
+$(RETAINED_DEMO): $(SOURCES) | check-platform
+	@case ' $(NATIVE_PLATFORMS) ' in *' $(PLATFORM) '*) ;; \
+	  *) echo 'retained-demo needs a native PLATFORM (including terminal)' >&2; exit 2;; esac
+	@mkdir -p build/bin
+	LUI_DEMO=retained-demo LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build.lisp
 
 manual-demo: $(MANUAL_DEMO)
 	$(RUNNER) "$(MANUAL_DEMO)" $(RUN_ARGS)

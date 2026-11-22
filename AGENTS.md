@@ -416,6 +416,11 @@ Explicit sibling IDs preserve state across reordering; otherwise identity is
 positional. Give separate trees distinct DRAW `:id` values. State, layout and
 input remain owned by the core; this module does not cache layout or provide
 reactive bindings. Test it with `(asdf:test-system "lui/retained")`.
+Run `make retained-demo` (or `PLATFORM=terminal`) for nested layouts, callbacks,
+and a live data preview. Its callbacks queue edits until after drawing; keyed
+editable rows demonstrate state preservation when reordered. Load
+`lui/retained-demo` and call `%lui.example.retained-demo:main` from a Lisp REPL
+with a backend loaded.
 
 ### Future navigation work
 

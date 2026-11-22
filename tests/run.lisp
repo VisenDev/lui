@@ -60,3 +60,7 @@
 (load "src/17-retained.lisp")
 (load "tests/retained.lisp")
 (%lui.tests.retained:run-tests)
+
+(load "examples/retained-demo.lisp")
+(load "tests/retained-demo.lisp")
+(%lui.tests.retained-demo:run-tests)

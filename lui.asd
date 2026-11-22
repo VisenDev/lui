@@ -43,13 +43,15 @@
   :in-order-to ((test-op (test-op "lui/retained/tests"))))
 
 (defsystem "lui/retained/tests"
-  :depends-on ("lui/retained")
+  :depends-on ("lui/retained-demo")
   :serial t
   :components ((:module "tests" :components ((:file "support")
-                                             (:file "retained"))))
+                                             (:file "retained")
+                                             (:file "retained-demo"))))
   :perform (test-op (operation component)
              (declare (ignore operation component))
-             (uiop:symbol-call :%lui.tests.retained :run-tests)))
+             (uiop:symbol-call :%lui.tests.retained :run-tests)
+             (uiop:symbol-call :%lui.tests.retained-demo :run-tests)))
 
 (defsystem "lui/debug"
   :depends-on ("lui/core")
@@ -65,6 +67,10 @@
                              (:file "seven-cells")
                              (:file "seven")
                              (:file "demo")))))
+
+(defsystem "lui/retained-demo"
+  :depends-on ("lui/retained")
+  :components ((:module "examples" :components ((:file "retained-demo")))))
 
 (defsystem "lui/manual-demo"
   :depends-on ("lui/core")
