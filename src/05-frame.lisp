@@ -7,7 +7,7 @@
            #:context-pointer-press #:context-popups
            #:context-popup-input #:context-floating-path #:focus-next
            #:context-requested-page-top #:context-viewport-height
-           #:frame-wait #:hit #:limit-frame-rate #:memoized
+           #:frame-rate-label #:frame-wait #:hit #:limit-frame-rate #:memoized
            #:pointer-cancel-p
            #:context #:make-context #:context-root #:context-focus
            #:context-focus-input #:context-active #:context-measure

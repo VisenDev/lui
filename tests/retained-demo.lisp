@@ -19,6 +19,25 @@
     (assert found)
     found))
 
+(defun check-appearance (context toolkit palette)
+  "Check rendered widget styles and the root's resolved palette background."
+  (let ((expected
+          (lui:with-toolkit (toolkit)
+            (lui:with-palette (palette)
+              (let ((colors (lui.toolkit:toolkit-palette)))
+                (getf colors :window-background
+                      (getf colors :background)))))))
+    (%lui.layout:walk-elements
+     (%lui.frame:context-root context)
+     (lambda (node)
+       (let ((widget (%lui.layout:element-content node)))
+         (when (%lui.widgets:widget-p widget)
+           (assert (eq toolkit (%lui.widgets:widget-style widget)))
+           (when (eq :root (lui:widget-key (%lui.layout:element-id node)))
+             (assert (equal expected
+                            (%lui.widgets:widget-color widget
+                                                       :background))))))))))
+
 (defun run-tests ()
   "Exercise real demo callbacks and check the following completed frame."
   (let ((context (%lui.tests.support:make-test-context))
@@ -34,6 +53,18 @@
                (%lui.tests.support:has-text-p context text)))
       (frame)
       (assert (has "Clicks: 0"))
+      (assert (has "FPS"))
+      (assert (has "Toolkit: Qt"))
+      (assert (has "Palette: Default"))
+      (dolist (name '("Glass" "Motif" "Garnet" "macOS" "Qt"))
+        (activate :toolkit)
+        (assert (has (format nil "Toolkit: ~A" name)))
+        (check-appearance context (intern (string-upcase name) :keyword)
+                          :default))
+      (dolist (name '("Light" "Dark" "Ocean" "Forest" "Default"))
+        (activate :palette)
+        (assert (has (format nil "Palette: ~A" name)))
+        (check-appearance context :qt (intern (string-upcase name) :keyword)))
       (activate :count)
       (assert (has "Clicks: 1"))
       (frame (list (%lui.frame:make-event
@@ -43,6 +74,9 @@
       (let ((id (find-id context :note "Note for item 1")))
         (frame (list (%lui.frame:make-event
                       :kind :text :id id :value " edited")))
+        (activate :toolkit)
+        (activate :palette)
+        (assert (equal id (find-id context :note "Note for item 1 edited")))
         (activate :reverse)
         (assert (equal id (find-id context :note "Note for item 1 edited")))
         (assert (has "Row keys: (2 1)"))

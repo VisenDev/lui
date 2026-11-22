@@ -417,7 +417,10 @@ positional. Give separate trees distinct DRAW `:id` values. State, layout and
 input remain owned by the core; this module does not cache layout or provide
 reactive bindings. Test it with `(asdf:test-system "lui/retained")`.
 Run `make retained-demo` (or `PLATFORM=terminal`) for nested layouts, callbacks,
-and a live data preview. Its callbacks queue edits until after drawing; keyed
+and a live data preview. Nodes accept ordinary LUI styling keywords such as
+`:padding`, `:foreground`, `:background`, `:font-size`, and `:font-weight`.
+The demo includes toolkit/palette cycle buttons and the gallery FPS/layout
+readout; FPS includes pacing. Its callbacks queue edits until after drawing; keyed
 editable rows demonstrate state preservation when reordered. Load
 `lui/retained-demo` and call `%lui.example.retained-demo:main` from a Lisp REPL
 with a backend loaded.

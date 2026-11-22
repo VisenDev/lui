@@ -78,9 +78,36 @@
                 nil)
        (lui:configuration-error () t)))))
 
+(defun test-styling ()
+  (let ((context (%lui.tests.support:make-test-context))
+        (count 0))
+    (lui:with-frame (context 80 30)
+      (lui.retained:draw
+       '((:panel (:padding 3 :gap 2)
+          (:text-field :id :styled :padding 2 :font-size 18
+           :font-weight :bold :foreground "#123456"
+           :background "#fedcba" :radius 4 :default-value "Styled")))))
+    (%lui.layout:walk-elements
+     (%lui.frame:context-root context)
+     (lambda (node)
+       (let ((widget (%lui.layout:element-content node)))
+         (when (and (%lui.widgets:widget-p widget)
+                    (eq :text-field (%lui.widgets:widget-kind widget)))
+           (incf count)
+           (assert (= 2 (%lui.layout:element-padding node)))
+           (assert (= 18 (%lui.widgets:widget-font-size widget)))
+           (assert (eq :bold (%lui.widgets:widget-font-weight widget)))
+           (assert (= 4 (%lui.widgets:widget-radius widget)))
+           (assert (equal "#123456"
+                          (%lui.widgets:widget-color widget :foreground)))
+           (assert (equal "#fedcba"
+                          (%lui.widgets:widget-color widget :background)))))))
+    (assert (= count 1))))
+
 (defun run-tests ()
   (test-values-and-identity)
   (test-activation-and-containers)
   (test-invalid-trees)
   (test-circular-tree)
+  (test-styling)
   (format t "Retained descriptions, callbacks, identity and removal passed.~%"))

@@ -142,7 +142,11 @@
   "Draw a retained description inside the current LUI frame.
 Load the optional lui/retained system. TREE is a list of nodes, for example
 ((:button \"hello\") (:label \"hi\")). Leaves contain a kind, the ordinary LUI
-positional arguments, then keyword options. Containers contain a kind, an
+positional arguments, then keyword options. Styling options pass through to LUI:
+(:text-field :padding 4 :font-size 16 :foreground \"#202430\" :width (lui:grow))
+uses the same styling and sizing rules as the immediate control. Supply actual
+sizing objects in constructed data, not unevaluated (lui:grow) forms.
+Containers contain a kind, an
 options plist, and child nodes: (:column (:gap 1) (:label \"Hello\")).
 Store and edit TREE between frames, or reconstruct it each time. No forms are
 evaluated and TREE is never modified by DRAW. LUI retains control values and

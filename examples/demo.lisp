@@ -385,7 +385,7 @@
       (lui:button
         "Cycle palette"
         :id :palette :disabled-p (modal-p g)))
-    (lui:label (%lui.frame::frame-rate-label))
+    (lui:label (%lui.frame:frame-rate-label))
     (lui:row (:width (lui:grow) :gap (lui:units 1))
       (dolist (page *pages*)
         (when
