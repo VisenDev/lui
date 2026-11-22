@@ -40,8 +40,9 @@
 
 (defun run-tests ()
   "Exercise real demo callbacks and check the following completed frame."
+  (%lui.example.retained-demo:reset-demo)
   (let ((context (%lui.tests.support:make-test-context))
-        (draw (%lui.example.retained-demo:make-demo)))
+        (draw #'%lui.example.retained-demo:draw))
     (labels ((frame (&optional events)
                (lui:with-frame (context 100 50 :events events)
                  (funcall draw)))

@@ -424,7 +424,10 @@ and a live data preview. Nodes accept ordinary LUI styling keywords such as
 `:padding`, `:foreground`, `:background`, `:font-size`, and `:font-weight`.
 The demo includes toolkit/palette cycle buttons and the gallery FPS/layout
 readout; FPS includes pacing. The retained module owns callback dispatch; keyed
-editable rows demonstrate state preservation when reordered. Load
+editable rows demonstrate state preservation when reordered. This demo owns
+one global `*tree*` and top-level callback functions. MAIN resets the demo once
+and passes an inline lambda to RUN; tree construction waits for the first frame
+so spacing uses the backend's units. Later frames reuse that tree. Load
 `lui/retained-demo` and call `%lui.example.retained-demo:main` from a Lisp REPL
 with a backend loaded.
 

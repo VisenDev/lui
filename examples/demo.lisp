@@ -427,5 +427,5 @@
 (defun make-demo (&optional (gallery (make-gallery)))
   (lambda () (draw gallery)))
 
-(defun main ()
-  (lui:run (make-demo) :title "LUI feature gallery"))
+(defun main (&key (interactive t))
+  (lui:run (make-demo) :title "LUI feature gallery" :interactive interactive))
