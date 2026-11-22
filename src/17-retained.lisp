@@ -227,24 +227,18 @@ ID keys allow rebuilding."
   (children (make-array 0 :element-type 'node) :type (vector node)))
 
 (defstruct (label (:include styled-node) (:copier nil))
-  "A mutable retained label. Construct with keyword arguments.
-Use LABEL- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained label; see DRAW for mutation, identity and callback rules."
   (text +unspecified+ :type (or unspecified null string))
   (disabled-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (button (:include styled-node) (:copier nil))
-  "A mutable retained button. Construct with keyword arguments.
-Use BUTTON- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained button; see DRAW for mutation, identity and callback rules."
   (text +unspecified+ :type (or unspecified null string))
   (on-activate nil :type (or function symbol))
   (disabled-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (checkbox (:include styled-node) (:copier nil))
-  "A mutable retained checkbox. Construct with keyword arguments.
-Use CHECKBOX- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained checkbox; see DRAW for mutation, identity and callback rules."
   (text +unspecified+ :type (or unspecified null string))
   (on-change nil :type (or function symbol))
   (value +unspecified+ :type t)
@@ -252,9 +246,7 @@ Use CHECKBOX- prefixed SETF accessors to edit its slots.
   (disabled-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (radio (:include styled-node) (:copier nil))
-  "A mutable retained radio. Construct with keyword arguments.
-Use RADIO- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained radio; see DRAW for mutation, identity and callback rules."
   (choice +unspecified+ :type t)
   (text +unspecified+ :type (or unspecified null string))
   (on-change nil :type (or function symbol))
@@ -263,9 +255,7 @@ Use RADIO- prefixed SETF accessors to edit its slots.
   (disabled-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (slider (:include styled-node) (:copier nil))
-  "A mutable retained slider. Construct with keyword arguments.
-Use SLIDER- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained slider; see DRAW for mutation, identity and callback rules."
   (on-change nil :type (or function symbol))
   (value +unspecified+ :type t)
   (default-value +unspecified+ :type t)
@@ -276,9 +266,7 @@ Use SLIDER- prefixed SETF accessors to edit its slots.
   (text +unspecified+ :type (or unspecified null string)))
 
 (defstruct (text-field (:include styled-node) (:copier nil))
-  "A mutable retained text-field. Construct with keyword arguments.
-Use TEXT-FIELD- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained text-field; see DRAW for mutation, identity and callback rules."
   (on-change nil :type (or function symbol))
   (value +unspecified+ :type t)
   (default-value +unspecified+ :type t)
@@ -287,17 +275,13 @@ Use TEXT-FIELD- prefixed SETF accessors to edit its slots.
   (password-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (date-picker (:include styled-node) (:copier nil))
-  "A mutable retained date-picker. Construct with keyword arguments.
-Use DATE-PICKER- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained date-picker; see DRAW for mutation, identity and callback rules."
   (on-change nil :type (or function symbol))
   (value +unspecified+ :type t)
   (default-value +unspecified+ :type t))
 
 (defstruct (searchable-combobox (:include styled-node) (:copier nil))
-  "A mutable retained searchable-combobox. Construct with keyword arguments.
-Use SEARCHABLE-COMBOBOX- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained searchable-combobox; see DRAW for mutation, identity and callback rules."
   (choices +unspecified+ :type (or unspecified null (vector string)))
   (on-change nil :type (or function symbol))
   (value +unspecified+ :type t)
@@ -308,66 +292,48 @@ Use SEARCHABLE-COMBOBOX- prefixed SETF accessors to edit its slots.
   (password-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (gauge (:include styled-node) (:copier nil))
-  "A mutable retained gauge. Construct with keyword arguments.
-Use GAUGE- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained gauge; see DRAW for mutation, identity and callback rules."
   (fraction +unspecified+ :type (or unspecified null real))
   (disabled-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (spinner (:include styled-node) (:copier nil))
-  "A mutable retained spinner. Construct with keyword arguments.
-Use SPINNER- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained spinner; see DRAW for mutation, identity and callback rules."
   (disabled-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (spacer (:include node) (:copier nil))
-  "A mutable retained spacer. Construct with keyword arguments.
-Use SPACER- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules.")
+  "A retained spacer; see DRAW for mutation, identity and callback rules.")
 
 (defstruct (hr (:include styled-node) (:copier nil))
-  "A mutable retained hr. Construct with keyword arguments.
-Use HR- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained hr; see DRAW for mutation, identity and callback rules."
   (disabled-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (vr (:include styled-node) (:copier nil))
-  "A mutable retained vr. Construct with keyword arguments.
-Use VR- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained vr; see DRAW for mutation, identity and callback rules."
   (disabled-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (cell (:include styled-node) (:copier nil))
-  "A mutable retained cell. Construct with keyword arguments.
-Use CELL- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained cell; see DRAW for mutation, identity and callback rules."
   (text +unspecified+ :type (or unspecified null string))
   (on-activate nil :type (or function symbol))
   (disabled-p +unspecified+ :type (or unspecified boolean))
   (selected-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (list-item (:include styled-node) (:copier nil))
-  "A mutable retained list-item. Construct with keyword arguments.
-Use LIST-ITEM- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained list-item; see DRAW for mutation, identity and callback rules."
   (text +unspecified+ :type (or unspecified null string))
   (on-activate nil :type (or function symbol))
   (disabled-p +unspecified+ :type (or unspecified boolean))
   (selected-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (tab (:include styled-node) (:copier nil))
-  "A mutable retained tab. Construct with keyword arguments.
-Use TAB- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained tab; see DRAW for mutation, identity and callback rules."
   (text +unspecified+ :type (or unspecified null string))
   (on-activate nil :type (or function symbol))
   (disabled-p +unspecified+ :type (or unspecified boolean))
   (selected-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (canvas (:include styled-node) (:copier nil))
-  "A mutable retained canvas. Construct with keyword arguments.
-Use CANVAS- prefixed SETF accessors to edit its slots.
-+UNSPECIFIED+ preserves defaults; see DRAW for identity and callback rules."
+  "A retained canvas; see DRAW for mutation, identity and callback rules."
   (commands +unspecified+ :type (or unspecified list))
   (disabled-p +unspecified+ :type (or unspecified boolean)))
 
@@ -442,10 +408,24 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
 
     (t value)))
 
-(defmacro collect-options (node prefix &rest names)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *option-groups*
+    '((placement id width height padding position offset-x offset-y)
+      (appearance foreground background palette radius frost font-size
+                  font-family font-weight opacity accent painter terminal-label
+                  terminal-border accessible-name)
+      (container align cross-align clip-p scroll-p scrollbar-p scrollbar-width
+                 interactive-p keyboard-focus-p pointer-focus-p)
+      (value value default-value))
+    "Shared slot sets used by retained renderer adapters."))
+
+(defmacro collect-options (node prefix groups &rest names)
   "Read only this widget type's option slots, preserving explicit NIL."
   `(let ((options nil))
-     ,@(loop :for name :in names
+     ,@(loop :for name :in (append
+                           (loop :for group :in groups
+                                 :append (cdr (assoc group *option-groups*)))
+                           names)
              :for reader := (intern (format nil "~A-~A" prefix name))
              :for key := (intern (symbol-name name) :keyword)
              :collect
@@ -473,7 +453,7 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
          arguments)
   (values))
 
-(defmacro define-leaf (name arguments event &rest options)
+(defmacro define-leaf (name arguments event groups &rest options)
   "Register an adapter for a concrete leaf structure and its own slots."
   `(setf (gethash ',name *renderers*)
          (lambda (node)
@@ -484,7 +464,7 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
                             `(required-argument
                               (,(intern (format nil "~A-~A" name slot)) node)
                               node)) arguments)
-                :options (collect-options node ,name ,@options))
+                :options (collect-options node ,name ,groups ,@options))
              (declare (ignorable value changed))
              ,(when event
                 `(let ((callback
@@ -497,13 +477,13 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
                                           '(list value))))
                            *callbacks*))))))))
 
-(defmacro define-container (name &rest options)
+(defmacro define-container (name groups &rest options)
   "Register an adapter for a concrete container and its child vector."
   `(setf (gethash ',name *renderers*)
          (lambda (node)
            (declare (type ,name node))
            (,(intern (symbol-name name) :lui)
-            (:options (collect-options node ,name ,@options))
+            (:options (collect-options node ,name ,groups ,@options))
             (draw-children
              (,(intern (format nil "~A-CHILDREN" name)) node))))))
 
@@ -531,94 +511,37 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
     (loop :for node :across children :do (draw-node node seen)))
   (values))
 
-(define-leaf label (text) nil id width height padding position offset-x
-  offset-y foreground background palette radius frost font-size font-family
-  font-weight opacity accent painter terminal-label terminal-border
-  accessible-name disabled-p)
-(define-leaf button (text) on-activate id width height padding position
-  offset-x offset-y foreground background palette radius frost font-size
-  font-family font-weight opacity accent painter terminal-label
-  terminal-border accessible-name disabled-p)
-(define-leaf checkbox (text) on-change id width height padding position
-  offset-x offset-y foreground background palette radius frost font-size
-  font-family font-weight opacity accent painter terminal-label
-  terminal-border accessible-name value default-value disabled-p)
-(define-leaf radio (choice text) on-change id width height padding position
-  offset-x offset-y foreground background palette radius frost font-size
-  font-family font-weight opacity accent painter terminal-label
-  terminal-border accessible-name value default-value disabled-p)
-(define-leaf slider () on-change id width height padding position offset-x
-  offset-y foreground background palette radius frost font-size font-family
-  font-weight opacity accent painter terminal-label terminal-border
-  accessible-name value default-value disabled-p minimum maximum step text)
-(define-leaf text-field () on-change id width height padding position
-  offset-x offset-y foreground background palette radius frost font-size
-  font-family font-weight opacity accent painter terminal-label
-  terminal-border accessible-name value default-value disabled-p placeholder
-  password-p)
-(define-leaf date-picker () on-change id width height padding position
-  offset-x offset-y foreground background palette radius frost font-size
-  font-family font-weight opacity accent painter terminal-label
-  terminal-border accessible-name value default-value)
-(define-leaf searchable-combobox (choices) on-change id width height padding
-  position offset-x offset-y foreground background palette radius frost
-  font-size font-family font-weight opacity accent painter terminal-label
-  terminal-border accessible-name value default-value disabled-p placeholder
-  max-results password-p)
-(define-leaf gauge (fraction) nil id width height padding position offset-x
-  offset-y foreground background palette radius frost font-size font-family
-  font-weight opacity accent painter terminal-label terminal-border
-  accessible-name disabled-p)
-(define-leaf spinner () nil id width height padding position offset-x
-  offset-y foreground background palette radius frost font-size font-family
-  font-weight opacity accent painter terminal-label terminal-border
-  accessible-name disabled-p)
-(define-leaf spacer () nil id width height padding position offset-x
-  offset-y)
-(define-leaf hr () nil id width height padding position offset-x offset-y
-  foreground background palette radius frost font-size font-family
-  font-weight opacity accent painter terminal-label terminal-border
-  accessible-name disabled-p)
-(define-leaf vr () nil id width height padding position offset-x offset-y
-  foreground background palette radius frost font-size font-family
-  font-weight opacity accent painter terminal-label terminal-border
-  accessible-name disabled-p)
-(define-leaf cell (text) on-activate id width height padding position
-  offset-x offset-y foreground background palette radius frost font-size
-  font-family font-weight opacity accent painter terminal-label
-  terminal-border accessible-name disabled-p selected-p)
-(define-leaf list-item (text) on-activate id width height padding position
-  offset-x offset-y foreground background palette radius frost font-size
-  font-family font-weight opacity accent painter terminal-label
-  terminal-border accessible-name disabled-p selected-p)
-(define-leaf tab (text) on-activate id width height padding position
-  offset-x offset-y foreground background palette radius frost font-size
-  font-family font-weight opacity accent painter terminal-label
-  terminal-border accessible-name disabled-p selected-p)
-(define-leaf canvas (commands) nil id width height padding position offset-x
-  offset-y foreground background palette radius frost font-size font-family
-  font-weight opacity accent painter terminal-label terminal-border
-  accessible-name disabled-p)
-(define-container row id width height padding position offset-x offset-y
-  align cross-align clip-p scroll-p scrollbar-p scrollbar-width
-  interactive-p keyboard-focus-p pointer-focus-p gap)
-(define-container column id width height padding position offset-x offset-y
-  align cross-align clip-p scroll-p scrollbar-p scrollbar-width
-  interactive-p keyboard-focus-p pointer-focus-p gap)
-(define-container panel id width height padding position offset-x offset-y
-  align cross-align clip-p scroll-p scrollbar-p scrollbar-width
-  interactive-p keyboard-focus-p pointer-focus-p foreground background
-  palette radius frost font-size font-family font-weight opacity accent
-  painter terminal-label terminal-border accessible-name gap direction)
-(define-container table id width height padding position offset-x offset-y
-  align cross-align clip-p scroll-p scrollbar-p scrollbar-width
-  interactive-p keyboard-focus-p pointer-focus-p gap column-gap)
-(define-container table-row id width height padding position offset-x
-  offset-y align cross-align clip-p scroll-p scrollbar-p scrollbar-width
-  interactive-p keyboard-focus-p pointer-focus-p)
-(define-container table-cell id width height padding position offset-x
-  offset-y align cross-align clip-p scroll-p scrollbar-p scrollbar-width
-  interactive-p keyboard-focus-p pointer-focus-p gap column-span)
+(define-leaf label (text) nil (placement appearance) disabled-p)
+(define-leaf button (text) on-activate (placement appearance) disabled-p)
+(define-leaf checkbox (text) on-change (placement appearance value)
+  disabled-p)
+(define-leaf radio (choice text) on-change (placement appearance value)
+  disabled-p)
+(define-leaf slider () on-change (placement appearance value)
+  disabled-p minimum maximum step text)
+(define-leaf text-field () on-change (placement appearance value)
+  disabled-p placeholder password-p)
+(define-leaf date-picker () on-change (placement appearance value))
+(define-leaf searchable-combobox (choices) on-change (placement appearance value)
+  disabled-p placeholder max-results password-p)
+(define-leaf gauge (fraction) nil (placement appearance) disabled-p)
+(define-leaf spinner () nil (placement appearance) disabled-p)
+(define-leaf spacer () nil (placement))
+(define-leaf hr () nil (placement appearance) disabled-p)
+(define-leaf vr () nil (placement appearance) disabled-p)
+(define-leaf cell (text) on-activate (placement appearance)
+  disabled-p selected-p)
+(define-leaf list-item (text) on-activate (placement appearance)
+  disabled-p selected-p)
+(define-leaf tab (text) on-activate (placement appearance)
+  disabled-p selected-p)
+(define-leaf canvas (commands) nil (placement appearance) disabled-p)
+(define-container row (placement container) gap)
+(define-container column (placement container) gap)
+(define-container panel (placement container appearance) gap direction)
+(define-container table (placement container) gap column-gap)
+(define-container table-row (placement container))
+(define-container table-cell (placement container) gap column-span)
 
 (fn (draw (values))
     ((tree (or node (vector node))) &key ((id lui:object-id) :retained))
