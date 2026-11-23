@@ -4,7 +4,7 @@
            #:%glyph-metrics #:text-width #:line-height #:baseline
            #:wrap-text #:glyph-polygons
            #:*font-path* #:*font-paths* #:*font-directories*
-           #:*font-names* #:font-face #:%font-css))
+           #:*font-names* #:*font-discovery-p* #:font-face #:%font-css))
 
 (in-package #:lui.font)
 
@@ -15,6 +15,7 @@
   (defvar *font-paths* nil)
   (defvar *font-directories* nil)
   (defvar *font-names* nil)
+  (defvar *font-discovery-p* nil)
 
   (defstruct font
     "A browser font face with a Canvas context for measuring text."
@@ -124,6 +125,10 @@
 (progn
   (defvar *font-path* nil "Override the base TrueType file; otherwise use LUI_FONT or font search.")
 
+  (defvar *font-discovery-p* t
+    "Use Linux font-discovery after configured filename search; ignored elsewhere.
+Set NIL before opening a window to use only explicit paths and directories.")
+
   (defvar *font-paths* nil
     "Optional ((family weight) . pathname) overrides for additional font faces.")
 
@@ -201,8 +206,42 @@
                                pending)))
       (nreverse result)))
 
+  #+(and linux (not darwin))
+  (fn (discover-system-face (or null pathname))
+    ((family symbol) (weight symbol))
+    "Find a readable standalone TrueType face through Linux Fontconfig."
+    (when *font-discovery-p*
+      (handler-case
+          (loop :for face :in
+                (org.shirakumo.font-discovery:list-fonts
+                 :family (if (eq family :monospace) "monospace" "sans-serif")
+                 :spacing (if (eq family :monospace) :monospace :proportional)
+                 :slant :roman :weight (if (eq weight :bold) :bold :regular))
+                :for path := (org.shirakumo.font-discovery:file face)
+                ;; Collections and CFF/OpenType files cannot be read by zpb-ttf.
+                :when (and path (string-equal "ttf" (pathname-type path))
+                           (ignore-errors
+                             (zpb-ttf:with-font-loader (loader path)
+                               (plusp (zpb-ttf:units/em loader)))))
+                  :return (pathname path))
+        (error () nil))))
+
+  #+(and linux (not darwin) sbcl)
+  (fn (restore-font-discovery (values)) ()
+    "Replace upstream backend handles after restoring an SBCL saved image."
+    ;; Upstream 1.0.0 retains foreign handles but has no image restore hook.
+    ;; Recreate backend instances without freeing addresses from the old process.
+    (let ((backends (find-symbol "*BACKENDS*" :org.shirakumo.font-discovery)))
+      (set backends
+           (mapcar (lambda (backend) (make-instance (class-of backend)))
+                   (symbol-value backends))))
+    (values))
+
+  #+(and linux (not darwin) sbcl)
+  (pushnew 'restore-font-discovery sb-ext:*init-hooks*)
+
   (fn (resolve-face (or pathname string)) ((family symbol) (weight symbol))
-    "Resolve overrides, direct candidates, then recursively search font roots."
+    "Resolve overrides and filename searches before Linux system discovery."
     (let* ((key (list family weight))
            (names (cdr (assoc key *font-names* :test #'equal)))
            (directories (font-search-directories)))
@@ -210,6 +249,8 @@
           (find-font-file names directories)
           (and names
                (find-font-file names (font-subdirectories directories)))
+          #+(and linux (not darwin))
+          (discover-system-face family weight)
           (error '%lui.conditions:font-error
                  :backend :native :request key
                  :operation :resolve-face

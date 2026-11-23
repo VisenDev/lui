@@ -39,7 +39,7 @@ DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
 .PHONY: retained-demo manual-demo docs docs-html docs-pages test-docs test-terminal-parity help check-platform build demo pdf pdf-demo test test-platform \
-	test-core test-native test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform benchmark-retained benchmark-wayland benchmark-wayland-uncapped
+	test-core test-native test-fonts test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform benchmark-retained benchmark-wayland benchmark-wayland-uncapped
 help:
 	@echo 'make docs                 Build and open the native documentation browser'
 	@echo 'make docs-html            Build standalone build/docs.html with ECL/wasm'
@@ -202,6 +202,15 @@ test-native:
 	@echo '[native] RUN'
 	LUI_TEST=native $(SBCL) $(SBCL_FLAGS) --load scripts/test.lisp
 	@echo '[native] PASS'
+
+test-fonts:
+	$(SBCL) --script tests/font-search.lisp
+ifeq ($(shell uname -s),Linux)
+	LUI_FONT_TEST_MODE=darwin $(SBCL) --script tests/font-discovery-image.lisp
+	@mkdir -p build/bin
+	LUI_OUTPUT=build/bin/test-font-discovery $(SBCL) --script tests/font-discovery-image.lisp
+	build/bin/test-font-discovery
+endif
 
 test-terminal-parity:
 	$(PYTHON) -u tests/terminal-parity.py

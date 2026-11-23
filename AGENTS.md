@@ -202,7 +202,10 @@ the change and report material limitations instead of claiming untested support.
 
 Host selection uses `trivial-features` as an ASDF definition dependency; core
 source loading remains dependency-free. Native font lookup searches configured
-directories and filenames without an additional discovery library.
+directories and filenames, then uses upstream `font-discovery`/Fontconfig on
+Linux only. Never load or invoke its CoreText backend on macOS: upstream issue
+6 reports a fatal CFNumber-to-CFString conversion. Windows keeps directory
+search. The dependency is conditional in `lui/native`; `lui/core` stays isolated.
 
 ## Build and validation workflow
 
@@ -215,7 +218,7 @@ benchmark targets. Scripts discover optional dependency checkouts under
 | Task | Command / notes |
 | --- | --- |
 | Core and native drawing | `make test-core test-native` |
-| Font lookup | `sbcl --script tests/font-search.lisp` (fresh process) |
+| Font lookup | `make test-fonts` (fresh process, Linux saved executable and simulated Darwin exclusion) |
 | Portable source runner | `sbcl --script tests/run.lisp`, `clisp -q -q tests/run.lisp`, `ecl -shell tests/run.lisp` |
 | JSCL source runner | `node /path/to/jscl/dist/jscl-node.js tests/run.lisp` |
 | Browser build / serve | `make web-build` / `make web-demo`; `JSCL` defaults to `~/clone/jscl`, `PORT` to 8000 |
@@ -536,9 +539,13 @@ search directory; `LUI_FONT` overrides the base face. Direct filename matches
 precede recursive search. Linux also searches `/usr/share/fonts/`,
 `/usr/share/Fonts/`, `/usr/local/share/fonts/`, `~/.fonts/`, and
 `$XDG_DATA_HOME/fonts/` (default `~/.local/share/fonts/`) at runtime.
-Discovery uses the configured candidate filenames, not font metadata or
-fontconfig. Traversal skips inaccessible directories and symlink cycles;
-resolved faces are cached only for their owning font lifetime.
+When filename search fails, Linux uses upstream `font-discovery:list-fonts`
+to match family/weight, rejecting collections, OpenType/CFF, and files zpb-ttf
+cannot open. `*font-discovery-p*` disables that fallback when NIL. Traversal
+skips inaccessible directories and symlink cycles. SBCL image restoration
+recreates upstream backend instances so stale Fontconfig pointers cannot
+survive a save/restart; this small adapter relies on upstream 1.0.0
+`*BACKENDS*` representation. Other Lisp saved-image discovery is unverified.
 Supported families are
 `:sans-serif`/`:monospace`, weights `:normal`/`:bold`. PDF uses points (72/inch),
 defaults to 612×792, and renders one display-free frame. Use `render-pdf` directly
