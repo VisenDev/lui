@@ -137,6 +137,29 @@
      "Text editing uses Readline shortcuts: Ctrl-A/E move to the beginning/end, Ctrl-B/F move by character, Alt-B/F move by word, Ctrl-D deletes, Ctrl-H backspaces, Ctrl-K/U/W kill text, and Ctrl-Y yanks it. Ctrl-Shift-A or Command-A selects all where supported. Ctrl-D does not quit."
      "Load the optional lui/debug system and call (lui.debug:set-debugger-enabled t) on a toggle action in your drawing function to attach a debugger to the current context. It displays the completed application tree, bounds, clipping, sizing, style, and text. Call (lui.debug:set-debugger-enabled nil) to close it. Debugger nodes are excluded from its own tree."
      "Clipboard and IME completeness vary by backend; full text shaping is not implemented. Native Wayland, X11, Windows, Cocoa, browser canvas, and raw terminal input use their own platform facilities. Check the project's current test matrix before assuming an untested platform configuration is verified.")
+    (:fonts "Loading native fonts"
+     "Load a native backend before evaluating forms that mention lui.font. For example, evaluate (ql:quickload :lui/x11) first on X11, or (ql:quickload :lui/wayland) on Wayland. Loading lui/core or lui/demo alone does not load native fonts or a window backend. A reader error saying the LUI.FONT package does not exist means this loading step is missing; evaluate it separately before reading the configuration forms."
+     "Native font lookup checks specific filenames in configured directories; it does not scan subdirectories recursively or query the system font registry. If your TrueType files are in /usr/share/Fonts/TTF/, add that exact directory before calling lui:run. Linux paths are case-sensitive: /usr/share/Fonts/TTF/ and /usr/share/fonts/TTF/ are different paths. Directory namestrings must end in a slash."
+     "(pushnew #p\"/usr/share/Fonts/TTF/\"
+         lui.font:*font-directories* :test #'equal)
+(lui:run (lambda () (lui:label \"Hello world\")) :backend :x11)"
+     "Use the directory that actually exists on your machine. The default candidate names include DejaVuSans.ttf, DejaVuSans-Bold.ttf, DejaVuSansMono.ttf, and DejaVuSansMono-Bold.ttf, as well as Liberation and Arial/Courier alternatives. Inspect lui.font:*font-names* for the complete mapping. Adding a directory only helps when it contains a matching filename. You can instead set the LUI_FONT_DIR environment variable before starting Lisp to add one search directory."
+     "To select a specific base TrueType file, bind lui.font:*font-path* around the entire lui:run call, or SETF it before opening the window. Check the file with PROBE-FILE first; NIL means that path was not found. LUI_FONT is the equivalent environment variable, used when *font-path* is NIL."
+     "(probe-file #p\"/usr/share/Fonts/TTF/DejaVuSans.ttf\")
+(let ((lui.font:*font-path*
+        #p\"/usr/share/Fonts/TTF/DejaVuSans.ttf\"))
+  (lui:run (lambda () (lui:label \"Hello world\")) :backend :x11))"
+     "The base override covers normal sans-serif text only. Bold and monospace faces are resolved separately when requested, so configure their directory too, or supply explicit family/weight overrides in lui.font:*font-paths*. This is an association list whose keys are (family weight) lists and whose values are file pathnames or strings. For example, after loading the backend:"
+     "(setf lui.font:*font-paths*
+      '(((:sans-serif :normal) .
+         #p\"/usr/share/Fonts/TTF/DejaVuSans.ttf\")
+        ((:sans-serif :bold) .
+         #p\"/usr/share/Fonts/TTF/DejaVuSans-Bold.ttf\")
+        ((:monospace :normal) .
+         #p\"/usr/share/Fonts/TTF/DejaVuSansMono.ttf\")
+        ((:monospace :bold) .
+         #p\"/usr/share/Fonts/TTF/DejaVuSansMono-Bold.ttf\")))"
+     "Replace these paths with existing TrueType files. A No TrueType font for (:SANS-SERIF :NORMAL) error means the base search found no candidate; the same error for another family/weight identifies the additional face to configure. Configure fonts before opening a window and reopen it after changes: faces are cached for the window lifetime. lui:run manages opening and closing its fonts; applications normally do not need to call open-font themselves. Browser fonts use browser font families, and terminal fonts are chosen by the terminal emulator; these native file settings do not change either.")
     (:backends "Backends and running"
      "Native: load lui/wayland or lui/x11 on Linux, lui/win32 on Windows, or lui/cocoa on macOS. X11 uses GLX and Wayland uses EGL with the shared OpenGL renderer; Windows and macOS use native drawing/compositing APIs. Font lookup searches lui.font:*font-directories* using the family/weight filenames in lui.font:*font-names*. LUI_FONT_DIR adds a preferred search directory. Pass a TrueType path to open-font or set lui.font:*font-path* (or LUI_FONT) to override the base face, and set lui.font:*font-paths* for additional family/weight faces. The offscreen OpenGL system also supports rendering tests."
      "Browser: make web-demo compiles the same gallery callback with JSCL and serves it locally. The web backend uses a high-DPI canvas for widgets and selectable HTML text for visible labels. Use make docs for the native docs browser, make docs-html for a standalone ECL/WebAssembly build/docs.html, and make docs-pages to refresh docs/index.html for hosting."
