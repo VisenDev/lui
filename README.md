@@ -1,5 +1,10 @@
 # Demo and Docs
+
 https://visendev.github.io/lui/
+
+You can also clone the repo and run `make demo` to run the demo, and
+`make docs` to run the docs. You will need to have cffi, zpb-ttf, and 
+font-discovery loadable.
 
 # Hello World
 
