@@ -532,7 +532,13 @@ as warnings. Logs are timestamped; Bash pipefail preserves pipeline failures.
 For fonts, set `*font-path*` for the base face, `*font-paths*` for exact
 family/weight overrides. `*font-directories*` and `*font-names*` configure the
 ordered directory and family/weight filename search. `LUI_FONT_DIR` prepends a
-search directory; `LUI_FONT` overrides the base face.
+search directory; `LUI_FONT` overrides the base face. Direct filename matches
+precede recursive search. Linux also searches `/usr/share/fonts/`,
+`/usr/share/Fonts/`, `/usr/local/share/fonts/`, `~/.fonts/`, and
+`$XDG_DATA_HOME/fonts/` (default `~/.local/share/fonts/`) at runtime.
+Discovery uses the configured candidate filenames, not font metadata or
+fontconfig. Traversal skips inaccessible directories and symlink cycles;
+resolved faces are cached only for their owning font lifetime.
 Supported families are
 `:sans-serif`/`:monospace`, weights `:normal`/`:bold`. PDF uses points (72/inch),
 defaults to 612×792, and renders one display-free frame. Use `render-pdf` directly

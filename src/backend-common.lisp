@@ -146,7 +146,7 @@
       "/usr/share/fonts/truetype/liberation2/"
       "/usr/share/fonts/truetype/liberation/"
       "C:/Windows/Fonts/" "/System/Library/Fonts/Supplemental/")
-    "Ordered font directories, as directory pathnames or namestrings.")
+    "Ordered font search roots; subdirectories are searched after direct matches.")
 
   (defvar *font-names*
     '(((:sans-serif :normal) "DejaVuSans.ttf" "arial.ttf" "Arial.ttf"
@@ -159,25 +159,62 @@
        "courbd.ttf" "Courier New Bold.ttf"))
     "Candidate filenames in preference order for each (family weight).")
 
-  (fn (resolve-face (or pathname string)) ((family symbol) (weight symbol))
-    "Resolve an explicit face override before searching configured directories."
-    (let ((key (list family weight)))
-      (or (cdr (assoc key *font-paths* :test #'equal))
-          (loop :with extra := (uiop:getenvp "LUI_FONT_DIR")
-                :with dirs := (if extra
-                                  (cons (uiop:ensure-directory-pathname extra)
-                                        *font-directories*)
+  (fn (font-search-directories list) ()
+    "Combine explicit directories with runtime Linux system and user roots."
+    (append
+     (let ((extra (uiop:getenvp "LUI_FONT_DIR")))
+       (when extra (list (uiop:ensure-directory-pathname extra))))
+     *font-directories*
+     #+linux
+     (list (merge-pathnames
+            "fonts/"
+            (uiop:ensure-directory-pathname
+             (or (uiop:getenvp "XDG_DATA_HOME")
+                 (merge-pathnames ".local/share/" (user-homedir-pathname)))))
+           (merge-pathnames ".fonts/" (user-homedir-pathname))
+           #p"/usr/local/share/fonts/" #p"/usr/share/fonts/"
+           #p"/usr/share/Fonts/")))
 
-                                  ;; else
-                                  *font-directories*)
-                :for name :in (cdr (assoc key *font-names* :test #'equal))
-                :thereis (loop :for dir :in dirs
-                               :thereis (probe-file
-                                         (merge-pathnames name dir))))
+  (fn (find-font-file (or null pathname)) ((names list) (directories list))
+    "Find a candidate directly in these directories, preserving filename order."
+    (loop :for name :in names
+          :thereis (loop :for directory :in directories
+                         :thereis
+                         (ignore-errors
+                           (probe-file
+                            (merge-pathnames
+                             name
+                             (uiop:ensure-directory-pathname directory)))))))
+
+  (fn (font-subdirectories list) ((directories list))
+    "Collect readable descendant directories once, avoiding symlink cycles."
+    (let ((pending (copy-list directories))
+          (seen (make-hash-table :test 'equal))
+          (result nil))
+      (loop :while pending
+            :for directory := (ignore-errors (truename (pop pending)))
+            :when (and directory (not (gethash directory seen)))
+              :do (setf (gethash directory seen) t)
+                  (push directory result)
+                  (setf pending
+                        (nconc (ignore-errors (uiop:subdirectories directory))
+                               pending)))
+      (nreverse result)))
+
+  (fn (resolve-face (or pathname string)) ((family symbol) (weight symbol))
+    "Resolve overrides, direct candidates, then recursively search font roots."
+    (let* ((key (list family weight))
+           (names (cdr (assoc key *font-names* :test #'equal)))
+           (directories (font-search-directories)))
+      (or (cdr (assoc key *font-paths* :test #'equal))
+          (find-font-file names directories)
+          (and names
+               (find-font-file names (font-subdirectories directories)))
           (error '%lui.conditions:font-error
                  :backend :native :request key
                  :operation :resolve-face
-                 :format-control "No TrueType font for ~S. Set lui.font:*FONT-PATHS*."
+                 :format-control
+                 "No TrueType font for ~S. Set lui.font:*FONT-PATHS* or LUI_FONT_DIR."
                  :format-arguments (list key)))))
 
   (fn (default-font (or pathname string)) ()
