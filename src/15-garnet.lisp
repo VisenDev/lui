@@ -9,7 +9,8 @@
 (in-package #:lui.garnet)
 
 (defvar *garnet-defaults*
-  '(:palette (:background "#ffffff" :foreground "#000000" :accent "#000000")
+  '(:panel-options (:padding 2)
+    :palette (:background "#ffffff" :foreground "#000000" :accent "#000000")
     :terminal-border "++++-|" :opacity 1
     :radius 0 :frost 0
     :font-family :monospace :font-weight :bold)

@@ -8,7 +8,8 @@
 (in-package #:lui.macos)
 
 (defvar *macos-defaults*
-  '(:palette (:window-background "#f5f2ef" :background "#f0edeb"
+  '(:panel-options (:padding 2)
+    :palette (:window-background "#f5f2ef" :background "#f0edeb"
               :control-background "#ffffff" :foreground "#303030"
               :accent "#007aff" :selection "#dbeaff"
               :border "#c7c4c1" :track "#b6b4b2" :light "#ffffff"

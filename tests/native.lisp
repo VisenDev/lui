@@ -384,6 +384,55 @@
     (%paint-frame renderer context)
     (assert saw-context)))
 
+(defun test-panel-child-insets (font)
+  ;; Opaque rows used to paint directly over the CRUD panel's top/left border.
+  (lui.toolkit:register-toolkit
+   :test-panel-insets :parent :qt :defaults '(:panel-options (:padding 5)))
+  (dolist (style '(:glass :motif :garnet :macos :qt :test-panel-insets))
+    (let* ((inset (if (eq style :test-panel-insets) 5 2))
+           (clip nil)
+           (row-paints 0)
+           (renderer
+             (%make-renderer
+              :font font :text (constantly nil)
+              :clip (lambda (box) (setf clip box))
+              :polygons
+              (lambda (contours color alpha)
+                (declare (ignore contours alpha))
+                (when (string= color "#123456")
+                  (incf row-paints)
+                  (assert (<= inset (box-x clip)))
+                  (assert (<= inset (box-y clip)))
+                  (assert (<= (box-right clip) (- 100 inset)))
+                  (assert (<= (box-bottom clip) (- 60 inset)))))))
+           (context (make-context
+                     :measure (lambda (widget width)
+                                (%measure-widget renderer widget width)))))
+      (flet ((draw ()
+               (lui:with-toolkit (style)
+                 (lui:panel (:id :bordered :width (fixed 100)
+                             :height (fixed 60) :scroll-p t :gap 0)
+                   (dotimes (i 5)
+                     (lui:list-item "Row" :id i :width (grow)
+                                    :background "#123456"
+                                    :accent "#123456" :selected-p (= i 0)))))))
+        (with-frame (context 100 60) (draw))
+        (%paint-frame renderer context)
+        (assert (plusp row-paints))
+        (let ((*context* context)) (lui:scroll-to :bordered 0 17))
+        (with-frame (context 100 60) (draw))
+        (setf row-paints 0)
+        (%paint-frame renderer context)
+        (assert (plusp row-paints)))
+      ;; Explicit zero padding remains an opt-in to edge-to-edge content.
+      (let ((panel nil))
+        (with-frame (context 100 60)
+          (lui:with-toolkit (style)
+            (lui:panel (:padding 0 :width (fixed 100)
+                        :height (fixed 60)))))
+        (setf panel (aref (element-children (context-root context)) 0))
+        (assert (zerop (element-padding panel)))))))
+
 (defun test-custom-toolkit (font)
   ;; A new widget kind has no built-in graphical surface to fall back on.
   (let* ((painted nil) (measured nil) (colors nil) (texts nil)
@@ -1268,6 +1317,7 @@
            (test-toolkit-geometry font)
            (test-edit-painting font)
            (test-panel-painting font)
+           (test-panel-child-insets font)
            (test-custom-toolkit font)
            (test-button-feedback font)
            (test-pressed-control-painting font)

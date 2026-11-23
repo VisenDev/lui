@@ -118,6 +118,10 @@ the change and report material limitations instead of claiming untested support.
 - Toolkits must remain independently definable. Rendering and geometry are
   registered toolkit callbacks, not hard-coded toolkit cases in backends or
   generic drawing dispatch. Built-ins may reuse shared painting primitives.
+- Built-in graphical panels reserve 2 backend coordinates of padding by default
+  through toolkit `:panel-options`. Explicit panel padding overrides that inset;
+  zero opts into edge-to-edge contents. Terminal layout keeps its existing
+  defaults. Keep panel-only options out of ordinary control defaults.
 - Shared toolkit geometry governs measurement, text painting, caret placement,
   and selection. Keep those paths consistent, including padding and pressed
   offsets. A widget's own painter takes precedence over its toolkit painter.

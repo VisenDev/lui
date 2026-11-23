@@ -8,7 +8,8 @@
 (in-package #:lui.qt)
 
 (defvar *qt-defaults*
-  '(:palette (:background "#efefef" :foreground "#202020" :accent "#308cc6")
+  '(:panel-options (:padding 2)
+    :palette (:background "#efefef" :foreground "#202020" :accent "#308cc6")
     :terminal-border "++++-|" :opacity 1 :radius 2 :frost 0)
   "Qt Fusion-inspired neutral controls with fine raised edges and blue focus.
 Bind this plist to customize the surface, ink, and selection colors.")

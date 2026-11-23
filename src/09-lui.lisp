@@ -188,6 +188,8 @@ use a distinct :ID or WITH-KEY scope for each repeated instance."
 (define-widget-options panel (&body) (placement flow focus appearance)
     (gap direction)
   "Draw a styled container and attach widgets declared in BODY as children.
+Graphical padding defaults to the toolkit's :panel-options (2 for built-ins),
+keeping child backgrounds inside the border. Explicit :padding overrides it.
 The call site supplies a stable ID, including for scrolling panels.
 Use a distinct :ID or WITH-KEY scope for each repeated instance."
   `(let ((%lui.frame:*parent*
@@ -195,7 +197,9 @@ Use a distinct :ID or WITH-KEY scope for each repeated instance."
            %*toolkit*
            (append (%lui.frame:container-options
                     ',(gensym "PANEL") ,options)
-                   (toolkit-defaults)))))
+                   (toolkit-defaults
+                    %*toolkit*
+                    (unless (context-text-mode-p *context*) :panel))))))
      ,@body))
 
 (fn (widget-options list) ((options list))

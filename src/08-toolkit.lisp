@@ -137,13 +137,17 @@ inherit only from an explicit PARENT."
 (fn (toolkit-defaults (values list list))
     (&optional ((name symbol) %*toolkit*) ((kind symbol) nil))
   "Return appearance defaults for KIND and the captured palette as a second value.
+For :PANEL, prepend :panel-options (graphical panel layout defaults).
 For :MENU-BAR, prepend the toolkit's :menu-bar-options plist, including
 :border-p and padding for its optional panel frame."
   (let* ((defaults (defaults-of (%find-toolkit name)))
          (palette (copy-list (%resolve-palette defaults))))
     (values
      (append
-      (when (eq kind :menu-bar) (getf defaults :menu-bar-options))
+      (case kind
+        (:panel (getf defaults :panel-options))
+        (:menu-bar (getf defaults :menu-bar-options))
+        (otherwise nil))
       (list* :palette palette
              :foreground (%lui.widgets:palette-color palette :foreground)
              :background
@@ -151,8 +155,10 @@ For :MENU-BAR, prepend the toolkit's :menu-bar-options plist, including
                    (%lui.widgets:palette-color palette :control-background))
                  (%lui.widgets:palette-color palette :background))
              :accent (%lui.widgets:palette-color palette :accent)
-             (%without-option :menu-bar-options
-                              (%without-option :palette defaults))))
+             (%without-option
+              :panel-options
+              (%without-option :menu-bar-options
+                               (%without-option :palette defaults)))))
      palette)))
 
 (fn (%override (or null function)) ((kind symbol) (entry toolkit))

@@ -9,7 +9,8 @@
 (in-package #:lui.glass)
 
 (defvar *glass-defaults*
-  '(:palette (:window-background "#202430" :background "#303040" :foreground
+  '(:panel-options (:padding 2)
+    :palette (:window-background "#202430" :background "#303040" :foreground
               "#ffffff" :accent "#258bff") :opacity 0.35f0
     :radius 12 :frost 12 :terminal-border "╭╮╰╯─│")
   "Glass uses rounded, translucent surfaces. Bind this plist to change their
