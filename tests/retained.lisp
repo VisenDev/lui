@@ -44,11 +44,19 @@
       (assert (equal id (%lui.layout:element-id
                         (element-with-value context "After")))))
     (assert (eq label (aref children 0)))
-    (assert (eq lui.retained:+unspecified+
-                (lui.retained:label-background label)))
-    (setf (lui.retained:label-background label) nil)
     (assert (null (lui.retained:label-background label)))
-    (setf (lui.retained:label-background label) lui.retained:+unspecified+)))
+    (setf (lui.retained:label-background label) "#fedcba")
+    (frame context panel)
+    (let ((widget (%lui.layout:element-content
+                   (element-with-value context "After"))))
+      (assert (equal "#fedcba"
+                     (%lui.widgets:widget-color widget :background))))
+    (setf (lui.retained:label-background label) nil)
+    (frame context panel)
+    (let ((widget (%lui.layout:element-content
+                   (element-with-value context "After"))))
+      (assert (not (equal "#fedcba"
+                          (%lui.widgets:widget-color widget :background)))))))
 
 (defun test-widget-constructors ()
   ;; Every concrete type uses its standard DEFSTRUCT constructor and adapter.
@@ -58,6 +66,7 @@
            (lui.retained:make-button :text "Button")
            (lui.retained:make-checkbox :text "Check")
            (lui.retained:make-radio :choice :one :text "Radio")
+           (lui.retained:make-radio :choice nil :text "No choice")
            (lui.retained:make-slider :minimum 0 :maximum 10 :step 1)
            (lui.retained:make-text-field :placeholder "Text")
            (lui.retained:make-date-picker)
@@ -257,11 +266,12 @@
          (tree (cl:vector field check)))
     (frame context tree)
     (let ((widget (%lui.layout:element-content (element-with-value context "Check"))))
-      (assert (null (%lui.widgets:widget-value widget))))
+      ;; NIL VALUE is omitted, so DEFAULT-VALUE initializes owned state.
+      (assert (%lui.widgets:widget-value widget)))
     (setf (lui.retained:text-field-value field) "controlled")
     (frame context tree)
     (assert (%lui.tests.support:has-text-p context "controlled"))
-    (setf (lui.retained:text-field-value field) lui.retained:+unspecified+)
+    (setf (lui.retained:text-field-value field) nil)
     (frame context tree
            (list (%lui.frame:make-event :kind :key :key lui.key:end
                                        :id (retained-id :edit context))

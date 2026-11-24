@@ -460,9 +460,10 @@ support reconstruction and must remain unique and stable within a parent.
 A node may not occur twice among siblings or form an ancestor cycle. Moving a
 node to another parent changes its scoped identity. Absent nodes lose owned
 state after a completed frame. Supply different DRAW :id values for multiple
-trees in one parent. +UNSPECIFIED+ distinguishes omitted options from NIL;
-assign it to an option slot to restore defaults, or a control's VALUE slot to restore
-LUI-owned control state. DEFAULT-VALUE initializes owned state once.
+trees in one parent. Option slots default to NIL; assigning NIL restores defaults.
+A NIL VALUE slot selects LUI-owned control state; non-NIL values supply an
+external model. DEFAULT-VALUE initializes owned state once. Explicit NIL and
+omission are equivalent, including boolean options.
 
 Retained explicit IDs use core parent scoping directly; do not repeat them in
 per-node WITH-KEY scopes. Unkeyed objects keep their own key scope. Sibling
