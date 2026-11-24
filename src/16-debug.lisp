@@ -170,13 +170,16 @@
         :foreground accent)))
   (dolist (pair pairs)
     (when pair
-      (let* ((stacked (< width (units 32)))
+      (let* ((stacked (< width (resolve-units (units 32))))
              (key (id :property (list title (first pair))))
              (*parent* (emit (make-element :id key :width (grow)
                                            :direction (if stacked :column
                                                           ;; else
                                                           :row)
-                                           :gap (if stacked 0 (units 1))))))
+                                           :gap (if stacked 0
+                                                    ;; else
+                                                    (resolve-units
+                                                     (units 1)))))))
         (lui:label (concatenate 'string (first pair) ":")
           :width (if stacked (grow) (fixed (units 13)))
           :font-size 14 :font-weight :bold)
@@ -322,7 +325,7 @@
                            :test #'equal)))
       (when index
         (let ((top (* index step))
-              (viewport (max step (- height (units 2)))))
+              (viewport (max step (- height (resolve-units (units 2))))))
           (setf offset
                 (max 0 (min top (max offset (- (+ top step) viewport)))))
           (scroll-to (id :tree) 0 offset)))))
@@ -342,8 +345,8 @@
     (emit (make-element
            :width
            (fixed (min (/ width 3)
-                       (units (* 2 (entry-depth
-                                    entry)))))))
+                       (resolve-units (units (* 2 (entry-depth
+                                    entry))))))))
 
     ;; Only branches can collapse; leaves reserve the same control width.
     (if (plusp (length (element-children node)))
@@ -390,7 +393,8 @@
               :scroll-p t :padding (units 1) :opacity 1
               :radius 0 :frost 0)
     (let* ((rows (debugger-state-rows state))
-           (step (units (if (context-text-mode-p *context*) 1 3)))
+           (step (resolve-units
+                  (units (if (context-text-mode-p *context*) 1 3))))
            (viewport (previous-box (id :tree)))
            (height (if viewport (box-height viewport)
                        ;; else
@@ -415,11 +419,12 @@
 (fn (debugger-width real) ((state debugger-state))
   "Resolve the debugger pane width within the available viewport bounds."
   (let* ((window (context-width *context*))
-         (minimum (min window (units 25)))
-         (maximum (max minimum (- window (units 12))))
+         (minimum (min window (resolve-units (units 25))))
+         (maximum (max minimum (- window (resolve-units (units 12)))))
          (width (min maximum (max minimum
                                   (if (debugger-state-width state)
-                                      (units (debugger-state-width state))
+                                      (resolve-units
+                                       (units (debugger-state-width state)))
                                       ;; else
                                       (* window 0.4f0))))))
 
@@ -449,8 +454,8 @@
                  (setf (debugger-state-grab state) nil)))
               (:key
                (case (event-key event)
-                 (lui.key:left (incf width (units 2)))
-                 (lui.key:right (decf width (units 2)))
+                 (lui.key:left (incf width (resolve-units (units 2))))
+                 (lui.key:right (decf width (resolve-units (units 2))))
                  (lui.key:home (setf width minimum))
                  (lui.key:end (setf width
                                     maximum))
@@ -466,7 +471,7 @@
 
 (fn (resize-handle element) ((width real))
   "Declare and route input for the debugger's horizontal resize handle."
-  (let ((size (units 1)))
+  (let ((size (resolve-units (units 1))))
     (emit (make-element
            :id (id :resize) :interactive-p t :pointer-focus-p t
            :position :absolute
@@ -484,14 +489,13 @@
 
 (fn (details-height real) ((state debugger-state) (maximum (real 0 *)))
   "Resolve the selected-node details height within the debugger pane."
-  (let* ((minimum (min maximum (units (if (context-text-mode-p *context*)
-                                          6
-                                          ;; else
-                                          12))))
+  (let* ((minimum-units (if (context-text-mode-p *context*) 6 12))
+         (minimum (min maximum (resolve-units (units minimum-units))))
          (height (min maximum
                       (max minimum (if (debugger-state-details-height state)
-                                       (units (debugger-state-details-height
-                                               state))
+                                       (resolve-units
+                                        (units (debugger-state-details-height
+                                                state)))
 
                                        ;; else
                                        (* maximum 0.75f0))))))
@@ -523,15 +527,15 @@
                  (setf (debugger-state-details-grab state) nil)))
               (:key
                (case (event-key event)
-                 (lui.key:up (incf height (units 2)))
-                 (lui.key:down (decf height (units 2)))
+                 (lui.key:up (incf height (resolve-units (units 2))))
+                 (lui.key:down (decf height (resolve-units (units 2))))
                  (lui.key:home (setf height maximum))
                  (lui.key:end (setf height 0))
                  (otherwise nil)))
               (otherwise nil))
 
             ;; Dragging to the bottom dismisses details instead of leaving a sliver.
-            (if (<= height (units 2))
+            (if (<= height (resolve-units (units 2)))
                 (close-details state)
                 ;; else
                 (setf height (min maximum (max minimum height))
@@ -598,7 +602,7 @@
                                   *context*)
                                  0
                                  ;; else
-                                 (units 0.25f0))
+                                 (resolve-units (units 0.25f0)))
                 :opacity 1 :radius 0 :frost 0)
       (details node width)))
   (values))
@@ -623,11 +627,12 @@
           (setf (debugger-state-open-p state) nil)
           (request-frame)))
       (let* ((header-height
-              (debugger-header-height header (- width (units 2))))
+              (debugger-header-height
+               header (- width (resolve-units (units 2)))))
              ;; Root/tree padding, three gaps and the divider also need room.
              (maximum (max 0 (- (%lui.frame:context-viewport-height
                                  *context*) header-height
-                                 (units 6.5f0))))
+                                 (resolve-units (units 6.5f0)))))
              (height (details-height state maximum)))
         (setf (element-height header) (fit header-height))
         (tree state width)

@@ -318,7 +318,7 @@
     (assert (%lui.tests.support:has-text-p context "controlled!"))))
 
 (defun test-styling-and-units ()
-  (let ((label (lui.retained:make-label "Styled" :padding '(:units 2)
+  (let ((label (lui.retained:make-label "Styled" :padding (lui:units 2)
                                  :font-size 18 :font-weight :bold
                                  :foreground "#123456" :background "#fedcba"
                                  :radius 4)))
@@ -334,7 +334,74 @@
           (assert (= 4 (%lui.widgets:widget-radius widget)))
           (assert (equal "#123456" (%lui.widgets:widget-color widget :foreground)))
           (assert (equal "#fedcba" (%lui.widgets:widget-color widget :background))))))
-    (assert (equal '(:units 2) (lui.retained:node-padding label)))))
+    (assert (= 2 (lui:units-count (lui.retained:node-padding label))))))
+
+(defun check-deferred-dimensions (context scale)
+  "Check resolved dimensions in either immediate or retained declarations."
+  (let* ((element (element-with-value context "Deferred"))
+         (widget (%lui.layout:element-content element))
+         (box (%lui.layout:element-box element)))
+    (assert (= (* 12 scale) (%lui.layout:box-width box)))
+    (assert (= (* 5 scale) (%lui.layout:box-height box)))
+    (assert (= scale (%lui.layout:element-padding element)))
+    (assert (= (* 0.5 scale) (%lui.layout:element-offset-x element)))
+    (assert (= (* 2 scale) (%lui.widgets:widget-font-size widget)))
+    (assert (= scale (%lui.widgets:widget-radius widget)))
+    (assert (= (* 3 scale) (%lui.widgets:widget-frost widget)))))
+
+(defun test-deferred-dimensions ()
+  "Reuse values created outside a frame across backend scales and API layers."
+  (let* ((lui:*unit* 99)
+         (width (lui:units 12))
+         (height (lui:fixed (lui:units 5)))
+         (padding (lui:units 1))
+         (options (list :width width :height height :padding padding
+                        :offset-x (lui:units 0.5) :font-size (lui:units 2)
+                        :radius padding :frost (lui:units 3)))
+         (label (apply #'luir:make-label "Deferred" options))
+         (root (luir:make-panel :width 200 :height 180 :gap padding
+                               :padding padding :children label)))
+    (dolist (scale '(1 8 1))
+      (let ((lui:*unit* scale)
+            (context (%lui.tests.support:make-test-context)))
+        (frame context root)
+        (check-deferred-dimensions context scale)
+        (lui:with-frame (context 300 200)
+          (lui:panel (:width 200 :height 180 :gap padding :padding padding)
+            (lui:label "Deferred" :options options)))
+        (check-deferred-dimensions context scale)
+        (assert (= (* 12 scale) (lui:resolve-units width)))
+        (assert (= 7 (lui:resolve-units 7)))))
+    (assert (eq width (luir:label-width label)))
+    (assert (eq height (luir:label-height label)))
+    (assert (= 5 (lui:units-count (%lui.layout:sizing-value height))))
+    (assert (= 12 (lui:units-count width)))))
+
+(defun test-unit-sizing-bounds ()
+  "Resolve stored FIT/GROW bounds and reject contradictory mixed-scale bounds."
+  (let ((fit (lui:fit (lui:units 3) 40))
+        (grow (lui:grow (lui:units 2) (lui:units 5)))
+        (mixed (lui:fit (lui:units 3) 20)))
+    (dolist (scale '(1 8))
+      (let ((lui:*unit* scale)
+            (context (%lui.tests.support:make-test-context)))
+        (lui:with-frame (context 300 200)
+          (lui:column (:width 100)
+            (lui:label "X" :width fit)
+            (lui:label "Y" :width grow)))
+        (assert (= (* 3 scale)
+                   (%lui.layout:box-width
+                    (%lui.layout:element-box
+                     (element-with-value context "X")))))
+        (assert (= (* 5 scale)
+                   (%lui.layout:box-width
+                    (%lui.layout:element-box
+                     (element-with-value context "Y")))))))
+    (assert (lui:units-p (%lui.layout:sizing-minimum fit)))
+    (let ((lui:*unit* 8))
+      (assert (handler-case
+                  (progn (%lui.layout:resolve-sizing mixed) nil)
+                (error () t))))))
 
 (defun invalid-p (tree)
   (handler-case
@@ -357,7 +424,11 @@
     (setf (luir:column-children parent) parent)
     (assert (invalid-p parent)))
   (assert (invalid-p (lui.retained:make-button nil)))
-  (assert (invalid-p (lui.retained:make-label "Bad" :padding '(:units "x"))))
+  ;; JSCL deliberately omits generated DEFSTRUCT constructor slot checks.
+  #-jscl
+  (assert (handler-case
+              (progn (funcall (symbol-function 'lui:units) "bad") nil)
+            (type-error () t)))
   ;; The obsolete list representation is rejected, not silently converted.
   (assert (handler-case
               (progn (funcall (symbol-function 'frame)
@@ -447,6 +518,8 @@
   (test-shared-subtree-scopes)
   (test-value-ownership)
   (test-styling-and-units)
+  (test-deferred-dimensions)
+  (test-unit-sizing-bounds)
   (test-invalid-trees)
   (test-deferred-callbacks)
   (test-symbol-callbacks)

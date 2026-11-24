@@ -218,12 +218,14 @@ An optional terminal-label callback overrides the standard kind-based label."
 
 (fn (declare-widget boolean)
     ((kind symbol) (style symbol) (id object-id) (text string) &key
-     ((width sizing) (fit)) ((height sizing) (fit)) ((padding real) 0)
+     ((width (or real units sizing)) (fit))
+     ((height (or real units sizing)) (fit)) ((padding (or real units)) 0)
      ((position position-mode) :automatic)
-     ((offset-x real) 0) ((offset-y real) 0)
+     ((offset-x (or real units)) 0) ((offset-y (or real units)) 0)
      ((foreground string) "#ffffff") ((background string) "#303040")
-     ((radius real) 12) ((frost real) 12) ((value t) nil) ((minimum real) 0)
-     ((maximum real) 1) ((step real) 0.01f0) ((font-size real) 16)
+     ((radius (or real units)) 12) ((frost (or real units)) 12)
+     ((value t) nil) ((minimum real) 0)
+     ((maximum real) 1) ((step real) 0.01f0) ((font-size (or real units)) 16)
      ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
      ((opacity real) 0.85f0) ((accent string) "#258bff")
      ((disabled-p boolean) nil) ((painter (or null function)) nil)
@@ -252,8 +254,10 @@ Most applications should use the public LUI controls."
          (make-widget
           :kind kind :style style :palette (copy-list palette) :text text
           :foreground foreground
-          :background background :radius radius :frost frost :value value
-          :minimum minimum :maximum maximum :step step :font-size font-size
+          :background background :radius (resolve-units radius)
+          :frost (resolve-units frost) :value value
+          :minimum minimum :maximum maximum :step step
+          :font-size (resolve-units font-size)
           :font-family font-family :font-weight font-weight
           :opacity opacity :accent accent
           :disabled-p (not (null disabled-p)) :painter painter
@@ -266,9 +270,12 @@ Most applications should use the public LUI controls."
 
     ;; Attach measurement and input policies to the frame-local element.
     (emit (make-element
-           :id id :content widget :width width :height height :padding padding
+           :id id :content widget
+           :width (resolve-sizing width) :height (resolve-sizing height)
+           :padding (resolve-units padding)
            :position position
-           :offset-x offset-x :offset-y offset-y
+           :offset-x (resolve-units offset-x)
+           :offset-y (resolve-units offset-y)
            :interactive-p (and (not disabled-p)
                                (not (member kind
                                             '(:label :gauge :spinner :hr :vr))))
@@ -794,7 +801,8 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
 
 (fn (declare-panel element) ((style symbol) (options list))
   "Declare a styled layout container without introducing retained widgets."
-  (let ((appearance nil)
+  (let ((options (resolve-layout-options options))
+        (appearance nil)
         (layout nil))
     (do ((tail options (cddr tail))) ((null tail))
       (let ((key (car tail))

@@ -181,12 +181,12 @@ Use MAKE-LABEL, MAKE-BUTTON, MAKE-TEXT-FIELD or another widget constructor.
 Stored objects keep identity across mutation and sibling reordering.
 ID keys allow rebuilding."
   (id nil :type lui:object-id)
-  (width nil :type (or null lui:sizing))
-  (height nil :type (or null lui:sizing))
-  (padding nil :type (or null real list))
+  (width nil :type (or null real lui:units lui:sizing))
+  (height nil :type (or null real lui:units lui:sizing))
+  (padding nil :type (or null real lui:units))
   (position nil :type (or null keyword))
-  (offset-x nil :type (or null real list))
-  (offset-y nil :type (or null real list)))
+  (offset-x nil :type (or null real lui:units))
+  (offset-y nil :type (or null real lui:units)))
 
 (defstruct (styled-node (:include node) (:constructor nil)
              (:copier nil))
@@ -194,9 +194,9 @@ ID keys allow rebuilding."
   (foreground nil :type (or null string))
   (background nil :type (or null string))
   (palette nil :type (or null lui:palette list symbol))
-  (radius nil :type (or null real list))
-  (frost nil :type (or null real))
-  (font-size nil :type (or null real list))
+  (radius nil :type (or null real lui:units))
+  (frost nil :type (or null real lui:units))
+  (font-size nil :type (or null real lui:units))
   (font-family nil :type (or null keyword))
   (font-weight nil :type (or null keyword))
   (opacity nil :type (or null real))
@@ -214,7 +214,7 @@ ID keys allow rebuilding."
   (clip-p nil :type boolean)
   (scroll-p nil :type boolean)
   (scrollbar-p nil :type boolean)
-  (scrollbar-width nil :type (or null real))
+  (scrollbar-width nil :type (or null real lui:units))
   (interactive-p nil :type boolean)
   (keyboard-focus-p nil :type boolean)
   (pointer-focus-p nil :type boolean)
@@ -403,12 +403,12 @@ ID keys allow rebuilding."
 (defstruct (row (:include container-node) (:copier nil))
   "A retained row container with a single child node or a CHILDREN vector.
 Edit children with (SETF ROW-CHILDREN); see DRAW for identity rules."
-  (gap nil :type (or null real list)))
+  (gap nil :type (or null real lui:units)))
 
 (defstruct (column (:include container-node) (:copier nil))
   "A retained column container with a single child node or a CHILDREN vector.
 Edit children with (SETF COLUMN-CHILDREN); see DRAW for identity rules."
-  (gap nil :type (or null real list)))
+  (gap nil :type (or null real lui:units)))
 
 (defstruct (panel (:include container-node) (:copier nil))
   "A retained panel container with a single child node or a CHILDREN vector.
@@ -416,9 +416,9 @@ Edit children with (SETF PANEL-CHILDREN); see DRAW for identity rules."
   (foreground nil :type (or null string))
   (background nil :type (or null string))
   (palette nil :type (or null lui:palette list symbol))
-  (radius nil :type (or null real list))
-  (frost nil :type (or null real))
-  (font-size nil :type (or null real list))
+  (radius nil :type (or null real lui:units))
+  (frost nil :type (or null real lui:units))
+  (font-size nil :type (or null real lui:units))
   (font-family nil :type (or null keyword))
   (font-weight nil :type (or null keyword))
   (opacity nil :type (or null real))
@@ -427,14 +427,14 @@ Edit children with (SETF PANEL-CHILDREN); see DRAW for identity rules."
   (terminal-label nil :type (or null function))
   (terminal-border nil :type (or null string))
   (accessible-name nil :type (or null string))
-  (gap nil :type (or null real list))
+  (gap nil :type (or null real lui:units))
   (direction nil :type (or null keyword)))
 
 (defstruct (table (:include container-node) (:copier nil))
   "A retained table container with a single child node or a CHILDREN vector.
 Edit children with (SETF TABLE-CHILDREN); see DRAW for identity rules."
-  (gap nil :type (or null real list))
-  (column-gap nil :type (or null real list)))
+  (gap nil :type (or null real lui:units))
+  (column-gap nil :type (or null real lui:units)))
 
 (defstruct (table-row (:include container-node) (:copier nil))
   "A retained table-row container with a single child node or a CHILDREN vector.
@@ -443,7 +443,7 @@ Edit children with (SETF TABLE-ROW-CHILDREN); see DRAW for identity rules.")
 (defstruct (table-cell (:include container-node) (:copier nil))
   "A retained table-cell container with a single child node or a CHILDREN vector.
 Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
-  (gap nil :type (or null real list))
+  (gap nil :type (or null real lui:units))
   (column-span nil :type (or null integer)))
 
 (defvar *renderers* (make-hash-table :test #'eq))
@@ -461,17 +461,6 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
   (error 'lui:configuration-error :operation :retained-draw
          :setting :tree :value value :format-control "~A"
          :format-arguments (list message)))
-
-(fn (option-value t) ((value t))
-  "Resolve a spacing descriptor without evaluating Lisp forms."
-  (cond
-    ((and (consp value) (eq (first value) :units))
-     (unless (and (consp (cdr value)) (null (cddr value))
-                  (realp (second value)))
-       (invalid-tree value "Expected (:units NUMBER)."))
-     (lui:units (second value)))
-
-    (t value)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *option-groups*
@@ -498,10 +487,7 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
                 (when value
                   (setf options
                         (list* ,key
-                               ,(if (member name '(padding gap column-gap
-                                                  offset-x offset-y radius
-                                                  font-size))
-                                    '(option-value value) 'value)
+                               value
                                options)))))
      options))
 
@@ -641,7 +627,7 @@ Option slots default to NIL; explicit NIL and omission are equivalent.
 A NIL VALUE slot selects LUI-owned state; a non-NIL value supplies an external
 model. DEFAULT-VALUE initializes owned state. Set any option slot back to NIL
 to restore its default, including VALUE to restore LUI-owned state.
-Spacing slots accept (:units NUMBER), resolved for the active backend.
+Dimensional slots accept UNITS structures, resolved for the active backend.
 Callbacks may be functions or symbols, resolved with SYMBOL-FUNCTION when
 invoked. On-activate receives no arguments; on-change receives the new value.
 Callbacks run in traversal order after successful declaration, before DRAW

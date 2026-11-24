@@ -476,7 +476,11 @@
                 (delta (message sb-alien:double event "scrollingDeltaY")))
             (make-event :kind :scroll :x x :y y
                         :scroll-mode (if lines-p :smooth :immediate)
-                        :value (* (- delta) (if lines-p (units 2) 1))))
+                        :value (* (- delta)
+                                  (if lines-p
+                                      (resolve-units (units 2))
+                                      ;; else
+                                      1))))
 
           ;; else
           (make-event :kind (case type ((1 3) :press) ((2 4) :release)

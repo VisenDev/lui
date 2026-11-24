@@ -29,7 +29,7 @@
         \"Hello from retained data!\"))
 
 (defparameter *ui*
-  (lui.retained:make-column :gap '(:units 1)
+  (lui.retained:make-column :gap (lui:units 1)
    :children
    (cl:vector
     *greeting*
@@ -39,7 +39,7 @@
 (lui:run (lambda () (lui.retained:draw *ui*)))"
       "Each widget has its own standard DEFSTRUCT and constructor: MAKE-LABEL, MAKE-BUTTON, MAKE-TEXT-FIELD, MAKE-SLIDER, MAKE-COLUMN and so on. Constructors take the same required arguments in the same order as immediate controls: (make-label text &key ...), (make-radio choice text &key ...), (make-searchable-combobox choices &key ...), (make-gauge fraction &key ...) and (make-canvas commands &key ...). Remaining options are keywords. SLIME can show the arguments specific to that widget. Use SETF with LABEL-TEXT, BUTTON-ON-ACTIVATE, TEXT-FIELD-VALUE, SLIDER-MINIMUM or COLUMN-CHILDREN. Unrelated slots are absent: a button has no children or slider limits. Shared placement and appearance slots remain available through each widget's accessors. NODE is only the common base type, with no constructor or kind slot. The package nickname LUIR is available. Containers accept a single child node or a vector of nodes, for example (luir:make-column :children (luir:make-label \"Hello\")); use CL:VECTOR for multiple children or an empty collection. DRAW accepts a single root or a vector of roots. The generic NODE constructor and list forms are retired."
       "Unkeyed nodes preserve their object identity when reordered within the same parent. Reconstructing an unkeyed node creates a new widget. Use :id to share identity between reconstructed nodes, and keep those keys unique among siblings. A node cannot appear twice in the same parent. Containers scope identities, so moving a node to another parent starts new state. Supply distinct DRAW :id values for separate trees in the same scope."
-      "Option slots default to NIL, preserving toolkit defaults. Assign NIL to restore an omitted option; explicit NIL and omission are equivalent, including boolean options. A control's DEFAULT-VALUE slot initializes LUI-owned state; a non-NIL VALUE slot makes it application-controlled, and NIL restores LUI-owned state. Removing a control for a completed frame releases its owned state. Numeric spacing accepts (:units NUMBER), resolved for the active backend without changing the slot. Sizing slots accept actual objects such as (lui:grow)."
+      "Option slots default to NIL, preserving toolkit defaults. Assign NIL to restore an omitted option; explicit NIL and omission are equivalent, including boolean options. A control's DEFAULT-VALUE slot initializes LUI-owned state; a non-NIL VALUE slot makes it application-controlled, and NIL restores LUI-owned state. Removing a control for a completed frame releases its owned state. LUI:UNITS returns a typed deferred amount, so (lui:units 1) works in padding and other dimensions even when the tree is built at load time. The active backend resolves it during declaration without changing the stored value. Width and height accept numbers, units, or sizing policies such as (lui:grow) and (lui:fixed (lui:units 4)). FIT and GROW bounds also accept units. Plain numbers remain backend coordinates; use LUI:RESOLVE-UNITS explicitly when numeric arithmetic is needed."
       ":on-activate takes a zero-argument function; :on-change receives the new value. Either may be a symbol: SYMBOL-FUNCTION is looked up at dispatch, so redefinitions affect existing nodes. DRAW queues callbacks during traversal, then invokes them in order after successful traversal and requests another frame. Callbacks may update slots or replace children; changes appear next frame. Traversal errors discard queued callbacks, and callback errors stop dispatch without undoing earlier edits."
       "Run make retained-demo (or make retained-demo PLATFORM=terminal) to try nested layouts, editable keyed rows, live slot changes, toolkit/palette switching, and FPS. The module has no additional core dependencies. Browser application builds must explicitly include it. Structures avoid decoding list nodes during drawing; this is not a cross-backend performance guarantee.")
     (:debug "Debugger"
@@ -216,17 +216,21 @@
   (lui:scroll-to :docs-detail 0 0))
 
 (defun navigation-width ()
-  (min (lui:units (if (< (lui:frame-width)
-            (lui:units 105)) 18 28))
-       (* 0.3 (lui:frame-width))))
+  (let ((count (if (< (lui:frame-width)
+                      (lui:resolve-units (lui:units 105)))
+                   18
+                   ;; else
+                   28)))
+    (min (lui:resolve-units (lui:units count))
+         (* 0.3 (lui:frame-width)))))
 
 (defun reference-width ()
-  (if (>= (lui:frame-width) (lui:units 80))
-      (min (lui:units 40)
+  (if (>= (lui:frame-width) (lui:resolve-units (lui:units 80)))
+      (min (lui:resolve-units (lui:units 40))
            (* 0.44 (- (lui:frame-width)
-                      (navigation-width) (lui:units 4))))
+                      (navigation-width) (lui:resolve-units (lui:units 4)))))
       (- (lui:frame-width) (navigation-width)
-        (lui:units 3))))
+        (lui:resolve-units (lui:units 3)))))
 
 (defun wrap-symbol (text columns)
   (format nil "~{~A~^~%~}"
@@ -249,7 +253,7 @@
     (unless (equal key (browser-row-key state))
       (let* ((text-p (lui:text-mode-p))
              (inset (if text-p 0 24)) (gutter (if text-p 1 12))
-             (available (max 1 (- width (lui:units 1) gutter inset)))
+             (available (max 1 (- width (lui:resolve-units (lui:units 1)) gutter inset)))
              (top 0))
         (flet ((probe (text)
                  (lui:measure-label text :font-family :monospace)))
@@ -284,8 +288,8 @@
     (dolist (guide *guides*)
       (when
         (lui:list-item
-          (if (< (lui:frame-width) (lui:units
-                  105))
+          (if (< (lui:frame-width) (lui:resolve-units (lui:units
+                  105)))
                                (case (first guide)
                                  (:start "Start") (:retained "Retained UI") (:debug "Debugger")
                                  (:frames "Frames") (:positioning "Positioning")
@@ -352,13 +356,13 @@
            (offset (if page-p
                        (if viewport
                            (- (lui:page-scroll-position)
-                              (lui:box-y viewport) (lui:units 0.5))
+                              (lui:box-y viewport) (lui:resolve-units (lui:units 0.5)))
                            0)
                        (nth-value 1 (lui:scroll-position :docs-entries))))
            (bottom (+ offset (if page-p
                                  (lui:viewport-height)
                                  (if viewport (lui:box-height viewport)
-                  (lui:units 18)))))
+                  (lui:resolve-units (lui:units 18))))))
            (start (max 0 (1- (or (position-if
                                   (lambda (row)
                                     (> (+ (third row) (fourth row)) offset))
@@ -412,8 +416,10 @@
                 (browser-circles state)))))
     (lui:canvas
                 (loop :for (x y) :in (browser-circles state)
-            :collect (list :circle (lui:units x) (lui:units y) (lui:units 1)
-                                     "#258bff" "#a7caff"))
+            :collect (list :circle (lui:resolve-units (lui:units x))
+                           (lui:resolve-units (lui:units y))
+                           (lui:resolve-units (lui:units 1))
+                           "#258bff" "#a7caff"))
       :id :docs-preview-canvas
       :width (lui:grow)
       :height (lui:fixed (lui:units 8))
@@ -727,8 +733,8 @@
       (lui:row (:width (lui:grow) :height (lui:grow) :gap (lui:units
         1))
         (navigation state)
-          (if (>= (lui:frame-width) (lui:units
-                  80))
+          (if (>= (lui:frame-width) (lui:resolve-units (lui:units
+                  80)))
             (progn (references state) (detail state))
             (lui:column (:width (lui:grow) :height (lui:grow) :gap
               (lui:units

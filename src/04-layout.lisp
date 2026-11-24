@@ -1,6 +1,8 @@
 (defpackage #:%lui.layout
   (:use #:cl #:%lui.fn)
-  (:export #:sizing-kind #:sizing-value #:sizing-minimum
+  (:export #:units #:units-p #:units-count #:resolve-units #:*unit*
+           #:resolve-sizing #:resolve-layout-options
+           #:sizing-kind #:sizing-value #:sizing-minimum
            #:sizing-maximum
            #:position-mode #:element-position
            #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
@@ -39,6 +41,18 @@ keep compound IDs stable and do not mutate them after declaration."
 (deftype contour () "A vector of ordered polygon points." '(vector point))
 (deftype contours () "A vector of polygon contours." '(vector contour))
 
+(defvar *unit* 1
+  "Backend coordinates per spacing unit, bound while declaring a frame.")
+
+(defstruct (units (:constructor units (count)) (:copier nil))
+  "A deferred spacing amount, independent of the backend at construction time.
+Use UNITS in dimensional options; RESOLVE-UNITS converts for arithmetic."
+  (count 0 :type real :read-only t))
+
+(fn (resolve-units real) ((value (or real units)))
+  "Resolve VALUE using the active backend scale; plain numbers pass through."
+  (if (units-p value) (* (units-count value) *unit*) value))
+
 (defstruct sizing
   "Axis sizing policy with a kind, value, minimum, and optional maximum."
   ;; :FIT measures content; :GROW shares remaining space; :FIXED and :PERCENT
@@ -46,37 +60,72 @@ keep compound IDs stable and do not mutate them after declaration."
   (kind :fit :type (member :fit :grow :fixed :percent))
   ;; Backend coordinates for :FIXED, a fraction in [0, 1] for :PERCENT,
   ;; and unused (conventionally zero) for :FIT and :GROW.
-  (value 0 :type real)
+  (value 0 :type (or real units))
   ;; Nonnegative lower bound in backend coordinates. For :FIXED, both bounds
   ;; equal VALUE so the requested size cannot shrink or grow.
-  (minimum 0 :type real)
+  (minimum 0 :type (or real units))
   ;; NIL means no upper bound; otherwise this must be at least MINIMUM.
-  (maximum nil :type (or null real)))
+  (maximum nil :type (or null real units)))
 
 (fn (make-checked-sizing sizing)
-    ((kind symbol) (value real) (minimum real) (maximum (or null real)))
+    ((kind symbol) (value (or real units)) (minimum (or real units))
+     (maximum (or null real units)))
   "Create a sizing policy after checking its minimum and maximum bounds."
-  (assert (and (>= minimum 0) (or (null maximum) (>= maximum minimum))))
+  (let ((*unit* 1))
+    (assert (and (>= (resolve-units minimum) 0)
+                 (or (null maximum) (>= (resolve-units maximum) 0))))
+    ;; Mixed coordinate/unit bounds can only be compared at declaration time.
+    (when (and maximum (eq (units-p minimum) (units-p maximum)))
+      (assert (>= (resolve-units maximum) (resolve-units minimum)))))
   (make-sizing :kind kind :value value
                :minimum minimum :maximum maximum))
 
-(fn (fit sizing) (&optional ((minimum real) 0) ((maximum (or null real)) nil))
+(fn (fit sizing) (&optional ((minimum (or real units)) 0)
+     ((maximum (or null real units)) nil))
   "Size to measured content, bounded by MINIMUM and optional MAXIMUM."
   (make-checked-sizing :fit 0 minimum maximum))
 
 (fn (grow sizing)
-    (&optional ((minimum real) 0) ((maximum (or null real)) nil))
+    (&optional ((minimum (or real units)) 0)
+     ((maximum (or null real units)) nil))
   "Share the remaining space with grow siblings, respecting size bounds."
   (make-checked-sizing :grow 0 minimum maximum))
 
-(fn (fixed sizing) ((value real))
-  "Reserve exactly VALUE backend coordinates on this axis."
+(fn (fixed sizing) ((value (or real units)))
+  "Reserve VALUE on this axis; a UNITS value is resolved during declaration."
   (make-checked-sizing :fixed value value value))
 
 (fn (percent sizing) ((fraction real))
   "Use FRACTION of the available parent space after padding and gaps."
   (assert (<= 0 fraction 1))
   (make-checked-sizing :percent fraction 0 nil))
+
+(fn (resolve-sizing sizing) ((value (or real units sizing)))
+  "Resolve deferred dimensions without mutating a shared sizing policy."
+  (cond
+    ((not (sizing-p value)) (fixed (resolve-units value)))
+    ((or (units-p (sizing-value value))
+         (units-p (sizing-minimum value))
+         (units-p (sizing-maximum value)))
+     (make-checked-sizing
+      (sizing-kind value) (resolve-units (sizing-value value))
+      (resolve-units (sizing-minimum value))
+      (when (sizing-maximum value)
+        (resolve-units (sizing-maximum value)))))
+    (t value)))
+
+(fn (resolve-layout-options list) ((options list))
+  "Resolve dimensions, preserving unrelated data and plist precedence."
+  (loop :for (key value) :on options :by #'cddr
+        :append
+        (list key
+              (case key
+                ((:width :height :popup-width :popup-height)
+                 (resolve-sizing value))
+                ((:padding :gap :column-gap :offset-x :offset-y
+                  :scrollbar-width :radius :frost :font-size)
+                 (resolve-units value))
+                (otherwise value)))))
 
 (defstruct box
   "Axis-aligned bounds in backend coordinates: X, Y, WIDTH, and HEIGHT."
@@ -281,9 +330,15 @@ already resolved content width."
   ;; Measure children first so container content can use their sizes.
   (do-children (child node)
     (measure-intrinsic-size child axis))
-  (let ((rule (element-sizing-on-axis node axis))
+  (let ((rule (resolve-sizing (element-sizing-on-axis node axis)))
         (table-width (when (and (element-table-p node) (eq axis :x))
                        (measure-table-columns node))))
+    ;; Keep the reusable policy untouched; this element belongs to this frame.
+    (if (eq axis :x)
+        (setf (element-width node) rule)
+        ;; else
+        (setf (element-height node) rule))
+
     ;; Only fit and grow use intrinsic content on this axis.
     (cond
       ((eq (sizing-kind rule) :fixed)

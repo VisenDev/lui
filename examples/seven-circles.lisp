@@ -60,9 +60,12 @@
 
 (defun commands (state)
   (loop :for circle :in (%lui.seven.model:circles-items (state-model state))
-        :collect (list :circle (lui:units (%lui.seven.model:circle-x circle))
-                       (lui:units (%lui.seven.model:circle-y circle))
-                       (lui:units (%lui.seven.model:circle-radius circle))
+        :collect (list :circle (lui:resolve-units
+                        (lui:units (%lui.seven.model:circle-x circle)))
+                       (lui:resolve-units
+                        (lui:units (%lui.seven.model:circle-y circle)))
+                       (lui:resolve-units
+                        (lui:units (%lui.seven.model:circle-radius circle)))
                        "#000000"
                        (when (eql (%lui.seven.model:circle-id circle)
             (state-hover state))

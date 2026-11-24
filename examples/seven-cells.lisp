@@ -39,11 +39,13 @@
   (lui:request-frame))
 
 (defun ensure-visible (index)
-  (lui:reveal-rect :seven-grid
-               (+ (lui:units 4) (* (mod index 26) (lui:units 10)))
-               (* (1+ (floor index 26)) (lui:units 3))
-               (lui:units 10) (lui:units 3)
-               :leading-x (lui:units 4) :leading-y (lui:units 3)))
+  (let ((width (lui:resolve-units (lui:units 10)))
+        (height (lui:resolve-units (lui:units 3)))
+        (header (lui:resolve-units (lui:units 4))))
+    (lui:reveal-rect :seven-grid
+                     (+ header (* (mod index 26) width))
+                     (* (1+ (floor index 26)) height)
+                     width height :leading-x header :leading-y height)))
 
 (defun move-selection (state key)
   (let* ((index (state-selected state))
@@ -185,7 +187,9 @@
                                   (= (lui:box-height previous)
                                      (lui:frame-height))))
                      (lui:previous-box :seven-grid)))
-         (width (lui:units 10)) (height (lui:units 3)) (header (lui:units 4))
+         (width (lui:resolve-units (lui:units 10)))
+         (height (lui:resolve-units (lui:units 3)))
+         (header (lui:resolve-units (lui:units 4)))
          (cached (eq (state-view-toolkit state) (lui:current-toolkit)))
          (view-width (if viewport (lui:box-width viewport)
                          (or (and cached (state-view-width state)) 0)))

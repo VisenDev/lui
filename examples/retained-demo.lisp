@@ -19,13 +19,13 @@
 
 (defun make-card (number)
   "Create a keyed nested row whose editable note survives sibling reordering."
-  (lui.retained:make-row :id number :gap '(:units 1) :width (lui:grow)
+  (lui.retained:make-row :id number :gap (lui:units 1) :width (lui:grow)
    :children
    (cl:vector
     (lui.retained:make-checkbox (format nil "Item ~D" number)
                        :id :checked)
     (lui.retained:make-text-field :id :note :width (lui:grow)
-                       :padding '(:units 0.5)
+                       :padding (lui:units 0.5)
                        :default-value (format nil "Note for item ~D"
                                               number)))))
 
@@ -109,52 +109,53 @@
 (defparameter *preview* (lui.retained:make-label ""))
 (defparameter *status* (lui.retained:make-label "Ready."))
 (defparameter *cards*
-  (lui.retained:make-column :id :items :gap '(:units 1) :width (lui:grow)
+  (lui.retained:make-column :id :items :gap (lui:units 1) :width (lui:grow)
                      :children (cl:vector (make-card 1) (make-card 2))))
 
 (defparameter *tree*
   (lui.retained:make-panel :id :root :width (lui:grow) :height (lui:grow)
-   :scroll-p t :padding '(:units 2) :gap '(:units 1)
+   :scroll-p t :padding (lui:units 2) :gap (lui:units 1)
    :radius 0 :frost 0 :opacity 1
    :children
    (cl:vector
     (lui.retained:make-label "Retained data playground"
                        :font-weight :bold)
-    (lui.retained:make-row :gap '(:units 1) :cross-align :center
+    (lui.retained:make-row :gap (lui:units 1) :cross-align :center
                        :children
                        (cl:vector *toolkit-button* *palette-button*))
     *metrics*
     (lui.retained:make-label "Edit a stored tree and watch LUI redraw it.")
-    (lui.retained:make-row :gap '(:units 2) :width (lui:grow)
+    (lui.retained:make-row :gap (lui:units 2) :width (lui:grow)
      :children
      (cl:vector
       (lui.retained:make-panel :id :editor :width (lui:grow)
-       :padding '(:units 2) :gap '(:units 1)
+       :padding (lui:units 2) :gap (lui:units 1)
        :children
        (cl:vector
         (lui.retained:make-label "Callbacks update data")
         *greeting*
         (lui.retained:make-text-field :id :name
                            :default-value "retained world"
-                       :padding '(:units 0.5) :width (lui:grow)
+                       :padding (lui:units 0.5) :width (lui:grow)
                            :on-change 'rename-greeting)
-        (lui.retained:make-row :gap '(:units 1)
+        (lui.retained:make-row :gap (lui:units 1)
          :children
          (cl:vector
           (lui.retained:make-button "Count" :id :count
                              :on-activate 'increment)
           *counter*))))
-      (lui.retained:make-panel :id :data :width (lui:grow) :padding '(:units 2)
+      (lui.retained:make-panel :id :data :width (lui:grow)
+       :padding (lui:units 2)
        :children
        (cl:vector
         (lui.retained:make-label "Current tree data") *preview*))))
     (lui.retained:make-panel :id :collection :width (lui:grow)
-     :padding '(:units 2) :gap '(:units 1)
+     :padding (lui:units 2) :gap (lui:units 1)
      :children
      (cl:vector
       (lui.retained:make-label "Nested rows with stable IDs")
       (lui.retained:make-label "Edit notes, then reverse the rows.")
-      (lui.retained:make-row :gap '(:units 1)
+      (lui.retained:make-row :gap (lui:units 1)
        :children
        (cl:vector
         (lui.retained:make-button "Add row" :id :add

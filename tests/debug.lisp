@@ -416,7 +416,7 @@
             (fully-visible (aref (element-children (node :header)) 0))
             (let ((pane (element-box (node :property-pane))))
               (assert (<= (+ (box-y pane) (box-height pane))
-                          (- height (units 1)))))
+                          (- height (resolve-units (units 1))))))
             (when compact
               (assert (visible-text-p context "Close"))))
           (frame (make-event :kind :activate :id (lui.debug::id :close)))

@@ -124,9 +124,9 @@
 (defun positioning-scene (g)
   (let* ((previous (lui:previous-box :position-stage))
          (x (+ (if previous (lui:box-x previous) 0)
-               (lui:units (gallery-manual-x g))))
+               (lui:resolve-units (lui:units (gallery-manual-x g)))))
          (y (+ (if previous (lui:box-y previous) 0)
-               (lui:units (gallery-manual-y g)))))
+               (lui:resolve-units (lui:units (gallery-manual-y g))))))
     (unless previous (lui:request-frame))
     (lui:panel
      (:id :position-stage :width (lui:grow)
@@ -146,8 +146,8 @@
         (incf (gallery-manual-clicks g)))
       (lui:text-field
         :id :manual-editor :default-value "Manual editor"
-        :position :fixed :offset-x (+ x (lui:units 20))
-        :offset-y (+ y (lui:units 4))
+        :position :fixed :offset-x (+ x (lui:resolve-units (lui:units 20)))
+        :offset-y (+ y (lui:resolve-units (lui:units 4)))
         :width (lui:fixed (lui:units 18))
         :height (lui:fit)))))
 

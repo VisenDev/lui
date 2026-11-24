@@ -16,6 +16,7 @@
                 #:error-value
                 #:error-backend #:error-font-request)
   (:import-from #:%lui.layout
+                #:units #:units-p #:units-count #:resolve-units #:*unit*
                 #:position-mode
                 #:object-id #:point #:contour #:contours #:sizing #:fit #:grow
                 #:fixed #:percent #:box
@@ -63,7 +64,9 @@
            #:event-x #:event-y #:event-id #:event-value #:event-key
            #:event-button #:event-buttons #:event-clicks #:event-dragging-p
            #:declare-widget #:widget-text #:run #:register-backend
-           #:available-backends #:units #:*backend* #:call-with-frame
+           #:available-backends #:units #:units-p #:units-count
+           #:resolve-units
+           #:*backend* #:call-with-frame
            #:call-with-key #:call-with-toolkit #:call-with-palette #:*unit*
            #:with-toolkit #:with-palette #:widget-color #:current-toolkit
            #:available-palettes #:palette #:palette-p #:make-palette
@@ -83,12 +86,6 @@
 (defvar %*default-backend-function* nil
   "A thunk that returns default backend when called.")
 (defvar *backend* nil "Default backend override; NIL selects an available backend.")
-(defvar *unit* 1 "Layout spacing unit supplied by the active backend.")
-
-(fn (units real) ((count real))
-  "Convert spacing units to backend coordinates: terminal cells or graphical units."
-  (* count *unit*))
-
 (fn (register-backend function) ((name symbol) (runner function))
   "Install a runner function under NAME; normally called by a backend."
   (setf (gethash name *backends*) runner))
@@ -423,7 +420,10 @@ Owned state is discarded when this widget is absent from a completed frame."
 is two spacing units square, or one terminal cell. :disabled-p pauses it.
 No timer is retained after the spinner disappears from the frame."
   (let* ((disabled (getf options :disabled-p))
-         (size (if (context-text-mode-p *context*) 1 (units 2)))
+         (size (if (context-text-mode-p *context*)
+                   1
+                   ;; else
+                   (resolve-units (units 2))))
          (phase (if disabled 0 (mod (floor (* 10 (frame-time))) 8))))
     ;; Schedule only the next animation step; absence stops future requests.
     (unless disabled (request-frame 0.1f0))
@@ -522,7 +522,8 @@ No timer is retained after the spinner disappears from the frame."
   "Build a bounded dialog with scrolling text and visible actions."
   (let ((answer nil))
     (panel (:id (list id :pane)
-                :width (fixed (min (context-width *context*) (units 50)))
+                :width (fixed (min (context-width *context*)
+                                   (resolve-units (units 50))))
                 :height (fit 0 (context-viewport-height *context*))
                 :padding (units 1) :gap (units 1) :opacity 1
                 :clip-p t :accessible-name title)
@@ -970,7 +971,7 @@ frame for the same error. Closing the window discards its pending messages."
                      :padding (if (context-text-mode-p *context*)
                                   1
                                   ;; else
-                                  (units 0.5f0))
+                                  (resolve-units (units 0.5f0)))
                      :gap 0)
                 :side (if (floating-state-parent state) :right :below)
                 :content-width-p t)))
@@ -1100,7 +1101,8 @@ and return values match FLOATING-EXPANDER; hover opening defaults to true."
                        (declare-panel %*toolkit* layout)
                        ;; else
                        (%lui.frame:emit
-                        (apply #'%lui.layout:make-element layout)))))
+                        (apply #'%lui.layout:make-element
+                         (%lui.layout:resolve-layout-options layout))))))
     (call-with-key id draw))
   (values))
 

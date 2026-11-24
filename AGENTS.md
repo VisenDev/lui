@@ -165,6 +165,11 @@ the change and report material limitations instead of claiming untested support.
 - Horizontal sizing precedes width-dependent measurement and vertical layout.
   Percentages exclude padding and inter-child gaps. Fixed sizes and minimum
   bounds may overflow rather than silently shrink.
+- `lui:units` constructs a read-only deferred spacing structure. Resolve it at
+  declaration/layout time, never at construction/load time. Dimensional options
+  accept real coordinates or units; width/height also accept sizing policies.
+  Keep numeric widget values, fractions, and IDs distinct from dimensions.
+  `lui:resolve-units` explicitly converts to coordinates for arithmetic.
 - Control macros use quoted call-site IDs, combined with WITH-KEY scopes and
   `:id` instance keys (including numbers). `:default-value` initializes
   owned values once; absent widgets lose owned state after a completed frame.
@@ -485,8 +490,12 @@ uses the declarations already made, and edits appear on the next frame.
 
 `make retained-demo` (including PLATFORM=terminal) demonstrates a global
 DEFPARAMETER tree, top-level callbacks, typed child vectors and mutable slots.
-Numeric spacing slots accept `(:units NUMBER)`, resolved per backend at draw
-time. The demo has toolkit/palette cycle buttons and the gallery FPS/layout
+Dimensional slots accept `(lui:units NUMBER)` structures, resolved per backend
+during declaration. Width/height accept real coordinates, units, or sizing
+policies; FIXED values and FIT/GROW bounds may also contain units. Stored units
+and sizing policies are not mutated. The quoted `(:units NUMBER)` form is
+retired. Use `lui:resolve-units` for arithmetic at the active backend scale.
+The demo has toolkit/palette cycle buttons and the gallery FPS/layout
 readout; FPS includes pacing. Test with `(asdf:test-system "lui/retained")`.
 Load `lui/retained-demo` and call `%lui.example.retained-demo:main` with a backend
 loaded. Structure storage removes list-node parsing but does not imply a

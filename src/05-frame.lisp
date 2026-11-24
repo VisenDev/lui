@@ -188,7 +188,7 @@ The backend supplies measurement, clipboard, and optional input callbacks."
                  ((resolved-widget-id-p key) key)
                  (t (list :lui-widget-id :container *key-scope* key
                           (parent-identity-scope))))
-           options)))
+           (resolve-layout-options options))))
 
 (fn (widget-key object-id) ((id object-id))
   "Return the declared key of an opaque widget ID, including derived child keys."
