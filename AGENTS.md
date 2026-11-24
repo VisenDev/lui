@@ -445,10 +445,14 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 ### Retained nodes
 
 Load `lui/retained` separately from the host backend. Each widget has its own
-standard typed DEFSTRUCT and default keyword constructor: `make-label`, `make-button`,
+standard typed DEFSTRUCT and constructor: `make-label`, `make-button`,
 `make-text-field`, `make-slider`, `make-column`, etc. Each exposes only relevant slots, with
 SETF accessors such as `label-text`, `text-field-value`, `slider-minimum`, and
-`column-children`. Placement and appearance slots are shared through structure
+`column-children`. Constructors take the same required arguments in the same
+order as immediate controls: `(make-label text &key ...)`,
+`(make-radio choice text &key ...)`, and so on. Remaining options are keywords.
+Use explicit DEFSTRUCT :CONSTRUCTOR lambda lists for required arguments.
+Placement and appearance slots are shared through structure
 inclusion; concrete widgets also expose their inherited accessors. NODE is a
 common identity/placement base type with no constructor. There is no KIND slot
 or generic NODE constructor. Use `cl:vector` for child/root

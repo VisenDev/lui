@@ -126,7 +126,10 @@
           (label (entry entries "lui.retained" "MAKE-LABEL"))
           (slider (entry entries "lui.retained" "MAKE-SLIDER")))
       (assert (eq :structure (getf node :kind)))
-      (assert (search "(make-label &key" (getf label :signature)))
+      (assert (search "(make-label text &key" (getf label :signature)))
+      (assert (search "(make-radio choice text &key"
+                      (getf (entry entries "lui.retained" "MAKE-RADIO")
+                            :signature)))
       (assert (search "padding" (getf label :signature)))
       (assert (search "text" (getf label :signature)))
       (assert (not (search "minimum" (getf label :signature))))

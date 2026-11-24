@@ -38,14 +38,14 @@
    :id (key-for mode index) :gap 1 :width *grow*
    :children
    (cl:vector
-    (lui.retained:make-label :id (key-for mode :label) :text text :padding 1)
+    (lui.retained:make-label text :id (key-for mode :label) :padding 1)
     (lui.retained:make-text-field
      :id (key-for mode :editor) :default-value "Editable"
      :padding 1 :width *grow* :on-change callback)
-    (lui.retained:make-checkbox
-     :id (key-for mode :check) :text "Ready" :on-change callback)
-    (lui.retained:make-button
-     :id (key-for mode :button) :text "Run" :on-activate callback)
+    (lui.retained:make-checkbox "Ready"
+     :id (key-for mode :check) :on-change callback)
+    (lui.retained:make-button "Run"
+     :id (key-for mode :button) :on-activate callback)
     (lui.retained:make-slider
      :id (key-for mode :slider) :default-value 50
      :minimum 0 :maximum 100 :step 1 :width *slider-width* :on-change callback))))
@@ -67,8 +67,8 @@
         (setf (aref nodes index)
               (if (eq kind :nested)
                   (make-row mode index (aref texts index) callback)
-                  (lui.retained:make-label
-                   :id (key-for mode index) :text (aref texts index)
+                  (lui.retained:make-label (aref texts index)
+                   :id (key-for mode index)
                    :padding 1 :font-weight :bold :foreground "#223344"))))
       (setf (fixture-leaves fixture) nodes
             (fixture-root fixture)

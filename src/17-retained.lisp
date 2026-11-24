@@ -219,18 +219,38 @@ ID keys allow rebuilding."
   (pointer-focus-p nil :type boolean)
   (children (make-array 0 :element-type 'node) :type (vector node)))
 
-(defstruct (label (:include styled-node) (:copier nil))
+(defstruct (label (:include styled-node)
+             (:constructor make-label
+                 (text &key id width height padding position offset-x
+                  offset-y foreground background palette radius frost
+                  font-size font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name disabled-p))
+             (:copier nil))
   "A retained label; see DRAW for mutation, identity and callback rules."
   (text nil :type (or null string))
   (disabled-p nil :type boolean))
 
-(defstruct (button (:include styled-node) (:copier nil))
+(defstruct (button (:include styled-node)
+             (:constructor make-button
+                 (text &key id width height padding position offset-x
+                  offset-y foreground background palette radius frost
+                  font-size font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name on-activate
+                  disabled-p))
+             (:copier nil))
   "A retained button; see DRAW for mutation, identity and callback rules."
   (text nil :type (or null string))
   (on-activate nil :type (or function symbol))
   (disabled-p nil :type boolean))
 
-(defstruct (checkbox (:include styled-node) (:copier nil))
+(defstruct (checkbox (:include styled-node)
+             (:constructor make-checkbox
+                 (text &key id width height padding position offset-x
+                  offset-y foreground background palette radius frost
+                  font-size font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name on-change
+                  value default-value disabled-p))
+             (:copier nil))
   "A retained checkbox; see DRAW for mutation, identity and callback rules."
   (text nil :type (or null string))
   (on-change nil :type (or function symbol))
@@ -238,7 +258,14 @@ ID keys allow rebuilding."
   (default-value nil :type t)
   (disabled-p nil :type boolean))
 
-(defstruct (radio (:include styled-node) (:copier nil))
+(defstruct (radio (:include styled-node)
+             (:constructor make-radio
+                 (choice text &key id width height padding position offset-x
+                  offset-y foreground background palette radius frost
+                  font-size font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name on-change
+                  value default-value disabled-p))
+             (:copier nil))
   "A retained radio; see DRAW for mutation, identity and callback rules."
   (choice nil :type t)
   (text nil :type (or null string))
@@ -273,7 +300,15 @@ ID keys allow rebuilding."
   (value nil :type t)
   (default-value nil :type t))
 
-(defstruct (searchable-combobox (:include styled-node) (:copier nil))
+(defstruct (searchable-combobox (:include styled-node)
+             (:constructor make-searchable-combobox
+                 (choices &key id width height padding position offset-x
+                  offset-y foreground background palette radius frost
+                  font-size font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name on-change
+                  value default-value disabled-p placeholder max-results
+                  password-p))
+             (:copier nil))
   "A retained searchable-combobox; see DRAW for mutation, identity and callback rules."
   (choices nil :type (or null (vector string)))
   (on-change nil :type (or function symbol))
@@ -284,7 +319,13 @@ ID keys allow rebuilding."
   (max-results nil :type (or null integer))
   (password-p nil :type boolean))
 
-(defstruct (gauge (:include styled-node) (:copier nil))
+(defstruct (gauge (:include styled-node)
+             (:constructor make-gauge
+                 (fraction &key id width height padding position offset-x
+                  offset-y foreground background palette radius frost
+                  font-size font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name disabled-p))
+             (:copier nil))
   "A retained gauge; see DRAW for mutation, identity and callback rules."
   (fraction nil :type (or null real))
   (disabled-p nil :type boolean))
@@ -304,28 +345,55 @@ ID keys allow rebuilding."
   "A retained vr; see DRAW for mutation, identity and callback rules."
   (disabled-p nil :type boolean))
 
-(defstruct (cell (:include styled-node) (:copier nil))
+(defstruct (cell (:include styled-node)
+             (:constructor make-cell
+                 (text &key id width height padding position offset-x
+                  offset-y foreground background palette radius frost
+                  font-size font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name on-activate
+                  disabled-p selected-p))
+             (:copier nil))
   "A retained cell; see DRAW for mutation, identity and callback rules."
   (text nil :type (or null string))
   (on-activate nil :type (or function symbol))
   (disabled-p nil :type boolean)
   (selected-p nil :type boolean))
 
-(defstruct (list-item (:include styled-node) (:copier nil))
+(defstruct (list-item (:include styled-node)
+             (:constructor make-list-item
+                 (text &key id width height padding position offset-x
+                  offset-y foreground background palette radius frost
+                  font-size font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name on-activate
+                  disabled-p selected-p))
+             (:copier nil))
   "A retained list-item; see DRAW for mutation, identity and callback rules."
   (text nil :type (or null string))
   (on-activate nil :type (or function symbol))
   (disabled-p nil :type boolean)
   (selected-p nil :type boolean))
 
-(defstruct (tab (:include styled-node) (:copier nil))
+(defstruct (tab (:include styled-node)
+             (:constructor make-tab
+                 (text &key id width height padding position offset-x
+                  offset-y foreground background palette radius frost
+                  font-size font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name on-activate
+                  disabled-p selected-p))
+             (:copier nil))
   "A retained tab; see DRAW for mutation, identity and callback rules."
   (text nil :type (or null string))
   (on-activate nil :type (or function symbol))
   (disabled-p nil :type boolean)
   (selected-p nil :type boolean))
 
-(defstruct (canvas (:include styled-node) (:copier nil))
+(defstruct (canvas (:include styled-node)
+             (:constructor make-canvas
+                 (commands &key id width height padding position offset-x
+                  offset-y foreground background palette radius frost
+                  font-size font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name disabled-p))
+             (:copier nil))
   "A retained canvas; see DRAW for mutation, identity and callback rules."
   (commands nil :type list)
   (disabled-p nil :type boolean))
@@ -556,6 +624,7 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
     ((tree (or node (vector node))) &key ((id lui:object-id) :retained))
   "Declare a retained node or typed node vector inside the current LUI frame.
 Create data with MAKE-LABEL, MAKE-BUTTON, MAKE-COLUMN and other constructors.
+Required arguments match the immediate control order; other slots are keywords.
 Use CL:VECTOR for child vectors and widget-specific SETF accessors for mutation.
 The former list-node format is not supported. A stored node keeps its identity
 when reordered within its parent. Supply :ID when reconstructing nodes; explicit

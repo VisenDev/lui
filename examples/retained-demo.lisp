@@ -22,7 +22,7 @@
   (lui.retained:make-row :id number :gap '(:units 1) :width (lui:grow)
    :children
    (cl:vector
-    (lui.retained:make-checkbox :text (format nil "Item ~D" number)
+    (lui.retained:make-checkbox (format nil "Item ~D" number)
                        :id :checked)
     (lui.retained:make-text-field :id :note :width (lui:grow)
                        :padding '(:units 0.5)
@@ -97,17 +97,17 @@
 ;; UI data: allocated at load time, independently of rendering.
 ;; Unit descriptors are resolved by the retained layer for the active backend.
 (defparameter *toolkit-button*
-  (lui.retained:make-button :text "Toolkit: Qt" :id :toolkit
+  (lui.retained:make-button "Toolkit: Qt" :id :toolkit
                      :on-activate 'cycle-toolkit))
 (defparameter *palette-button*
-  (lui.retained:make-button :text "Palette: Default" :id :palette
+  (lui.retained:make-button "Palette: Default" :id :palette
                      :on-activate 'cycle-palette))
-(defparameter *metrics* (lui.retained:make-label :text "" :id :metrics))
+(defparameter *metrics* (lui.retained:make-label "" :id :metrics))
 (defparameter *greeting*
-  (lui.retained:make-label :text "Hello, retained world!"))
-(defparameter *counter* (lui.retained:make-label :text "Clicks: 0"))
-(defparameter *preview* (lui.retained:make-label :text ""))
-(defparameter *status* (lui.retained:make-label :text "Ready."))
+  (lui.retained:make-label "Hello, retained world!"))
+(defparameter *counter* (lui.retained:make-label "Clicks: 0"))
+(defparameter *preview* (lui.retained:make-label ""))
+(defparameter *status* (lui.retained:make-label "Ready."))
 (defparameter *cards*
   (lui.retained:make-column :id :items :gap '(:units 1) :width (lui:grow)
                      :children (cl:vector (make-card 1) (make-card 2))))
@@ -118,14 +118,13 @@
    :radius 0 :frost 0 :opacity 1
    :children
    (cl:vector
-    (lui.retained:make-label :text "Retained data playground"
+    (lui.retained:make-label "Retained data playground"
                        :font-weight :bold)
     (lui.retained:make-row :gap '(:units 1) :cross-align :center
                        :children
                        (cl:vector *toolkit-button* *palette-button*))
     *metrics*
-    (lui.retained:make-label
-                       :text "Edit a stored tree and watch LUI redraw it.")
+    (lui.retained:make-label "Edit a stored tree and watch LUI redraw it.")
     (lui.retained:make-row :gap '(:units 2) :width (lui:grow)
      :children
      (cl:vector
@@ -133,7 +132,7 @@
        :padding '(:units 2) :gap '(:units 1)
        :children
        (cl:vector
-        (lui.retained:make-label :text "Callbacks update data")
+        (lui.retained:make-label "Callbacks update data")
         *greeting*
         (lui.retained:make-text-field :id :name
                            :default-value "retained world"
@@ -142,27 +141,27 @@
         (lui.retained:make-row :gap '(:units 1)
          :children
          (cl:vector
-          (lui.retained:make-button :text "Count" :id :count
+          (lui.retained:make-button "Count" :id :count
                              :on-activate 'increment)
           *counter*))))
       (lui.retained:make-panel :id :data :width (lui:grow) :padding '(:units 2)
        :children
        (cl:vector
-        (lui.retained:make-label :text "Current tree data") *preview*))))
+        (lui.retained:make-label "Current tree data") *preview*))))
     (lui.retained:make-panel :id :collection :width (lui:grow)
      :padding '(:units 2) :gap '(:units 1)
      :children
      (cl:vector
-      (lui.retained:make-label :text "Nested rows with stable IDs")
-      (lui.retained:make-label :text "Edit notes, then reverse the rows.")
+      (lui.retained:make-label "Nested rows with stable IDs")
+      (lui.retained:make-label "Edit notes, then reverse the rows.")
       (lui.retained:make-row :gap '(:units 1)
        :children
        (cl:vector
-        (lui.retained:make-button :text "Add row" :id :add
+        (lui.retained:make-button "Add row" :id :add
                            :on-activate 'add-item)
-        (lui.retained:make-button :text "Reverse" :id :reverse
+        (lui.retained:make-button "Reverse" :id :reverse
                            :on-activate 'reverse-items)
-        (lui.retained:make-button :text "Remove last" :id :remove
+        (lui.retained:make-button "Remove last" :id :remove
                            :on-activate 'remove-item)))
       *cards*))
     *status*))
