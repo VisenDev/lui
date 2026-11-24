@@ -37,7 +37,7 @@
   (lui.retained:make-row
    :id (key-for mode index) :gap 1 :width *grow*
    :children
-   (lui.retained:nodes
+   (cl:vector
     (lui.retained:make-label :id (key-for mode :label) :text text :padding 1)
     (lui.retained:make-text-field
      :id (key-for mode :editor) :default-value "Editable"

@@ -29,7 +29,7 @@
 
 (defun test-node-slots ()
   (let* ((label (lui.retained:make-label :text "Before"))
-         (children (lui.retained:nodes label))
+         (children (cl:vector label))
          (panel (lui.retained:make-panel :children children))
          (context (%lui.tests.support:make-test-context)))
     (assert (lui.retained:node-p label))
@@ -53,7 +53,7 @@
 (defun test-widget-constructors ()
   ;; Every concrete type uses its standard DEFSTRUCT constructor and adapter.
   (let ((widgets
-          (lui.retained:nodes
+          (cl:vector
            (lui.retained:make-label :text "Label")
            (lui.retained:make-button :text "Button")
            (lui.retained:make-checkbox :text "Check")
@@ -77,9 +77,9 @@
            (lui.retained:make-column)
            (lui.retained:make-panel)
            (lui.retained:make-table
-            :children (lui.retained:nodes
+            :children (cl:vector
                        (lui.retained:make-table-row
-                        :children (lui.retained:nodes
+                        :children (cl:vector
                                    (lui.retained:make-table-cell))))))))
     (loop :for widget :across widgets
           :do (frame (%lui.tests.support:make-test-context) widget)))
@@ -101,7 +101,7 @@
          (field (lui.retained:make-text-field :default-value "start"
                  :on-change (lambda (value) (push value changes))))
          (other (lui.retained:make-label :text "other"))
-         (tree (lui.retained:nodes field other)))
+         (tree (cl:vector field other)))
     (frame context tree)
     (let ((id (%lui.layout:element-id (element-with-value context "start"))))
       (frame context tree
@@ -114,12 +114,12 @@
       (assert (equal id (%lui.layout:element-id
                         (element-with-value context "start!")))))
     ;; A new unkeyed object is a new widget, even in the same position.
-    (setf tree (lui.retained:nodes
+    (setf tree (cl:vector
                 other (lui.retained:make-text-field :default-value "fresh")))
     (frame context tree)
     (assert (%lui.tests.support:has-text-p context "fresh"))
     (assert (not (%lui.tests.support:has-text-p context "start!")))
-    (frame context (lui.retained:nodes))
+    (frame context (cl:vector))
     (frame context field)
     (assert (%lui.tests.support:has-text-p context "start"))
     (assert (not (%lui.tests.support:has-text-p context "start!")))))
@@ -141,11 +141,11 @@
   (lui.retained:make-row
    :id :root
    :children
-   (lui.retained:nodes
+   (cl:vector
     (lui.retained:make-column :id (list :column (copy-seq "left"))
-                             :children (lui.retained:nodes left))
+                             :children (cl:vector left))
     (lui.retained:make-column :id (list :column (copy-seq "right"))
-                             :children (lui.retained:nodes right))
+                             :children (cl:vector right))
     (lui.retained:make-column :id :spare))))
 
 (defun value-id (context value)
@@ -185,9 +185,9 @@
         (assert (equal left-id (value-id context "Left!")))
         (assert (equal right-id (value-id context "Right!")))
         ;; Moving the field to a different parent starts new owned state.
-        (setf (lui.retained:column-children left-parent) (lui.retained:nodes)
+        (setf (lui.retained:column-children left-parent) (cl:vector)
               (lui.retained:column-children spare-parent)
-              (lui.retained:nodes left))
+              (cl:vector left))
         (frame context tree)
         (assert (not (equal left-id (value-id context "Reset left"))))
         (assert (null (%lui.frame:context-focus context)))
@@ -198,7 +198,7 @@
          (object (lui.retained:make-text-field :default-value "Object"))
          (keyed (lui.retained:make-text-field
                  :id object :default-value "Keyed"))
-         (tree (lui.retained:nodes object keyed)))
+         (tree (cl:vector object keyed)))
     (frame context tree)
     (let ((object-id (value-id context "Object"))
           (keyed-id (value-id context "Keyed")))
@@ -210,8 +210,8 @@
       (assert (equal object-id (value-id context "Object!")))
       (assert (equal keyed-id (value-id context "Keyed!"))))
     ;; Both orders exercise a shared hash key in the two identity namespaces.
-    (assert (invalid-p (lui.retained:nodes object keyed object)))
-    (assert (invalid-p (lui.retained:nodes keyed object keyed)))
+    (assert (invalid-p (cl:vector object keyed object)))
+    (assert (invalid-p (cl:vector keyed object keyed)))
     (setf (lui.retained:node-id keyed) (list :changed 0))
     (frame context tree)
     (assert (%lui.tests.support:has-text-p context "Object!"))
@@ -221,14 +221,14 @@
   (let* ((context (%lui.tests.support:make-test-context))
          (shared (lui.retained:make-column
                   :id :branch
-                  :children (lui.retained:nodes
+                  :children (cl:vector
                              (lui.retained:make-text-field
                               :id :edit :default-value "Shared"))))
          (first (lui.retained:make-panel
-                 :id :first :children (lui.retained:nodes shared)))
+                 :id :first :children (cl:vector shared)))
          (second (lui.retained:make-panel
-                  :id :second :children (lui.retained:nodes shared)))
-         (tree (lui.retained:nodes first second))
+                  :id :second :children (cl:vector shared)))
+         (tree (cl:vector first second))
          (ids nil))
     (frame context tree)
     (%lui.layout:walk-elements
@@ -247,14 +247,14 @@
     (assert (equal (first ids) (value-id context "Shared!")))
     (assert (equal (second ids) (value-id context "Shared")))
     ;; Traversing children must not clear the enclosing siblings' table.
-    (assert (invalid-p (lui.retained:nodes first second first)))))
+    (assert (invalid-p (cl:vector first second first)))))
 
 (defun test-value-ownership ()
   (let* ((context (%lui.tests.support:make-test-context))
          (field (lui.retained:make-text-field :id :edit :default-value "owned"))
          (check (lui.retained:make-checkbox :id :check :text "Check"
                                   :default-value t :value nil))
-         (tree (lui.retained:nodes field check)))
+         (tree (cl:vector field check)))
     (frame context tree)
     (let ((widget (%lui.layout:element-content (element-with-value context "Check"))))
       (assert (null (%lui.widgets:widget-value widget))))
@@ -298,14 +298,14 @@
   (let ((child (lui.retained:make-label :text "same"))
         (parent (lui.retained:make-column)))
     (frame (%lui.tests.support:make-test-context)
-           (lui.retained:nodes child
+           (cl:vector child
                                #-jscl (copy-structure child)
                                #+jscl (lui.retained:make-label :text "same")))
-    (assert (invalid-p (lui.retained:nodes child child)))
-    (assert (invalid-p (lui.retained:nodes
+    (assert (invalid-p (cl:vector child child)))
+    (assert (invalid-p (cl:vector
                         (lui.retained:make-button :text "A" :id :same)
                         (lui.retained:make-label :text "B" :id :same))))
-    (setf (lui.retained:column-children parent) (lui.retained:nodes parent))
+    (setf (lui.retained:column-children parent) (cl:vector parent))
     (assert (invalid-p parent)))
   (assert (invalid-p (lui.retained:make-button)))
   (assert (invalid-p (lui.retained:make-label :text "Bad" :padding '(:units "x"))))
@@ -325,11 +325,11 @@
                                   (lambda ()
                                     (push :first order)
                                     (setf (lui.retained:column-children parent)
-                                          (lui.retained:nodes)))))
+                                          (cl:vector)))))
          (second (lui.retained:make-button :text "Second" :id :second
                                    :on-activate (lambda () (push :second order)))))
     (setf (lui.retained:column-children parent)
-          (lui.retained:nodes first second))
+          (cl:vector first second))
     (frame context parent)
     (frame context parent
            (loop :for text :in '("First" "Second")
@@ -348,7 +348,7 @@
          (callback (gensym "CALLBACK"))
          (change (gensym "CHANGE"))
          (result nil)
-         (tree (lui.retained:nodes
+         (tree (cl:vector
                 (lui.retained:make-button :text "Redefine" :id :first
                  :on-activate (lambda ()
                                 (setf (symbol-function callback)
@@ -377,10 +377,10 @@
          (calls 0)
          (button (lui.retained:make-button :text "Go" :id :go
                                    :on-activate (lambda () (incf calls))))
-         (tree (lui.retained:nodes button)))
+         (tree (cl:vector button)))
     (frame context tree)
     (let ((event (activate context :go)))
-      (setf tree (lui.retained:nodes button (lui.retained:make-button)))
+      (setf tree (cl:vector button (lui.retained:make-button)))
       (assert (handler-case (progn (frame context tree (list event)) nil)
                 (lui:configuration-error () t))))
     (assert (zerop calls))

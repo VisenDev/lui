@@ -21,7 +21,7 @@
   "Create a keyed nested row whose editable note survives sibling reordering."
   (lui.retained:make-row :id number :gap '(:units 1) :width (lui:grow)
    :children
-   (lui.retained:nodes
+   (cl:vector
     (lui.retained:make-checkbox :text (format nil "Item ~D" number)
                        :id :checked)
     (lui.retained:make-text-field :id :note :width (lui:grow)
@@ -110,63 +110,62 @@
 (defparameter *status* (lui.retained:make-label :text "Ready."))
 (defparameter *cards*
   (lui.retained:make-column :id :items :gap '(:units 1) :width (lui:grow)
-                     :children (lui.retained:nodes (make-card 1) (make-card 2))))
+                     :children (cl:vector (make-card 1) (make-card 2))))
 
 (defparameter *tree*
-  (lui.retained:nodes
-   (lui.retained:make-panel :id :root :width (lui:grow) :height (lui:grow)
-    :scroll-p t :padding '(:units 2) :gap '(:units 1)
-    :radius 0 :frost 0 :opacity 1
-    :children
-    (lui.retained:nodes
-     (lui.retained:make-label :text "Retained data playground"
-                        :font-weight :bold)
-     (lui.retained:make-row :gap '(:units 1) :cross-align :center
-                        :children
-                        (lui.retained:nodes *toolkit-button* *palette-button*))
-     *metrics*
-     (lui.retained:make-label
-                        :text "Edit a stored tree and watch LUI redraw it.")
-     (lui.retained:make-row :gap '(:units 2) :width (lui:grow)
-      :children
-      (lui.retained:nodes
-       (lui.retained:make-panel :id :editor :width (lui:grow)
-        :padding '(:units 2) :gap '(:units 1)
-        :children
-        (lui.retained:nodes
-         (lui.retained:make-label :text "Callbacks update data")
-         *greeting*
-         (lui.retained:make-text-field :id :name
-                            :default-value "retained world"
-                        :padding '(:units 0.5) :width (lui:grow)
-                            :on-change 'rename-greeting)
-         (lui.retained:make-row :gap '(:units 1)
-          :children
-          (lui.retained:nodes
-           (lui.retained:make-button :text "Count" :id :count
-                              :on-activate 'increment)
-           *counter*))))
-       (lui.retained:make-panel :id :data :width (lui:grow) :padding '(:units 2)
-        :children
-        (lui.retained:nodes
-         (lui.retained:make-label :text "Current tree data") *preview*))))
-     (lui.retained:make-panel :id :collection :width (lui:grow)
-      :padding '(:units 2) :gap '(:units 1)
-      :children
-      (lui.retained:nodes
-       (lui.retained:make-label :text "Nested rows with stable IDs")
-       (lui.retained:make-label :text "Edit notes, then reverse the rows.")
-       (lui.retained:make-row :gap '(:units 1)
-        :children
-        (lui.retained:nodes
-         (lui.retained:make-button :text "Add row" :id :add
-                            :on-activate 'add-item)
-         (lui.retained:make-button :text "Reverse" :id :reverse
-                            :on-activate 'reverse-items)
-         (lui.retained:make-button :text "Remove last" :id :remove
-                            :on-activate 'remove-item)))
-       *cards*))
-     *status*)))
+  (lui.retained:make-panel :id :root :width (lui:grow) :height (lui:grow)
+   :scroll-p t :padding '(:units 2) :gap '(:units 1)
+   :radius 0 :frost 0 :opacity 1
+   :children
+   (cl:vector
+    (lui.retained:make-label :text "Retained data playground"
+                       :font-weight :bold)
+    (lui.retained:make-row :gap '(:units 1) :cross-align :center
+                       :children
+                       (cl:vector *toolkit-button* *palette-button*))
+    *metrics*
+    (lui.retained:make-label
+                       :text "Edit a stored tree and watch LUI redraw it.")
+    (lui.retained:make-row :gap '(:units 2) :width (lui:grow)
+     :children
+     (cl:vector
+      (lui.retained:make-panel :id :editor :width (lui:grow)
+       :padding '(:units 2) :gap '(:units 1)
+       :children
+       (cl:vector
+        (lui.retained:make-label :text "Callbacks update data")
+        *greeting*
+        (lui.retained:make-text-field :id :name
+                           :default-value "retained world"
+                       :padding '(:units 0.5) :width (lui:grow)
+                           :on-change 'rename-greeting)
+        (lui.retained:make-row :gap '(:units 1)
+         :children
+         (cl:vector
+          (lui.retained:make-button :text "Count" :id :count
+                             :on-activate 'increment)
+          *counter*))))
+      (lui.retained:make-panel :id :data :width (lui:grow) :padding '(:units 2)
+       :children
+       (cl:vector
+        (lui.retained:make-label :text "Current tree data") *preview*))))
+    (lui.retained:make-panel :id :collection :width (lui:grow)
+     :padding '(:units 2) :gap '(:units 1)
+     :children
+     (cl:vector
+      (lui.retained:make-label :text "Nested rows with stable IDs")
+      (lui.retained:make-label :text "Edit notes, then reverse the rows.")
+      (lui.retained:make-row :gap '(:units 1)
+       :children
+       (cl:vector
+        (lui.retained:make-button :text "Add row" :id :add
+                           :on-activate 'add-item)
+        (lui.retained:make-button :text "Reverse" :id :reverse
+                           :on-activate 'reverse-items)
+        (lui.retained:make-button :text "Remove last" :id :remove
+                           :on-activate 'remove-item)))
+      *cards*))
+    *status*))
   "The live UI data. Callbacks edit these nodes; DRAW reuses them each frame.")
 
 (defun reset-demo ()
@@ -178,7 +177,7 @@
         (lui.retained:label-text *greeting*) "Hello, retained world!"
         (lui.retained:label-text *counter*) "Clicks: 0"
         (lui.retained:column-children *cards*)
-        (lui.retained:nodes (make-card 1) (make-card 2)))
+        (cl:vector (make-card 1) (make-card 2)))
   (report-edit "Ready. Edit the name or press a button.")
   (values))
 
@@ -193,7 +192,7 @@
   (lui:with-toolkit (*toolkit*)
     (lui:with-palette (*palette*)
       (let ((colors (lui.toolkit:toolkit-palette)))
-        (setf (lui.retained:panel-background (aref *tree* 0))
+        (setf (lui.retained:panel-background *tree*)
               (getf colors :window-background
                     (getf colors :background))))
       (lui.retained:draw *tree*)))

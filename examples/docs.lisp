@@ -31,13 +31,13 @@
 (defparameter *ui*
   (lui.retained:make-column :gap '(:units 1)
    :children
-   (lui.retained:nodes
+   (cl:vector
     *greeting*
     (lui.retained:make-button :text \"Say hello\"
                        :on-activate 'say-hello))))
 
 (lui:run (lambda () (lui.retained:draw *ui*)))"
-      "Each widget has its own standard DEFSTRUCT and keyword constructor: MAKE-LABEL, MAKE-BUTTON, MAKE-TEXT-FIELD, MAKE-SLIDER, MAKE-COLUMN and so on. SLIME can show the arguments specific to that widget. Use SETF with LABEL-TEXT, BUTTON-ON-ACTIVATE, TEXT-FIELD-VALUE, SLIDER-MINIMUM or COLUMN-CHILDREN. Unrelated slots are absent: a button has no children or slider limits. Shared placement and appearance slots remain available through each widget's accessors. NODE is only the common base type, with no constructor or kind slot. Containers store typed child vectors made by NODES; DRAW accepts a single root or a vector of roots. The generic NODE constructor and list forms are retired."
+      "Each widget has its own standard DEFSTRUCT and keyword constructor: MAKE-LABEL, MAKE-BUTTON, MAKE-TEXT-FIELD, MAKE-SLIDER, MAKE-COLUMN and so on. SLIME can show the arguments specific to that widget. Use SETF with LABEL-TEXT, BUTTON-ON-ACTIVATE, TEXT-FIELD-VALUE, SLIDER-MINIMUM or COLUMN-CHILDREN. Unrelated slots are absent: a button has no children or slider limits. Shared placement and appearance slots remain available through each widget's accessors. NODE is only the common base type, with no constructor or kind slot. Containers store child vectors made by CL:VECTOR; DRAW accepts a single root or a vector of roots. The generic NODE constructor and list forms are retired."
       "Unkeyed nodes preserve their object identity when reordered within the same parent. Reconstructing an unkeyed node creates a new widget. Use :id to share identity between reconstructed nodes, and keep those keys unique among siblings. A node cannot appear twice in the same parent. Containers scope identities, so moving a node to another parent starts new state. Supply distinct DRAW :id values for separate trees in the same scope."
       "Option slots default to +UNSPECIFIED+, preserving toolkit defaults. Explicit NIL remains an explicit option value. Assign +UNSPECIFIED+ to restore an omitted option. A control's DEFAULT-VALUE slot initializes LUI-owned state; assigning its VALUE slot makes it application-controlled. Removing a control for a completed frame releases its owned state. Numeric spacing accepts (:units NUMBER), resolved for the active backend without changing the slot. Sizing slots accept actual objects such as (lui:grow)."
       ":on-activate takes a zero-argument function; :on-change receives the new value. Either may be a symbol: SYMBOL-FUNCTION is looked up at dispatch, so redefinitions affect existing nodes. DRAW queues callbacks during traversal, then invokes them in order after successful traversal and requests another frame. Callbacks may update slots or replace child vectors; changes appear next frame. Traversal errors discard queued callbacks, and callback errors stop dispatch without undoing earlier edits."

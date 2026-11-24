@@ -451,7 +451,7 @@ SETF accessors such as `label-text`, `text-field-value`, `slider-minimum`, and
 `column-children`. Placement and appearance slots are shared through structure
 inclusion; concrete widgets also expose their inherited accessors. NODE is a
 common identity/placement base type with no constructor. There is no KIND slot
-or generic NODE constructor. Use `lui.retained:nodes` for typed child/root
+or generic NODE constructor. Use `cl:vector` for child/root
 vectors; DRAW also accepts a single root. List nodes and :options constructor
 plists are retired. Node mutation does not mutate completed frame layouts.
 

@@ -1,7 +1,7 @@
 (defpackage #:lui.retained
   (:use #:cl #:%lui.fn)
   (:export
-   #:draw #:node #:node-p #:nodes #:+unspecified+ #:node-id #:node-width
+   #:draw #:node #:node-p #:+unspecified+ #:node-id #:node-width
    #:node-height #:node-padding #:node-position #:node-offset-x
    #:node-offset-y #:label #:make-label #:label-p #:label-id #:label-width
    #:label-height #:label-padding #:label-position #:label-offset-x
@@ -338,17 +338,17 @@ ID keys allow rebuilding."
   (disabled-p +unspecified+ :type (or unspecified boolean)))
 
 (defstruct (row (:include container-node) (:copier nil))
-  "A retained row container with a typed CHILDREN vector made by NODES.
+  "A retained row container with a CHILDREN vector made by CL:VECTOR.
 Edit children with (SETF ROW-CHILDREN); see DRAW for identity rules."
   (gap +unspecified+ :type (or unspecified null real list)))
 
 (defstruct (column (:include container-node) (:copier nil))
-  "A retained column container with a typed CHILDREN vector made by NODES.
+  "A retained column container with a CHILDREN vector made by CL:VECTOR.
 Edit children with (SETF COLUMN-CHILDREN); see DRAW for identity rules."
   (gap +unspecified+ :type (or unspecified null real list)))
 
 (defstruct (panel (:include container-node) (:copier nil))
-  "A retained panel container with a typed CHILDREN vector made by NODES.
+  "A retained panel container with a CHILDREN vector made by CL:VECTOR.
 Edit children with (SETF PANEL-CHILDREN); see DRAW for identity rules."
   (foreground +unspecified+ :type (or unspecified null string))
   (background +unspecified+ :type (or unspecified null string))
@@ -368,24 +368,20 @@ Edit children with (SETF PANEL-CHILDREN); see DRAW for identity rules."
   (direction +unspecified+ :type (or unspecified null keyword)))
 
 (defstruct (table (:include container-node) (:copier nil))
-  "A retained table container with a typed CHILDREN vector made by NODES.
+  "A retained table container with a CHILDREN vector made by CL:VECTOR.
 Edit children with (SETF TABLE-CHILDREN); see DRAW for identity rules."
   (gap +unspecified+ :type (or unspecified null real list))
   (column-gap +unspecified+ :type (or unspecified null real list)))
 
 (defstruct (table-row (:include container-node) (:copier nil))
-  "A retained table-row container with a typed CHILDREN vector made by NODES.
+  "A retained table-row container with a CHILDREN vector made by CL:VECTOR.
 Edit children with (SETF TABLE-ROW-CHILDREN); see DRAW for identity rules.")
 
 (defstruct (table-cell (:include container-node) (:copier nil))
-  "A retained table-cell container with a typed CHILDREN vector made by NODES.
+  "A retained table-cell container with a CHILDREN vector made by CL:VECTOR.
 Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
   (gap +unspecified+ :type (or unspecified null real list))
   (column-span +unspecified+ :type (or unspecified null integer)))
-
-(fn (nodes (vector node)) (&rest (items list))
-  "Make a typed node vector for DRAW or a container's CHILDREN slot."
-  (make-array (length items) :element-type 'node :initial-contents items))
 
 (defvar *renderers* (make-hash-table :test #'eq))
 (defvar *ancestors* nil)
@@ -563,7 +559,7 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
     ((tree (or node (vector node))) &key ((id lui:object-id) :retained))
   "Declare a retained node or typed node vector inside the current LUI frame.
 Create data with MAKE-LABEL, MAKE-BUTTON, MAKE-COLUMN and other constructors.
-Use NODES for child vectors and widget-specific SETF accessors for mutation.
+Use CL:VECTOR for child vectors and widget-specific SETF accessors for mutation.
 The former list-node format is not supported. A stored node keeps its identity
 when reordered within its parent. Supply :ID when reconstructing nodes; explicit
 keys must be stable and unique among siblings. Reusing a node twice in one

@@ -134,7 +134,7 @@
       (assert (entry entries "lui.retained" "LABEL-TEXT"))
       (assert (entry entries "lui.retained" "LABEL-PADDING"))
       (assert (null (entry entries "lui.retained" "NODE-TEXT")))
-      (assert (entry entries "lui.retained" "NODES"))
+      (assert (not (entry entries "lui.retained" "NODES")))
       (assert (null (entry entries "lui.retained" "UNSPECIFIED"))))
     (assert (eq :macro (getf button :kind)))
     (assert (search "(button text &key id" (getf button :signature)))
