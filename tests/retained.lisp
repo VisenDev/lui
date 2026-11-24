@@ -143,6 +143,33 @@
     (assert (%lui.tests.support:has-text-p context "start"))
     (assert (not (%lui.tests.support:has-text-p context "start!")))))
 
+(defun test-single-children ()
+  (assert (eq (find-package :luir) (find-package :lui.retained)))
+  (dolist (key '(nil :same))
+    (let* ((context (%lui.tests.support:make-test-context))
+           (field (luir:make-text-field :id key :default-value "single"))
+           (inner (luir:make-row :id :same :children field))
+           (root (luir:make-column :children inner)))
+      (frame context root)
+      (let ((id (%lui.layout:element-id
+                 (element-with-value context "single"))))
+        (frame context root
+               (list (%lui.frame:make-event :kind :text :id id :value "!")))
+        ;; Changing collection shape preserves identity, focus, and owned text.
+        (setf (%lui.frame:context-focus context) id)
+        (dolist (children (list (cl:vector field) field))
+          (setf (luir:row-children inner) children)
+          (frame context root)
+          (assert (equal id (%lui.frame:context-focus context)))
+          (assert (equal id (%lui.layout:element-id
+                            (element-with-value context "single!"))))))
+      ;; Empty vectors still remove children and release their owned state.
+      (setf (luir:row-children inner) (cl:vector))
+      (frame context root)
+      (setf (luir:row-children inner) field)
+      (frame context root)
+      (assert (%lui.tests.support:has-text-p context "single")))))
+
 (defun test-explicit-identity ()
   (let* ((context (%lui.tests.support:make-test-context))
          (field (lui.retained:make-text-field :id 0 :default-value "keyed")))
@@ -326,6 +353,8 @@
                         (lui.retained:make-button "A" :id :same)
                         (lui.retained:make-label "B" :id :same))))
     (setf (lui.retained:column-children parent) (cl:vector parent))
+    (assert (invalid-p parent))
+    (setf (luir:column-children parent) parent)
     (assert (invalid-p parent)))
   (assert (invalid-p (lui.retained:make-button nil)))
   (assert (invalid-p (lui.retained:make-label "Bad" :padding '(:units "x"))))
@@ -411,6 +440,7 @@
   (test-node-slots)
   (test-widget-constructors)
   (test-object-identity)
+  (test-single-children)
   (test-explicit-identity)
   (test-keyed-parent-scopes)
   (test-key-namespaces)

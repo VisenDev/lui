@@ -1,4 +1,5 @@
 (defpackage #:lui.retained
+  (:nicknames #:luir)
   (:use #:cl #:%lui.fn)
   (:export
    #:draw #:node #:node-p #:node-id #:node-width
@@ -217,7 +218,8 @@ ID keys allow rebuilding."
   (interactive-p nil :type boolean)
   (keyboard-focus-p nil :type boolean)
   (pointer-focus-p nil :type boolean)
-  (children (make-array 0 :element-type 'node) :type (vector node)))
+  (children (make-array 0 :element-type 'node)
+            :type (or node (vector node))))
 
 (defstruct (label (:include styled-node)
              (:constructor make-label
@@ -399,17 +401,17 @@ ID keys allow rebuilding."
   (disabled-p nil :type boolean))
 
 (defstruct (row (:include container-node) (:copier nil))
-  "A retained row container with a CHILDREN vector made by CL:VECTOR.
+  "A retained row container with a single child node or a CHILDREN vector.
 Edit children with (SETF ROW-CHILDREN); see DRAW for identity rules."
   (gap nil :type (or null real list)))
 
 (defstruct (column (:include container-node) (:copier nil))
-  "A retained column container with a CHILDREN vector made by CL:VECTOR.
+  "A retained column container with a single child node or a CHILDREN vector.
 Edit children with (SETF COLUMN-CHILDREN); see DRAW for identity rules."
   (gap nil :type (or null real list)))
 
 (defstruct (panel (:include container-node) (:copier nil))
-  "A retained panel container with a CHILDREN vector made by CL:VECTOR.
+  "A retained panel container with a single child node or a CHILDREN vector.
 Edit children with (SETF PANEL-CHILDREN); see DRAW for identity rules."
   (foreground nil :type (or null string))
   (background nil :type (or null string))
@@ -429,17 +431,17 @@ Edit children with (SETF PANEL-CHILDREN); see DRAW for identity rules."
   (direction nil :type (or null keyword)))
 
 (defstruct (table (:include container-node) (:copier nil))
-  "A retained table container with a CHILDREN vector made by CL:VECTOR.
+  "A retained table container with a single child node or a CHILDREN vector.
 Edit children with (SETF TABLE-CHILDREN); see DRAW for identity rules."
   (gap nil :type (or null real list))
   (column-gap nil :type (or null real list)))
 
 (defstruct (table-row (:include container-node) (:copier nil))
-  "A retained table-row container with a CHILDREN vector made by CL:VECTOR.
+  "A retained table-row container with a single child node or a CHILDREN vector.
 Edit children with (SETF TABLE-ROW-CHILDREN); see DRAW for identity rules.")
 
 (defstruct (table-cell (:include container-node) (:copier nil))
-  "A retained table-cell container with a CHILDREN vector made by CL:VECTOR.
+  "A retained table-cell container with a single child node or a CHILDREN vector.
 Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
   (gap nil :type (or null real list))
   (column-span nil :type (or null integer)))
@@ -545,7 +547,7 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
                            *callbacks*))))))))
 
 (defmacro define-container (name groups &rest options)
-  "Register an adapter for a concrete container and its child vector."
+  "Register an adapter for a concrete container and its child node or vector."
   `(setf (gethash ',name *renderers*)
          (lambda (node)
            (declare (type ,name node))
@@ -577,15 +579,18 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
           (lui:call-with-key node (lambda () (funcall renderer node))))))
   (values))
 
-(fn (draw-children (values)) ((children (vector node)))
+(fn (draw-children (values)) ((children (or node (vector node))))
   "Reuse a sibling identity table at each depth within the current DRAW."
-  (when (plusp (length children))
+  (when (or (node-p children) (plusp (length children)))
     (let ((*sibling-scope*
             (or (sibling-scope-children *sibling-scope*)
                 (setf (sibling-scope-children *sibling-scope*)
                       (make-sibling-scope)))))
       (clrhash (sibling-scope-seen *sibling-scope*))
-      (loop :for node :across children :do (draw-node node))))
+      (if (node-p children)
+          (draw-node children)
+          ;; else
+          (loop :for node :across children :do (draw-node node)))))
   (values))
 
 (define-leaf label (text) nil (placement appearance) disabled-p)
@@ -625,7 +630,8 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
   "Declare a retained node or typed node vector inside the current LUI frame.
 Create data with MAKE-LABEL, MAKE-BUTTON, MAKE-COLUMN and other constructors.
 Required arguments match the immediate control order; other slots are keywords.
-Use CL:VECTOR for child vectors and widget-specific SETF accessors for mutation.
+CHILDREN accepts one node or a vector; use CL:VECTOR for multiple children.
+Use widget-specific SETF accessors for mutation.
 The former list-node format is not supported. A stored node keeps its identity
 when reordered within its parent. Supply :ID when reconstructing nodes; explicit
 keys must be stable and unique among siblings. Reusing a node twice in one
@@ -640,7 +646,7 @@ Callbacks may be functions or symbols, resolved with SYMBOL-FUNCTION when
 invoked. On-activate receives no arguments; on-change receives the new value.
 Callbacks run in traversal order after successful declaration, before DRAW
 returns, and DRAW requests another frame. They may mutate slots or replace
-child vectors; changes appear next frame. Traversal failures discard callbacks.
+children; changes appear next frame. Traversal failures discard callbacks.
 Callback errors stop dispatch without rolling back earlier edits. Use distinct
 DRAW :ID values for multiple roots in the same parent scope. DRAW still solves
 layout each frame; it does not cache layouts or automatically bind model data."

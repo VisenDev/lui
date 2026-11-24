@@ -444,7 +444,8 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 
 ### Retained nodes
 
-Load `lui/retained` separately from the host backend. Each widget has its own
+Load `lui/retained` separately from the host backend. The `lui.retained` package
+has the nickname `luir`. Each widget has its own
 standard typed DEFSTRUCT and constructor: `make-label`, `make-button`,
 `make-text-field`, `make-slider`, `make-column`, etc. Each exposes only relevant slots, with
 SETF accessors such as `label-text`, `text-field-value`, `slider-minimum`, and
@@ -455,8 +456,9 @@ Use explicit DEFSTRUCT :CONSTRUCTOR lambda lists for required arguments.
 Placement and appearance slots are shared through structure
 inclusion; concrete widgets also expose their inherited accessors. NODE is a
 common identity/placement base type with no constructor. There is no KIND slot
-or generic NODE constructor. Use `cl:vector` for child/root
-vectors; DRAW also accepts a single root. List nodes and :options constructor
+or generic NODE constructor. CHILDREN accepts a single node or a vector of
+nodes; use `cl:vector` for multiple children or an empty collection. DRAW also
+accepts a single root or a vector of roots. List nodes and :options constructor
 plists are retired. Node mutation does not mutate completed frame layouts.
 
 Unkeyed node objects retain identity across sibling reordering. Explicit IDs
@@ -478,7 +480,7 @@ cache identity tables across frames or contexts without lifecycle tests.
 
 Callbacks are functions or symbol names resolved through SYMBOL-FUNCTION at
 dispatch. DRAW invokes them after successful traversal and requests a redraw;
-they can mutate slots or replace child vectors directly. The current frame
+they can mutate slots or replace children directly. The current frame
 uses the declarations already made, and edits appear on the next frame.
 
 `make retained-demo` (including PLATFORM=terminal) demonstrates a global
