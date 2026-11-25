@@ -90,7 +90,14 @@
                         :children (cl:vector
                                    (lui.retained:make-table-cell))))))))
     (loop :for widget :across widgets
-          :do (frame (%lui.tests.support:make-test-context) widget)))
+          :do (assert (luir:visible-p widget))
+              (frame (%lui.tests.support:make-test-context) widget)
+              (setf (luir:visible-p widget) nil)
+              (let ((context (%lui.tests.support:make-test-context)))
+                (frame context widget)
+                (assert (zerop
+                         (length (%lui.layout:element-children
+                                  (%lui.frame:context-root context))))))))
   ;; Missing required arguments and unrelated keywords fail at construction.
   (dolist (case '((lui.retained:make-label)
                   (lui.retained:make-button)
@@ -115,6 +122,104 @@
               (error () t))))
   (assert (not (fboundp 'lui.retained:node)))
   (assert (not (fboundp 'lui.retained:button))))
+
+(defun test-common-children ()
+  "All container types accept the same child accessor; leaves reject it."
+  (let* ((leaf (luir:make-label "Child"))
+         (child (luir:make-table-row
+                 :children (luir:make-table-cell :children leaf)))
+         (children
+           (cl:vector
+            (luir:make-table-row
+             :children (luir:make-table-cell
+                        :children (luir:make-label "First")))
+            (luir:make-table-row
+             :children (luir:make-table-cell
+                        :children (luir:make-label "Second"))))))
+    (dolist (constructor '(luir:make-row luir:make-column luir:make-panel
+                          luir:make-table luir:make-table-row
+                          luir:make-table-cell))
+      (let ((parent (funcall constructor))
+            (context (%lui.tests.support:make-test-context)))
+        (assert (zerop (length (luir:children parent))))
+        (assert (eq child (setf (luir:children parent) child)))
+        (frame context parent)
+        (assert (%lui.tests.support:has-text-p context "Child"))
+        (setf (luir:children parent) children)
+        (assert (eq children (luir:children parent)))
+        (frame context parent)
+        (assert (%lui.tests.support:has-text-p context "Second"))
+        (setf (luir:children parent) (cl:vector))
+        (frame context parent)
+        (assert (not (%lui.tests.support:has-text-p context "Second")))))
+    (assert (handler-case
+                (progn (funcall (symbol-function 'luir:children) leaf) nil)
+              (type-error () t)))
+    (assert (handler-case
+                (progn (funcall (fdefinition '(setf luir:children))
+                                children leaf) nil)
+              (type-error () t)))))
+
+(defun test-visible-spinner ()
+  "Hidden spinners consume no layout space and schedule no animation."
+  (let* ((context (%lui.tests.support:make-test-context))
+         (spinner (luir:make-spinner :visible-p nil))
+         (label (luir:make-label "Following"))
+         (root (luir:make-column :children (cl:vector spinner label))))
+    (frame context root)
+    (assert (null (%lui.frame:context-next-frame context)))
+    (let ((initial-y (%lui.layout:box-y
+                      (%lui.layout:element-box
+                       (element-with-value context "Following")))))
+      (setf (luir:visible-p spinner) t)
+      (frame context root)
+      (assert (%lui.frame:context-next-frame context))
+      (assert (> (%lui.layout:box-y
+                  (%lui.layout:element-box
+                   (element-with-value context "Following")))
+                 initial-y))
+      (setf (luir:visible-p spinner) nil)
+      (frame context root)
+      (assert (null (%lui.frame:context-next-frame context)))
+      (assert (= initial-y
+                 (%lui.layout:box-y
+                  (%lui.layout:element-box
+                   (element-with-value context "Following"))))))))
+
+(defun test-hidden-input ()
+  "Hiding an ancestor suppresses input and releases scoped frame state."
+  (let* ((context (%lui.tests.support:make-test-context))
+         (calls 0)
+         (field (luir:make-text-field :id :edit))
+         (button (luir:make-button "Hidden action" :id :action
+                                  :on-activate (lambda () (incf calls))))
+         (root (luir:make-column :children (cl:vector field button))))
+    (frame context root)
+    (let ((field-id (%lui.layout:element-id
+                     (element-with-value context "")))
+          (button-id (%lui.layout:element-id
+                      (element-with-value context "Hidden action"))))
+      (frame context root
+             (list (%lui.frame:make-event :kind :text
+                    :id field-id :value "stored")))
+      (setf (%lui.frame:context-focus context) field-id
+            (%lui.frame:context-active context) button-id
+            (luir:visible-p root) nil)
+      (frame context root
+             (list (%lui.frame:make-event :kind :text
+                    :id field-id :value "ignored")
+                   (%lui.frame:make-event :kind :activate :id button-id)))
+      (assert (zerop calls))
+      (assert (equal "stored" (luir:text-field-value field)))
+      (assert (luir:visible-p field))
+      (assert (null (%lui.frame:context-focus context)))
+      (assert (null (%lui.frame:context-active context)))
+      (assert (null (gethash field-id (%lui.frame:context-values context))))
+      (assert (not (%lui.tests.support:has-text-p context "Hidden action")))
+      (setf (luir:visible-p root) t)
+      (frame context root)
+      (assert (equal "" (luir:text-field-value field)))
+      (assert (%lui.tests.support:has-text-p context "Hidden action")))))
 
 (defun test-object-identity ()
   (let* ((context (%lui.tests.support:make-test-context))
@@ -638,6 +743,9 @@
 (defun run-tests ()
   (test-node-slots)
   (test-widget-constructors)
+  (test-common-children)
+  (test-visible-spinner)
+  (test-hidden-input)
   (test-object-identity)
   (test-single-children)
   (test-explicit-identity)

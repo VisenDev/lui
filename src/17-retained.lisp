@@ -2,7 +2,7 @@
   (:nicknames #:luir)
   (:use #:cl #:%lui.fn)
   (:export
-   #:draw #:node #:node-p #:node-id #:node-width
+   #:draw #:visible-p #:children #:node #:node-p #:node-id #:node-width
    #:node-height #:node-padding #:node-position #:node-offset-x
    #:node-offset-y #:label #:make-label #:label-p #:label-id #:label-width
    #:label-height #:label-padding #:label-position #:label-offset-x
@@ -171,7 +171,15 @@
    #:table-cell-scrollbar-p #:table-cell-scrollbar-width
    #:table-cell-interactive-p #:table-cell-keyboard-focus-p
    #:table-cell-pointer-focus-p #:table-cell-children #:table-cell-gap
-   #:table-cell-column-span))
+   #:table-cell-column-span
+   #:node-visible-p #:label-visible-p #:button-visible-p
+   #:checkbox-visible-p #:radio-visible-p #:slider-visible-p
+   #:text-field-visible-p #:date-picker-visible-p
+   #:searchable-combobox-visible-p #:gauge-visible-p #:spinner-visible-p
+   #:spacer-visible-p #:hr-visible-p #:vr-visible-p #:cell-visible-p
+   #:list-item-visible-p #:tab-visible-p #:canvas-visible-p #:row-visible-p
+   #:column-visible-p #:panel-visible-p #:table-visible-p
+   #:table-row-visible-p #:table-cell-visible-p))
 (in-package #:lui.retained)
 
 (defstruct (node (:constructor nil)
@@ -181,6 +189,7 @@ Use MAKE-LABEL, MAKE-BUTTON, MAKE-TEXT-FIELD or another widget constructor.
 Stored objects keep identity across mutation and sibling reordering.
 ID keys allow rebuilding."
   (id nil :type lui:object-id)
+  (visible-p t :type boolean)
   (width nil :type (or null real lui:units lui:sizing))
   (height nil :type (or null real lui:units lui:sizing))
   (padding nil :type (or null real lui:units))
@@ -230,9 +239,33 @@ ID keys allow rebuilding."
   (children (make-array 0 :element-type 'node)
             :type (or node (vector node))))
 
+(fn (visible-p boolean) ((node node))
+  "Read NODE's local visibility flag, initially T.
+NIL omits the node and its subtree from layout, input, painting and animation.
+An ancestor's NIL flag also hides this node without changing its own flag."
+  (node-visible-p node))
+
+(fn ((setf visible-p) boolean) ((visible boolean) (node node))
+  "Set NODE's visibility for the next declaration; hidden nodes are not drawn."
+  (setf (node-visible-p node) visible))
+
+(fn (children (or node (vector node))) ((node container-node))
+  "Read any retained container's single child node or child vector.
+Leaf controls have no children; passing one signals a TYPE-ERROR."
+  (check-type node container-node)
+  (container-node-children node))
+
+(fn ((setf children) (or node (vector node)))
+    ((children (or node (vector node))) (node container-node))
+  "Replace a retained container's children for the next declaration.
+Use a node for one child, CL:VECTOR for multiple children, or #() to clear."
+  (check-type node container-node)
+  (setf (container-node-children node) children))
+
 (defstruct (label (:include styled-node)
              (:constructor make-label
-                 (text &key id width height padding position offset-x
+                 (text &key id (visible-p t)
+                  width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name disabled-p))
@@ -243,7 +276,8 @@ ID keys allow rebuilding."
 
 (defstruct (button (:include styled-node)
              (:constructor make-button
-                 (text &key id width height padding position offset-x
+                 (text &key id (visible-p t)
+                  width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-activate
@@ -256,7 +290,8 @@ ID keys allow rebuilding."
 
 (defstruct (checkbox (:include value-node)
              (:constructor make-checkbox
-                 (text &key id width height padding position offset-x
+                 (text &key id (visible-p t)
+                  width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-change
@@ -271,7 +306,8 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (radio (:include value-node)
              (:constructor make-radio
-                 (choice text &key id width height padding position offset-x
+                 (choice text &key id (visible-p t)
+                  width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-change
@@ -288,7 +324,8 @@ See DRAW for mutation, identity and callback rules."
 (defstruct (slider (:include value-node
                        (value 0) (observed-value 0))
              (:constructor make-slider
-                 (&key id width height padding position offset-x offset-y
+                 (&key id (visible-p t)
+                  width height padding position offset-x offset-y
                   foreground background palette radius frost font-size
                   font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-change
@@ -307,7 +344,8 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (text-field (:include value-node (value "") (observed-value ""))
              (:constructor make-text-field
-                 (&key id width height padding position offset-x offset-y
+                 (&key id (visible-p t)
+                  width height padding position offset-x offset-y
                   foreground background palette radius frost font-size
                   font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-change
@@ -324,7 +362,8 @@ DRAW updates VALUE automatically before callbacks; see DRAW for ownership rules.
 
 (defstruct (date-picker (:include value-node)
              (:constructor make-date-picker
-                 (&key id width height padding position offset-x offset-y
+                 (&key id (visible-p t)
+                  width height padding position offset-x offset-y
                   foreground background palette radius frost font-size
                   font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-change
@@ -338,7 +377,8 @@ See DRAW for mutation, identity and callback rules.")
 (defstruct (searchable-combobox (:include value-node
                        (value "") (observed-value ""))
              (:constructor make-searchable-combobox
-                 (choices &key id width height padding position offset-x
+                 (choices &key id (visible-p t)
+                  width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-change
@@ -357,7 +397,8 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (gauge (:include styled-node)
              (:constructor make-gauge
-                 (fraction &key id width height padding position offset-x
+                 (fraction &key id (visible-p t)
+                  width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name disabled-p))
@@ -383,7 +424,8 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (cell (:include styled-node)
              (:constructor make-cell
-                 (text &key id width height padding position offset-x
+                 (text &key id (visible-p t)
+                  width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-activate
@@ -397,7 +439,8 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (list-item (:include styled-node)
              (:constructor make-list-item
-                 (text &key id width height padding position offset-x
+                 (text &key id (visible-p t)
+                  width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-activate
@@ -411,7 +454,8 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (tab (:include styled-node)
              (:constructor make-tab
-                 (text &key id width height padding position offset-x
+                 (text &key id (visible-p t)
+                  width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-activate
@@ -425,7 +469,8 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (canvas (:include styled-node)
              (:constructor make-canvas
-                 (commands &key id width height padding position offset-x
+                 (commands &key id (visible-p t)
+                  width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name disabled-p))
@@ -594,8 +639,7 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
            (declare (type ,name node))
            (,(intern (symbol-name name) :lui)
             (:options (collect-options node ,name ,groups ,@options))
-            (draw-children
-             (,(intern (format nil "~A-CHILDREN" name)) node))))))
+            (draw-children (children node))))))
 
 (fn (draw-node (values)) ((node node))
   "Validate identity and ancestry, then declare one retained node."
@@ -612,6 +656,9 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
     (when (or (eq previous namespace) (eq previous :both))
       (invalid-tree node "Duplicate sibling identity."))
     (setf (gethash key seen) (if previous :both namespace))
+    ;; Keep sibling identity validation, but do not declare hidden subtrees.
+    (unless (node-visible-p node)
+      (return-from draw-node (values)))
     (let ((*ancestors* (cons node *ancestors*)))
       (if (node-id node)
           ;; Explicit IDs already inherit their parent's identity in core.
@@ -672,7 +719,10 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
 Create data with MAKE-LABEL, MAKE-BUTTON, MAKE-COLUMN and other constructors.
 Required arguments match the immediate control order; other slots are keywords.
 CHILDREN accepts one node or a vector; use CL:VECTOR for multiple children.
-Use widget-specific SETF accessors for mutation.
+Use CHILDREN for any container and VISIBLE-P for any node, with SETF for edits.
+VISIBLE-P defaults to T. NIL omits the subtree from the frame, including input
+and animation; focus and scoped LUI-owned state are cleaned up as for removal.
+The retained objects and their slots remain intact until subsequent edits/draws.
 The former list-node format is not supported. A stored node keeps its identity
 when reordered within its parent. Supply :ID when reconstructing nodes; explicit
 keys must be stable and unique among siblings. Reusing a node twice in one

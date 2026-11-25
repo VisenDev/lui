@@ -37,7 +37,7 @@
                 (lui.retained:label-text *greeting*)
                 (lui.retained:label-text *counter*)
                 (map 'list #'lui.retained:node-id
-                     (lui.retained:column-children *cards*))))
+                     (luir:children *cards*))))
   (values))
 
 (defun rename-greeting (name)
@@ -55,26 +55,26 @@
 
 (defun add-item ()
   "Append a row with a fresh stable identity."
-  (let* ((children (lui.retained:column-children *cards*))
+  (let* ((children (luir:children *cards*))
          (extended (make-array (1+ (length children))
                                :element-type 'lui.retained:node
                                :initial-element (make-card (incf *serial*)))))
     (replace extended children)
-    (setf (lui.retained:column-children *cards*) extended))
+    (setf (luir:children *cards*) extended))
   (report-edit "Appended a new keyed row.")
   (values))
 
 (defun reverse-items ()
   "Reorder existing row nodes without changing their identities."
-  (setf (lui.retained:column-children *cards*)
-        (reverse (lui.retained:column-children *cards*)))
+  (setf (luir:children *cards*)
+        (reverse (luir:children *cards*)))
   (report-edit "Reversed rows; keys preserve note state.")
   (values))
 
 (defun remove-item ()
   "Remove the last row if one is present."
-  (let ((children (lui.retained:column-children *cards*)))
-    (setf (lui.retained:column-children *cards*)
+  (let ((children (luir:children *cards*)))
+    (setf (luir:children *cards*)
           (subseq children 0 (max 0 (1- (length children))))))
   (report-edit "Removed the last row, if present.")
   (values))
@@ -176,7 +176,7 @@
         *serial* 2
         (lui.retained:label-text *greeting*) "Hello, retained world!"
         (lui.retained:label-text *counter*) "Clicks: 0"
-        (lui.retained:column-children *cards*)
+        (luir:children *cards*)
         (cl:vector (make-card 1) (make-card 2)))
   (report-edit "Ready. Edit the name or press a button.")
   (values))

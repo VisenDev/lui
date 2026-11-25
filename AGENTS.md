@@ -467,6 +467,15 @@ or generic NODE constructor. CHILDREN accepts a single node or a vector of
 nodes; use `cl:vector` for multiple children or an empty collection. DRAW also
 accepts a single root or a vector of roots. List nodes and :options constructor
 plists are retired. Node mutation does not mutate completed frame layouts.
+Use `luir:children` and its SETF form for any container; leaves have no
+children and are rejected. Existing per-container accessors remain available.
+
+All retained nodes accept :VISIBLE-P, defaulting to T. `luir:visible-p` and
+its SETF form read/change the local flag. NIL omits the whole subtree from
+layout, input, painting and animation, without altering descendant flags.
+Hiding follows removal semantics for focus, capture and scoped LUI-owned
+state; stored nodes and slots remain intact. Sibling identity validation still
+includes hidden siblings. Callback edits appear on the next frame.
 
 Unkeyed node objects retain identity across sibling reordering. Explicit IDs
 support reconstruction and must remain unique and stable within a parent.
