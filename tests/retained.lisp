@@ -319,6 +319,36 @@
     (frame context tree)
     (assert (%lui.tests.support:has-text-p context "controlled!"))))
 
+(defun test-value-defaults ()
+  "Value slots have usable defaults before drawing, without claiming ownership."
+  (dolist (spec
+           '((luir:make-checkbox ("Check") luir:checkbox-value nil)
+             (luir:make-radio (:choice "Radio") luir:radio-value nil)
+             (luir:make-slider () luir:slider-value 0)
+             (luir:make-text-field () luir:text-field-value "")
+             (luir:make-searchable-combobox (#("choice"))
+              luir:searchable-combobox-value "")
+             (luir:make-date-picker () luir:date-picker-value nil)))
+    (destructuring-bind (constructor args reader expected) spec
+      (let ((node (apply constructor args))
+            (context (%lui.tests.support:make-test-context)))
+        (assert (equal expected (funcall reader node)))
+        (frame context node)
+        (assert (equal expected (funcall reader node))))))
+  ;; Implicit defaults leave DEFAULT-VALUE in charge; explicit defaults win.
+  (dolist (explicit '(nil t))
+    (let* ((context (%lui.tests.support:make-test-context))
+           (slider (apply #'luir:make-slider :default-value 5 :maximum 10
+                          (when explicit (list :value 0))))
+           (combo (apply #'luir:make-searchable-combobox #("choice")
+                         :default-value "choice"
+                         (when explicit (list :value ""))))
+           (tree (cl:vector slider combo)))
+      (frame context tree)
+      (assert (= (if explicit 0 5) (luir:slider-value slider)))
+      (assert (equal (if explicit "" "choice")
+                     (luir:searchable-combobox-value combo))))))
+
 (defun test-value-write-back ()
   "Publish all six control values, with or without ON-CHANGE callbacks."
   (dolist (controlled '(nil t))
@@ -615,6 +645,7 @@
   (test-key-namespaces)
   (test-shared-subtree-scopes)
   (test-value-ownership)
+  (test-value-defaults)
   (test-value-write-back)
   (test-cleared-date-value)
   (test-login-values)

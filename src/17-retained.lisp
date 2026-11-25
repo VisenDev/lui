@@ -264,7 +264,8 @@ ID keys allow rebuilding."
                   &aux (observed-value value)
                   (controlled-p (and value-supplied-p value t))))
              (:copier nil))
-  "A retained checkbox; see DRAW for mutation, identity and callback rules."
+  "A retained checkbox whose VALUE defaults to NIL (unchecked).
+See DRAW for mutation, identity and callback rules."
   (text nil :type (or null string))
   (disabled-p nil :type boolean))
 
@@ -278,23 +279,26 @@ ID keys allow rebuilding."
                   &aux (observed-value value)
                   (controlled-p (and value-supplied-p value t))))
              (:copier nil))
-  "A retained radio; see DRAW for mutation, identity and callback rules."
+  "A retained radio whose VALUE defaults to NIL (initial selection).
+See DRAW for mutation, identity and callback rules."
   (choice nil :type t)
   (text nil :type (or null string))
   (disabled-p nil :type boolean))
 
-(defstruct (slider (:include value-node)
+(defstruct (slider (:include value-node
+                       (value 0) (observed-value 0))
              (:constructor make-slider
                  (&key id width height padding position offset-x offset-y
                   foreground background palette radius frost font-size
                   font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-change
-                  (value nil value-supplied-p) default-value disabled-p
+                  (value 0 value-supplied-p) default-value disabled-p
                   minimum maximum step text
                   &aux (observed-value value)
                   (controlled-p (and value-supplied-p value t))))
              (:copier nil))
-  "A retained slider; see DRAW for mutation, identity and callback rules."
+  "A retained slider whose VALUE defaults to zero.
+See DRAW for mutation, identity and callback rules."
   (disabled-p nil :type boolean)
   (minimum nil :type (or null real))
   (maximum nil :type (or null real))
@@ -328,20 +332,23 @@ DRAW updates VALUE automatically before callbacks; see DRAW for ownership rules.
                   &aux (observed-value value)
                   (controlled-p (and value-supplied-p value t))))
              (:copier nil))
-  "A retained date-picker; see DRAW for mutation, identity and callback rules.")
+  "A retained date-picker whose VALUE defaults to NIL (no date).
+See DRAW for mutation, identity and callback rules.")
 
-(defstruct (searchable-combobox (:include value-node)
+(defstruct (searchable-combobox (:include value-node
+                       (value "") (observed-value ""))
              (:constructor make-searchable-combobox
                  (choices &key id width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-change
-                  (value nil value-supplied-p) default-value disabled-p
+                  (value "" value-supplied-p) default-value disabled-p
                   placeholder max-results password-p
                   &aux (observed-value value)
                   (controlled-p (and value-supplied-p value t))))
              (:copier nil))
-  "A retained searchable-combobox; see DRAW for mutation, identity and callback rules."
+  "A retained searchable-combobox whose VALUE defaults to the empty string.
+See DRAW for mutation, identity and callback rules."
   (choices nil :type (or null (vector string)))
   (disabled-p nil :type boolean)
   (placeholder nil :type (or null string))
@@ -672,7 +679,9 @@ keys must be stable and unique among siblings. Reusing a node twice in one
 parent is an error. Containers scope child identities; moving to another parent
 starts new LUI state. Removed nodes lose owned state after a completed frame.
 Value slots mirror current control values after every declaration, before any
-callbacks run, even without ON-CHANGE. TEXT-FIELD-VALUE defaults to the empty string.
+callbacks run, even without ON-CHANGE. Text fields and searchable comboboxes
+default to the empty string, sliders to zero, and checkboxes, radio controls,
+and date pickers to NIL (unchecked, initial selection, and no date).
 Omitting :VALUE uses scoped LUI-owned state, initialized by DEFAULT-VALUE.
 Supplying a non-NIL :VALUE or editing the slot supplies an application value;
 assigning NIL returns to owned state. Automatic write-back preserves ownership,

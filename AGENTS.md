@@ -474,8 +474,17 @@ A node may not occur twice among siblings or form an ancestor cycle. Moving a
 node to another parent changes its scoped identity. Absent nodes lose owned
 state after a completed frame. Supply different DRAW :id values for multiple
 trees in one parent. Value slots automatically mirror the current control
-result before callbacks run, even without ON-CHANGE. TEXT-FIELD-VALUE defaults
-to the empty string. Omitting :VALUE uses scoped LUI-owned state initialized by
+result before callbacks run, even without ON-CHANGE.
+
+Sensible defaults are a retained-mode requirement: value slots must be usable
+immediately after construction, before the first DRAW. Text fields and
+searchable comboboxes default to the empty string, sliders to 0, checkboxes to
+NIL (unchecked), radio controls to NIL (initial selection), and date pickers
+to NIL (no date). New value controls must define and document an appropriate
+domain default. Constructor defaults must not count as explicit :VALUE inputs
+or override :DEFAULT-VALUE initialization.
+
+Omitting :VALUE uses scoped LUI-owned state initialized by
 DEFAULT-VALUE; an explicit non-NIL :VALUE or a subsequent slot edit supplies an
 application value. Assigning NIL returns to owned state. Track automatic
 write-back separately from application edits, including NIL control results.
