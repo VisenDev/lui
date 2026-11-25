@@ -195,7 +195,10 @@
 (defun signature (name args)
   (let ((*package* (find-package :cl-user)) (*print-case* :downcase)
         (*print-pretty* nil) (*print-circle* nil))
-    (write-to-string (cons (plain-form name) (plain-form args)))))
+    ;; Auxiliary constructor bindings are implementation details, not arguments.
+    (write-to-string
+     (cons (plain-form name)
+           (plain-form (subseq args 0 (position '&aux args)))))))
 
 (defun typed-arguments (arguments)
   (let ((state :required))

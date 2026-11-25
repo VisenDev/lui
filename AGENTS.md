@@ -207,7 +207,9 @@ the change and report material limitations instead of claiming untested support.
   `make-array :initial-contents` traversal while retaining element types.
 - The JSCL-only standard `defstruct` expansion override in `src/01-fn.lisp` omits
   generated constructor/writer slot checks but retains slot metadata and
-  initializer checks. Native Lisp builds use their standard `defstruct`.
+  initializer checks. It lowers BOA constructor &AUX bindings to LET* because
+JSCL otherwise treats them as keyword arguments. Native Lisp builds use their
+standard `defstruct`.
 
 Host selection uses `trivial-features` as an ASDF definition dependency; core
 source loading remains dependency-free. Native font lookup searches configured
@@ -471,10 +473,14 @@ support reconstruction and must remain unique and stable within a parent.
 A node may not occur twice among siblings or form an ancestor cycle. Moving a
 node to another parent changes its scoped identity. Absent nodes lose owned
 state after a completed frame. Supply different DRAW :id values for multiple
-trees in one parent. Option slots default to NIL; assigning NIL restores defaults.
-A NIL VALUE slot selects LUI-owned control state; non-NIL values supply an
-external model. DEFAULT-VALUE initializes owned state once. Explicit NIL and
-omission are equivalent, including boolean options.
+trees in one parent. Value slots automatically mirror the current control
+result before callbacks run, even without ON-CHANGE. TEXT-FIELD-VALUE defaults
+to the empty string. Omitting :VALUE uses scoped LUI-owned state initialized by
+DEFAULT-VALUE; an explicit non-NIL :VALUE or a subsequent slot edit supplies an
+application value. Assigning NIL returns to owned state. Track automatic
+write-back separately from application edits, including NIL control results.
+A node shared across scopes exposes its last drawn value. Other option slots
+default to NIL; assigning NIL restores defaults, including boolean options.
 
 Retained explicit IDs use core parent scoping directly; do not repeat them in
 per-node WITH-KEY scopes. Unkeyed objects keep their own key scope. Sibling

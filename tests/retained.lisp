@@ -106,6 +106,8 @@
                   (lui.retained:make-button "Button" :children #())
                   (lui.retained:make-label "Label" :minimum 0)
                   (lui.retained:make-slider :password-p t)
+                  (luir:make-text-field :observed-value "private")
+                  (luir:make-slider :controlled-p t)
                   (lui.retained:make-text-field :on-activate identity)
                   (lui.retained:make-column :text "Invalid")))
     (assert (handler-case
@@ -317,6 +319,102 @@
     (frame context tree)
     (assert (%lui.tests.support:has-text-p context "controlled!"))))
 
+(defun test-value-write-back ()
+  "Publish all six control values, with or without ON-CHANGE callbacks."
+  (dolist (controlled '(nil t))
+    (dolist (callback-p '(nil t))
+      (dolist (spec
+               '((luir:make-checkbox luir:checkbox-value
+                  ("Check" :default-value t) t :activate nil nil)
+                 (luir:make-radio luir:radio-value
+                  (:second "Radio" :default-value :first)
+                  :first :activate nil :second)
+                 (luir:make-radio luir:radio-value
+                  (nil "None" :default-value :first)
+                  :first :activate nil nil)
+                 (luir:make-slider luir:slider-value
+                  (:default-value 2 :minimum 0 :maximum 10 :step 1)
+                  2 :change 7 7)
+                 (luir:make-text-field luir:text-field-value
+                  (:default-value "") "" :text "edited" "edited")
+                 (luir:make-searchable-combobox luir:searchable-combobox-value
+                  (#("choice") :default-value "") "" :text "edited" "edited")
+                 (luir:make-date-picker luir:date-picker-value
+                  () nil :change "11/25/2026" "2026-11-25")))
+        (destructuring-bind (constructor reader args initial kind input expected)
+            spec
+          (let* ((context (%lui.tests.support:make-test-context))
+                 (node nil)
+                 (calls 0))
+            (setf node
+                  (apply constructor
+                         (append args
+                                 (list :id :value
+                                       :value (when controlled initial)
+                                       :on-change
+                                       (when callback-p
+                                         (lambda (value)
+                                           (incf calls)
+                                           (assert (equal value
+                                                          (funcall reader
+                                                                   node)))))))))
+            (frame context node)
+            (let ((id (if (eq constructor 'luir:make-date-picker)
+                          (%lui.layout:element-id
+                           (element-with-value context ""))
+                          (retained-id :value context))))
+              (frame context node
+                     (list (%lui.frame:make-event
+                            :kind kind :id id :value input))))
+            (assert (equal expected (funcall reader node)))
+            (assert (= calls (if callback-p 1 0)))
+            ;; In particular, an unchecked checkbox must remain NIL.
+            (frame context node)
+            (assert (equal expected (funcall reader node)))
+            (assert (= calls (if callback-p 1 0)))))))))
+
+(defun test-cleared-date-value ()
+  "Clearing an explicitly valued date picker must publish and retain NIL."
+  (let* ((context (%lui.tests.support:make-test-context))
+         (node (luir:make-date-picker :value "2026-11-24")))
+    (frame context node)
+    (let ((id (%lui.layout:element-id
+               (element-with-value context "11/24/2026"))))
+      (frame context node
+             (list (%lui.frame:make-event :kind :change :id id :value ""))))
+    (assert (null (luir:date-picker-value node)))
+    (frame context node)
+    (assert (null (luir:date-picker-value node)))))
+
+(defun test-login-values ()
+  "Button callbacks read current strings even when declared before the fields."
+  (let* ((context (%lui.tests.support:make-test-context))
+         (username (luir:make-text-field :id :username))
+         (password (luir:make-text-field :id :password :password-p t))
+         (submitted nil)
+         (submit (luir:make-button
+                  "Login" :id :submit
+                  :on-activate
+                  (lambda ()
+                    (setf submitted (list (luir:text-field-value username)
+                                          (luir:text-field-value password))))))
+         (tree (cl:vector submit username password)))
+    (assert (equal "" (luir:text-field-value username)))
+    (assert (equal "" (luir:text-field-value password)))
+    (frame context tree)
+    (frame context tree (list (activate context :submit)))
+    (assert (equal '("" "") submitted))
+    (frame context tree
+           (list (activate context :submit)
+                 (%lui.frame:make-event :kind :text
+                  :id (retained-id :username context) :value "alice")
+                 (%lui.frame:make-event :kind :text
+                  :id (retained-id :password context) :value "secret")))
+    (assert (equal '("alice" "secret") submitted))
+    (setf (luir:text-field-value username) "replacement")
+    (frame context tree)
+    (assert (%lui.tests.support:has-text-p context "replacement"))))
+
 (defun test-styling-and-units ()
   (let ((label (lui.retained:make-label "Styled" :padding (lui:units 2)
                                  :font-size 18 :font-weight :bold
@@ -517,6 +615,9 @@
   (test-key-namespaces)
   (test-shared-subtree-scopes)
   (test-value-ownership)
+  (test-value-write-back)
+  (test-cleared-date-value)
+  (test-login-values)
   (test-styling-and-units)
   (test-deferred-dimensions)
   (test-unit-sizing-bounds)

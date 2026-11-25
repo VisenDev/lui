@@ -134,6 +134,8 @@
       (assert (search "text" (getf label :signature)))
       (assert (not (search "minimum" (getf label :signature))))
       (assert (search "minimum" (getf slider :signature)))
+      (assert (not (search "observed-value" (getf slider :signature))))
+      (assert (not (search "controlled-p" (getf slider :signature))))
       (assert (entry entries "lui.retained" "LABEL-TEXT"))
       (assert (entry entries "lui.retained" "LABEL-PADDING"))
       (assert (null (entry entries "lui.retained" "NODE-TEXT")))

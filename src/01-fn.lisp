@@ -90,6 +90,7 @@ For &REST, TYPE describes the collected list, not each supplied argument."
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;; JSCL emits costly slot checks even for type T. Preserve metadata and
   ;; initializer expressions, removing only generated constructor/writer checks.
+  ;; JSCL treats &AUX as keywords; lower BOA auxiliary bindings to LET*.
   (let ((original (macro-function 'defstruct)))
     (setf (macro-function 'defstruct)
           (lambda (form environment)
@@ -97,14 +98,23 @@ For &REST, TYPE describes the collected list, not each supplied argument."
                        (cond ((atom form) form)
                              ((eq (car form) 'quote) form)
                              ((eq (car form) 'defun)
-                              (append (subseq form 0 3)
-                                      (mapcar #'without-slot-checks
-                                              (remove-if
-                                               (lambda (body)
-                                                 (and (consp body)
-                                                      (eq (car body)
-                                                          'check-type)))
-                                               (cdddr form)))))
+                              (let* ((args (third form))
+                                     (aux (position '&aux args))
+                                     (body
+                                       (mapcar #'without-slot-checks
+                                               (remove-if
+                                                (lambda (body)
+                                                  (and (consp body)
+                                                       (eq (car body)
+                                                           'check-type)))
+                                                (cdddr form)))))
+                                `(defun ,(second form)
+                                     ,(if aux (subseq args 0 aux) args)
+                                   ,@(if aux
+                                         `((let* ,(subseq args (1+ aux))
+                                             ,@body))
+                                         ;; else
+                                         body))))
                              (t (mapcar #'without-slot-checks form)))))
               (without-slot-checks
                   (macroexpand (funcall original form environment)

@@ -206,6 +206,15 @@ ID keys allow rebuilding."
   (terminal-border nil :type (or null string))
   (accessible-name nil :type (or null string)))
 
+(defstruct (value-node (:include styled-node) (:constructor nil)
+                       (:copier nil))
+  "Shared value storage and private write-back tracking for retained controls."
+  (on-change nil :type (or function symbol))
+  (value nil :type t)
+  (default-value nil :type t)
+  (observed-value nil :type t)
+  (controlled-p nil :type boolean))
+
 (defstruct (container-node (:include node) (:constructor nil)
              (:copier nil))
   "Shared layout and child storage for retained containers."
@@ -245,77 +254,95 @@ ID keys allow rebuilding."
   (on-activate nil :type (or function symbol))
   (disabled-p nil :type boolean))
 
-(defstruct (checkbox (:include styled-node)
+(defstruct (checkbox (:include value-node)
              (:constructor make-checkbox
                  (text &key id width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-change
-                  value default-value disabled-p))
+                  (value nil value-supplied-p) default-value disabled-p
+                  &aux (observed-value value)
+                  (controlled-p (and value-supplied-p value t))))
              (:copier nil))
   "A retained checkbox; see DRAW for mutation, identity and callback rules."
   (text nil :type (or null string))
-  (on-change nil :type (or function symbol))
-  (value nil :type t)
-  (default-value nil :type t)
   (disabled-p nil :type boolean))
 
-(defstruct (radio (:include styled-node)
+(defstruct (radio (:include value-node)
              (:constructor make-radio
                  (choice text &key id width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-change
-                  value default-value disabled-p))
+                  (value nil value-supplied-p) default-value disabled-p
+                  &aux (observed-value value)
+                  (controlled-p (and value-supplied-p value t))))
              (:copier nil))
   "A retained radio; see DRAW for mutation, identity and callback rules."
   (choice nil :type t)
   (text nil :type (or null string))
-  (on-change nil :type (or function symbol))
-  (value nil :type t)
-  (default-value nil :type t)
   (disabled-p nil :type boolean))
 
-(defstruct (slider (:include styled-node) (:copier nil))
+(defstruct (slider (:include value-node)
+             (:constructor make-slider
+                 (&key id width height padding position offset-x offset-y
+                  foreground background palette radius frost font-size
+                  font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name on-change
+                  (value nil value-supplied-p) default-value disabled-p
+                  minimum maximum step text
+                  &aux (observed-value value)
+                  (controlled-p (and value-supplied-p value t))))
+             (:copier nil))
   "A retained slider; see DRAW for mutation, identity and callback rules."
-  (on-change nil :type (or function symbol))
-  (value nil :type t)
-  (default-value nil :type t)
   (disabled-p nil :type boolean)
   (minimum nil :type (or null real))
   (maximum nil :type (or null real))
   (step nil :type (or null real))
   (text nil :type (or null string)))
 
-(defstruct (text-field (:include styled-node) (:copier nil))
-  "A retained text-field; see DRAW for mutation, identity and callback rules."
-  (on-change nil :type (or function symbol))
-  (value nil :type t)
-  (default-value nil :type t)
+(defstruct (text-field (:include value-node (value "") (observed-value ""))
+             (:constructor make-text-field
+                 (&key id width height padding position offset-x offset-y
+                  foreground background palette radius frost font-size
+                  font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name on-change
+                  (value "" value-supplied-p) default-value disabled-p
+                  placeholder password-p
+                  &aux (observed-value value)
+                  (controlled-p (and value-supplied-p value t))))
+             (:copier nil))
+  "A retained text-field whose VALUE defaults to the empty string.
+DRAW updates VALUE automatically before callbacks; see DRAW for ownership rules."
   (disabled-p nil :type boolean)
   (placeholder nil :type (or null string))
   (password-p nil :type boolean))
 
-(defstruct (date-picker (:include styled-node) (:copier nil))
-  "A retained date-picker; see DRAW for mutation, identity and callback rules."
-  (on-change nil :type (or function symbol))
-  (value nil :type t)
-  (default-value nil :type t))
+(defstruct (date-picker (:include value-node)
+             (:constructor make-date-picker
+                 (&key id width height padding position offset-x offset-y
+                  foreground background palette radius frost font-size
+                  font-family font-weight opacity accent painter
+                  terminal-label terminal-border accessible-name on-change
+                  (value nil value-supplied-p) default-value
+                  &aux (observed-value value)
+                  (controlled-p (and value-supplied-p value t))))
+             (:copier nil))
+  "A retained date-picker; see DRAW for mutation, identity and callback rules.")
 
-(defstruct (searchable-combobox (:include styled-node)
+(defstruct (searchable-combobox (:include value-node)
              (:constructor make-searchable-combobox
                  (choices &key id width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
                   terminal-label terminal-border accessible-name on-change
-                  value default-value disabled-p placeholder max-results
-                  password-p))
+                  (value nil value-supplied-p) default-value disabled-p
+                  placeholder max-results password-p
+                  &aux (observed-value value)
+                  (controlled-p (and value-supplied-p value t))))
              (:copier nil))
   "A retained searchable-combobox; see DRAW for mutation, identity and callback rules."
   (choices nil :type (or null (vector string)))
-  (on-change nil :type (or function symbol))
-  (value nil :type t)
-  (default-value nil :type t)
   (disabled-p nil :type boolean)
   (placeholder nil :type (or null string))
   (max-results nil :type (or null integer))
@@ -470,7 +497,7 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
                   terminal-border accessible-name)
       (container align cross-align clip-p scroll-p scrollbar-p scrollbar-width
                  interactive-p keyboard-focus-p pointer-focus-p)
-      (value value default-value))
+      (value default-value))
     "Shared slot sets used by retained renderer adapters."))
 
 (defmacro collect-options (node prefix groups &rest names)
@@ -504,6 +531,21 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
          arguments)
   (values))
 
+(fn (value-options list) ((node value-node) (options list))
+  "Distinguish application slot edits from our own last write-back."
+  (unless (equal (value-node-value node) (value-node-observed-value node))
+    (setf (value-node-controlled-p node) (not (null (value-node-value node)))))
+  (if (value-node-controlled-p node)
+      (list* :value (value-node-value node) options)
+      ;; else
+      options))
+
+(fn (sync-value (values)) ((node value-node) (value t))
+  "Publish current control output before any queued callbacks are invoked."
+  (setf (value-node-value node) value
+        (value-node-observed-value node) value)
+  (values))
+
 (defmacro define-leaf (name arguments event groups &rest options)
   "Register an adapter for a concrete leaf structure and its own slots."
   `(setf (gethash ',name *renderers*)
@@ -519,8 +561,14 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
                                   ;; else
                                   `(required-argument (,reader node) node))))
                           arguments)
-                :options (collect-options node ,name ,groups ,@options))
+                :options ,(if (member 'value groups)
+                              `(value-options
+                                node (collect-options node ,name ,groups
+                                                      ,@options))
+                              ;; else
+                              `(collect-options node ,name ,groups ,@options)))
              (declare (ignorable value changed))
+             ,@(when (member 'value groups) '((sync-value node value)))
              ,(when event
                 `(let ((callback
                          (,(intern (format nil "~A-~A" name event)) node)))
@@ -623,10 +671,13 @@ when reordered within its parent. Supply :ID when reconstructing nodes; explicit
 keys must be stable and unique among siblings. Reusing a node twice in one
 parent is an error. Containers scope child identities; moving to another parent
 starts new LUI state. Removed nodes lose owned state after a completed frame.
-Option slots default to NIL; explicit NIL and omission are equivalent.
-A NIL VALUE slot selects LUI-owned state; a non-NIL value supplies an external
-model. DEFAULT-VALUE initializes owned state. Set any option slot back to NIL
-to restore its default, including VALUE to restore LUI-owned state.
+Value slots mirror current control values after every declaration, before any
+callbacks run, even without ON-CHANGE. TEXT-FIELD-VALUE defaults to the empty string.
+Omitting :VALUE uses scoped LUI-owned state, initialized by DEFAULT-VALUE.
+Supplying a non-NIL :VALUE or editing the slot supplies an application value;
+assigning NIL returns to owned state. Automatic write-back preserves ownership,
+including NIL results. A node shared across scopes exposes its last drawn value.
+Other option slots default to NIL; assign NIL to restore their defaults.
 Dimensional slots accept UNITS structures, resolved for the active backend.
 Callbacks may be functions or symbols, resolved with SYMBOL-FUNCTION when
 invoked. On-activate receives no arguments; on-change receives the new value.
