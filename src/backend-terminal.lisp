@@ -479,9 +479,13 @@
      (write-string (render-terminal context))
      (finish-output)
      (unless interactive (return context))
+     (when (accept-close-p context) (return context))
      ;; Portable line-input fallback. Native terminal raw input is added separately.
      (let ((line (terminal-line context buffer)))
-       (when (or (eq line :quit) (equal line ":quit")) (return context))
+       (when (eq line :quit) (return context))
+       (when (equal line ":quit")
+         (when (accept-close-p context t) (return context))
+         (setf line nil))
        (%lui.frame:limit-frame-rate context)
        (setf events
              (cond ((null line) nil)
@@ -495,7 +499,8 @@
   (pending "" :type string)
   (escape-time nil)
   (events nil :type list)
-  (quit-p nil :type boolean))
+  (quit-p nil :type boolean)
+  (eof-p nil :type boolean))
 
 (fn (show-cursor (values)) ()
   "Restore cursor visibility on the terminal output stream."
@@ -652,18 +657,38 @@
                   (find-symbol (symbol-name kind) :lui.key))))
        (when (typep key 'lui.key:key) key)))))
 
+(fn (terminal-editor-key (or null lui.key:key))
+    ((name (or null string)) (editing boolean) (modifiers integer))
+  "Resolve editor commands without consuming chords on custom controls."
+  (when (and name editing)
+    (readline-key name :control (logtest modifiers 2)
+                      :alt (logtest modifiers 4) :shift (logtest modifiers 1))))
+
+(fn (terminal-selection-key lui.key:key)
+    ((key lui.key:key) (editing boolean) (shift boolean))
+  "Extend text selections while leaving custom-control navigation keys intact."
+  (if (and editing shift)
+      (case key
+        (lui.key:left lui.key:shift-left) (lui.key:right lui.key:shift-right)
+        (lui.key:home lui.key:shift-home) (lui.key:end lui.key:shift-end)
+        (otherwise key))
+      ;; else
+      key))
+
 (fn (decode-event (values)) ((input input) event (context context))
   "Translate an uncursed event into LUI input or terminal lifecycle state."
   (let* ((kind (uncursed:event-kind event))
          (control (uncursed:event-controlp event))
          (alt (uncursed:event-altp event))
          (shift (uncursed:event-shiftp event))
+         (*event-modifiers* (modifier-mask shift control alt nil))
+         (shortcut (modified-character-key
+                    (if (characterp kind) (string kind) "")
+                    *event-modifiers*))
          (key (terminal-navigation-key kind))
          (name (terminal-key-name kind key))
          (editing (editing-input-p input context))
-         (command (and name editing
-                       (readline-key name :control control :alt alt
-                                     :shift shift))))
+         (command (terminal-editor-key name editing *event-modifiers*)))
     (cond
       ((uncursed:mouse-event-p event) (mouse-event input kind context))
       ((terminal-quit-p kind control)
@@ -674,20 +699,11 @@
       ((or (eql kind #\Newline) (eql kind #\Return))
        (push (make-event :kind :activate :key lui.key:enter) (input-events
                                                               input)))
-      (command (key-event input command))
+      ((or command shortcut) (key-event input (or command shortcut)))
       ((or (eql kind #\Rubout) (eq key lui.key:backspace))
        (key-event input lui.key:backspace))
       ((eql kind #\Escape) (key-event input lui.key:escape))
-      (key
-       (key-event input (if shift
-                            (case key (lui.key:left lui.key:shift-left)
-                                  (lui.key:right lui.key:shift-right)
-                                  (lui.key:home lui.key:shift-home)
-                                  (lui.key:end lui.key:shift-end)
-                                  (otherwise key))
-
-                            ;; else
-                            key)))
+      (key (key-event input (terminal-selection-key key editing shift)))
       ((and (characterp kind) (not control) (not alt))
        (terminal-character-input input context kind))))
   (values))
@@ -718,7 +734,8 @@
                           :while (characterp character)
                           :do (write-char character stream)
                           :finally (when (eq character :eof)
-                                     (setf (input-quit-p input) t))))))
+                                     (setf (input-quit-p input) t
+                                           (input-eof-p input) t))))))
        (setf (input-pending input) (concatenate 'string
                                                 (input-pending input) chunk))
        ;; Emergency quit stays available even after a truncated control sequence.
@@ -911,8 +928,10 @@
                       (let ((*context* context)) (request-frame)))))
                 (setf (input-events input) nil)
                 (display-frame context screen)
+                (when (accept-close-p context (shiftf (input-quit-p input) nil))
+                  (return context))
                 (wait-frame input context width height)
-                (when (input-quit-p input) (return context))
+                (when (input-eof-p input) (return context))
                 (%lui.frame:limit-frame-rate context)))
 
           ;; Restore colors, mouse modes, cursor, and screen even after Lisp errors.

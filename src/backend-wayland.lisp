@@ -874,6 +874,18 @@ Free all interface allocations on return or error; proxies must not outlive it."
            :alt (modifier-active-p state "Mod1")
            :shift (modifier-active-p state "Shift")))))))
 
+(fn (emit-key-text (values)) ((state cffi:foreign-pointer) (key integer))
+  "Queue the UTF-8 text produced by the current XKB state."
+  (cffi:with-foreign-object (text :char 64)
+    (let ((length (cffi:foreign-funcall "xkb_state_key_get_utf8"
+                                     :pointer state :uint key
+                                     :pointer text :size 64 :int)))
+      (when (< 0 length 64)
+        (queue-input :text :value
+                     (cffi:foreign-string-to-lisp text :count length
+                                                 :encoding :utf-8)))))
+  (values))
+
 (fn (emit-key-input (values)) ((code integer))
   "Translate CODE through the active XKB state and enqueue keyboard or text input."
   (when (wl-window-key-state *window*)
@@ -885,9 +897,17 @@ Free all interface allocations on return or error; proxies must not outlive it."
                *context* (wl-window-events *window*)
                (wl-window-width *window*) (wl-window-height *window*))))
            (state (wl-window-key-state *window*))
+           (*event-modifiers*
+            (modifier-mask (modifier-active-p state "Shift")
+                           (modifier-active-p state "Control")
+                           (modifier-active-p state "Mod1")
+                           (modifier-active-p state "Mod4")))
            (key (+ code 8))
            (symbol (cffi:foreign-funcall "xkb_state_key_get_one_sym"
                                          :pointer state :uint key :uint))
+           (shortcut (modified-character-key
+                      (if (<= 32 symbol 126) (string (code-char symbol)) "")
+                      *event-modifiers*))
            (editor (editor-command state symbol context))
            (command
             (cdr (assoc symbol
@@ -905,6 +925,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
              (queue-input :key :key (if (member symbol '(#x63 #x43))
                                        lui.key:copy lui.key:paste)))
             (editor (queue-input :key :key editor))
+            (shortcut (queue-input :key :key shortcut))
             ((member symbol '(#xff09 #xfe20))
              (queue-input :tab :key
                           (when (or (= symbol #xfe20)
@@ -918,16 +939,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
             (t
 
              ;; Only the remaining keys use XKB's UTF-8 text conversion.
-             (cffi:with-foreign-object (text :char 64)
-               (let ((length
-                      (cffi:foreign-funcall "xkb_state_key_get_utf8"
-                                            :pointer state :uint key
-                                            :pointer text :size 64 :int)))
-                 (when (< 0 length 64)
-                   (queue-input
-                    :text :value
-                    (cffi:foreign-string-to-lisp text :count length
-                                                 :encoding :utf-8)))))))))
+             (emit-key-text state key)))))
   (values))
 
 (callback keyboard-key
@@ -1328,7 +1340,6 @@ Free all interface allocations on return or error; proxies must not outlive it."
                (lambda (text) (copy-clipboard window text))))))
          (*context* context))
     (loop :with events
-          :until (wl-window-quit-p *window*)
           :do
           (poll-paste *window*)
           (sync-window-size *window*)
@@ -1345,6 +1356,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
           (%paint-frame renderer context)
           (present-gpu gpu (not (null (frame-rate-limit))))
           (unless interactive (return context))
+          (when (accept-close-p context (shiftf (wl-window-quit-p *window*) nil))
+            (return context))
           (wait-wayland display context events))))
 
 (fn (discover-wayland-globals (values)) (display)

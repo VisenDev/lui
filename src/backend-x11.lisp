@@ -408,9 +408,11 @@
         ;; Notify the requestor even when the target or transfer was rejected.
         (notify-selection display requestor selection target result time)))))
 
-(fn (clipboard-key lui.key:key) ((code integer))
-  "Map the already validated clipboard shortcut to its semantic command."
-  (if (member code '(#x63 #x43)) lui.key:copy lui.key:paste))
+(fn (key-name string) ((code integer))
+  "Name an X keysym for shared editor commands and printable shortcuts."
+  (case code
+    (#xff51 "ArrowLeft") (#xff53 "ArrowRight") (#xff08 "Backspace")
+    (otherwise (if (<= 32 code 126) (string (code-char code)) ""))))
 
 (fn (key-input (or null event)) (event &optional context)
   "Translate an X key event into LUI keyboard or text input."
@@ -421,6 +423,8 @@
            (control (logtest state 4))
            (alt (logtest state 8))
            (shift (logtest state 1))
+           (*event-modifiers* (modifier-mask shift control alt
+                                               (logtest state 64)))
            (text-p (and context (%lui.widgets:text-field-focused-p context)))
            (key (cdr (assoc code
                             '((#xff51 . lui.key:left) (#xff53 . lui.key:right)
@@ -429,21 +433,17 @@
                               (#xff08 . lui.key:backspace) (#xffff .
                                                             lui.key:delete)
                               (#xff1b . lui.key:escape)))))
-           (name (case code
-                   (#xff51 "ArrowLeft") (#xff53 "ArrowRight")
-                   (#xff08 "Backspace")
-                   (otherwise (if (<= 32 code 126)
-                                  (string (code-char code))
-                                  ;; else
-                                  ""))))
+           (name (key-name code))
+           (shortcut (modified-character-key name *event-modifiers*))
+           (clipboard (clipboard-shortcut-key name *event-modifiers*))
            (command (when text-p
                       (%lui.widgets:readline-key name :control control
                                                 :alt alt :shift shift))))
 
       ;; Clipboard and editor commands take precedence over ordinary key input.
-      (cond ((and control (not alt) (member code '(#x63 #x43 #x76 #x56)))
-             (make-event :kind :key :key (clipboard-key code)))
-            (command (make-event :kind :key :key command))
+      (cond (clipboard (make-event :kind :key :key clipboard))
+            ((or command shortcut)
+             (make-event :kind :key :key (or command shortcut)))
 
             ;; Tab, activation, and navigation stay separate from text insertion.
             ((member code '(#xff09 #xfe20))
@@ -661,7 +661,6 @@
   "Draw and present one X11 frame using WINDOW's current dimensions."
   (loop
    (multiple-value-bind (events quit) (read-events window delete)
-     (when quit (return context))
      (let ((w (x-window-width window))
            (h (x-window-height window)))
        (setf (gpu-width gpu) w (gpu-height gpu) h
@@ -673,6 +672,7 @@
      (swap-buffers (x-window-display window) (x-window-window window))
      (cffi:foreign-funcall "glFinish" :void)
      (unless interactive (return context))
+     (when (accept-close-p context quit) (return context))
      (wait-x11 (x-window-display window) context events))))
 
 (fn (close-x11-window (values))

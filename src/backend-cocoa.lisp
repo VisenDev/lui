@@ -275,6 +275,15 @@
   (with-cocoa-float-mode
       (draw-cocoa-view view selector dirty)))
 
+(sb-alien:define-alien-callable window-should-close objc-bool
+  ((delegate object) (selector object) (window object))
+  (declare (ignore delegate selector window))
+  ;; Defer application code until we are outside the Objective-C callback.
+  (with-cocoa-float-mode
+    (when (and *app* (cocoa-app-context *app*))
+      (setf (context-close-requested-p (cocoa-app-context *app*)) t))
+    0))
+
 (fn (install-method (values))
     (class (name string) (function symbol) (signature string))
   "Add a Lisp callback implementation to an Objective-C class with its ABI signature."
@@ -314,6 +323,8 @@
                (install-method class "isFlipped" 'flipped bool-signature)
                (install-method class "acceptsFirstResponder" 'flipped
                                bool-signature)
+               (install-method class "windowShouldClose:" 'window-should-close
+                               (concatenate 'string bool-signature "@"))
                (unless accelerated
                  (install-method class "drawRect:" 'draw-view
                                  "v@:{CGRect={CGPoint=dd}{CGSize=dd}}"))
@@ -348,6 +359,17 @@
       (funcall receive (or (message utf8-string text "UTF8String") ""))))
   (values))
 
+(fn (cocoa-editor-key (or null lui.key:key))
+    ((code integer) (flags integer) (name string) (text-p boolean))
+  "Resolve Readline commands only inside a focused text editor."
+  (when (and text-p (not (logtest flags #x100000)))
+    (%lui.widgets:readline-key
+     (case code
+       (123 "ArrowLeft") (124 "ArrowRight")
+       (51 "Backspace") (otherwise name))
+     :control (logtest flags #x40000) :alt (logtest flags #x80000)
+     :shift (logtest flags #x20000))))
+
 (fn (cocoa-key-input (or null event)) ((code integer) (flags integer)
                                        (characters string)
                                        &optional text-p (key-name characters)
@@ -355,14 +377,12 @@
   "Translate a macOS key code and modifiers to LUI keyboard or text input."
   (let* ((command (logtest flags #x100000))
          (shift (logtest flags #x20000))
-         (command-key
-          (when (and text-p (not command))
-            (%lui.widgets:readline-key
-             (case code
-               (123 "ArrowLeft") (124 "ArrowRight")
-               (51 "Backspace") (otherwise key-name))
-             :control (logtest flags #x40000)
-             :alt (logtest flags #x80000) :shift shift)))
+         (*event-modifiers*
+          (modifier-mask shift (logtest flags #x40000)
+                         (logtest flags #x80000) command))
+         (shortcut (modified-character-key key-name
+                                            (logand *event-modifiers* 10)))
+         (command-key (cocoa-editor-key code flags key-name text-p))
          (key (cdr (assoc code
                           '((123 . lui.key:left) (124 . lui.key:right)
                             (125 . lui.key:down) (126 . lui.key:up)
@@ -373,9 +393,10 @@
            (make-event :kind :key :key lui.key:paste))
           ((and command (= code 8))
            (make-event :kind :key :key lui.key:copy))
-          (command-key (make-event :kind :key :key command-key))
           ((and text-p command (= code 0))
            (make-event :kind :key :key lui.key:select-all))
+          ((or command-key shortcut)
+           (make-event :kind :key :key (or command-key shortcut)))
           (command nil)
           ((= code 48)
            (make-event :kind :tab :key (when shift lui.key:backward)))
@@ -385,8 +406,8 @@
           ((member code '(36 76))
            (make-event :kind :activate :key lui.key:enter))
           (key (make-event :kind :key
-                           :key (%lui.widgets:horizontal-selection-key key
-                                                                      shift)))
+                           :key (%lui.widgets:horizontal-selection-key
+                                 key (and text-p shift))))
           ((and (plusp (length characters))
                 (every (lambda (char) (>= (char-code char) 32)) characters))
            (make-event :kind :text :value characters)))))
@@ -728,7 +749,9 @@
     ;; Attach tracking and transfer the finished view into the window.
     (install-pointer-tracking (cocoa-app-view *app*) frame)
     (message sb-alien:void (cocoa-app-window *app*)
-             "setContentView:" object (cocoa-app-view *app*)))
+             "setContentView:" object (cocoa-app-view *app*))
+    (message sb-alien:void (cocoa-app-window *app*)
+             "setDelegate:" object (cocoa-app-view *app*)))
   (values))
 
 (fn (run-cocoa-frames context)
@@ -780,6 +803,8 @@
                  ;; Surface callback failures before sleeping for the next frame.
                  (when (cocoa-app-error *app*)
                    (error (cocoa-app-error *app*)))
+                 (when (and interactive (accept-close-p context))
+                   (return context))
                  (when interactive
                    (wait-cocoa application context events)))
             (message sb-alien:void frame-pool "drain")))
@@ -809,6 +834,8 @@
              "clearCurrentContext"))
   (when format (message sb-alien:void format "release"))
   (when (cocoa-app-window *app*)
+    (message sb-alien:void (cocoa-app-window *app*)
+             "setDelegate:" object (sb-sys:int-sap 0))
     (message sb-alien:void (cocoa-app-window *app*) "close")
     (message sb-alien:void (cocoa-app-window *app*) "release"))
   (when (cocoa-app-view *app*)

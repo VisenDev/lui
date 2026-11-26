@@ -242,9 +242,10 @@
   (values))
 
 (fn (key-input (or null event)) ((code integer) control alt shift text-p
-                                 &optional activation-p)
+                                 &optional activation-p super-p)
   "Translate a Windows virtual key and modifiers into a LUI input event."
-  (let* ((key (cdr (assoc code
+  (let* ((*event-modifiers* (modifier-mask shift control alt super-p))
+         (key (cdr (assoc code
                           '((37 . lui.key:left) (38 . lui.key:up)
                             (39 . lui.key:right) (40 . lui.key:down)
                             (36 . lui.key:home) (35 . lui.key:end)
@@ -256,14 +257,14 @@
                                 (string (code-char code))
                                 ;; else
                                 ""))))
+         (shortcut (modified-character-key name *event-modifiers*))
+         (clipboard (clipboard-shortcut-key name *event-modifiers*))
          (command (when (and text-p (not (and control alt)))
                     (%lui.widgets:readline-key name :control control
                                               :alt alt :shift shift))))
-    (cond ((and control (not alt) (= code 86))
-           (make-event :kind :key :key lui.key:paste))
-          ((and control (not alt) (= code 67))
-           (make-event :kind :key :key lui.key:copy))
-          (command (make-event :kind :key :key command))
+    (cond (clipboard (make-event :kind :key :key clipboard))
+          ((or command shortcut)
+             (make-event :kind :key :key (or command shortcut)))
           ((and (not alt) (= code 9))
            (make-event :kind :tab :key (when shift lui.key:backward)))
           ((and (= code 32) activation-p (not control) (not alt))
@@ -352,7 +353,8 @@
                  (and predicted
                       (%lui.widgets:text-field-focused-p predicted))
                  (and predicted
-                      (%lui.widgets:activation-focused-p predicted)))))
+                      (%lui.widgets:activation-focused-p predicted))
+                 (or (minusp (key-state 91)) (minusp (key-state 92))))))
     (when input
       (queue-input window input)
       (when (and (= wparam 32) (eq (event-kind input) :activate))
@@ -440,7 +442,13 @@
        (if (and (= wparam 32) (plusp (win-window-suppressed-spaces window)))
            (decf (win-window-suppressed-spaces window))
            ;; else
-           (character-input window wparam)))
+           (let ((*event-modifiers*
+                   (modifier-mask (minusp (key-state 16))
+                                  (minusp (key-state 17))
+                                  (minusp (key-state 18))
+                                  (or (minusp (key-state 91))
+                                      (minusp (key-state 92))))))
+             (character-input window wparam))))
       (otherwise
        (return-from window-message
          (default-procedure handle message wparam lparam)))))
@@ -774,11 +782,13 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
     (when *window-hook* (funcall *window-hook* window))
     (loop
      (pump-messages window)
-     (when (win-window-quit window) (return context))
+     (when (win-window-error window) (error (win-window-error window)))
      (let ((input (win-window-events window)))
        (setf (win-window-redraw-p window) nil)
        (render-frame window renderer context draw)
        (unless interactive (return context))
+       (when (accept-close-p context (shiftf (win-window-quit window) nil))
+         (return context))
        (wait-win32 window context input)))))
 
 (fn (start-gdi-plus integer)

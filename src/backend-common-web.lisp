@@ -25,6 +25,7 @@
   (touch-time nil :type (or null real))
   (touch-velocity 0 :type real)
   (composing nil :type boolean)
+  (modifiers 0 :type (unsigned-byte 4))
   (alive t :type boolean)
   (old-copy nil :type (or null function))
   (old-tab nil :type t)
@@ -141,7 +142,9 @@
              (not (eq value #j:undefined)))
     (let ((value (clstring value)))
       (unless (zerop (length value))
-        (input-send session (make-event :kind :text :value value))))))
+        (input-send session
+                    (make-event :kind :text :value value
+                                :modifiers (input-session-modifiers session)))))))
 
 (fn (dispose-input-session t) ((session input-session))
   "Remove listeners and the IME sink once, restoring the canvas and clipboard callback."
@@ -455,6 +458,12 @@
                     ("Escape" . lui.key:escape))
                   :test #'string=))))
 
+(fn (send-browser-key t)
+    ((session input-session) (event t) (key lui.key:key))
+  "Queue a translated key while suppressing its duplicate browser action."
+  (input-stop event)
+  (input-send session (make-event :kind :key :key key)))
+
 (fn (handle-browser-keydown t)
     ((session input-session) event)
   "Handle the browser keydown event for this input session."
@@ -472,17 +481,24 @@
            (alt (input-flag event "altKey"))
            (meta (input-flag event "metaKey"))
            (shift (input-flag event "shiftKey"))
+           (*event-modifiers* (modifier-mask shift control alt meta))
            (input (pending-session-context session))
            (editing (text-field-focused-p input))
+           (shortcut (unless editing
+                       (modified-character-key key *event-modifiers*)))
 
            ;; Shift extends an editor selection instead of changing ordinary movement.
            (command
             (browser-key-command key editing meta control alt shift)))
+      (setf (input-session-modifiers session) *event-modifiers*)
       (cond
         ;; Clipboard shortcuts must reach browser clipboard events.
-        ((and (or control meta) (not alt)
+        ((and editing (or control meta) (not alt)
               (member (string-downcase key) '("c" "v" "x")
                       :test #'string=)))
+
+        ;; Custom controls receive chords instead of browser default actions.
+        (shortcut (send-browser-key session event shortcut))
 
         ;; Route navigation and activation while suppressing duplicate DOM actions.
         ((string= key "Tab")
@@ -676,7 +692,7 @@
 (defstruct web-app
   #+lui-ecl-web (ffi-owner nil :type list)
   host stage overlay canvas graphics renderer context callback cleanup
-  observer resize
+  observer resize before-unload
   scrollport (scroll-listener nil :type (or null function)) (viewport-offset
                                                              0)
   (scroll-delta 0) (velocity 0) (scroll-time 0)
@@ -1371,6 +1387,8 @@ Check before visiting children so descendants never hide their own action."
           (max 0 (min (- (context-height context) height) (+ origin delta))))
     (with-frame (context width height :events events)
       (funcall (web-app-callback app)))
+    (when (accept-close-p context)
+      (return-from draw-frame (unmount app)))
     (when port
       (setf delta (update-page-viewport app height origin delta)))
 
@@ -1471,9 +1489,27 @@ Check before visiting children so descendants never hide their own action."
     ((oget host "appendChild") stage))
   (values))
 
+(fn (install-close-guard (values)) ((app web-app))
+  "Use the browser's native unload confirmation for a vetoed tab close."
+  (let ((context (web-app-context app)))
+    (when (context-on-close context)
+      (setf (web-app-before-unload app)
+            (lambda (event)
+              (when (web-app-events app) (draw-frame app))
+              (when (and (web-app-alive-p app)
+                         (not (accept-close-p context t)))
+                ((oget event "preventDefault"))
+                (setf (oget event "returnValue") #j"Unsaved changes")
+                (refresh app))))
+      (#j:window:addEventListener #j"beforeunload"
+       (web-app-before-unload app))))
+  (values))
+
 (fn (mount web-app) (host (callback function) &key (min-fps
                                                     %lui.frame:*min-fps*)
                                                 (max-fps %lui.frame:*max-fps*)
+                                                ((on-close (or null function))
+                                                 %lui.frame:*on-close*)
                                                 ((scroll-mode
                                                   (member :page
                                                           :viewport))
@@ -1492,7 +1528,7 @@ Check before visiting children so descendants never hide their own action."
                        (context
                         (%make-render-context renderer
                                              :min-fps min-fps :max-fps
-                                             max-fps))
+                                             max-fps :on-close on-close))
                        (app (make-web-app
                              #+lui-ecl-web :ffi-owner
                              #+lui-ecl-web %lui.ecl-emscripten:*owner*
@@ -1519,6 +1555,7 @@ Check before visiting children so descendants never hide their own action."
     (when (and port (not (eq port #j:window)) (not (eq port host)))
       ((oget (web-app-observer app) "observe") port))
     (#j:window:addEventListener #j"resize" resize)
+    (install-close-guard app)
 
     ;; Native scrolling redraws only when it differs from the prepainted offset.
     (when port
@@ -1551,6 +1588,9 @@ Check before visiting children so descendants never hide their own action."
       (#j:cancelAnimationFrame (web-app-animation-frame app)))
     ((oget (web-app-observer app) "disconnect"))
     (#j:window:removeEventListener #j"resize" (web-app-resize app))
+    (when (web-app-before-unload app)
+      (#j:window:removeEventListener #j"beforeunload"
+       (web-app-before-unload app)))
     (when (web-app-scrollport app)
       ((oget (web-app-scrollport app) "removeEventListener")
        #j"scroll" (web-app-scroll-listener app)))

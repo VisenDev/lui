@@ -409,6 +409,17 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 - Combobox Up/Down selects suggestions; Enter accepts a highlighted suggestion.
   Enter without a highlight, Escape, and Tab preserve typed text. Suggestions
   are overlays; `:max-results` bounds their count.
+- Custom controls can use `event-shortcut-p` for exact keyboard chords.
+  `:primary t` accepts Control or Super/Command; Shift must be explicit.
+  `event-modifiers` uses bits 0=Shift, 1=Control, 2=Alt, 3=Super/Command.
+  Keep text-field Readline/clipboard handling and AltGr text entry intact.
+- `run :on-close` (and browser `mount :on-close`) accepts a zero-argument
+  guard; NIL vetoes closing. Native guards run after queued input, outside
+  foreign callbacks. `request-close` queues another guarded close from the
+  current window's draw/guard callback. Browser tab close uses the browser's
+  restricted beforeunload prompt; `unmount` remains unconditional cleanup.
+  Forced teardown, terminal EOF and noninteractive snapshots bypass guards.
+  `confirm :alternate-label` adds a third action returning `:alternate`.
 - Controls take widget-specific keywords directly. Containers such as
   `row`, `panel`, and `table` group keywords before their bodies. Use
   `(lui:row (:gap 1) ...)` or `(lui:row (:options options) ...)`. Direct
@@ -715,6 +726,9 @@ subdirectory in native executable prerequisites when changing build manifests.
 The graphical editor supports continuous blocks, right-click deletion,
 move/resize, marquee selection and musical snapping. Terminal editing uses a
 compact button grid. New/Open and file replacement have explicit confirmations.
+Graphical editor shortcuts use Ctrl/Command+A/C/V/D/Z and Shift+Z for redo;
+Ctrl+Y is also redo, and Ctrl/Command+S saves. Closing a dirty project stops
+transport and offers Save/Discard/Cancel. Save failures keep the project open.
 
 Native MIDI uses Common Lisp CFFI bindings in `daw-midi.lisp` and the RtMidi
 shared library; `LUI_DAW_MIDI_LIBRARY` can select a full library path. There is

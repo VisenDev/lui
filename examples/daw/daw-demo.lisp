@@ -29,7 +29,8 @@
     #:session-selected #:session-status #:close-session #:start-recording
     #:stop-recording #:drain-midi #:session-midi #:session-recorder
     #:session-path #:export-song #:play-song #:session-player #:session-scratch
-    #:transport-position #:stop-player #:request-file-action))
+    #:transport-position #:stop-player #:request-file-action
+    #:request-session-close #:resolve-close))
 (in-package #:%lui.example.daw-demo)
 
 (defun elapsed (session)
@@ -479,6 +480,42 @@
         (run-action session (lambda () (perform-file-action session action)))))
   (values))
 
+(defun request-session-close (session)
+  "Stop transport and veto closing while unsaved changes need a decision."
+  (cancel-gesture session)
+  (when (recording-p session) (stop-recording session))
+  (stop-player session)
+  (if (session-dirty-p session)
+      (progn (setf (session-pending session) :close) nil)
+      t))
+
+(defun resolve-close (session answer)
+  "Keep the project open on cancellation or save failure; close after success."
+  (declare (values))
+  (case answer
+    (:cancel (setf (session-pending session) nil))
+    (:alternate
+     (setf (session-dirty-p session) nil (session-pending session) nil)
+     (lui:request-close))
+    (:confirm
+     (run-action session
+       (lambda ()
+         (perform-file-action session :save)
+         (setf (session-pending session) nil)
+         (lui:request-close)))))
+  (values))
+
+(defun close-confirmation (session)
+  "Offer Save, Discard and Cancel without losing edits after a failed save."
+  (declare (values))
+  (let ((answer (lui:confirm
+                 (format nil "Save changes before closing?~%~A~%~A"
+                         (output-path session "lisp") (session-status session))
+                 :title "Unsaved project" :confirm-label "Save"
+                 :alternate-label "Discard" :cancel-label "Cancel")))
+    (when answer (resolve-close session answer)))
+  (values))
+
 (defun file-controls (session)
   "Show project location, unsaved state, and explicit save/export actions."
   (declare (values))
@@ -493,7 +530,8 @@
                         :id action :disabled-p
                         (or (playing-p session) (recording-p session)))
         (request-file-action session action))))
-  (when (session-pending session)
+  (when (and (session-pending session)
+             (not (eq (session-pending session) :close)))
     (let ((result (lui:confirm
                    (if (member (session-pending session) '(:new :load))
                        "Discard unsaved changes to this project?"
@@ -534,27 +572,41 @@
     (lui:label "Record selected track from cursor. Native RtMidi; no live monitoring."))
   (values))
 
+(defun save-shortcut-p (session)
+  "Remember Save before fields consume input; perform it after model updates."
+  (and (not (or (session-pending session) (playing-p session)
+                (recording-p session)))
+       (loop :for event :across (lui:events-for (lui:focused-widget))
+             :thereis (lui:event-shortcut-p event lui.key:s :primary t))))
+
 (defun draw (session)
   "Draw an arrangement overview and direct-manipulation piano-roll editor."
   (declare (values))
-  (run-action session (lambda () (update-transport session)))
-  (lui:with-toolkit (:qt)
-    (lui:with-palette (:dark)
-      (lui:panel (:width (lui:grow) :height (lui:grow) :scroll-p t
-                  :padding (lui:units 1) :gap (lui:units 0.5))
-        (transport session)
-        (track-controls session)
-        (history-controls session)
-        (roll-toolbar session)
-        (when (%lui.example.daw-roll:draw session) (toggle-play session))
-        (note-editor session)
-        (lui:label
-         "Draw: click empty space. Drag notes to move; right edge to resize; right-click deletes.")
-        (lui:label
-         "Select: drag a box. Roll keys: Space play/pause, Delete, arrows, A/C/V/D/Q, Z undo / Y redo.")
-        (midi-controls session)
-        (file-controls session)
-        (lui:label (session-status session) :width (lui:grow)))))
+  (let ((save-p (save-shortcut-p session)))
+    (run-action session (lambda () (update-transport session)))
+    (lui:with-toolkit (:qt)
+      (lui:with-palette (:dark)
+        (lui:panel (:width (lui:grow) :height (lui:grow) :scroll-p t
+                    :padding (lui:units 1) :gap (lui:units 0.5))
+          (transport session)
+          (track-controls session)
+          (history-controls session)
+          (roll-toolbar session)
+          (when (%lui.example.daw-roll:draw session) (toggle-play session))
+          (note-editor session)
+          (lui:label
+           "Draw: click empty space. Drag notes to move; right edge to resize; right-click deletes.")
+          (lui:label
+           "Roll: Space, Delete, arrows, Q. Ctrl/Cmd+A/C/V/D; Z undo, Shift+Z redo.")
+          (lui:label "Project: Ctrl/Cmd+S saves. Closing asks about unsaved changes.")
+          (midi-controls session)
+          (file-controls session)
+          (lui:label (session-status session) :width (lui:grow)))))
+    (when save-p
+      (request-file-action session :save)
+      (lui:request-frame)))
+  (when (eq (session-pending session) :close)
+    (close-confirmation session))
   (when (plusp (length (lui:activated-ids))) (lui:request-frame))
   (when (or (playing-p session) (recording-p session)) (lui:request-frame 0.03))
   (values))
@@ -569,6 +621,7 @@ Recording plays the backing mix and optional click, without live monitoring."
     (unwind-protect
          (lui:run (lambda () (draw session)) :title "LUI Pocket Studio"
                   :interactive interactive :max-fps 30
+                  :on-close (lambda () (request-session-close session))
                   :width (unless (eq lui:*backend* :terminal) 1200)
                   :height (unless (eq lui:*backend* :terminal) 1000))
       (close-session session))))

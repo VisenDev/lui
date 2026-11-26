@@ -38,7 +38,8 @@
                 #:event #:event-kind #:event-x #:event-y #:event-id
                 #:event-value
                 #:event-key #:event-button #:event-buttons #:event-clicks
-                #:event-dragging-p)
+                #:event-dragging-p #:event-modifiers #:event-shortcut-p
+                #:request-close)
   (:import-from #:%lui.widgets
                 #:declare-widget #:widget-text)
   ;; Application controls and layout live here; specialized APIs are exported
@@ -63,6 +64,7 @@
            #:activated-p #:activated-ids #:hovered-p #:event #:event-kind
            #:event-x #:event-y #:event-id #:event-value #:event-key
            #:event-button #:event-buttons #:event-clicks #:event-dragging-p
+           #:event-modifiers #:event-shortcut-p #:request-close
            #:declare-widget #:widget-text #:run #:register-backend
            #:available-backends #:units #:units-p #:units-count
            #:resolve-units
@@ -104,6 +106,7 @@
     ((draw function) &key ((backend symbol) *backend*) ((title string) "LUI")
      ((width (or null real)) nil) ((height (or null real)) nil)
      ((interactive boolean) t) ((context-menu-p boolean) t)
+     ((on-close (or null function)) nil)
      ((min-fps real) 1) ((max-fps (or null real)) 240))
   "Run the same immediate-mode DRAW function on any registered backend.
 Backend-specific window, DOM, input, frame, and lifetime management stay in LUI.
@@ -112,11 +115,19 @@ MIN-FPS sets idle redraws per second. MAX-FPS caps input and animation frames;
 NIL removes the active limit.
 Display/compositor scheduling can still constrain presentation.
 CONTEXT-MENU-P enables the native Copy/Paste menu; NIL disables it.
+ON-CLOSE is a zero-argument callback: NIL vetoes a window close, non-NIL
+allows it. Native callbacks run after queued input at a frame boundary,
+with the window context active. Browser tab guards run during beforeunload.
+Use REQUEST-CLOSE to retry after an asynchronous confirmation. Forced process
+termination, terminal EOF and one-frame runs do not call the guard. Browsers
+may show only their generic tab-close prompt after user interaction; explicit
+REQUEST-CLOSE closes the mounted app. UNMOUNT remains unconditional cleanup.
 Double-click selects words; triple-click selects newline-delimited paragraphs.
 INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
   (assert (< 0 min-fps))
   (assert (or (null max-fps) (<= min-fps max-fps)))
   (let* ((%lui.frame:*context-menu-p* context-menu-p)
+         (%lui.frame:*on-close* on-close)
          (%lui.frame:*min-fps* min-fps)
          (%lui.frame:*max-fps* max-fps)
          (name (or backend
@@ -542,21 +553,26 @@ No timer is retained after the spinner disappears from the frame."
       (push pane (%lui.frame:context-popups *context*))
       pane)))
 
-(fn (dialog-buttons (member nil :confirm :cancel))
-    ((id object-id) (confirm-label string) (cancel-label (or null string)))
+(fn (dialog-buttons (member nil :confirm :cancel :alternate))
+    ((id object-id) (confirm-label string) (cancel-label (or null string))
+     (alternate-label (or null string)))
   "Declare dialog actions and return the selected keyword, if any."
   (let ((answer nil))
     (row (:gap (units 1) :width (grow) :align :end)
       (when (and cancel-label
                  (%button (list id :cancel) cancel-label nil))
         (setf answer :cancel))
+      (when (and alternate-label
+                 (%button (list id :alternate) alternate-label nil))
+        (setf answer :alternate))
       (when (%button (list id :confirm) confirm-label nil)
         (setf answer :confirm)))
     answer))
 
-(fn (dialog-body (member nil :confirm :cancel))
+(fn (dialog-body (member nil :confirm :cancel :alternate))
     ((id object-id) (text string) (title string)
-     (confirm-label string) (cancel-label (or null string)))
+     (confirm-label string) (cancel-label (or null string))
+     (alternate-label (or null string)))
   "Build a bounded dialog with scrolling text and visible actions."
   (let ((answer nil))
     (panel (:id (list id :pane)
@@ -570,13 +586,14 @@ No timer is retained after the spinner disappears from the frame."
       (column (:id (list id :text) :width (grow) :height (grow)
                    :clip-p t :scroll-p t)
         (%label (list id :message) text (list :width (grow))))
-      (setf answer (dialog-buttons id confirm-label cancel-label)))
+      (setf answer (dialog-buttons id confirm-label cancel-label alternate-label)))
     answer))
 
-(fn (draw-dialog (member nil :confirm :cancel))
+(fn (draw-dialog (member nil :confirm :cancel :alternate))
     ((id object-id) (text string) (title string)
-     (confirm-label string) (cancel-label (or null string)))
-  "Declare one modal surface and return NIL, :CONFIRM, or :CANCEL."
+     (confirm-label string) (cancel-label (or null string))
+     (alternate-label (or null string)))
+  "Declare one modal surface and return the chosen action, or NIL while waiting."
   (when (context-modal-declared-p *context*)
     (error 'configuration-error :operation :confirm :setting :modal
            :value id :format-control "Declare only one confirmation per frame."))
@@ -594,7 +611,8 @@ No timer is retained after the spinner disappears from the frame."
                   :pointer-focus-p nil)))
          (answer nil))
     (let ((*parent* surface))
-      (setf answer (dialog-body id text title confirm-label cancel-label)))
+      (setf answer (dialog-body id text title confirm-label cancel-label
+                               alternate-label)))
     (when (some (lambda (event) (eq (event-key event) lui.key:escape))
                 (events-for id))
       (setf answer :cancel))
@@ -619,16 +637,18 @@ No timer is retained after the spinner disappears from the frame."
     answer))
 
 (defmacro confirm (text &key (title "Confirm") (confirm-label "OK")
-                            (cancel-label "Cancel") (id nil id-p))
+                            (cancel-label "Cancel") alternate-label (id nil id-p))
   "Declare a modal confirmation each frame while awaiting an answer.
-Return :CONFIRM, :CANCEL (including Escape), or NIL while waiting. Stop declaring
-it after an answer. IDs use call-site identity, WITH-KEY scopes, and optional ID.
+Return :CONFIRM, :CANCEL (including Escape), :ALTERNATE, or NIL while waiting.
+ALTERNATE-LABEL optionally adds a third action (for example, Discard).
+Stop declaring it after an answer. IDs use call-site identity, WITH-KEY scopes,
+and optional ID.
 Only one confirmation may be declared per frame; retained messages wait behind
 it. Outside clicks do nothing, Tab stays inside, and Cancel initially has focus.
 TITLE, CONFIRM-LABEL, and CANCEL-LABEL are strings. This is an in-window overlay."
   `(draw-dialog (call-site-id ',(gensym "CONFIRM")
                              ,(when id-p `(list :id ,id)))
-                ,text ,title ,confirm-label ,cancel-label))
+                ,text ,title ,confirm-label ,cancel-label ,alternate-label))
 
 (fn (draw-messages (values)) ()
   "Draw the oldest retained message when no confirmation owns the surface."
@@ -662,7 +682,7 @@ frame for the same error. Closing the window discards its pending messages."
                  (list (lambda ()
                          (with-toolkit (toolkit)
                            (with-palette (palette)
-                             (draw-dialog id message caption "OK" nil)))))))
+                             (draw-dialog id message caption "OK" nil nil)))))))
     (request-frame))
   (values))
 

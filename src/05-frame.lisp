@@ -34,16 +34,25 @@
            #:context-tabs-handled-p #:context-text-mode-p
            #:context-copy #:context-paste #:context-posted-events
            #:context-menu-p #:context-popup-draw #:*context-menu-p*
-           #:context-input-handler #:context-selection))
+           #:context-input-handler #:context-selection
+           #:*event-modifiers* #:modifier-mask #:modified-character-key
+           #:clipboard-shortcut-key
+           #:event-modifiers
+           #:event-shortcut-p #:*on-close* #:context-on-close
+           #:context-close-requested-p #:request-close #:accept-close-p))
 
 (in-package #:%lui.frame)
+
+(defvar *event-modifiers* 0)
+(defvar *on-close* nil)
 
 (defstruct event
   "Backend-neutral input: a kind, target ID, optional key/value, and coordinates.
 BUTTONS is NIL when unknown; otherwise bit 0 means primary and bit 1 secondary,
 with zero meaning no buttons held. :CANCEL ends capture without activation.
 KEY holds a LUI.KEY constant; LUI.KEY:BACKWARD marks reverse Tab traversal.
-DRAGGING-P is resolved from capture and the supplied physical button state."
+DRAGGING-P is resolved from capture and the supplied physical button state.
+MODIFIERS records keyboard Shift, Control, Alt and Super/Command in bits 0-3."
   (kind :move :type
         (member :move :press :release :tab :activate :change
                 :key :text :scroll :cancel))
@@ -52,6 +61,7 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
   (dragging-p nil :type boolean)
   ;; NIL means unknown; otherwise bit0=primary, bit1=secondary, 0=unpressed.
   (buttons nil :type (or null integer))
+  (modifiers *event-modifiers* :type (unsigned-byte 4))
   ;; Precise OS inertia uses :IMMEDIATE; :AUTO keeps plain text contexts direct.
   (scroll-mode :auto :type (member :auto :smooth :immediate))
   (id nil :type object-id)
@@ -114,6 +124,8 @@ the current input event, or next frame when posted outside input routing."
   (paste nil :type (or null function))
   (posted-events nil :type list)
   (menu-p *context-menu-p* :type boolean)
+  (on-close *on-close* :type (or null function))
+  (close-requested-p nil :type boolean)
   (popup-draw nil :type (or null function))
   (input-handler nil :type (or null function))
   selection
@@ -146,6 +158,71 @@ the current input event, or next frame when posted outside input routing."
   (measure nil :type (or null function)))
 
 (defvar *context*)
+
+(fn (modifier-mask (unsigned-byte 4))
+    ((shift boolean) (control boolean) (alt boolean) (super boolean))
+  "Encode Shift, Control, Alt and Super/Command as bits 0 through 3."
+  (logior (if shift 1 0) (if control 2 0)
+          (if alt 4 0) (if super 8 0)))
+
+(fn (modified-character-key (or null lui.key:key))
+    ((name string) (modifiers integer))
+  "Resolve a printable command key, leaving Control+Alt text (AltGr) alone."
+  (when (and (logtest modifiers 14) (/= 6 (logand modifiers 6))
+             (= 1 (length name)) (<= 32 (char-code (char name 0)) 126))
+    (lui.key:char->key (char-downcase (char name 0)))))
+
+(fn (clipboard-shortcut-key (or null lui.key:key))
+    ((name string) (modifiers integer))
+  "Resolve native clipboard chords without treating AltGr as a command."
+  (when (and (logtest modifiers 10) (not (logtest modifiers 4)))
+    (cond ((string-equal name "c") lui.key:copy)
+          ((string-equal name "v") lui.key:paste)
+          (t nil))))
+
+(fn (event-shortcut-p boolean)
+    ((event event) (key lui.key:key) &key ((primary boolean) nil)
+     ((shift boolean) nil) ((control boolean) nil) ((alt boolean) nil)
+     ((super boolean) nil))
+  "Match a key and exact modifiers, ignoring unrelated input events.
+PRIMARY accepts either Control or Super/Command. SHIFT must be explicit.
+Clipboard semantic keys match C/V; single-character text matches plain keys.
+EVENT-MODIFIERS uses bits 0=Shift, 1=Control, 2=Alt, 3=Super/Command."
+  (let* ((value (event-value event))
+         (actual (case (event-kind event)
+                   (:key (case (event-key event)
+                           (lui.key:copy lui.key:c)
+                           (lui.key:paste lui.key:v)
+                           (otherwise (event-key event))))
+                   (:text (when (and (stringp value) (= 1 (length value)))
+                            (lui.key:char->key
+                             (char-downcase (char value 0)))))
+                   (otherwise nil)))
+         (mask (modifier-mask shift control alt super)))
+    (and (eq actual key)
+         (if primary
+             (not (null (member (event-modifiers event)
+                                (list (logior mask 2) (logior mask 8)))))
+             ;; else
+             (= mask (event-modifiers event))))))
+
+(fn (request-close (values)) ()
+  "Request closing the current window at the next backend frame boundary.
+The RUN :ON-CLOSE callback may veto this request. Call from DRAW or ON-CLOSE;
+this is not a cross-thread dispatch API."
+  (setf (context-close-requested-p *context*) t)
+  (request-frame)
+  (values))
+
+(fn (accept-close-p boolean)
+    ((context context) &optional ((native-request boolean) nil))
+  "Consume a pending close request, consulting the window's application guard."
+  (when (or native-request (context-close-requested-p context))
+    (setf (context-close-requested-p context) nil)
+    (let ((*context* context))
+      (request-frame)
+      (or (null (context-on-close context))
+          (not (null (funcall (context-on-close context))))))))
 (setf (documentation '*context* 'variable)
       "Dynamically bound context for the drawing function currently building a frame.")
 

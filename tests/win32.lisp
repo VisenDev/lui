@@ -37,7 +37,10 @@
               (event-key (%lui.win32::key-input 66 nil t nil t))))
   (assert (eq lui.key:word-right
               (event-key (%lui.win32::key-input 39 t nil nil t))))
-  (assert (null (%lui.win32::key-input 65 t nil nil nil)))
+  (assert (lui:event-shortcut-p (%lui.win32::key-input 65 t nil nil nil)
+                                lui.key:a :primary t))
+  (assert (lui:event-shortcut-p (%lui.win32::key-input 90 t nil t nil)
+                                lui.key:z :primary t :shift t))
   (assert (null (%lui.win32::key-input 13 nil t nil nil)))
   (assert (null (%lui.win32::key-input 66 t t nil t))))
 

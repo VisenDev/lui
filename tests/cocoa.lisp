@@ -90,6 +90,16 @@
          (context (make-context))
          (%lui.cocoa::*app*
           (%lui.cocoa::make-cocoa-app :view view :context context)))
+    ;; The native delegate only queues the request; user code runs later.
+    (setf (context-on-close context)
+          (lambda () (error "Guard ran inside foreign callback")))
+    (assert (zerop
+             (sb-alien:alien-funcall
+              (sb-alien:alien-callable-function '%lui.cocoa::window-should-close)
+              view (sb-sys:int-sap 0) view)))
+    (assert (context-close-requested-p context))
+    (setf (context-close-requested-p context) nil
+          (context-on-close context) nil)
     (%lui.cocoa::with-rect (dirty 0 0 10 10)
       ;; Display before the first frame and after disposal must be harmless.
       (sb-alien:alien-funcall
@@ -236,15 +246,19 @@
               (event-key (%lui.cocoa::cocoa-key-input 11 #x80000 "b" t))))
   (assert (null (%lui.cocoa::cocoa-key-input
                  0 #x40000 (string (code-char 1)))))
-  (assert (null (%lui.cocoa::cocoa-key-input 0 #x100000 "a")))
+  (assert (lui:event-shortcut-p
+           (%lui.cocoa::cocoa-key-input 0 #x100000 "a")
+           lui.key:a :primary t))
 
   (assert (eq lui.key:shift-left
-              (event-key (%lui.cocoa::cocoa-key-input 123 #x20000 ""))))
+              (event-key (%lui.cocoa::cocoa-key-input 123 #x20000 "" t))))
   (assert (eq lui.key:shift-right
-              (event-key (%lui.cocoa::cocoa-key-input 124 #x20000 ""))))
+              (event-key (%lui.cocoa::cocoa-key-input 124 #x20000 "" t))))
   (assert (eq lui.key:select-all
               (event-key (%lui.cocoa::cocoa-key-input 0 #x100000 "a" t))))
-  (assert (null (%lui.cocoa::cocoa-key-input 12 #x100000 "q")))
+  (assert (lui:event-shortcut-p
+           (%lui.cocoa::cocoa-key-input 6 #x120000 "Z" nil "z")
+           lui.key:z :primary t :shift t))
   (assert (eq :activate (event-kind (%lui.cocoa::cocoa-key-input 76 0 ""))))
   (assert (string= "λ日本"
                    (event-value (%lui.cocoa::cocoa-key-input 0 0 "λ日本"))))

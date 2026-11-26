@@ -100,8 +100,11 @@
       (frame (list (%lui.frame:make-event :kind :key :key lui.key:delete)))
       (assert (null (at 62 2)))
       (assert (null (at 65 4)))
-      ;; Native backends deliver printable shortcuts as text events.
+      ;; Ordinary letters no longer trigger destructive editor commands.
       (frame (list (%lui.frame:make-event :kind :text :value "z")))
+      (assert (null (at 62 2)))
+      (frame (list (%lui.frame:make-event :kind :key :key lui.key:z
+                                         :modifiers 2)))
       (assert (at 62 2))
       (assert (at 65 4))
       ;; A resized window invalidates the drag's previous pixel geometry.
@@ -213,6 +216,70 @@
                            (%lui.example.daw-demo:session-scratch session))))))
       (%lui.example.daw-demo:close-session session))))
 
+(defun test-save-shortcut ()
+  "Save after applying text edits queued in the same frame as Control-S."
+  (let* ((session (make-session))
+         (context (%lui.tests.support:make-test-context))
+         (%lui.frame:*context* context)
+         (base (format nil "build/daw-shortcut-~D" (get-internal-real-time)))
+         (path (concatenate 'string base ".lisp")))
+    (setf (%lui.example.daw-demo:session-path session) base)
+    (unwind-protect
+         (progn
+           (lui:with-frame (context 1200 1200)
+             (%lui.example.daw-demo:draw session))
+           (setf (%lui.frame:context-focus context)
+                 (lui:widget-id :track-name context))
+           (lui:reset-editor :track-name "Keys")
+           (lui:with-frame
+               (context 1200 1200 :events
+                        (list (%lui.frame:make-event :kind :text :value "x")
+                              (%lui.frame:make-event :kind :key :key lui.key:s
+                                                     :modifiers 2)))
+             (%lui.example.daw-demo:draw session))
+           (assert (probe-file path))
+           (assert (string= "Keysx"
+                            (%lui.example.daw-model:track-name
+                             (aref (song-tracks
+                                    (%lui.example.daw-model:load-song path)) 0))))
+           (assert (not (session-dirty-p session))))
+      (when (probe-file path) (delete-file path)))))
+
+(defun test-close-confirmation ()
+  "Cancel and failed saves retain edits; Save and Discard retry the guard."
+  (let* ((session (make-session))
+         (context (%lui.tests.support:make-test-context))
+         (%lui.frame:*context* context))
+    (setf (%lui.frame:context-on-close context)
+          (lambda () (%lui.example.daw-demo:request-session-close session)))
+    (assert (%lui.frame:accept-close-p context t))
+    (edit-note session 70 2)
+    (assert (not (%lui.frame:accept-close-p context t)))
+    (assert (eq :close (session-pending session)))
+    (%lui.example.daw-demo:resolve-close session :cancel)
+    (assert (session-dirty-p session))
+    (assert (null (session-pending session)))
+    (assert (not (%lui.frame:accept-close-p context)))
+    (%lui.frame:accept-close-p context t)
+    (with-open-file (stream "build/daw-close-blocker" :direction :output
+                            :if-exists :supersede)
+      (write-line "This file cannot be a directory." stream))
+    (setf (%lui.example.daw-demo:session-path session)
+          "build/daw-close-blocker/project")
+    (%lui.example.daw-demo:resolve-close session :confirm)
+    (assert (session-dirty-p session))
+    (assert (eq :close (session-pending session)))
+    (assert (not (%lui.frame:accept-close-p context)))
+    (setf (%lui.example.daw-demo:session-path session) "build/daw-close-test")
+    (%lui.example.daw-demo:resolve-close session :confirm)
+    (assert (probe-file "build/daw-close-test.lisp"))
+    (assert (not (session-dirty-p session)))
+    (assert (%lui.frame:accept-close-p context))
+    (edit-note session 72 3)
+    (%lui.frame:accept-close-p context t)
+    (%lui.example.daw-demo:resolve-close session :alternate)
+    (assert (%lui.frame:accept-close-p context))))
+
 (defun run-tests ()
   "Run direct-manipulation, history, project and transport-range regressions."
   (test-pointer-editing)
@@ -221,4 +288,6 @@
   (test-record-offset)
   (test-render-range)
   (test-cycle-playback)
+  (test-close-confirmation)
+  (test-save-shortcut)
   (format t "DAW pointer capture, right-click delete, undo, clipboard and ranges passed.~%"))

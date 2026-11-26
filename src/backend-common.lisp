@@ -889,7 +889,8 @@ Fall back to its background role, or the current toolkit for an empty frame."
      (open-text-menu renderer context event)
      (not (null (context-popup-draw context))))
     ((and (eq (event-kind event) :key)
-          (eq (event-key event) lui.key:paste))
+          (eq (event-key event) lui.key:paste)
+          (%lui.widgets:text-field-focused-p context))
      (request-paste context (context-focus context)) t)))
 
 (fn (%selectable-nodes (values (vector element) (or null hash-table)))

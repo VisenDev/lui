@@ -40,6 +40,12 @@
                      (event-key (translated-key display #xff09 1 context))))
          (assert (eq :activate
                      (event-kind (translated-key display 32 0 context))))
+         (assert (lui:event-shortcut-p (translated-key display #x7a 4 context)
+                                       lui.key:z :primary t))
+         (assert (lui:event-shortcut-p (translated-key display #x7a 5 context)
+                                       lui.key:z :primary t :shift t))
+         (assert (lui:event-shortcut-p (translated-key display #x76 4 context)
+                                       lui.key:v :primary t))
          (with-frame (context 400 200)
         (lui.glass:text-field :id :button :value "value"))
          (assert (equal " "

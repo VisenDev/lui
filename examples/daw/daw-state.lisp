@@ -79,7 +79,7 @@
         :type (vector song))
   (dirty-p nil :type boolean)
   (gesture nil :type (or null gesture))
-  (pending nil :type (member nil :new :load :save :wav :mp3)))
+  (pending nil :type (member nil :new :load :save :wav :mp3 :close)))
 
 (defun current-track (session)
   "Return the track selected for editing and recording."

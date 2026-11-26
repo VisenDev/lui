@@ -62,7 +62,8 @@ outside editing. Return an event or NIL; printable input remains text."
                             ;; else
                             (%lui.widgets:readline-key
                              (string (code-char (+ code 64))) :control t))))
-               (when key (make-event :kind :key :key key)))))
+               (when key (make-event :kind :key :key key
+                                     :modifiers (event-modifiers event))))))
           (t
            (let ((clean (remove-if (lambda (char)
                                      (or (< (char-code char) 32)
