@@ -241,6 +241,16 @@
                         (make-event :kind :text :value (string char))))))))
   (values))
 
+(fn (key-name string) ((code integer))
+  "Name editor keys and actual ASCII virtual keys, never navigation or F keys."
+  (case code
+    (37 "ArrowLeft") (39 "ArrowRight") (8 "Backspace")
+    (otherwise
+     (if (or (= code 32) (<= 48 code 57) (<= 65 code 90))
+         (string (code-char code))
+         ;; else
+         ""))))
+
 (fn (key-input (or null event)) ((code integer) control alt shift text-p
                                  &optional activation-p super-p)
   "Translate a Windows virtual key and modifiers into a LUI input event."
@@ -251,12 +261,7 @@
                             (36 . lui.key:home) (35 . lui.key:end)
                             (8 . lui.key:backspace) (46 . lui.key:delete)
                             (27 . lui.key:escape)))))
-         (name (case code
-                 (37 "ArrowLeft") (39 "ArrowRight") (8 "Backspace")
-                 (otherwise (if (<= 32 code 126)
-                                (string (code-char code))
-                                ;; else
-                                ""))))
+         (name (key-name code))
          (shortcut (modified-character-key name *event-modifiers*))
          (clipboard (clipboard-shortcut-key name *event-modifiers*))
          (command (when (and text-p (not (and control alt)))

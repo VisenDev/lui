@@ -484,12 +484,11 @@
            (*event-modifiers* (modifier-mask shift control alt meta))
            (input (pending-session-context session))
            (editing (text-field-focused-p input))
-           (shortcut (unless editing
-                       (modified-character-key key *event-modifiers*)))
-
            ;; Shift extends an editor selection instead of changing ordinary movement.
            (command
-            (browser-key-command key editing meta control alt shift)))
+            (browser-key-command key editing meta control alt shift))
+           (shortcut (unless command
+                       (modified-character-key key *event-modifiers*))))
       (setf (input-session-modifiers session) *event-modifiers*)
       (cond
         ;; Clipboard shortcuts must reach browser clipboard events.

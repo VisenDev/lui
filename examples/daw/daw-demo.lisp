@@ -483,8 +483,11 @@
 (defun request-session-close (session)
   "Stop transport and veto closing while unsaved changes need a decision."
   (cancel-gesture session)
-  (when (recording-p session) (stop-recording session))
-  (stop-player session)
+  (run-action session
+    (lambda ()
+      (unwind-protect
+           (when (recording-p session) (stop-recording session))
+        (stop-player session))))
   (if (session-dirty-p session)
       (progn (setf (session-pending session) :close) nil)
       t))

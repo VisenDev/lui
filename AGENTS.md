@@ -729,6 +729,9 @@ compact button grid. New/Open and file replacement have explicit confirmations.
 Graphical editor shortcuts use Ctrl/Command+A/C/V/D/Z and Shift+Z for redo;
 Ctrl+Y is also redo, and Ctrl/Command+S saves. Closing a dirty project stops
 transport and offers Save/Discard/Cancel. Save failures keep the project open.
+MIDI shutdown errors are reported without bypassing that confirmation.
+Coarser grids must not mutate idle inspector values or resize notes past the
+song end. Sliders clamp supplied values but snap only after slider input.
 
 Native MIDI uses Common Lisp CFFI bindings in `daw-midi.lisp` and the RtMidi
 shared library; `LUI_DAW_MIDI_LIBRARY` can select a full library path. There is
@@ -744,3 +747,5 @@ cancellation, undo/redo, clipboard, project handling, WAV timing/pitch, MP3
 encoding/decoding and ffplay looping through SDL's silent output. Tests use
 Lisp and a test-only C library. Do not treat simulated input or silent playback
 as evidence of hardware MIDI support or audible device output.
+`make test-native` also checks the production Win32 key translator without
+loading Windows DLLs; the same assertions run in native Windows tests.

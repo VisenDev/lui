@@ -254,8 +254,8 @@
            (when (or (eq (gesture-kind gesture) :resize) (/= delta 0))
              (loop :for note :across notes :for original :across originals
                    :do (setf (note-duration note)
-                             (max (session-snap session)
-                                  (min (- end (note-start original))
+                             (min (- end (note-start original))
+                                  (max (session-snap session)
                                        (snap-beat session
                                         (+ (note-duration original) delta))))))
              (setf (gesture-changed-p gesture) t)))))))

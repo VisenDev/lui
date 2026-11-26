@@ -3,6 +3,8 @@
 
 (in-package #:%lui.tests.win32)
 
+(load "tests/win32-keys.lisp")
+
 (cffi:defcfun ("GetPixel" get-pixel :convention :stdcall) :uint32
   (dc :pointer) (x :int) (y :int))
 (cffi:defcfun ("GetCapture" capture-window :convention :stdcall) :pointer)

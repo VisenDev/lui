@@ -987,6 +987,49 @@ class WebTests(unittest.TestCase):
         self.frames()
         self.assertEqual(self.focus_id(), ":FIXTURE")
 
+    def test_application_shortcuts_while_editing(self):
+        host = self.fixture(body='''
+          (loop :for event :across (lui:events-for :fixture)
+                :when (lui:event-shortcut-p event lui.key:s :primary t)
+                  :do (incf *web-test-clicks*))
+          (lui:column (:width (lui:grow))
+            (setf *web-test-value*
+              (lui:text-field :id :fixture :value *web-test-value*
+                              :width (lui:grow))))''')
+        self.click_widget(id=":FIXTURE", host=host)
+        self.assertEqual(self.focus_id(), ":FIXTURE")
+        self.page.keyboard.press("Control+s")
+        self.frames()
+        self.assertEqual(self.number("*web-test-clicks*"), 1)
+        self.page.keyboard.press("Meta+s")
+        self.frames()
+        self.assertEqual(self.number("*web-test-clicks*"), 2)
+        self.assertEqual(self.text_value(":FIXTURE", host), "original")
+
+        # Known editor commands must win over generic printable chords.
+        self.page.keyboard.press("Control+a")
+        self.page.keyboard.press("Control+k")
+        self.frames()
+        self.assertEqual(self.text_value(":FIXTURE", host), "")
+        self.page.keyboard.press("Control+y")
+        self.frames()
+        self.assertEqual(self.text_value(":FIXTURE", host), "original")
+
+        # Native clipboard chords and AltGr must retain their browser defaults.
+        sink = self.page.locator(host + " textarea")
+        for key, modifiers in [("c", {"ctrlKey": True}),
+                               ("v", {"metaKey": True}),
+                               ("x", {"ctrlKey": True}),
+                               ("q", {"ctrlKey": True, "altKey": True})]:
+            prevented = sink.evaluate("""(node, spec) => {
+              const event = new KeyboardEvent('keydown', {
+                key: spec.key, bubbles: true, cancelable: true, ...spec.modifiers
+              });
+              node.dispatchEvent(event);
+              return event.defaultPrevented;
+            }""", {"key": key, "modifiers": modifiers})
+            self.assertFalse(prevented, key)
+
     def test_password_field(self):
         host = self.fixture(body='''(setf *web-test-value*
           (lui:text-field :id :fixture :value *web-test-value* :password-p t :width (%lui.layout:grow)))''')

@@ -98,6 +98,43 @@
       (assert (= 4 (length (song-tracks
                             (%lui.example.daw-demo:session-song session))))))))
 
+(defun test-midi-close-failure ()
+  "A failed final read must release MIDI and preserve Save/Discard/Cancel."
+  (let* ((session (%lui.example.daw-demo:make-session))
+         (context (%lui.tests.support:make-test-context))
+         (%lui.frame:*context* context))
+    (setf (%lui.frame:context-on-close context)
+          (lambda () (%lui.example.daw-demo:request-session-close session)))
+    (unwind-protect
+         (progn
+           (add-note (aref (song-tracks
+                            (%lui.example.daw-demo:session-song session)) 0)
+                     79 3 1/2)
+           (%lui.example.daw-demo:start-recording session)
+           (cffi:foreign-funcall "lui_test_fail_read" :void)
+           (assert (not (%lui.frame:accept-close-p context t)))
+           (assert (eq :close (%lui.example.daw-state:session-pending session)))
+           (assert (%lui.example.daw-state:session-dirty-p session))
+           (assert (null (%lui.example.daw-demo:session-midi session)))
+           (assert (null (%lui.example.daw-demo:session-player session)))
+           (assert (zerop (cffi:foreign-funcall "lui_test_live_inputs" :int)))
+           (assert (search "Native MIDI failed"
+                           (%lui.example.daw-demo:session-status session)))
+           (lui:with-frame (context 110 65)
+             (%lui.example.daw-demo:draw session))
+           (assert (%lui.frame:context-modal context))
+           (%lui.example.daw-demo:resolve-close session :cancel)
+           (assert (%lui.example.daw-state:session-dirty-p session))
+           (assert (not (%lui.frame:accept-close-p context t)))
+           (setf (%lui.example.daw-demo:session-path session)
+                 "build/daw-midi-close-test")
+           (%lui.example.daw-demo:resolve-close session :confirm)
+           (assert (%lui.frame:accept-close-p context))
+           (let ((loaded (load-song "build/daw-midi-close-test.lisp")))
+             (assert (= 1/2 (note-duration
+                             (note-at (aref (song-tracks loaded) 0) 79 3))))))
+      (%lui.example.daw-demo:close-session session))))
+
 (defun test-native-midi ()
   "Run native CFFI input against a deterministic C ABI double, including stop."
   (assert (equalp #("LUI native test keyboard")
@@ -105,6 +142,7 @@
   (assert (handler-case (progn (%lui.example.daw-midi:open-input 1) nil)
             (%lui.example.daw-midi:midi-error () t)))
   (assert (zerop (cffi:foreign-funcall "lui_test_live_inputs" :int)))
+  (test-midi-close-failure)
   (let ((session (%lui.example.daw-demo:make-session)))
     (unwind-protect
          (progn

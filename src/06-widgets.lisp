@@ -599,39 +599,42 @@ Events include semantic Readline keys, text insertion, and replacement changes."
 
 (fn (slider-value real)
     ((id object-id) (value real) (options list) (events (vector event)))
-  "Apply slider input, then clamp and snap the value to the configured step."
+  "Clamp the supplied value; snap to STEP only following actual slider input."
   (let ((minimum (getf options :minimum 0))
         (maximum (getf options :maximum 1))
         (step (getf options :step 0.01f0))
-        (box (previous-box id)))
+        (box (previous-box id))
+        (edited nil))
     (assert (and (< minimum maximum) (> step 0)))
     (loop :for event :across events :do
           (case (event-kind event)
             (:change
              (when (realp (event-value event))
-               (setf value (event-value event))))
+               (setf value (event-value event) edited t)))
             ((:press :move)
              (when (and box (plusp (box-width box))
                         (eq (event-button event) :primary)
                         (or (eq (event-kind event) :press)
                             (event-dragging-p event)))
-               (setf value
+               (setf edited t value
                      (+ minimum
                         (* (- maximum minimum)
                            (/ (- (event-x event) (box-x box))
                               (box-width box)))))))
             (:key
              (case (event-key event)
-               ((lui.key:right lui.key:up) (incf value step))
-               ((lui.key:left lui.key:down) (decf value step))
-               (lui.key:home (setf value minimum))
-               (lui.key:end (setf value maximum))
+               ((lui.key:right lui.key:up) (incf value step) (setf edited t))
+               ((lui.key:left lui.key:down) (decf value step) (setf edited t))
+               (lui.key:home (setf value minimum edited t))
+               (lui.key:end (setf value maximum edited t))
                (otherwise nil)))
             (otherwise nil)))
     (max minimum
          (min maximum
-              (+ minimum
-                 (* step (round (/ (- value minimum) step))))))))
+              (if edited
+                  (+ minimum (* step (round (/ (- value minimum) step))))
+                  ;; else
+                  value)))))
 
 (fn (value-widget (values t boolean))
     ((kind symbol) (style symbol) (id object-id) (value t) (text string)

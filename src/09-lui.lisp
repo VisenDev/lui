@@ -446,7 +446,9 @@ Without :value, each control retains its own value, initially :default-value or 
 
 (define-control slider (id value) (minimum maximum step text)
   "Return the number, change flag, and ID. It accepts :minimum, :maximum and :step.
-:default-value initializes owned state (default 0); :value is controlled."
+:default-value initializes owned state (default 0); :value is controlled.
+Values are clamped to the range, but snap to STEP only on slider input.
+An idle or disabled slider preserves an in-range value between steps."
   (value-widget :slider style id value (getf options :text "")
                 (append (%without-option :text options) defaults)))
 

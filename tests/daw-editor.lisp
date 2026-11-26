@@ -117,6 +117,55 @@
       (assert (at 62 2))
       (assert (null (at 63 3))))))
 
+(defun test-resize-at-song-end ()
+  "A coarse grid cannot stretch a selected note beyond the saved song range."
+  (let* ((session (make-session))
+         (context (%lui.tests.support:make-test-context))
+         (last (%lui.example.daw-model:add-note (current-track session)
+                                               61 127/8 1/8))
+         (other (%lui.example.daw-model:add-note (current-track session)
+                                                63 4 2)))
+    (setf (%lui.frame:context-text-mode-p context) nil
+          (session-page session) 2
+          (%lui.example.daw-state:session-snap session) 1)
+    (select-notes session (vector last other))
+    (labels ((frame (&optional events)
+               (lui:with-frame (context 1200 1200 :events events)
+                 (%lui.example.daw-demo:draw session))))
+      (frame)
+      (frame (list (pointer-event context session :press 15.99 61)))
+      (frame (list (pointer-event context session :move 17 61)))
+      (frame (list (pointer-event context session :release 17 61 :buttons 0)))
+      (assert (= 1/8 (note-duration last)))
+      (assert (= 3 (note-duration other)))
+      (assert (= 1 (length (session-undo session))))
+      (undo-edit session)
+      (assert (= 2 (note-duration (note-at (current-track session) 63 4))))
+      (redo-edit session)
+      (frame)
+      (%lui.example.daw-model:save-song (session-song session)
+                                       "build/daw-boundary-test.lisp")
+      (let ((loaded (%lui.example.daw-model:load-song
+                     "build/daw-boundary-test.lisp")))
+        (assert (= 1/8 (note-duration
+                        (note-at (aref (song-tracks loaded) 0) 61 127/8))))))))
+
+(defun test-idle-note-inspector ()
+  "Opening an inspector on an off-grid note must not quantize or dirty it."
+  (let* ((session (make-session))
+         (context (%lui.tests.support:make-test-context))
+         (note (%lui.example.daw-model:add-note (current-track session)
+                                               62 2 3/2)))
+    (select-notes session (vector note))
+    (setf (%lui.example.daw-state:session-snap session) 1)
+    (dolist (pending '(nil :close nil))
+      (setf (session-pending session) pending)
+      (lui:with-frame (context 1200 1200)
+        (%lui.example.daw-demo:draw session))
+      (assert (= 3/2 (note-duration note)))
+      (assert (zerop (length (session-undo session))))
+      (assert (not (session-dirty-p session))))))
+
 (defun test-history-and-clipboard ()
   "Copies are independent, undo is bounded, and redo is invalidated by edits."
   (let ((session (make-session)))
@@ -283,6 +332,8 @@
 (defun run-tests ()
   "Run direct-manipulation, history, project and transport-range regressions."
   (test-pointer-editing)
+  (test-resize-at-song-end)
+  (test-idle-note-inspector)
   (test-history-and-clipboard)
   (test-bounds-and-projects)
   (test-record-offset)
