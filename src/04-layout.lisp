@@ -17,6 +17,7 @@
            #:element-gap #:element-align
            #:element-cross-align #:element-pointer-focus-p
            #:element-interactive-p #:element-keyboard-focus-p
+           #:element-clickable-p #:element-disabled-p #:element-focus-color
            #:append-child #:solve #:walk-elements
            #:do-children
            #:element-clip #:element-clip-p #:element-scroll-p
@@ -166,6 +167,9 @@ Offsets use surface coordinates for :FIXED and parent coordinates otherwise."
   (cross-align :start :type (member :start :center :end))
   ;; Callback returns intrinsic width and height; width is NIL before sizing.
   (measure nil :type (or null function))
+  (focus-color "#0078d4" :type string)
+  (clickable-p nil :type boolean)
+  (disabled-p nil :type boolean)
   (interactive-p nil :type boolean)
   (keyboard-focus-p t :type boolean)
   (pointer-focus-p nil :type boolean)

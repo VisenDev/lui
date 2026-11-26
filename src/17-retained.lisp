@@ -135,18 +135,22 @@
    #:row-height #:row-padding #:row-position #:row-offset-x #:row-offset-y
    #:row-align #:row-cross-align #:row-clip-p #:row-scroll-p
    #:row-scrollbar-p #:row-scrollbar-width #:row-interactive-p
-   #:row-keyboard-focus-p #:row-pointer-focus-p #:row-children #:row-gap
+   #:row-keyboard-focus-p #:row-pointer-focus-p #:row-clickable-p #:row-disabled-p
+   #:row-on-activate #:row-children #:row-gap
    #:column #:make-column #:column-p #:column-id #:column-width
    #:column-height #:column-padding #:column-position #:column-offset-x
    #:column-offset-y #:column-align #:column-cross-align #:column-clip-p
    #:column-scroll-p #:column-scrollbar-p #:column-scrollbar-width
    #:column-interactive-p #:column-keyboard-focus-p #:column-pointer-focus-p
-   #:column-children #:column-gap #:panel #:make-panel #:panel-p #:panel-id
+   #:column-clickable-p #:column-disabled-p
+   #:column-on-activate #:column-children #:column-gap
+   #:panel #:make-panel #:panel-p #:panel-id
    #:panel-width #:panel-height #:panel-padding #:panel-position
    #:panel-offset-x #:panel-offset-y #:panel-align #:panel-cross-align
    #:panel-clip-p #:panel-scroll-p #:panel-scrollbar-p
    #:panel-scrollbar-width #:panel-interactive-p #:panel-keyboard-focus-p
-   #:panel-pointer-focus-p #:panel-children #:panel-foreground
+   #:panel-pointer-focus-p #:panel-clickable-p #:panel-disabled-p
+   #:panel-on-activate #:panel-children #:panel-foreground
    #:panel-background #:panel-palette #:panel-radius #:panel-frost
    #:panel-font-size #:panel-font-family #:panel-font-weight #:panel-opacity
    #:panel-accent #:panel-painter #:panel-terminal-label
@@ -156,21 +160,24 @@
    #:table-offset-y #:table-align #:table-cross-align #:table-clip-p
    #:table-scroll-p #:table-scrollbar-p #:table-scrollbar-width
    #:table-interactive-p #:table-keyboard-focus-p #:table-pointer-focus-p
-   #:table-children #:table-gap #:table-column-gap #:table-row
+   #:table-clickable-p #:table-disabled-p
+   #:table-on-activate #:table-children #:table-gap #:table-column-gap #:table-row
    #:make-table-row #:table-row-p #:table-row-id #:table-row-width
    #:table-row-height #:table-row-padding #:table-row-position
    #:table-row-offset-x #:table-row-offset-y #:table-row-align
    #:table-row-cross-align #:table-row-clip-p #:table-row-scroll-p
    #:table-row-scrollbar-p #:table-row-scrollbar-width
    #:table-row-interactive-p #:table-row-keyboard-focus-p
-   #:table-row-pointer-focus-p #:table-row-children #:table-cell
+   #:table-row-pointer-focus-p #:table-row-clickable-p #:table-row-disabled-p
+   #:table-row-on-activate #:table-row-children #:table-cell
    #:make-table-cell #:table-cell-p #:table-cell-id #:table-cell-width
    #:table-cell-height #:table-cell-padding #:table-cell-position
    #:table-cell-offset-x #:table-cell-offset-y #:table-cell-align
    #:table-cell-cross-align #:table-cell-clip-p #:table-cell-scroll-p
    #:table-cell-scrollbar-p #:table-cell-scrollbar-width
    #:table-cell-interactive-p #:table-cell-keyboard-focus-p
-   #:table-cell-pointer-focus-p #:table-cell-children #:table-cell-gap
+   #:table-cell-pointer-focus-p #:table-cell-clickable-p #:table-cell-disabled-p
+   #:table-cell-on-activate #:table-cell-children #:table-cell-gap
    #:table-cell-column-span
    #:node-visible-p #:label-visible-p #:button-visible-p
    #:checkbox-visible-p #:radio-visible-p #:slider-visible-p
@@ -233,6 +240,9 @@ ID keys allow rebuilding."
   (scroll-p nil :type boolean)
   (scrollbar-p nil :type boolean)
   (scrollbar-width nil :type (or null real lui:units))
+  (clickable-p nil :type boolean)
+  (disabled-p nil :type boolean)
+  (on-activate nil :type (or function symbol))
   (interactive-p nil :type boolean)
   (keyboard-focus-p nil :type boolean)
   (pointer-focus-p nil :type boolean)
@@ -548,6 +558,7 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
                   font-family font-weight opacity accent painter terminal-label
                   terminal-border accessible-name)
       (container align cross-align clip-p scroll-p scrollbar-p scrollbar-width
+                 clickable-p disabled-p
                  interactive-p keyboard-focus-p pointer-focus-p)
       (value default-value))
     "Shared slot sets used by retained renderer adapters."))
@@ -637,9 +648,15 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
   `(setf (gethash ',name *renderers*)
          (lambda (node)
            (declare (type ,name node))
-           (,(intern (symbol-name name) :lui)
-            (:options (collect-options node ,name ,groups ,@options))
-            (draw-children (children node))))))
+           (let ((callback (container-node-on-activate node)))
+             (when (,(intern (symbol-name name) :lui)
+                    (:options (append
+                               (when callback (list :clickable-p t))
+                               (collect-options node ,name ,groups ,@options)))
+                    (draw-children (children node)))
+               (when callback
+                 (push (lambda () (invoke-callback callback nil))
+                       *callbacks*)))))))
 
 (fn (draw-node (values)) ((node node))
   "Validate identity and ancestry, then declare one retained node."
@@ -719,6 +736,9 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
 Create data with MAKE-LABEL, MAKE-BUTTON, MAKE-COLUMN and other constructors.
 Required arguments match the immediate control order; other slots are keywords.
 CHILDREN accepts one node or a vector; use CL:VECTOR for multiple children.
+All layout containers accept CLICKABLE-P, DISABLED-P and ON-ACTIVATE.
+ON-ACTIVATE implies clickability. Interactive descendants take precedence;
+activation never bubbles. Disabling a container leaves its children enabled.
 Use CHILDREN for any container and VISIBLE-P for any node, with SETF for edits.
 VISIBLE-P defaults to T. NIL omits the subtree from the frame, including input
 and animation; focus and scoped LUI-owned state are cleaned up as for removal.

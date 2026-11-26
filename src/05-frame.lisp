@@ -183,7 +183,11 @@ The backend supplies measurement, clipboard, and optional input callbacks."
 (fn (container-options list) ((site symbol) (options list))
   "Resolve a layout widget's explicit container key or default call-site ID."
   (let ((key (getf options :id)))
-    (list* :id
+    (list* :interactive-p
+           (and (not (getf options :disabled-p))
+                (not (null (or (getf options :clickable-p)
+                               (getf options :interactive-p)))))
+           :id
            (cond ((null key) (call-site-id site options))
                  ((resolved-widget-id-p key) key)
                  (t (list :lui-widget-id :container *key-scope* key
@@ -403,9 +407,11 @@ Browsers remain subject to their animation-frame scheduling."
                (<= 0 y) (< y (context-height context)))
       (walk-elements (context-root context)
                      (lambda (node)
-                       (when (and (element-interactive-p node)
+                       (when (and (or (element-interactive-p node)
+                                      (element-clickable-p node))
                                   (contains-p (element-clip node) x y))
-                         (setf found (element-id node))))))
+                         (setf found (unless (element-disabled-p node)
+                                       (element-id node)))))))
     found))
 
 (fn (modal-member-p boolean) ((context context) (id object-id))

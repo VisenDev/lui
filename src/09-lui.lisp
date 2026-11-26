@@ -135,6 +135,7 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
     '((placement id width height padding position offset-x offset-y)
       (flow align cross-align clip-p scroll-p scrollbar-p scrollbar-width)
       (focus interactive-p keyboard-focus-p pointer-focus-p)
+      (activation clickable-p disabled-p)
       (appearance foreground background palette radius frost font-size
                    font-family font-weight opacity accent painter terminal-label
                    terminal-border accessible-name)
@@ -155,7 +156,14 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
          (signature (list* '&rest 'forms '&key keywords)))
     `(defmacro ,name (,@positional
                      ,@(if container (list signature '&body 'body) signature))
-       ,doc
+       ,(if (member 'activation groups)
+            (concatenate 'string doc
+              "
+:CLICKABLE-P enables pointer/keyboard activation. :DISABLED-P disables only
+this container. Interactive descendants win; activation does not bubble.
+Return activation and resolved ID as two values, ignoring BODY values.")
+            ;; else
+            doc)
        (declare (ignore ,@keywords))
        (let ((options (if (loop :for key :in forms :by #'cddr
                                :thereis (eq key :options))
@@ -164,25 +172,44 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
                           (cons 'list forms))))
          ,@body))))
 
-(define-widget-options row (&body) (placement flow focus) (gap)
+(fn (container-result (values boolean object-id))
+    ((node %lui.layout:element))
+  "Return this container's activation and resolved ID after declaring its body.
+Clickable containers use release activation and keyboard focus. Interactive
+children take precedence; activation never bubbles. Disabled containers block
+ancestor clicks while leaving their children enabled. Body values are ignored."
+  (let ((id (%lui.layout:element-id node))
+        (widget (element-content node)))
+    (when (%lui.layout:element-clickable-p node)
+      (setf (%lui.layout:element-focus-color node)
+            (if (widget-p widget) (widget-accent widget)
+                ;; else
+                (palette-color (lui.toolkit:toolkit-palette) :accent))))
+    (values (and (%lui.layout:element-clickable-p node)
+                 (%lui.layout:element-interactive-p node)
+                 (activated-p id)) id)))
+
+(define-widget-options row (&body) (placement flow focus activation) (gap)
   "Lay out BODY horizontally. Child identities are scoped to this container;
 use a distinct :ID or WITH-KEY scope for each repeated instance."
   `(let ((*parent* (emit
                    (apply #'%lui.layout:make-element :direction :row
                           (container-options ',(gensym "ROW")
                                              ,options)))))
-     ,@body))
+     ,@body
+     (container-result *parent*)))
 
-(define-widget-options column (&body) (placement flow focus) (gap)
+(define-widget-options column (&body) (placement flow focus activation) (gap)
   "Lay out BODY vertically. Child identities are scoped to this container;
 use a distinct :ID or WITH-KEY scope for each repeated instance."
   `(let ((*parent* (emit
                    (apply #'%lui.layout:make-element :direction :column
                           (container-options ',(gensym "COLUMN")
                                              ,options)))))
-     ,@body))
+     ,@body
+     (container-result *parent*)))
 
-(define-widget-options panel (&body) (placement flow focus appearance)
+(define-widget-options panel (&body) (placement flow focus activation appearance)
     (gap direction)
   "Draw a styled container and attach widgets declared in BODY as children.
 Graphical padding defaults to the toolkit's :panel-options (2 for built-ins),
@@ -197,7 +224,8 @@ Use a distinct :ID or WITH-KEY scope for each repeated instance."
                    (toolkit-defaults
                     %*toolkit*
                     (unless (context-text-mode-p *context*) :panel))))))
-     ,@body))
+     ,@body
+     (container-result *parent*)))
 
 (fn (widget-options list) ((options list))
   "Remove identity and value ownership options before backend declaration."
@@ -337,7 +365,7 @@ The default size is zero. For padding around children, use ROW or COLUMN."
   "Declare a selectable row and return activation. The caller owns selection."
   (selectable :list-item style id text options defaults))
 
-(define-widget-options table (&body) (placement flow focus)
+(define-widget-options table (&body) (placement flow focus activation)
     (gap column-gap)
   "Lay out TABLE-ROWs with shared content-sized columns.
 :GAP separates rows; :COLUMN-GAP separates columns. Accepts layout options."
@@ -347,9 +375,10 @@ The default size is zero. For padding around children, use ROW or COLUMN."
                   :direction :column :table-p t
                   (%lui.frame:container-options
                    ',(gensym "TABLE") ,options)))))
-     ,@body))
+     ,@body
+     (container-result *parent*)))
 
-(define-widget-options table-row (&body) (placement flow focus)
+(define-widget-options table-row (&body) (placement flow focus activation)
     ()
   "Declare a table row.
 Each direct child occupies one column by default. TABLE sets the gaps."
@@ -358,9 +387,10 @@ Each direct child occupies one column by default. TABLE sets the gaps."
            (apply #'%lui.layout:make-element :direction :row
                   (%lui.frame:container-options
                    ',(gensym "TABLE-ROW") ,options)))))
-     ,@body))
+     ,@body
+     (container-result *parent*)))
 
-(define-widget-options table-cell (&body) (placement flow focus)
+(define-widget-options table-cell (&body) (placement flow focus activation)
     (gap column-span)
   "Group widgets in a table cell.
 :PADDING insets the cell contents; :GAP separates its children.
@@ -371,7 +401,8 @@ Each direct child occupies one column by default. TABLE sets the gaps."
                   (append (%lui.frame:container-options
                            ',(gensym "TABLE-CELL") ,options)
                           (list :height (%lui.layout:grow) :clip-p t))))))
-     ,@body))
+     ,@body
+     (container-result *parent*)))
 
 (define-control cell (id text) (selected-p)
   "Display a compact grid cell. Use :selected-p to mark the active cell."

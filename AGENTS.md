@@ -407,6 +407,16 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   `:width (grow)` in rows or `:height (grow)` in columns. `hr` and `vr` are noninteractive rules:
   the long axis grows, thickness defaults to one backend coordinate, and
   `:foreground` overrides the captured palette border color.
+- All six layout containers (`row`, `column`, `panel`, `table`, `table-row`,
+  `table-cell`) accept `:clickable-p` and `:disabled-p`. They return activation
+  and resolved ID as two values, never BODY values. Clickable bounds include
+  padding, gaps and passive descendants, subject to clipping. The deepest
+  interactive target wins; activation does not bubble. Primary release over
+  the captured target activates; Tab and Enter/Space work as for buttons.
+  Disabling a container blocks ancestor clicks but does not disable children.
+  Retained containers expose the same slots plus `:on-activate`, which implies
+  clickability and uses the usual deferred callback dispatch. Keyboard focus
+  is outlined graphically and underlined in terminal cells.
 - Table columns use the widest content across rows. Extra width is shared;
   narrow tables shrink columns proportionally before row-height measurement.
   Short rows may omit trailing cells. `:column-gap` belongs to the table and

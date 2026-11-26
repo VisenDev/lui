@@ -391,6 +391,25 @@
         (paint-terminal-text state cells borders))))
   (values))
 
+(fn (paint-container-focus (values)) ((context context) (cells array))
+  "Underline the focused container's visible cells without replacing their text."
+  (let ((node (gethash (context-focus context) (context-ids context))))
+    (when (and node (element-clickable-p node)
+               (context-focus-visible-p context))
+      (let ((clip (element-clip node)))
+        (loop :for y :from (max 0 (cell-edge (box-y clip)))
+              :below (min (array-dimension cells 0)
+                          (cell-edge (box-bottom clip))) :do
+          (loop :for x :from (max 0 (cell-edge (box-x clip)))
+                :below (min (array-dimension cells 1)
+                            (cell-edge (box-right clip))) :do
+            (let ((cell (aref cells y x)))
+              (setf (uncursed::cell-style cell)
+                    (uncursed:copy-style (uncursed::cell-style cell)
+                     :boldp :preserve :italicp :preserve
+                     :reversep :preserve :underlinep t))))))))
+  (values))
+
 (fn (paint-terminal array) ((context context) (cells array))
   "Paint the solved context into CELLS using toolkit geometry and terminal styles."
   (let* ((root (or (context-root context)
@@ -404,6 +423,7 @@
     (visible-elements root (lambda (node)
                              (paint-terminal-node context cells borders
                                                   node)))
+    (paint-container-focus context cells)
     cells))
 
 (fn (render-terminal string) ((context context) &key ansi)

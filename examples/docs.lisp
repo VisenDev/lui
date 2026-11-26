@@ -113,6 +113,20 @@
     (lui:label \"Navigation\"))
   (lui:panel (:width (lui:grow) :height (lui:grow))
     (lui:label \"Content\")))"
+     "All layout containers (row, column, panel, table, table-row and table-cell) accept :clickable-p and :disabled-p. Every container returns two values: activation and its resolved ID; BODY values are discarded. Clickable containers activate on primary-button release over the captured target, or Enter/Space after Tab focus. Their hit area includes padding, gaps and passive descendants, clipped to visible bounds. The deepest interactive child wins; activation never bubbles. :disabled-p disables only the container and blocks clicks through to clickable ancestors; children remain independently enabled. Clicks preserve keyboard focus by default. Keyboard focus gets an outline graphically and underlining in the terminal."
+     "(lui:table (:column-gap 12)
+  (when (lui:table-row (:id customer-id :clickable-p t)
+          (lui:table-cell () (lui:label customer-name))
+          (lui:table-cell () (lui:label customer-email)))
+    (open-customer customer-id)))"
+     "Retained containers share this behavior: :on-activate implies clickability; :clickable-p t enables it without a callback. Callbacks take no arguments and run after successful DRAW traversal, so edits appear next frame. Each container exposes mutable CLICKABLE-P, DISABLED-P and ON-ACTIVATE accessors."
+     "(luir:make-table-row
+ :id customer-id
+ :on-activate (lambda () (open-customer customer-id))
+ :children
+ (vector
+  (luir:make-table-cell :children (luir:make-label customer-name))
+  (luir:make-table-cell :children (luir:make-label customer-email))))"
      "In a table, :gap separates rows and :column-gap separates columns. Cell :padding insets the widgets inside that cell."
      "(lui:table (:gap 8 :column-gap 12)
   (lui:table-row ()

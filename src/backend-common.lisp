@@ -775,7 +775,14 @@ Fall back to its background role, or the current toolkit for an empty frame."
                              (< (box-y viewport) (box-bottom clip)))))
                   (not (and external-labels (gethash node external-labels))))
          (paint-widget renderer node))))
-    (finish-selection renderer context)))
+    (finish-selection renderer context)
+    ;; Draw container focus last so child backgrounds cannot cover it.
+    (let ((node (gethash (context-focus context) (context-ids context))))
+      (when (and node (element-clickable-p node)
+                 (context-focus-visible-p context))
+        (funcall (renderer-clip renderer) (element-clip node))
+        (outline renderer (inset-box (element-box node) 1) 0
+                 (element-focus-color node) 1 2)))))
 
 (defstruct (text-selection (:constructor %make-text-selection))
   anchor focus anchor-text focus-text anchor-key focus-key field
@@ -1347,7 +1354,8 @@ Fall back to its background role, or the current toolkit for an empty frame."
 
 (fn (paint-focus-ring t) ((renderer renderer) (node element) (radius real))
   "Paint a keyboard-focus outline inside the widget bounds."
-  (when (and (focused-p node) (context-focus-visible-p *context*))
+  (when (and (not (element-clickable-p node))
+             (focused-p node) (context-focus-visible-p *context*))
     (let ((widget (element-content node))
           (box (element-box node)))
       (outline renderer (inset-box box 2) (max 0 (- radius 2))
