@@ -966,8 +966,10 @@ Fall back to its background role, or the current toolkit for an empty frame."
                       ;; else
                       0)))
 
-(fn (line-selection-index integer) ((font font) (line string) (at real))
-  "Find the caret boundary nearest AT within a rendered line."
+(fn (line-selection-index integer)
+    ((font font) (line string) (at real) &optional
+     ((unit symbol) :character))
+  "Find the nearest caret or containing character for unit selection."
   (let ((left 0)
         #-(or jscl lui-ecl-web) (previous nil)
         #-(or jscl lui-ecl-web)
@@ -981,13 +983,14 @@ Fall back to its background role, or the current toolkit for an empty frame."
                        (%glyph-metrics font (char line i) previous)
                      (+ left (* scale (+ advance kerning))))))
         ;; Each glyph's midpoint separates the two adjacent caret positions.
-        (when (< at (/ (+ left right) 2))
+        (when (< at (if (eq unit :character) (/ (+ left right) 2) right))
           (return-from line-selection-index i))
         (setf left right)
         #-(or jscl lui-ecl-web) (setf previous (char line i))))))
 
 (fn (selection-index integer)
-    ((renderer renderer) (node element) (x real) (y real))
+    ((renderer renderer) (node element) (x real) (y real) &optional
+     ((unit symbol) :character))
   "Map a pointer position to a character index using rendered glyph widths."
   (let* ((area (%selection-area renderer node))
          (font (widget-font renderer (element-content node)))
@@ -1000,7 +1003,7 @@ Fall back to its background role, or the current toolkit for an empty frame."
       (when (< y (+ top (line-height font)))
         (return-from selection-index
           (+ start (line-selection-index
-                    font line (- x (selection-left font node area line))))))
+                    font line (- x (selection-left font node area line)) unit))))
 
       (incf start (1+ (length line)))
       (incf top (line-height font)))
@@ -1179,7 +1182,8 @@ Fall back to its background role, or the current toolkit for an empty frame."
     (when target
       (multiple-value-bind (start end)
           (selection-unit-range (selection-text target)
-                                (selection-index renderer target x y)
+                                (selection-index renderer target x y
+                                                 (text-selection-unit selection))
                                 (text-selection-unit selection))
         (setf (text-selection-dragging-p selection) t
               (text-selection-start selection) start
@@ -1213,7 +1217,8 @@ Fall back to its background role, or the current toolkit for an empty frame."
          (anchor (text-selection-anchor selection)))
     (when node
       (let* ((index (position node nodes))
-             (at (selection-index renderer node x y))
+             (at (selection-index renderer node x y
+                                  (text-selection-unit selection)))
              (origin (if anchor
                         (car (selection-endpoint-position anchor))
                         ;; else

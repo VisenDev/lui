@@ -360,6 +360,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
   (clipboard-offers (make-hash-table :test 'eql) :type hash-table)
   (paste-fd nil :type (or null integer))
   (paste-receiver nil :type (or null function))
+  (pending-pastes (make-array 0 :element-type 'function)
+                  :type (vector function))
   (paste-deadline 0 :type real)
   (paste-bytes (make-array 0 :element-type '(unsigned-byte 8)
                             :adjustable t :fill-pointer 0)
@@ -499,7 +501,11 @@ Free all interface allocations on return or error; proxies must not outlive it."
 
 (fn (paste-clipboard (values)) ((window wl-window) (receive function))
   "Receive clipboard text through a nonblocking pipe without stalling rendering."
-  (close-paste window)
+  (when (wl-window-paste-receiver window)
+    (setf (wl-window-pending-pastes window)
+          (concatenate '(vector function) (wl-window-pending-pastes window)
+                       (vector receive)))
+    (return-from paste-clipboard (values)))
   (when (wl-window-clipboard-text window)
     (funcall receive (wl-window-clipboard-text window))
     (return-from paste-clipboard (values)))
@@ -523,11 +529,23 @@ Free all interface allocations on return or error; proxies must not outlive it."
                      (* 5 internal-time-units-per-second))))))))
   (values))
 
+(fn (start-pending-paste (values)) ((window wl-window))
+  "Start queued clipboard requests in order after the active transfer ends."
+  (loop :while (and (null (wl-window-paste-receiver window))
+                    (plusp (length (wl-window-pending-pastes window))))
+        :do (let ((receive (aref (wl-window-pending-pastes window) 0)))
+              (setf (wl-window-pending-pastes window)
+                    (subseq (wl-window-pending-pastes window) 1))
+              (paste-clipboard window receive)))
+  (values))
+
 (fn (poll-paste (values)) ((window wl-window))
   "Drain a bounded incoming UTF-8 transfer, delivering only after EOF."
+  (start-pending-paste window)
   (when (wl-window-paste-fd window)
     (when (> (get-internal-real-time) (wl-window-paste-deadline window))
       (close-paste window)
+      (start-pending-paste window)
       (return-from poll-paste (values)))
     (cffi:with-foreign-object (buffer :uint8 4096)
       (loop :for count := (cffi:foreign-funcall
@@ -557,6 +575,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
                   (t (dotimes (i count)
                        (vector-push-extend (cffi:mem-aref buffer :uint8 i)
                                            (wl-window-paste-bytes window))))))))
+  (start-pending-paste window)
   (values))
 
 (fn (create-clipboard-device (values)) ((window wl-window))

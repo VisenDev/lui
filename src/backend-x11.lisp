@@ -214,6 +214,8 @@
   display context
   (window 0 :type integer) (colormap 0 :type integer)
   (paste-receiver nil :type (or null function))
+  (pending-pastes (make-array 0 :element-type 'function)
+                  :type (vector function))
   (paste-incremental-p nil :type boolean)
   (paste-bytes (make-array 0 :element-type '(unsigned-byte 8)
                             :adjustable t :fill-pointer 0)
@@ -232,6 +234,11 @@
 
 (fn (paste-clipboard (values)) ((window x-window) (receive function))
   "Request UTF-8 clipboard text asynchronously from the X selection owner."
+  (when (x-window-paste-receiver window)
+    (setf (x-window-pending-pastes window)
+          (concatenate '(vector function) (x-window-pending-pastes window)
+                       (vector receive)))
+    (return-from paste-clipboard (values)))
   (setf (x-window-paste-receiver window) receive
         (x-window-paste-incremental-p window) nil
         (fill-pointer (x-window-paste-bytes window)) 0)
@@ -240,6 +247,16 @@
    (intern-atom (x-window-display window) "UTF8_STRING" 0)
    (intern-atom (x-window-display window) "LUI_PASTE" 0)
    (x-window-window window) 0)
+  (values))
+
+(fn (start-pending-paste (values)) ((window x-window))
+  "Start queued clipboard requests in order after the active transfer ends."
+  (loop :while (and (null (x-window-paste-receiver window))
+                    (plusp (length (x-window-pending-pastes window))))
+        :do (let ((receive (aref (x-window-pending-pastes window) 0)))
+              (setf (x-window-pending-pastes window)
+                    (subseq (x-window-pending-pastes window) 1))
+              (paste-clipboard window receive)))
   (values))
 
 (fn (finish-paste (values)) ((window x-window))
@@ -315,6 +332,7 @@
                         (zerop (cffi:foreign-slot-value
                                 event '(:struct property-notify) 'state)))))
       (read-clipboard-property window property)))
+  (start-pending-paste window)
   (values))
 
 (fn (notify-selection integer)

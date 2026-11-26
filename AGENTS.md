@@ -229,6 +229,7 @@ benchmark targets. Scripts discover optional dependency checkouts under
 | Task | Command / notes |
 | --- | --- |
 | Core and native drawing | `make test-core test-native` |
+| Linux clipboard queues | `make test-native-clipboard` (X11 protocol mocks and Wayland pipes; no display server) |
 | Font lookup | `make test-fonts` (fresh process, Linux saved executable and simulated Darwin exclusion) |
 | Portable source runner | `sbcl --script tests/run.lisp`, `clisp -q -q tests/run.lisp`, `ecl -shell tests/run.lisp` |
 | JSCL source runner | `node /path/to/jscl/dist/jscl-node.js tests/run.lisp` |

@@ -1180,6 +1180,39 @@
     (assert (= 0 (lui.draw::selection-index renderer node -1 1)))
     (assert (= 4096 (lui.draw::selection-index renderer node 100000 1)))))
 
+(defun test-word-selection-hit (font)
+  (let* ((renderer (%make-renderer :font font))
+         (context (%make-render-context renderer)))
+    (with-frame (context 400 100)
+      (lui.glass:label "Alpha beta!"))
+    (let* ((nodes (lui.draw::%selectable-nodes context))
+           (node (aref nodes 0))
+           (area (lui.draw::%selection-area renderer node))
+           (text "Alpha beta!")
+           (y (+ 1 (box-y area))))
+      (labels ((x-at (index)
+                 (+ (box-x area)
+                    (* 0.25 (text-width font (subseq text 0 index)))
+                    (* 0.75 (text-width font (subseq text 0 (1+ index)))))))
+        ;; Test right halves at word/space/punctuation boundaries.
+        (dolist (case '((4 "Alpha") (5 " ") (9 "beta") (10 "!")))
+          (setf (context-selection context) nil)
+          (let* ((x (x-at (first case)))
+                 (selection (lui.draw::start-text-selection
+                             renderer context nodes x y 2)))
+            (assert (equal (second case)
+                           (lui.draw::selected-text context nodes selection)))
+            ;; Ordinary caret positioning still rounds to the nearest edge.
+            (assert (= (1+ (first case))
+                       (lui.draw::selection-index renderer node x y)))))
+        (setf (context-selection context) nil)
+        (let ((selection (lui.draw::start-text-selection
+                          renderer context nodes (x-at 4) y 2)))
+          (lui.draw::extend-text-selection
+           renderer context selection nodes node (x-at 9) y)
+          (assert (equal "Alpha beta"
+                         (lui.draw::selected-text context nodes selection))))))))
+
 (defun test-flat-cells (font)
   (dolist (style '(:glass :motif :garnet :macos :qt))
     (let* ((paths nil) (glass 0) (texts nil)
@@ -1571,6 +1604,7 @@
            (test-dialog-selection font)
            (test-selection-regressions font)
            (test-long-selection-index font)
+           (test-word-selection-hit font)
            (test-selection-clipping font)
            (test-flat-cells font)
            (test-debug-highlight font))
