@@ -400,6 +400,74 @@ class WebTests(unittest.TestCase):
         check.evaluate("element => element.click()")
         expect(check).to_have_attribute("aria-checked", "false")
 
+    def test_clickable_container_semantics(self):
+        self.lisp('(defvar *container-disabled* nil)')
+        forms = []
+        for kind in ("row", "column", "panel", "table", "table-row", "table-cell"):
+            forms.append(f'''(when (lui:{kind}
+              (:id :{kind} :clickable-p t :disabled-p *container-disabled*
+               :accessible-name "Action {kind}" :width 300 :height 35)
+              (lui:table-row (:height 30)
+                (lui:label "Label {kind}")
+                (lui:button "Child {kind}" :width 100 :height 15)))
+              (incf *web-test-clicks*))''')
+        host = self.fixture("(lui:column () " + " ".join(forms) + ")")
+        scope = self.page.locator(host)
+        for index, kind in enumerate(("row", "column", "panel", "table", "table-row", "table-cell")):
+            action = scope.get_by_role("button", name=f"Action {kind}", exact=True)
+            expect(action).to_have_count(1)
+            action.evaluate("el => el.click()")
+            self.frames()
+            self.assertEqual(self.number('*web-test-clicks*'), index + 1)
+        # Parent actions do not suppress descendant semantics or label DOM.
+        child = scope.get_by_role("button", name="Child row", exact=True)
+        expect(child).to_have_count(1)
+        child.evaluate("el => el.click()")
+        self.frames()
+        self.assertEqual(self.number('*web-test-clicks*'), 6)
+        expect(scope.get_by_text("Label row", exact=True)).to_have_count(1)
+        self.lisp('(setf *container-disabled* t) (lui.web:refresh *web-test-app*)')
+        self.frames()
+        action = scope.get_by_role("button", name="Action row", exact=True)
+        expect(action).to_be_disabled()
+        expect(child).to_be_enabled()
+        action.evaluate("el => el.click()")
+        self.frames()
+        self.assertEqual(self.number('*web-test-clicks*'), 6)
+
+    def test_container_semantics_occlusion_and_name_updates(self):
+        self.lisp('(defvar *action-name* "Open customer") (defvar *cover-action* nil)')
+        host = self.fixture('''
+          (when (lui:column (:id :customer :clickable-p t
+                             :accessible-name *action-name*
+                             :width 200 :height 60)
+                  (lui:label "Customer"))
+            (incf *web-test-clicks*))
+          (when *cover-action*
+            (lui:panel (:position :absolute :width 200 :height 60)
+              (lui:label "Cover")))''')
+        scope = self.page.locator(host)
+        action = scope.get_by_role("button", name="Open customer", exact=True)
+        expect(action).to_have_count(1)
+        action.evaluate("el => window.savedAction = el")
+        self.lisp('(setf *action-name* "Edit customer") (lui.web:refresh *web-test-app*)')
+        self.frames()
+        renamed = scope.get_by_role("button", name="Edit customer", exact=True)
+        self.assertTrue(renamed.evaluate("el => el === window.savedAction"))
+        self.lisp('(setf *cover-action* t) (lui.web:refresh *web-test-app*)')
+        self.frames()
+        expect(renamed).to_have_count(0)
+        self.lisp('(setf *cover-action* nil) (lui.web:refresh *web-test-app*)')
+        self.frames()
+        expect(renamed).to_have_count(1)
+        self.lisp('(setf *action-name* nil) (lui.web:refresh *web-test-app*)')
+        self.frames()
+        expect(scope.get_by_role("button", name=":CUSTOMER", exact=True)).to_have_count(1)
+        scope.locator("canvas").focus()
+        self.page.keyboard.press("Tab")
+        self.frames()
+        expect(scope.locator("textarea")).to_have_attribute("aria-label", ":CUSTOMER")
+
     def test_native_label_selection_survives_frames_and_copies(self):
         host = self.fixture('''
           (lui:column (:width (%lui.layout:grow) :gap 8)

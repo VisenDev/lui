@@ -650,7 +650,182 @@
       (assert (eq (symbol-package symbol) (find-package (first pair))))
       (assert (null (find-symbol (second pair) :lui))))))
 
+(defmacro container-drawers ()
+  `(vector
+    ,@(loop :for kind :in '(lui:row lui:column lui:panel lui:table
+                            lui:table-row lui:table-cell)
+            :collect
+            `(lambda (clickable disabled)
+               (,kind (:id :target :width 30 :height 8 :padding 1
+                       :clickable-p clickable :disabled-p disabled)
+                 (lui:table-row (:width 20 :height 5)
+                   (lui:column ()
+                     (lui:label "Nested label")
+                     (lui:button "Edit" :id :child :width 10 :height 2)))
+                 :ignored-body-value)))))
+
+(defun test-clickable-containers ()
+  (loop :for draw :across (container-drawers) :do
+    (let ((context (make-test-context))
+          (result nil)
+          (outer nil)
+          (clickable t)
+          (disabled nil))
+      (flet ((frame (&rest events)
+               (with-frame (context 50 20 :events (coerce events 'vector))
+                 (setf outer
+                       (lui:panel (:id :outer :clickable-p t :padding 0
+                                   :width 40 :height 12)
+                         (setf result (multiple-value-list
+                                       (funcall draw clickable disabled))))))))
+        (frame)
+        (assert (= 2 (length result)))
+        (assert (not (first result)))
+        (assert (equal (second result) (lui:widget-id :target context)))
+        ;; Noninteractive descendants and padding resolve to the container.
+        (dolist (point '((2 1) (0 0) (29 7)))
+          (destructuring-bind (x y) point
+            (frame (make-event :kind :press :x x :y y))
+            (assert (not (first result)))
+            (frame (make-event :kind :release :x x :y y))
+            (assert (first result))
+            (assert (not outer))))
+        ;; A nested button owns its capture; neither ancestor activates.
+        (frame (make-event :kind :press :x 2 :y 2)
+               (make-event :kind :release :x 2 :y 2))
+        (assert (gethash (lui:widget-id :child context)
+                         (context-activated context)))
+        (assert (not (first result)))
+        (assert (not outer))
+        ;; Outside release, secondary buttons and cancellation never activate.
+        (dolist (end (list (make-event :kind :release :x 45 :y 15)
+                          (make-event :kind :cancel)))
+          (frame (make-event :kind :press :x 0 :y 0) end)
+          (assert (not (first result))))
+        (frame (make-event :kind :press :button :secondary :x 0 :y 0)
+               (make-event :kind :release :button :secondary :x 0 :y 0))
+        (assert (not (first result)))
+        ;; Keyboard traversal reaches outer, target, then child.
+        (frame (make-event :kind :tab) (make-event :kind :tab)
+               (make-event :kind :activate :key lui.key:enter))
+        (assert (first result))
+        (frame (make-event :kind :activate :key lui.key:space))
+        (assert (first result))
+        ;; Disabling clears focus/capture and blocks the enclosing container.
+        (frame (make-event :kind :press :x 0 :y 0))
+        (setf disabled t)
+        (frame)
+        (assert (null (context-active context)))
+        (assert (null (context-focus context)))
+        (frame (make-event :kind :press :x 0 :y 0)
+               (make-event :kind :release :x 0 :y 0))
+        (assert (not (first result)))
+        (assert (not outer))
+        (frame (make-event :kind :press :x 2 :y 2)
+               (make-event :kind :release :x 2 :y 2))
+        (assert (gethash (lui:widget-id :child context)
+                         (context-activated context)))
+        ;; Disabled passive containers also block hits, without disabling children.
+        (setf clickable nil)
+        (frame)
+        (frame (make-event :kind :press :x 0 :y 0)
+               (make-event :kind :release :x 0 :y 0))
+        (assert (not outer))
+        (frame (make-event :kind :press :x 2 :y 2)
+               (make-event :kind :release :x 2 :y 2))
+        (assert (gethash (lui:widget-id :child context)
+                         (context-activated context)))
+        ;; An ordinary container returns NIL even when its body returns true.
+        (setf clickable nil disabled nil)
+        (frame)
+        (assert (not (first result)))
+        (frame (make-event :kind :press :x 0 :y 0)
+               (make-event :kind :release :x 0 :y 0))
+        (assert outer)
+        (assert (not (first result)))))))
+
+(defun test-disabled-child-hit-blocking ()
+  (let ((context (make-test-context))
+        (disabled t)
+        (outer nil))
+    (flet ((frame (&rest events)
+             (with-frame (context 50 20 :events (coerce events 'vector))
+               (setf outer
+                     (lui:column (:clickable-p t :width 40 :height 10)
+                       (lui:button "Child" :id :child :width 10 :height 2
+                                   :disabled-p disabled))))))
+      (frame)
+      (frame (make-event :kind :press :x 1 :y 1)
+             (make-event :kind :release :x 1 :y 1))
+      (assert (not outer))
+      (assert (null (context-active context)))
+      ;; Space outside the disabled child still belongs to its parent.
+      (frame (make-event :kind :press :x 20 :y 5)
+             (make-event :kind :release :x 20 :y 5))
+      (assert outer)
+      (setf disabled nil)
+      (frame)
+      (frame (make-event :kind :press :x 1 :y 1)
+             (make-event :kind :release :x 1 :y 1))
+      (assert (not outer))
+      (assert (gethash (lui:widget-id :child context)
+                       (context-activated context))))))
+
+(defun test-clickable-table-row ()
+  (let ((context (make-test-context))
+        (activated nil))
+    (flet ((draw ()
+             (lui:table (:width 40 :column-gap 4)
+               (setf activated
+                     (lui:table-row (:clickable-p t :height 5)
+                       (lui:table-cell () (lui:label "Name"))
+                       (lui:table-cell () (lui:label "Email")))))))
+      (with-frame (context 40 10) (draw))
+      ;; Both columns and their intervening gap belong to the same row.
+      (dolist (x '(1 19 38))
+        (with-frame (context 40 10 :events
+                             (vector (make-event :kind :press :x x :y 1)
+                                     (make-event :kind :release :x x :y 1)))
+          (draw))
+        (assert activated)))))
+
+(defun test-container-clipping ()
+  (let ((context (make-test-context))
+        (activated nil)
+        (visible t))
+    (flet ((draw ()
+             (lui:column (:width 15 :height 5 :clip-p t :scroll-p t)
+               (when visible
+                 (setf activated
+                       (lui:column (:id :clipped :width 25 :height 12
+                                    :clickable-p t)
+                         (lui:label "Content")))))))
+      (with-frame (context 40 20) (draw))
+      (assert (null (hit context 20 2)))
+      (assert (null (hit context 2 8)))
+      (assert (equal (hit context 2 2) (lui:widget-id :clipped context)))
+      (with-frame (context 40 20 :events
+                           (vector (make-event :kind :press :x 2 :y 2)))
+        (draw))
+      ;; Resize invalidates captured pointer geometry before a release.
+      (with-frame (context 41 20 :events
+                           (vector (make-event :kind :release :x 2 :y 2)))
+        (draw))
+      (assert (not activated))
+      (with-frame (context 41 20 :events
+                           (vector (make-event :kind :tab)
+                                   (make-event :kind :press :x 2 :y 2)))
+        (draw))
+      (setf visible nil)
+      (with-frame (context 41 20) (draw))
+      (assert (null (context-focus context)))
+      (assert (null (context-active context))))))
+
 (defun run-tests ()
+  (test-clickable-table-row)
+  (test-container-clipping)
+  (test-clickable-containers)
+  (test-disabled-child-hit-blocking)
   (dolist (name '("FN" "CONDITIONS" "TEXT" "LAYOUT" "FRAME"
                   "WIDGETS" "INTERACTION"))
     (assert (find-package (concatenate 'string "%LUI." name)))

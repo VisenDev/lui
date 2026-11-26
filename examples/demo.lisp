@@ -306,11 +306,13 @@
               :when
               (if (eq (gallery-toolkit g) :glass)
                   (sample id title color)
-                  (lui:panel (:id (list :sample-panel title)
-                              :width (lui:grow) :padding (lui:units 2)
-                              :gap (lui:units 1) :background color)
-                    (lui:label title :foreground "#ffffff")
-                    (sample id "Preview" color)))
+                  (let ((activated nil))
+                    (lui:panel (:id (list :sample-panel title)
+                                :width (lui:grow) :padding (lui:units 2)
+                                :gap (lui:units 1) :background color)
+                      (lui:label title :foreground "#ffffff")
+                      (setf activated (sample id "Preview" color)))
+                    activated))
                 :do (setf (gallery-preview g) title
                           (gallery-preview-color g) color)))
       (flet ((preview ()

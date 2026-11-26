@@ -1290,6 +1290,29 @@
                   (make-box :y 100 :width 320 :height 80))
     (assert (equal '(320 80) (subseq (car (last fills)) 0 2)))))
 
+(defun test-container-focus (font)
+  (let* ((colors nil)
+         (renderer (%make-renderer
+                    :font font
+                    :clip (lambda (box) (declare (ignore box)))
+                    :text (lambda (&rest args) (declare (ignore args)))
+                    :polygons (lambda (contours color alpha)
+                                (declare (ignore contours alpha))
+                                (push color colors))))
+         (context (%make-render-context renderer)))
+    (with-frame (context 100 40)
+      (lui:with-palette ((lui:make-palette :accent "#123456"))
+        (lui:column (:id :container :clickable-p t :width 100 :height 40)
+          (lui:label "Customer" :background "#ffffff"))))
+    (setf (context-focus context) (lui:widget-id :container context)
+          (context-focus-visible-p context) t)
+    (%paint-frame renderer context)
+    ;; The captured palette survives its scope; focus paints after the child.
+    (assert (equal "#123456" (first colors)))
+    (setf colors nil (context-focus-visible-p context) nil)
+    (%paint-frame renderer context)
+    (assert (not (member "#123456" colors :test #'equal)))))
+
 (defun run-tests ()
   (test-typed-vector)
   (test-shared-wrapping)
@@ -1301,6 +1324,7 @@
   (let ((font (open-font)))
     (unwind-protect
          (progn
+           (test-container-focus font)
            (test-frame-background font)
            (test-rule-painting font)
            (test-spinner-painting font)

@@ -740,7 +740,59 @@
     (frame context button)
     (assert (zerop calls))))
 
+(defun test-container-activation ()
+  (dolist (kind '(row column panel table table-row table-cell))
+    (let* ((package (find-package :lui.retained))
+           (make (symbol-function
+                  (find-symbol (format nil "MAKE-~A" kind) package)))
+           (callback-slot (find-symbol (format nil "~A-ON-ACTIVATE" kind)
+                                      package))
+           (disabled-slot (find-symbol (format nil "~A-DISABLED-P" kind)
+                                      package))
+           (clickable-slot (find-symbol (format nil "~A-CLICKABLE-P" kind)
+                                       package))
+           (context (%lui.tests.support:make-test-context))
+           (count 0)
+           (child (lui.retained:make-label "Before"))
+           (node (funcall make :id :container :width 30 :height 8
+                          :accessible-name "Retained action"
+                          :padding 1 :children
+                          (lui.retained:make-table-row :children child)
+                          :on-activate
+                          (lambda ()
+                            (incf count)
+                            (setf (lui.retained:label-text child) "After")))))
+      (frame context node)
+      (assert (equal "Retained action"
+                     (%lui.layout:element-accessible-name
+                      (gethash (retained-id :container context)
+                               (%lui.frame:context-ids context)))))
+      (frame context node
+             (vector (%lui.frame:make-event :kind :press :x 0 :y 0)
+                     (%lui.frame:make-event :kind :release :x 0 :y 0)))
+      (assert (= 1 count))
+      ;; Callbacks run after declaration, so this frame still contains Before.
+      (element-with-value context "Before")
+      (frame context node)
+      (element-with-value context "After")
+      (funcall (fdefinition (list 'setf disabled-slot)) t node)
+      (frame context node (vector (activate context :container)))
+      (assert (= 1 count))
+      (funcall (fdefinition (list 'setf disabled-slot)) nil node)
+      (funcall (fdefinition (list 'setf callback-slot)) nil node)
+      (frame context node)
+      (let ((element (gethash (retained-id :container context)
+                             (%lui.frame:context-ids context))))
+        (assert (not (%lui.layout:element-interactive-p element))))
+      (funcall (fdefinition (list 'setf clickable-slot)) t node)
+      (frame context node)
+      (let ((element (gethash (retained-id :container context)
+                             (%lui.frame:context-ids context))))
+        (assert (%lui.layout:element-interactive-p element)))
+      (assert (= 1 count)))))
+
 (defun run-tests ()
+  (test-container-activation)
   (test-node-slots)
   (test-widget-constructors)
   (test-common-children)
