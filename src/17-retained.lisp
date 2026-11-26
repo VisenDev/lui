@@ -135,14 +135,15 @@
    #:row-height #:row-padding #:row-position #:row-offset-x #:row-offset-y
    #:row-align #:row-cross-align #:row-clip-p #:row-scroll-p
    #:row-scrollbar-p #:row-scrollbar-width #:row-interactive-p
-   #:row-keyboard-focus-p #:row-pointer-focus-p #:row-clickable-p #:row-disabled-p
+   #:row-keyboard-focus-p #:row-pointer-focus-p #:row-accessible-name
+   #:row-clickable-p #:row-disabled-p
    #:row-on-activate #:row-children #:row-gap
    #:column #:make-column #:column-p #:column-id #:column-width
    #:column-height #:column-padding #:column-position #:column-offset-x
    #:column-offset-y #:column-align #:column-cross-align #:column-clip-p
    #:column-scroll-p #:column-scrollbar-p #:column-scrollbar-width
    #:column-interactive-p #:column-keyboard-focus-p #:column-pointer-focus-p
-   #:column-clickable-p #:column-disabled-p
+   #:column-accessible-name #:column-clickable-p #:column-disabled-p
    #:column-on-activate #:column-children #:column-gap
    #:panel #:make-panel #:panel-p #:panel-id
    #:panel-width #:panel-height #:panel-padding #:panel-position
@@ -160,7 +161,7 @@
    #:table-offset-y #:table-align #:table-cross-align #:table-clip-p
    #:table-scroll-p #:table-scrollbar-p #:table-scrollbar-width
    #:table-interactive-p #:table-keyboard-focus-p #:table-pointer-focus-p
-   #:table-clickable-p #:table-disabled-p
+   #:table-accessible-name #:table-clickable-p #:table-disabled-p
    #:table-on-activate #:table-children #:table-gap #:table-column-gap #:table-row
    #:make-table-row #:table-row-p #:table-row-id #:table-row-width
    #:table-row-height #:table-row-padding #:table-row-position
@@ -168,7 +169,8 @@
    #:table-row-cross-align #:table-row-clip-p #:table-row-scroll-p
    #:table-row-scrollbar-p #:table-row-scrollbar-width
    #:table-row-interactive-p #:table-row-keyboard-focus-p
-   #:table-row-pointer-focus-p #:table-row-clickable-p #:table-row-disabled-p
+   #:table-row-pointer-focus-p #:table-row-accessible-name
+   #:table-row-clickable-p #:table-row-disabled-p
    #:table-row-on-activate #:table-row-children #:table-cell
    #:make-table-cell #:table-cell-p #:table-cell-id #:table-cell-width
    #:table-cell-height #:table-cell-padding #:table-cell-position
@@ -176,7 +178,8 @@
    #:table-cell-cross-align #:table-cell-clip-p #:table-cell-scroll-p
    #:table-cell-scrollbar-p #:table-cell-scrollbar-width
    #:table-cell-interactive-p #:table-cell-keyboard-focus-p
-   #:table-cell-pointer-focus-p #:table-cell-clickable-p #:table-cell-disabled-p
+   #:table-cell-pointer-focus-p #:table-cell-accessible-name
+   #:table-cell-clickable-p #:table-cell-disabled-p
    #:table-cell-on-activate #:table-cell-children #:table-cell-gap
    #:table-cell-column-span
    #:node-visible-p #:label-visible-p #:button-visible-p
@@ -240,6 +243,7 @@ ID keys allow rebuilding."
   (scroll-p nil :type boolean)
   (scrollbar-p nil :type boolean)
   (scrollbar-width nil :type (or null real lui:units))
+  (accessible-name nil :type (or null string))
   (clickable-p nil :type boolean)
   (disabled-p nil :type boolean)
   (on-activate nil :type (or function symbol))
@@ -515,7 +519,6 @@ Edit children with (SETF PANEL-CHILDREN); see DRAW for identity rules."
   (painter nil :type (or null function))
   (terminal-label nil :type (or null function))
   (terminal-border nil :type (or null string))
-  (accessible-name nil :type (or null string))
   (gap nil :type (or null real lui:units))
   (direction nil :type (or null keyword)))
 
@@ -558,7 +561,7 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
                   font-family font-weight opacity accent painter terminal-label
                   terminal-border accessible-name)
       (container align cross-align clip-p scroll-p scrollbar-p scrollbar-width
-                 clickable-p disabled-p
+                 clickable-p disabled-p accessible-name
                  interactive-p keyboard-focus-p pointer-focus-p)
       (value default-value))
     "Shared slot sets used by retained renderer adapters."))

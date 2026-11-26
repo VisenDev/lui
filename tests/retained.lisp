@@ -755,6 +755,7 @@
            (count 0)
            (child (lui.retained:make-label "Before"))
            (node (funcall make :id :container :width 30 :height 8
+                          :accessible-name "Retained action"
                           :padding 1 :children
                           (lui.retained:make-table-row :children child)
                           :on-activate
@@ -762,6 +763,10 @@
                             (incf count)
                             (setf (lui.retained:label-text child) "After")))))
       (frame context node)
+      (assert (equal "Retained action"
+                     (%lui.layout:element-accessible-name
+                      (gethash (retained-id :container context)
+                               (%lui.frame:context-ids context)))))
       (frame context node
              (vector (%lui.frame:make-event :kind :press :x 0 :y 0)
                      (%lui.frame:make-event :kind :release :x 0 :y 0)))

@@ -629,16 +629,20 @@
                         (%lui.frame:context-ids context)))
          (widget (when node (%lui.layout:element-content node))))
     (unless (eq sink #j:null)
-      (let ((label (if (and widget (widget-p widget))
-                       (or (widget-accessible-name widget)
-                           (let ((text (widget-text widget)))
-                             (if (plusp (length text)) text
-                           ;; else
-                           (princ-to-string
-                             (lui:widget-key (context-focus context))))))
-
-                       ;; else
-                       "Canvas application"))
+      (let ((label
+             (cond
+               ((and node (%lui.layout:element-clickable-p node))
+                (or (%lui.layout:element-accessible-name node)
+                    (princ-to-string
+                     (lui:widget-key (context-focus context)))))
+               ((widget-p widget)
+                (or (widget-accessible-name widget)
+                    (let ((text (widget-text widget)))
+                      (if (plusp (length text)) text
+                          ;; else
+                          (princ-to-string
+                           (lui:widget-key (context-focus context)))))))
+               (t "Canvas application")))
             (value (if (and widget (widget-p widget)
                             (eq (widget-kind widget) :text-field))
                        (widget-display-value widget)
@@ -949,6 +953,20 @@
              (index-overlay-region scan region)
              visible)))))
 
+(fn (container-overlay-visible-p boolean)
+    ((scan overlay-scan) (node element))
+  "Expose container actions unless clipped or covered by a later sibling.
+Check before visiting children so descendants never hide their own action."
+  (let ((clip (element-clip node)))
+    (and (element-clickable-p node)
+         (plusp (box-width clip)) (plusp (box-height clip))
+         (notany (lambda (region)
+                   (and (< (box-x clip) (overlay-region-right region))
+                        (< (overlay-region-x region) (box-right clip))
+                        (< (box-y clip) (overlay-region-bottom region))
+                        (< (overlay-region-y region) (box-bottom clip))))
+                 (overlay-scan-seen scan)))))
+
 (fn (visit-overlay-node t) ((scan overlay-scan) node path interactive)
   "Walk children front to back and collect unoccluded native-label candidates."
   (let ((key (if (element-id node)
@@ -957,7 +975,8 @@
                  path))
         (children (element-children node))
         (clip (element-clip node))
-        (widget (element-content node)))
+        (widget (element-content node))
+        (container (container-overlay-visible-p scan node)))
     (let ((count (length children)))
       (dotimes (offset count)
         (let ((i (- count offset 1)))
@@ -983,7 +1002,10 @@
                                                    widget))))
           (vector-push-extend
            (list node (cons kind key) interactive) (overlay-scan-entries
-                                                    scan)))))))
+                                                    scan)))))
+    (when container
+      (vector-push-extend (list node (cons :container key) interactive)
+                          (overlay-scan-entries scan)))))
 
 (fn (overlay-candidates (vector list)) ((app web-app) (root element))
   "Collect unoccluded native-label candidates, reusing unchanged occlusion results."
@@ -1143,13 +1165,18 @@
       (setf (web-app-overlay-order app) order))))
 
 (fn (sync-semantic-state (values))
-    ((record dom-widget) (widget %lui.widgets:widget) element (kind symbol))
+    ((record dom-widget) (node element) element (kind symbol))
   "Update native disabled and checked/pressed attributes only when widget state changes."
-  (let ((state (list (and (not (eq kind :spinner))
+  (let* ((widget (element-content node))
+         (state (if (eq kind :container)
+                    (list nil (element-disabled-p node) nil nil)
+                    ;; else
+                    (list
+                     (and (not (eq kind :spinner))
                           (not (null (%lui.widgets:widget-value widget))))
                      (%lui.widgets:widget-disabled-p widget)
                      (%lui.widgets:widget-popup-kind widget)
-                     (%lui.widgets:widget-expanded-p widget))))
+                     (%lui.widgets:widget-expanded-p widget)))))
     (unless (equal state (dom-widget-state record))
       (setf (dom-widget-state record) state
             (oget element "disabled") (if (second state) #j:true
@@ -1200,6 +1227,17 @@
             (dom-widget-style record) appearance)))
   (values))
 
+(fn (overlay-name string) ((node element) (kind symbol))
+  "Return native overlay text or the accessible name of a container action."
+  (let ((widget (element-content node)))
+    (cond
+      ((eq kind :container)
+       (or (element-accessible-name node)
+           (princ-to-string (lui:widget-key (element-id node)))))
+      ((eq kind :label) (%lui.widgets:widget-text widget))
+      (t (or (%lui.widgets:widget-accessible-name widget)
+             (%lui.widgets:widget-text widget))))))
+
 (fn (sync-overlay hash-table) ((app web-app))
   "Update native labels and accessible controls; return the nodes painted by the DOM."
   (let* ((entries (overlay-candidates app (context-root (web-app-context
@@ -1216,10 +1254,7 @@
                                                             (element-content
                                                              node))
                  (element (dom-widget-element record))
-                 (text (if label (%lui.widgets:widget-text widget)
-                           ;; else
-                           (or (%lui.widgets:widget-accessible-name widget)
-                               (%lui.widgets:widget-text widget))))
+                 (text (overlay-name node kind))
                  (appearance (and label (list interactive
                                               (%lui.widgets:widget-font-size
                                                widget)
@@ -1245,11 +1280,12 @@
 
                                      ;; else
                                      (element-box node)) (element-clip node))
-            (sync-label-style app record widget element appearance
-                              interactive label)
+            (when label
+              (sync-label-style app record widget element appearance
+                                interactive label))
             (if label (setf (gethash node external) t)
                 ;; else
-                (sync-semantic-state record widget element kind))
+                (sync-semantic-state record node element kind))
 
             ;; Only changed text touches the DOM, preserving native selections.
             (unless (equal text (dom-widget-text record))

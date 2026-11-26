@@ -416,7 +416,9 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   Disabling a container blocks ancestor clicks but does not disable children.
   Retained containers expose the same slots plus `:on-activate`, which implies
   clickability and uses the usual deferred callback dispatch. Keyboard focus
-  is outlined graphically and underlined in terminal cells.
+  is outlined graphically and underlined in terminal cells. Browser containers
+  expose native accessible actions; `:accessible-name` names the action, with
+  the declared ID as fallback. Disabled descendants block ancestor clicks.
 - Table columns use the widest content across rows. Extra width is shared;
   narrow tables shrink columns proportionally before row-height measurement.
   Short rows may omit trailing cells. `:column-gap` belongs to the table and

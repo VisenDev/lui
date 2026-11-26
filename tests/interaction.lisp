@@ -725,6 +725,16 @@
                (make-event :kind :release :x 2 :y 2))
         (assert (gethash (lui:widget-id :child context)
                          (context-activated context)))
+        ;; Disabled passive containers also block hits, without disabling children.
+        (setf clickable nil)
+        (frame)
+        (frame (make-event :kind :press :x 0 :y 0)
+               (make-event :kind :release :x 0 :y 0))
+        (assert (not outer))
+        (frame (make-event :kind :press :x 2 :y 2)
+               (make-event :kind :release :x 2 :y 2))
+        (assert (gethash (lui:widget-id :child context)
+                         (context-activated context)))
         ;; An ordinary container returns NIL even when its body returns true.
         (setf clickable nil disabled nil)
         (frame)
@@ -733,6 +743,33 @@
                (make-event :kind :release :x 0 :y 0))
         (assert outer)
         (assert (not (first result)))))))
+
+(defun test-disabled-child-hit-blocking ()
+  (let ((context (make-test-context))
+        (disabled t)
+        (outer nil))
+    (flet ((frame (&rest events)
+             (with-frame (context 50 20 :events (coerce events 'vector))
+               (setf outer
+                     (lui:column (:clickable-p t :width 40 :height 10)
+                       (lui:button "Child" :id :child :width 10 :height 2
+                                   :disabled-p disabled))))))
+      (frame)
+      (frame (make-event :kind :press :x 1 :y 1)
+             (make-event :kind :release :x 1 :y 1))
+      (assert (not outer))
+      (assert (null (context-active context)))
+      ;; Space outside the disabled child still belongs to its parent.
+      (frame (make-event :kind :press :x 20 :y 5)
+             (make-event :kind :release :x 20 :y 5))
+      (assert outer)
+      (setf disabled nil)
+      (frame)
+      (frame (make-event :kind :press :x 1 :y 1)
+             (make-event :kind :release :x 1 :y 1))
+      (assert (not outer))
+      (assert (gethash (lui:widget-id :child context)
+                       (context-activated context))))))
 
 (defun test-clickable-table-row ()
   (let ((context (make-test-context))
@@ -788,6 +825,7 @@
   (test-clickable-table-row)
   (test-container-clipping)
   (test-clickable-containers)
+  (test-disabled-child-hit-blocking)
   (dolist (name '("FN" "CONDITIONS" "TEXT" "LAYOUT" "FRAME"
                   "WIDGETS" "INTERACTION"))
     (assert (find-package (concatenate 'string "%LUI." name)))

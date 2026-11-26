@@ -270,7 +270,7 @@ Most applications should use the public LUI controls."
 
     ;; Attach measurement and input policies to the frame-local element.
     (emit (make-element
-           :id id :content widget
+           :id id :content widget :disabled-p (not (null disabled-p))
            :width (resolve-sizing width) :height (resolve-sizing height)
            :padding (resolve-units padding)
            :position position
@@ -819,6 +819,7 @@ KIND is :CHECKBOX, :RADIO, :SLIDER, or :TEXT-FIELD; OPTIONS is a widget keyword 
            (push value layout)))))
     (setf appearance (nreverse appearance) layout (nreverse layout))
     (let* ((node (apply #'make-element
+                        :accessible-name (getf appearance :accessible-name)
                         :content (apply #'make-widget :kind :panel
                                         :style style appearance)
                         layout))

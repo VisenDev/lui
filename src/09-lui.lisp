@@ -135,7 +135,7 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
     '((placement id width height padding position offset-x offset-y)
       (flow align cross-align clip-p scroll-p scrollbar-p scrollbar-width)
       (focus interactive-p keyboard-focus-p pointer-focus-p)
-      (activation clickable-p disabled-p)
+      (activation clickable-p disabled-p accessible-name)
       (appearance foreground background palette radius frost font-size
                    font-family font-weight opacity accent painter terminal-label
                    terminal-border accessible-name)
@@ -150,9 +150,11 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
   "Define a widget signature. A final &BODY marker groups container keywords."
   (let* ((container (member '&body arguments))
          (positional (remove '&body arguments))
-         (keywords (append (loop :for group :in groups
-                                 :append (cdr (assoc group *widget-option-groups*)))
-                           keys '(options)))
+         (keywords
+          (remove-duplicates
+           (append (loop :for group :in groups
+                         :append (cdr (assoc group *widget-option-groups*)))
+                   keys '(options))))
          (signature (list* '&rest 'forms '&key keywords)))
     `(defmacro ,name (,@positional
                      ,@(if container (list signature '&body 'body) signature))
@@ -161,7 +163,8 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
               "
 :CLICKABLE-P enables pointer/keyboard activation. :DISABLED-P disables only
 this container. Interactive descendants win; activation does not bubble.
-Return activation and resolved ID as two values, ignoring BODY values.")
+Return activation and resolved ID as two values, ignoring BODY values.
+:ACCESSIBLE-NAME names the browser action; otherwise its ID is used.")
             ;; else
             doc)
        (declare (ignore ,@keywords))
