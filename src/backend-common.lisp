@@ -790,13 +790,14 @@ Fall back to its background role, or the current toolkit for an empty frame."
         (outline renderer (inset-box (element-box node) 1) 0
                  (element-focus-color node) 1 2)))))
 
+(defstruct selection-endpoint
+  (position (cons 0 0) :type cons)
+  (key nil :type list)
+  (text "" :type string))
+
 (defstruct (text-selection (:constructor %make-text-selection))
-  (anchor nil :type (or null cons))
-  (focus nil :type (or null cons))
-  (anchor-text nil :type (or null string))
-  (focus-text nil :type (or null string))
-  (anchor-key nil :type list)
-  (focus-key nil :type list)
+  (anchor nil :type (or null selection-endpoint))
+  (focus nil :type (or null selection-endpoint))
   (field nil :type object-id)
   (node-count 0 :type integer)
   (pending-copy-p nil :type boolean)
@@ -827,23 +828,6 @@ Fall back to its background role, or the current toolkit for an empty frame."
            (setf (context-next-frame context) 0))))))
   (values))
 
-(fn (text-menu-enabled-p boolean)
-    ((context context) (field object-id) (row integer))
-  "Enable Copy for a nonempty selection and Paste for an editable target."
-  (let ((selection (context-selection context))
-        (state (gethash field (context-state context))))
-    (not (null
-          (if (zerop row)
-              (and (context-copy context)
-                   (or (and selection (text-selection-anchor selection)
-                            (not (equal (text-selection-anchor selection)
-                                        (text-selection-focus selection))))
-                       (and field (typep state 'edit-state)
-                            (/= (edit-state-anchor state)
-                                (edit-state-cursor state)))))
-              ;; else
-              (and field (context-paste context)))))))
-
 (fn (draw-text-menu boolean)
     ((context context) (field object-id) (modal object-id))
   "Declare ordinary clipboard menu items while their source remains valid."
@@ -851,12 +835,14 @@ Fall back to its background role, or the current toolkit for an empty frame."
              (equal modal (when (context-modal context)
                             (element-id (context-modal context))))
              (or (null field) (gethash field (context-ids context))))
-    (when (lui:menu-item "Copy"
-                        :disabled-p (not (text-menu-enabled-p context field 0)))
-      (%copy-selection context (%selectable-nodes context)
-                       (or (context-selection context) (%make-text-selection))))
-    (when (lui:menu-item "Paste"
-                        :disabled-p (not (text-menu-enabled-p context field 1)))
+    (let ((text (selected-text context (%selectable-nodes context)
+                               (context-selection context) field)))
+      (when (lui:menu-item "Copy" :disabled-p
+                           (not (and (context-copy context)
+                                     (plusp (length text)))))
+        (funcall (context-copy context) text)))
+    (when (lui:menu-item "Paste" :disabled-p
+                         (not (and field (context-paste context))))
       (request-paste context field))
     t))
 
@@ -1024,9 +1010,9 @@ Fall back to its background role, or the current toolkit for an empty frame."
     ((selection text-selection) (index integer)
      (length integer))
   "Return ordered selection endpoints for a node in the selection sequence."
-  (let ((a (text-selection-anchor selection))
-        (b (text-selection-focus selection)))
-    (when (and a b)
+  (when (text-selection-anchor selection)
+    (let ((a (selection-endpoint-position (text-selection-anchor selection)))
+          (b (selection-endpoint-position (text-selection-focus selection))))
       (when (or (> (car a) (car b))
                 (and (= (car a) (car b)) (> (cdr a) (cdr b))))
         (rotatef a b))
@@ -1034,35 +1020,41 @@ Fall back to its background role, or the current toolkit for an empty frame."
         (values (min length (if (= index (car a)) (cdr a) 0))
                 (min length (if (= index (car b)) (cdr b) length)))))))
 
+(fn (selected-text (or null string))
+    ((context context) (nodes (vector element))
+     (selection (or null text-selection)) &optional
+     ((id object-id) (context-focus context)))
+  "Extract displayed selection text for both Copy availability and delivery."
+  (if (and selection (text-selection-anchor selection))
+      (with-output-to-string (out)
+        (let ((separator nil))
+          (loop :for node :across nodes :for i :from 0
+                :for text := (selection-text node)
+                :do (multiple-value-bind (start end)
+                        (selection-range selection i (length text))
+                      (when (and start (< start end))
+                        (when separator (terpri out))
+                        (write-string text out :start start :end end)
+                        (setf separator t))))))
+
+      ;; else
+      (let ((node (find id nodes :key #'element-id :test #'equal))
+            (state (gethash id (context-state context))))
+        (when (and node (typep state 'edit-state))
+          (let ((text (selection-text node)))
+            (subseq text
+                    (min (length text) (edit-state-anchor state)
+                         (edit-state-cursor state))
+                    (min (length text)
+                         (max (edit-state-anchor state)
+                              (edit-state-cursor state)))))))))
+
 (fn (%copy-selection t) ((context context) (nodes (vector element))
                         (selection text-selection) &optional
                         ((id object-id) (context-focus context)))
   "Copy selected text to the registered clipboard callback."
-  (let ((text
-         (if (text-selection-anchor selection)
-             (with-output-to-string (out)
-               (let ((separator nil))
-                 (loop :for node :across nodes :for i :from 0
-                       :for text := (selection-text node)
-                       :do (multiple-value-bind (start end)
-                               (selection-range selection i (length text))
-                             (when (and start (< start end))
-                               (when separator (terpri out))
-                               (write-string text out :start start :end end)
-                               (setf separator t))))))
-
-             ;; else
-             (let ((node (find id nodes :key #'element-id :test #'equal))
-                    (state (gethash id (context-state context))))
-               (when (and node (typep state 'edit-state))
-                 (let ((text (selection-text node)))
-                   (subseq text
-                           (min (length text) (edit-state-anchor state)
-                                (edit-state-cursor state))
-                           (min (length text)
-                                (max (edit-state-anchor state)
-                                     (edit-state-cursor state))))))))))
-    (when (and text (plusp (length text)) (context-copy context))
+  (let ((text (selected-text context nodes selection id)))
+    (when (and (plusp (length text)) (context-copy context))
       (funcall (context-copy context) text))))
 
 (fn (nearest-selection-node (or null element))
@@ -1088,7 +1080,9 @@ Fall back to its background role, or the current toolkit for an empty frame."
 
 (fn (selection-unit-range (values integer integer))
     ((text string) (at integer) (unit symbol))
-  "Return the word or newline-delimited paragraph containing AT."
+  "Return the caret, word, or newline-delimited paragraph containing AT."
+  (when (eq unit :character)
+    (return-from selection-unit-range (values at at)))
   (let* ((length (length text))
          (at (min at (max 0 (1- length))))
          (start at)
@@ -1164,111 +1158,81 @@ Fall back to its background role, or the current toolkit for an empty frame."
         (case clicks (2 :word) (3 :paragraph) (otherwise :character)))
   (values))
 
+(fn (selection-endpoint selection-endpoint)
+    ((context context) (nodes (vector element)) (target element) (at integer))
+  "Snapshot a label endpoint's position, stable identity, and displayed text."
+  (multiple-value-bind (snapshot keys) (%selectable-nodes context t)
+    (declare (ignore snapshot))
+    (make-selection-endpoint :position (cons (position target nodes) at)
+                             :key (gethash target keys)
+                             :text (copy-seq (selection-text target)))))
+
 (fn (start-text-selection text-selection)
     ((renderer renderer) (context context) (nodes (vector element))
      (x real) (y real) (clicks integer))
   "Begin a pointer selection in an editor or across selectable text nodes."
-  (let ((previous (context-selection context))
-         (selection (%make-text-selection))
-         (target (selection-start-target context nodes x y)))
-    (initialize-selection-click context selection previous x y clicks)
+  (let ((selection (%make-text-selection))
+        (target (selection-start-target context nodes x y)))
+    (initialize-selection-click context selection (context-selection context)
+                                x y clicks)
     (setf (context-selection context) selection)
-
-    ;; Start only on selectable content from the completed frame.
-    (when (find target nodes)
-      (let ((at (selection-index renderer target x y)))
+    (when target
+      (multiple-value-bind (start end)
+          (selection-unit-range (selection-text target)
+                                (selection-index renderer target x y)
+                                (text-selection-unit selection))
         (setf (text-selection-dragging-p selection) t
-              (text-selection-start selection) at
-              (text-selection-end selection) at)
-        (unless (eq (text-selection-unit selection) :character)
-          (multiple-value-bind (start end)
-              (selection-unit-range (selection-text target) at
-                                    (text-selection-unit selection))
-            (setf (text-selection-start selection) start
-                  (text-selection-end selection) end)))
-
-        ;; Editors retain caret state; labels snapshot their text and stable keys.
+              (text-selection-start selection) start
+              (text-selection-end selection) end
+              (text-selection-node-count selection) (length nodes))
         (if (eq (widget-kind (element-content target)) :text-field)
-            (let* ((id (element-id target))
-                   (state (or (gethash id (context-state context))
-                              (setf (gethash id (context-state context))
-                                    (make-edit-state)))))
-              (setf (context-focus context) id
-                    (text-selection-field selection) id
-                    (edit-state-anchor state) (text-selection-start selection)
-                    (edit-state-cursor state) (text-selection-end selection)))
-
+            (setf (context-focus context) (element-id target)
+                  (text-selection-field selection) (element-id target))
             ;; else
-            (multiple-value-bind (snapshot keys)
-                (%selectable-nodes context t)
-              (setf (text-selection-node-count selection)
-                    (length snapshot)
-                    (text-selection-anchor-key selection)
-                    (gethash target keys)
-                    (text-selection-focus-key selection)
-                    (gethash target keys)
-                    (text-selection-anchor selection)
-                    (cons (position target nodes)
-                          (text-selection-start selection))
-                    (text-selection-focus selection)
-                    (cons (position target nodes)
-                          (text-selection-end selection))
-                    (text-selection-anchor-text selection)
-                    (copy-seq (selection-text target))
-                    (text-selection-focus-text selection)
-                    (copy-seq (selection-text target)))))))
+            (setf (text-selection-anchor selection)
+                  (selection-endpoint context nodes target start)))
+        (extend-text-selection renderer context selection nodes target x y)))
     selection))
 
 (fn (selection-extension (values integer integer))
     ((selection text-selection) (text string) (at integer)
      (backward boolean))
   "Extend from the original unit, preserving it when dragging backwards."
-  (if (eq (text-selection-unit selection) :character)
-      (values (text-selection-start selection) at)
-      ;; else
-      (multiple-value-bind (start end)
-          (selection-unit-range text at (text-selection-unit selection))
-        (values (if backward (text-selection-end selection)
-                    (text-selection-start selection))
-                (if backward start end)))))
+  (multiple-value-bind (start end)
+      (selection-unit-range text at (text-selection-unit selection))
+    (values (if backward (text-selection-end selection)
+                (text-selection-start selection))
+            (if backward start end))))
 
 (fn (extend-text-selection (values))
     ((renderer renderer) (context context) (selection text-selection)
      (nodes (vector element)) (target (or null element)) (x real) (y real))
   "Extend an editor caret or a multi-node text selection to the pointer position."
-  (if (text-selection-field selection)
-      (let* ((id (text-selection-field selection))
-             (node (find id nodes :key #'element-id :test
-                         #'equal))
-             (state (gethash id (context-state context))))
-        (when (and node state)
-          (let ((at (selection-index renderer node x y)))
-            (multiple-value-bind (anchor focus)
-                (selection-extension selection (selection-text node) at
-                                     (< at (text-selection-start selection)))
-              (setf (edit-state-anchor state) anchor
-                    (edit-state-cursor state) focus)))))
-
-      ;; else
-      (when target
-        (multiple-value-bind (snapshot keys)
-            (%selectable-nodes context t)
-          (declare (ignore snapshot))
-          (setf (text-selection-focus-key selection)
-                (gethash target keys)))
-        (let ((index (position target nodes))
-               (anchor (text-selection-anchor selection))
-               (at (selection-index renderer target x y)))
-          (multiple-value-bind (start end)
-              (selection-extension
-               selection (selection-text target) at
-               (or (< index (car anchor))
-                   (and (= index (car anchor))
-                        (< at (text-selection-start selection)))))
-            (setf (cdr anchor) start
-                  (text-selection-focus selection) (cons index end)
-                  (text-selection-focus-text selection)
-                  (copy-seq (selection-text target)))))))
+  (let* ((id (text-selection-field selection))
+         (node (if id (find id nodes :key #'element-id :test #'equal) target))
+         (anchor (text-selection-anchor selection)))
+    (when node
+      (let* ((index (position node nodes))
+             (at (selection-index renderer node x y))
+             (origin (if anchor
+                        (car (selection-endpoint-position anchor))
+                        ;; else
+                        index)))
+        (multiple-value-bind (start end)
+            (selection-extension selection (selection-text node) at
+                                 (or (< index origin)
+                                     (and (= index origin)
+                                          (< at (text-selection-start selection)))))
+          (if id
+              (let ((state (or (gethash id (context-state context))
+                               (setf (gethash id (context-state context))
+                                     (make-edit-state)))))
+                (setf (edit-state-anchor state) start
+                      (edit-state-cursor state) end))
+              ;; else
+              (setf (cdr (selection-endpoint-position anchor)) start
+                    (text-selection-focus selection)
+                    (selection-endpoint context nodes node end)))))))
   (values))
 
 (fn (selection-input-needed-p boolean)
@@ -1379,15 +1343,13 @@ Fall back to its background role, or the current toolkit for an empty frame."
         (unless (= (length nodes) (text-selection-node-count selection))
           (setf (context-selection context) nil)
           (return-from selection-ranges nil))
-        (dolist (endpoint (list (list (text-selection-anchor selection)
-                                      (text-selection-anchor-key selection)
-                                      (text-selection-anchor-text selection))
-                                (list (text-selection-focus selection)
-                                      (text-selection-focus-key selection)
-                                      (text-selection-focus-text selection))))
-          (let ((node (aref nodes (caar endpoint))))
-            (unless (and node (equal (gethash node keys) (second endpoint))
-                         (equal (selection-text node) (third endpoint)))
+        (dolist (endpoint (list (text-selection-anchor selection)
+                                (text-selection-focus selection)))
+          (let ((node (aref nodes (car (selection-endpoint-position endpoint)))))
+            (unless (and (equal (gethash node keys)
+                               (selection-endpoint-key endpoint))
+                         (equal (selection-text node)
+                                (selection-endpoint-text endpoint)))
               (setf (context-selection context) nil)
               (return-from selection-ranges nil))))
         (let ((ranges (make-hash-table :test 'eq)))
