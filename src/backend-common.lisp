@@ -177,8 +177,10 @@ Set NIL before opening a window to use only explicit paths and directories.")
              (or (uiop:getenvp "XDG_DATA_HOME")
                  (merge-pathnames ".local/share/" (user-homedir-pathname)))))
            (merge-pathnames ".fonts/" (user-homedir-pathname))
-           #p"/usr/local/share/fonts/" #p"/usr/share/fonts/"
-           #p"/usr/share/Fonts/")))
+           ;; JSCL reads excluded forms but does not support #P literals.
+           (pathname "/usr/local/share/fonts/")
+           (pathname "/usr/share/fonts/")
+           (pathname "/usr/share/Fonts/"))))
 
   (fn (find-font-file (or null pathname)) ((names list) (directories list))
     "Find a candidate directly in these directories, preserving filename order."
