@@ -338,6 +338,12 @@ Free all interface allocations on return or error; proxies must not outlive it."
     (width :uint) (height :uint) (hotspot-x :uint) (hotspot-y :uint)
     (delay :uint))
 
+(defstruct clipboard-offer
+  "Incoming Wayland offer and its independently owned listener storage."
+  (proxy (cffi:null-pointer) :type cffi:foreign-pointer)
+  (listener (cffi:null-pointer) :type cffi:foreign-pointer)
+  (mime nil :type (or null string)))
+
 (defstruct wl-window
   display registry compositor shell seat surface xdg toplevel
   decoration-manager decoration decoration-mode pending-decoration-mode
@@ -350,6 +356,14 @@ Free all interface allocations on return or error; proxies must not outlive it."
   (viewport-width 0 :type integer) (viewport-height 0 :type integer)
   clipboard-manager clipboard-device clipboard-source clipboard-listener
   clipboard-text clipboard-serial
+  (clipboard-incoming nil :type (or null clipboard-offer))
+  (clipboard-offers (make-hash-table :test 'eql) :type hash-table)
+  (paste-fd nil :type (or null integer))
+  (paste-receiver nil :type (or null function))
+  (paste-deadline 0 :type real)
+  (paste-bytes (make-array 0 :element-type '(unsigned-byte 8)
+                            :adjustable t :fill-pointer 0)
+               :type (vector (unsigned-byte 8)))
   pointer keyboard native gpu font xkb-context keymap key-state
   (seat-version 1 :type integer)
   ;; Older keyboards have no repeat_info; use conventional client defaults.
@@ -434,9 +448,32 @@ Free all interface allocations on return or error; proxies must not outlive it."
                                              *window*)))
             (release-clipboard-source *window*)))
 
+(callback offer-mime ((mime :string))
+          (let ((offer (gethash (cffi:pointer-address proxy)
+                               (wl-window-clipboard-offers *window*))))
+            (when (and offer
+                       (member mime '("text/plain;charset=utf-8" "text/plain")
+                               :test #'string=))
+              (setf (clipboard-offer-mime offer) mime))))
+
 (callback clipboard-offer ((offer :pointer))
-          ;; This backend publishes text. Unrequested incoming offers need no transfer.
-          (request offer 2 nil nil nil t))
+          (setf (gethash (cffi:pointer-address offer)
+                         (wl-window-clipboard-offers *window*))
+                (make-clipboard-offer
+                 :proxy offer
+                 :listener (listen-proxy offer (list (cffi:callback offer-mime))))))
+
+(fn (release-incoming-offers (values))
+    ((window wl-window) (keep (or null clipboard-offer)))
+  "Destroy incoming offers except KEEP and release their listener arrays."
+  (maphash (lambda (key offer)
+             (unless (eq offer keep)
+               (request (clipboard-offer-proxy offer) 2 nil nil nil t)
+               (cffi:foreign-free (clipboard-offer-listener offer))
+               (remhash key (wl-window-clipboard-offers window))))
+           (wl-window-clipboard-offers window))
+  (values))
+
 (callback clipboard-enter
           ((serial :uint32) (surface :pointer) (x :int32) (y :int32)
            (offer :pointer))
@@ -446,7 +483,81 @@ Free all interface allocations on return or error; proxies must not outlive it."
           (declare (ignore time x y)))
 (callback clipboard-drop ())
 (callback clipboard-selection ((offer :pointer))
-          (declare (ignore offer)))
+          (let ((incoming (gethash (cffi:pointer-address offer)
+                                   (wl-window-clipboard-offers *window*))))
+            (setf (wl-window-clipboard-incoming *window*) incoming)
+            (release-incoming-offers *window* incoming)))
+
+(fn (close-paste (values)) ((window wl-window))
+  "Close a pending clipboard descriptor and discard its callback and bytes."
+  (when (wl-window-paste-fd window)
+    (cffi:foreign-funcall "close" :int (wl-window-paste-fd window) :int))
+  (setf (wl-window-paste-fd window) nil
+        (wl-window-paste-receiver window) nil
+        (fill-pointer (wl-window-paste-bytes window)) 0)
+  (values))
+
+(fn (paste-clipboard (values)) ((window wl-window) (receive function))
+  "Receive clipboard text through a nonblocking pipe without stalling rendering."
+  (close-paste window)
+  (when (wl-window-clipboard-text window)
+    (funcall receive (wl-window-clipboard-text window))
+    (return-from paste-clipboard (values)))
+  (let ((offer (wl-window-clipboard-incoming window)))
+    (when (and offer (clipboard-offer-mime offer))
+      (cffi:with-foreign-object (fds :int 2)
+        (when (zerop (cffi:foreign-funcall "pipe2" :pointer fds
+                                          :int #o2000000 :int))
+          (let ((reader (cffi:mem-aref fds :int 0))
+                (writer (cffi:mem-aref fds :int 1)))
+            (cffi:foreign-funcall "fcntl" :int reader :int 4 :int #o4000 :int)
+            (unwind-protect
+                 (request (clipboard-offer-proxy offer) 1 nil
+                          (list (cons :string (clipboard-offer-mime offer))
+                                (cons :int writer)))
+              (cffi:foreign-funcall "close" :int writer :int))
+            (setf (wl-window-paste-fd window) reader
+                  (wl-window-paste-receiver window) receive
+                  (wl-window-paste-deadline window)
+                  (+ (get-internal-real-time)
+                     (* 5 internal-time-units-per-second))))))))
+  (values))
+
+(fn (poll-paste (values)) ((window wl-window))
+  "Drain a bounded incoming UTF-8 transfer, delivering only after EOF."
+  (when (wl-window-paste-fd window)
+    (when (> (get-internal-real-time) (wl-window-paste-deadline window))
+      (close-paste window)
+      (return-from poll-paste (values)))
+    (cffi:with-foreign-object (buffer :uint8 4096)
+      (loop :for count := (cffi:foreign-funcall
+                           "read" :int (wl-window-paste-fd window)
+                           :pointer buffer :size 4096 :long)
+            :do (cond
+                  ((minusp count) (return))
+                  ((zerop count)
+                   (unwind-protect
+                        (handler-case
+                            (funcall (wl-window-paste-receiver window)
+                                     (cffi:with-pointer-to-vector-data
+                                         (bytes (coerce
+                                                 (wl-window-paste-bytes window)
+                                                 '(simple-array
+                                                   (unsigned-byte 8) (*))))
+                                       (cffi:foreign-string-to-lisp
+                                        bytes :count
+                                        (length (wl-window-paste-bytes window))
+                                        :encoding :utf-8)))
+                          (error () nil))
+                     (close-paste window))
+                   (return))
+                  ((> (+ count (length (wl-window-paste-bytes window)))
+                      #x1000000)
+                   (close-paste window) (return))
+                  (t (dotimes (i count)
+                       (vector-push-extend (cffi:mem-aref buffer :uint8 i)
+                                           (wl-window-paste-bytes window))))))))
+  (values))
 
 (fn (create-clipboard-device (values)) ((window wl-window))
   "Create WINDOW's clipboard device when the compositor supports it."
@@ -769,10 +880,11 @@ Free all interface allocations on return or error; proxies must not outlive it."
                           (#xff1b . lui.key:escape))))))
 
       ;; Shared editor commands and activation take precedence over text.
-      (cond ((and (member symbol '(#x63 #x43))
+      (cond ((and (member symbol '(#x63 #x43 #x76 #x56))
                   (modifier-active-p state "Control")
                   (not (modifier-active-p state "Mod1")))
-             (queue-input :key :key lui.key:copy))
+             (queue-input :key :key (if (member symbol '(#x63 #x43))
+                                       lui.key:copy lui.key:paste)))
             (editor (queue-input :key :key editor))
             ((member symbol '(#xff09 #xfe20))
              (queue-input :tab :key
@@ -1082,6 +1194,8 @@ Free all interface allocations on return or error; proxies must not outlive it."
 
 (fn (release-extensions (values)) ((window wl-window))
   "Release WINDOW's optional decoration, scaling, clipboard, and cursor resources."
+  (close-paste window)
+  (release-incoming-offers window nil)
   (release-clipboard-source window)
   (dolist (proxy (list (wl-window-clipboard-device window)
                        (wl-window-clipboard-manager window)))
@@ -1135,8 +1249,12 @@ Free all interface allocations on return or error; proxies must not outlive it."
               (setf delay
                     (min delay (/ (max 0 ticks)
                                   internal-time-units-per-second))))
+        :when (wl-window-paste-fd *window*)
+        :do (setf delay (min delay 0.01f0))
         :do (pump-display display (ceiling (* 1000 delay)))
-        :until (or (zerop delay) (wl-window-events *window*)
+        :until (or (wl-window-paste-fd *window*)
+                   (context-posted-events context)
+                   (zerop delay) (wl-window-events *window*)
                    (wl-window-quit-p *window*)
                    (/= (wl-window-width *window*) (context-width context))
                    (/= (wl-window-height *window*) (context-height context))))
@@ -1181,7 +1299,11 @@ Free all interface allocations on return or error; proxies must not outlive it."
          (renderer (gpu-renderer gpu))
          (context
           (%make-render-context
-           renderer :copy
+           renderer :paste
+           (when (wl-window-clipboard-device *window*)
+             (let ((window *window*))
+               (lambda (receive) (paste-clipboard window receive))))
+           :copy
            (when (wl-window-clipboard-device *window*)
              (let ((window *window*))
                (lambda (text) (copy-clipboard window text))))))
@@ -1189,6 +1311,7 @@ Free all interface allocations on return or error; proxies must not outlive it."
     (loop :with events
           :until (wl-window-quit-p *window*)
           :do
+          (poll-paste *window*)
           (sync-window-size *window*)
           (repeat-input)
           (setf events (nreverse (shiftf (wl-window-events *window*)

@@ -784,13 +784,199 @@ Fall back to its background role, or the current toolkit for an empty frame."
                  (context-focus-visible-p context))
         (funcall (renderer-clip renderer) (element-clip node))
         (outline renderer (inset-box (element-box node) 1) 0
-                 (element-focus-color node) 1 2)))))
+                 (element-focus-color node) 1 2)))
+    (paint-text-menu renderer context)))
 
 (defstruct (text-selection (:constructor %make-text-selection))
-  anchor focus anchor-text focus-text anchor-key focus-key field
+  (anchor nil :type (or null cons))
+  (focus nil :type (or null cons))
+  (anchor-text nil :type (or null string))
+  (focus-text nil :type (or null string))
+  (anchor-key nil :type list)
+  (focus-key nil :type list)
+  (field nil :type object-id)
   (node-count 0 :type integer)
   (pending-copy-p nil :type boolean)
-  (dragging-p nil :type boolean))
+  (dragging-p nil :type boolean)
+  (click-time -1 :type real)
+  (click-x 0 :type real)
+  (click-y 0 :type real)
+  (click-count 0 :type integer)
+  (unit :character :type (member :character :word :paragraph))
+  (start 0 :type integer)
+  (end 0 :type integer))
+
+(defstruct text-menu
+  "Transient native clipboard menu, with its original text target and modal."
+  (box (make-box) :type box)
+  (widget (make-widget) :type widget)
+  (field nil :type object-id)
+  (modal nil :type object-id)
+  (pressed nil :type (or null integer))
+  (row 0 :type integer))
+
+(fn (request-paste (values)) ((context context) (id object-id))
+  "Request clipboard text, retaining the destination across an async transfer."
+  (when (and id (context-paste context))
+    (funcall
+     (context-paste context)
+     (lambda (text)
+       (let ((node (gethash id (context-ids context))))
+         (when (and (stringp text) node
+                    (equal id (context-focus context))
+                    (modal-member-p context id)
+                    (widget-p (element-content node))
+                    (eq (widget-kind (element-content node)) :text-field)
+                    (not (widget-disabled-p (element-content node))))
+           (push (make-event :kind :text :id id :value text)
+                 (context-posted-events context))
+           (setf (context-next-frame context) 0))))))
+  (values))
+
+(fn (text-menu-enabled-p boolean)
+    ((context context) (menu text-menu) (row integer))
+  "Enable Copy for a nonempty selection and Paste for an editable target."
+  (let ((selection (context-selection context))
+        (state (gethash (text-menu-field menu) (context-state context))))
+    (not (null
+          (if (zerop row)
+              (and (context-copy context)
+                   (or (and selection (text-selection-anchor selection)
+                            (not (equal (text-selection-anchor selection)
+                                        (text-selection-focus selection))))
+                       (and (text-menu-field menu) (typep state 'edit-state)
+                            (/= (edit-state-anchor state)
+                                (edit-state-cursor state)))))
+              ;; else
+              (and (text-menu-field menu) (context-paste context)))))))
+
+(fn (open-text-menu (values))
+    ((renderer renderer) (context context) (event event))
+  "Open the default native menu without replacing an existing text selection."
+  (let* ((nodes (%selectable-nodes context))
+         (x (event-x event))
+         (y (event-y event))
+         (target (selection-start-target context nodes x y)))
+    (when (find target nodes)
+      (let* ((widget (element-content target))
+             (field (when (eq (widget-kind widget) :text-field)
+                      (element-id target)))
+             (height (* 2 (+ 12 (line-height (renderer-font renderer)))))
+             (width (max 120 (+ 24 (text-width (renderer-font renderer)
+                                             "Paste")))))
+        (when field
+          (unless (equal field (context-focus context))
+            (start-text-selection renderer context nodes x y 1))
+          (setf (context-focus context) field)
+          (let ((selection (context-selection context)))
+            (when selection
+              (setf (text-selection-anchor selection) nil
+                    (text-selection-focus selection) nil))))
+        (when (context-selection context)
+          (setf (text-selection-dragging-p (context-selection context)) nil))
+        (setf (context-active context) nil
+              (context-text-menu context)
+              (make-text-menu
+               :widget widget :field field
+               :modal (when (context-modal context)
+                        (element-id (context-modal context)))
+               :box (make-box :x (max 0 (min x (- (context-width context)
+                                                 width)))
+                              :y (max 0 (min y (- (context-height context)
+                                                 height)))
+                              :width width :height height))))))
+  (values))
+
+(fn (text-menu-action (values))
+    ((context context) (menu text-menu) (row integer))
+  "Perform one enabled clipboard action and dismiss its menu."
+  (when (text-menu-enabled-p context menu row)
+    (if (zerop row)
+        (%copy-selection context (%selectable-nodes context)
+                         (or (context-selection context)
+                             (%make-text-selection)))
+        ;; else
+        (request-paste context (text-menu-field menu))))
+  (setf (context-text-menu context) nil)
+  (values))
+
+(fn (route-text-menu boolean)
+    ((context context) (menu text-menu) (event event))
+  "Consume menu input, with release activation and keyboard dismissal."
+  (let* ((kind (event-kind event))
+         (box (text-menu-box menu))
+         (inside (%lui.frame:contains-p box (event-x event) (event-y event)))
+         (row (if (< (event-y event) (+ (box-y box) (/ (box-height box) 2)))
+                  0 1)))
+    (case kind
+      (:move (when inside (setf (text-menu-row menu) row)))
+      (:press
+       (if inside
+           (setf (text-menu-pressed menu) row (text-menu-row menu) row)
+           ;; else
+           (setf (context-text-menu context) nil)))
+      (:release
+       (when (and inside (eql row (text-menu-pressed menu))
+                  (eq (event-button event) :primary))
+         (text-menu-action context menu row)))
+      ((:key :activate)
+       (case (event-key event)
+         ((lui.key:up lui.key:down)
+          (setf (text-menu-row menu) (- 1 (text-menu-row menu))))
+         (lui.key:enter (text-menu-action context menu (text-menu-row menu)))
+         (otherwise (setf (context-text-menu context) nil))))
+      ((:cancel :scroll :tab) (setf (context-text-menu context) nil))
+      (otherwise nil))
+    t))
+
+(fn (text-menu-input boolean)
+    ((renderer renderer) (context context) (event event))
+  "Filter native clipboard menu gestures before ordinary control routing."
+  #+(or jscl lui-ecl-web) (declare (ignore renderer context event))
+  #+(or jscl lui-ecl-web) nil
+  #-(or jscl lui-ecl-web)
+  (cond
+    ((context-text-menu context)
+     (route-text-menu context (context-text-menu context) event))
+    ((and (context-menu-p context)
+          (eq (event-kind event) :press)
+          (eq (event-button event) :secondary))
+     (open-text-menu renderer context event)
+     (not (null (context-text-menu context))))
+    ((and (eq (event-kind event) :key)
+          (eq (event-key event) lui.key:paste))
+     (request-paste context (context-focus context)) t)))
+
+(fn (paint-text-menu (values)) ((renderer renderer) (context context))
+  "Paint the native clipboard menu with the target's toolkit and palette."
+  (let ((menu (context-text-menu context)))
+    (when (and menu
+               (or (not (context-menu-p context))
+                   (not (equal (text-menu-modal menu)
+                               (when (context-modal context)
+                                 (element-id (context-modal context)))))
+                   (and (text-menu-field menu)
+                        (not (gethash (text-menu-field menu)
+                                      (context-ids context))))))
+      (setf (context-text-menu context) nil menu nil))
+    (when menu
+      (dotimes (row 2)
+        (let* ((box (text-menu-box menu))
+               (height (/ (box-height box) 2))
+               (widget (copy-widget (text-menu-widget menu)))
+               (area (make-box :x (box-x box) :y (+ (box-y box) (* row height))
+                               :width (box-width box) :height height)))
+          (setf (widget-kind widget) :button
+                (widget-painter widget) nil
+                (widget-text widget) (if (zerop row) "Copy" "Paste")
+                (widget-disabled-p widget)
+                (not (text-menu-enabled-p context menu row)))
+          (paint-widget renderer
+                        (make-element :content widget :box area :clip area))
+          (when (= row (text-menu-row menu))
+            (outline renderer (inset-box area 1) 0
+                     (widget-color widget :border) 1 1))))))
+  (values))
 
 (fn (%selectable-nodes (values (vector element) (or null hash-table)))
     ((context context) &optional ((keys-p boolean) nil))
@@ -972,30 +1158,117 @@ Fall back to its background role, or the current toolkit for an empty frame."
               (setf target node distance d horizontal dx)))))
   target)
 
+(fn (selection-unit-range (values integer integer))
+    ((text string) (at integer) (unit symbol))
+  "Return the word or newline-delimited paragraph containing AT."
+  (let* ((length (length text))
+         (at (min at (max 0 (1- length))))
+         (start at)
+         (end at))
+    (labels ((category (char)
+               (cond ((or (alphanumericp char) (char= char #\_)) :word)
+                     ((find char '(#\Space #\Tab #\Newline #\Return)) :space)
+                     (t :punctuation)))
+             (same-p (index)
+               (if (eq unit :paragraph)
+                   (not (char= (char text index) #\Newline))
+                   ;; else
+                   (eq (category (char text index))
+                       (category (char text at))))))
+      (when (plusp length)
+        (loop :while (and (> start 0) (same-p (1- start))) :do (decf start))
+        (loop :while (and (< end length) (same-p end)) :do (incf end))
+        (when (and (eq unit :paragraph) (< end length)) (incf end))))
+    (values start end)))
+
+(fn (blank-selection-target (or null element))
+    ((context context) (nodes (vector element)) (x real) (y real))
+  "Find nearby label text within the deepest unblocked container content."
+  (let ((scope nil)
+        (blocked nil))
+    (labels ((visit (node inherited-block)
+               (let ((block (or inherited-block
+                                (element-interactive-p node)
+                                (element-disabled-p node))))
+                 (when (%lui.frame:contains-p (element-clip node) x y)
+                   (setf scope node blocked block))
+                 (loop :for child :across (element-children node)
+                       :do (visit child block)))))
+      (visit (or (context-modal context) (context-root context)) nil))
+    (when (and scope (not blocked)
+               (%lui.frame:contains-p
+                (inset-box (element-box scope) (element-padding scope)) x y))
+      (let ((candidates (make-array 0 :element-type 'element
+                                     :adjustable t :fill-pointer 0)))
+        (walk-elements
+         scope (lambda (node)
+                 (when (and (find node nodes)
+                            (eq (widget-kind (element-content node)) :label))
+                   (vector-push-extend node candidates))))
+        (nearest-selection-node candidates x y)))))
+
+(fn (selection-start-target (or null element))
+    ((context context) (nodes (vector element)) (x real) (y real))
+  "Resolve direct text hits or nearby labels in unblocked container space."
+  (let ((hit (selection-target context x y)))
+    (if (find hit nodes) hit
+        ;; else
+        (when (or (null hit)
+                  (eq (widget-kind (element-content hit)) :panel))
+          (blank-selection-target context nodes x y)))))
+
+(fn (initialize-selection-click (values))
+    ((context context) (selection text-selection)
+     (previous (or null text-selection)) (x real) (y real) (clicks integer))
+  "Track up to three nearby presses and select their text granularity."
+  (when (and previous (plusp (text-selection-click-count previous))
+             (<= 0 (- (context-time context)
+                      (text-selection-click-time previous)) 0.4f0)
+             (< (abs (- x (text-selection-click-x previous))) 4)
+             (< (abs (- y (text-selection-click-y previous))) 4))
+    (setf clicks (max clicks
+                      (1+ (mod (text-selection-click-count previous) 3)))))
+  (setf (text-selection-click-time selection) (context-time context)
+        (text-selection-click-x selection) x
+        (text-selection-click-y selection) y
+        (text-selection-click-count selection) clicks
+        (text-selection-unit selection)
+        (case clicks (2 :word) (3 :paragraph) (otherwise :character)))
+  (values))
+
 (fn (start-text-selection text-selection)
     ((renderer renderer) (context context) (nodes (vector element))
-     (x real) (y real))
+     (x real) (y real) (clicks integer))
   "Begin a pointer selection in an editor or across selectable text nodes."
-  (let ((selection (%make-text-selection))
-        (target (selection-target context x y)))
+  (let ((previous (context-selection context))
+         (selection (%make-text-selection))
+         (target (selection-start-target context nodes x y)))
+    (initialize-selection-click context selection previous x y clicks)
     (setf (context-selection context) selection)
 
     ;; Start only on selectable content from the completed frame.
     (when (find target nodes)
       (let ((at (selection-index renderer target x y)))
-        (setf (text-selection-dragging-p selection) t)
+        (setf (text-selection-dragging-p selection) t
+              (text-selection-start selection) at
+              (text-selection-end selection) at)
+        (unless (eq (text-selection-unit selection) :character)
+          (multiple-value-bind (start end)
+              (selection-unit-range (selection-text target) at
+                                    (text-selection-unit selection))
+            (setf (text-selection-start selection) start
+                  (text-selection-end selection) end)))
 
         ;; Editors retain caret state; labels snapshot their text and stable keys.
         (if (eq (widget-kind (element-content target)) :text-field)
             (let* ((id (element-id target))
                    (state (or (gethash id (context-state context))
-                              (setf (gethash id
-                                             (context-state
-                                              context))
+                              (setf (gethash id (context-state context))
                                     (make-edit-state)))))
-              (setf (text-selection-field selection) id
-                    (edit-state-anchor state) at
-                    (edit-state-cursor state) at))
+              (setf (context-focus context) id
+                    (text-selection-field selection) id
+                    (edit-state-anchor state) (text-selection-start selection)
+                    (edit-state-cursor state) (text-selection-end selection)))
 
             ;; else
             (multiple-value-bind (snapshot keys)
@@ -1007,14 +1280,29 @@ Fall back to its background role, or the current toolkit for an empty frame."
                     (text-selection-focus-key selection)
                     (gethash target keys)
                     (text-selection-anchor selection)
-                    (cons (position target nodes) at)
+                    (cons (position target nodes)
+                          (text-selection-start selection))
                     (text-selection-focus selection)
-                    (cons (position target nodes) at)
+                    (cons (position target nodes)
+                          (text-selection-end selection))
                     (text-selection-anchor-text selection)
                     (copy-seq (selection-text target))
                     (text-selection-focus-text selection)
                     (copy-seq (selection-text target)))))))
     selection))
+
+(fn (selection-extension (values integer integer))
+    ((selection text-selection) (text string) (at integer)
+     (backward boolean))
+  "Extend from the original unit, preserving it when dragging backwards."
+  (if (eq (text-selection-unit selection) :character)
+      (values (text-selection-start selection) at)
+      ;; else
+      (multiple-value-bind (start end)
+          (selection-unit-range text at (text-selection-unit selection))
+        (values (if backward (text-selection-end selection)
+                    (text-selection-start selection))
+                (if backward start end)))))
 
 (fn (extend-text-selection (values))
     ((renderer renderer) (context context) (selection text-selection)
@@ -1026,8 +1314,12 @@ Fall back to its background role, or the current toolkit for an empty frame."
                          #'equal))
              (state (gethash id (context-state context))))
         (when (and node state)
-          (setf (edit-state-cursor state)
-                (selection-index renderer node x y))))
+          (let ((at (selection-index renderer node x y)))
+            (multiple-value-bind (anchor focus)
+                (selection-extension selection (selection-text node) at
+                                     (< at (text-selection-start selection)))
+              (setf (edit-state-anchor state) anchor
+                    (edit-state-cursor state) focus)))))
 
       ;; else
       (when target
@@ -1036,63 +1328,84 @@ Fall back to its background role, or the current toolkit for an empty frame."
           (declare (ignore snapshot))
           (setf (text-selection-focus-key selection)
                 (gethash target keys)))
-        (setf (text-selection-focus selection)
-              (cons (position target nodes)
-                    (selection-index renderer target x y))
-              (text-selection-focus-text selection)
-              (copy-seq (selection-text target)))))
+        (let ((index (position target nodes))
+               (anchor (text-selection-anchor selection))
+               (at (selection-index renderer target x y)))
+          (multiple-value-bind (start end)
+              (selection-extension
+               selection (selection-text target) at
+               (or (< index (car anchor))
+                   (and (= index (car anchor))
+                        (< at (text-selection-start selection)))))
+            (setf (cdr anchor) start
+                  (text-selection-focus selection) (cons index end)
+                  (text-selection-focus-text selection)
+                  (copy-seq (selection-text target)))))))
   (values))
 
 (fn (selection-input-needed-p boolean)
     ((context context) (events sequence))
   "Test whether input can start, extend, or copy a native text selection."
-  (or (and (context-selection context)
+  (or (not (null (context-text-menu context)))
+      (and (context-selection context)
            (text-selection-dragging-p
             (context-selection context)))
       (some (lambda (event)
-              (or (and (eq (event-kind event) :press)
-                       (eq (event-button event) :primary))
+              (or (eq (event-kind event) :press)
                   (and (eq (event-kind event) :key)
-                       (eq (event-key event) lui.key:copy))))
+                       (not (null (member (event-key event)
+                                          '(lui.key:copy lui.key:paste)))))))
             events)))
 
-(fn (selection-input (values))
+(fn (selection-event text-selection)
+    ((renderer renderer) (context context) (nodes (vector element))
+     (selection text-selection) (event event))
+  "Apply one unconsumed pointer or copy event in arrival order."
+  (when (%lui.frame:pointer-cancel-p event)
+    (setf (text-selection-dragging-p selection) nil))
+  (let* ((kind (event-kind event))
+         (x (event-x event))
+         (y (event-y event))
+         (target
+          (find-if (lambda (node)
+                     (%lui.frame:contains-p (element-clip node) x y))
+                   nodes :from-end t)))
+    (when (and (null target) (text-selection-dragging-p selection)
+               (member kind '(:move :release)))
+      (setf target (nearest-selection-node nodes x y)))
+    (cond
+      ((and (eq kind :key) (eq (event-key event) lui.key:copy))
+       (setf (text-selection-pending-copy-p selection) t))
+      ((and (eq kind :press) (eq (event-button event) :primary))
+       (setf selection
+             (start-text-selection renderer context nodes x y
+                                   (event-clicks event))))
+      ((and (member kind '(:move :release))
+            (text-selection-dragging-p selection))
+       (extend-text-selection renderer context selection nodes target x y)
+       (when (or (>= (abs (- x (text-selection-click-x selection))) 4)
+                 (>= (abs (- y (text-selection-click-y selection))) 4))
+         (setf (text-selection-click-count selection) 0))
+       (when (eq kind :release)
+         (setf (text-selection-dragging-p selection) nil)))))
+  selection)
+
+(fn (selection-input sequence)
     ((renderer renderer) (context context) (events sequence))
-  "Route native pointer and keyboard input to text selection and editor caret state."
+  "Route text and menu input in order, returning unconsumed control events."
   (unless (and (plusp (length events))
                (selection-input-needed-p context events))
-    (return-from selection-input (values)))
+    (return-from selection-input events))
   (let ((nodes (%selectable-nodes context))
-        (selection (or (context-selection context)
-                       (setf (context-selection context)
-                             (%make-text-selection)))))
-    (loop :for event-index :below (length events)
-          :for event := (elt events event-index) :do
-          (when (%lui.frame:pointer-cancel-p event)
-            (setf (text-selection-dragging-p selection) nil))
-          (let* ((kind (event-kind event))
-                 (x (event-x event))
-                 (y (event-y event))
-                 (target
-                  (find-if (lambda (node)
-                             (%lui.frame:contains-p (element-clip node) x y))
-                           nodes :from-end t)))
-            (when (and (null target) (text-selection-dragging-p selection)
-                       (member kind '(:move :release)))
-              (setf target (nearest-selection-node nodes x y)))
-            (cond
-              ((and (eq kind :key) (eq (event-key event) lui.key:copy))
-               (setf (text-selection-pending-copy-p selection) t))
-              ((and (eq kind :press) (eq (event-button event) :primary))
-               (setf selection
-                     (start-text-selection renderer context nodes x y)))
-              ((and (member kind '(:move :release))
-                    (text-selection-dragging-p selection))
-               (extend-text-selection renderer context selection nodes target
-                                      x y)
-               (when (eq kind :release)
-                 (setf (text-selection-dragging-p selection) nil)))))))
-  (values))
+        (routed nil))
+    (loop :for event :across (coerce events '(vector event)) :do
+      (unless (text-menu-input renderer context event)
+        (setf (context-selection context)
+              (selection-event renderer context nodes
+                               (or (context-selection context)
+                                   (%make-text-selection)) event))
+        (push event routed)))
+    (nreverse routed)))
 
 (fn (paint-node-selection (values))
     ((renderer renderer) (node element) (text string) (start integer)

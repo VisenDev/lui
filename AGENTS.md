@@ -396,6 +396,13 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   model each frame. Radio controls take their own choice and a shared `:value`.
   Button clicks preserve keyboard focus; fields acquire editing focus on click.
   Tab groups wrap Left/Right, support Home/End, and skip disabled tabs.
+- Native text selection supports double-click words and triple-click paragraphs
+  separated by newlines, with whole-unit drag extension. Blank-space label
+  selection stays inside container content and honors clipping/occlusion.
+  Native Copy/Paste menus default on; `lui:run :context-menu-p nil` disables
+  them. Clipboard reads use callback delivery; keep async paste bound to its
+  original, still-focused editor. Ctrl-V/Command-V uses the system clipboard;
+  Ctrl-Y keeps the editor kill buffer.
 - Combobox Up/Down selects suggestions; Enter accepts a highlighted suggestion.
   Enter without a highlight, Escape, and Tab preserve typed text. Suggestions
   are overlays; `:max-results` bounds their count.

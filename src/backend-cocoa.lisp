@@ -338,6 +338,16 @@
              object (ns-string text)
              object (ns-string "public.utf8-plain-text"))))
 
+(fn (paste-text (values)) ((receive function))
+  "Read a string from the general macOS pasteboard."
+  (let* ((pasteboard (message object (objc-class "NSPasteboard")
+                             "generalPasteboard"))
+         (text (message object pasteboard "stringForType:"
+                        object (ns-string "public.utf8-plain-text"))))
+    (unless (zerop (sb-sys:sap-int text))
+      (funcall receive (or (message utf8-string text "UTF8String") ""))))
+  (values))
+
 (fn (cocoa-key-input (or null event)) ((code integer) (flags integer)
                                        (characters string)
                                        &optional text-p (key-name characters)
@@ -359,7 +369,9 @@
                             (115 . lui.key:home) (119 . lui.key:end)
                             (51 . lui.key:backspace) (117 . lui.key:delete)
                             (53 . lui.key:escape))))))
-    (cond ((and command (= code 8))
+    (cond ((and command (= code 9))
+           (make-event :kind :key :key lui.key:paste))
+          ((and command (= code 8))
            (make-event :kind :key :key lui.key:copy))
           (command-key (make-event :kind :key :key command-key))
           ((and text-p command (= code 0))
@@ -844,7 +856,8 @@
                                              :polygons #'cocoa-polygons
                                              :text #'cocoa-text
                                              :clip #'cocoa-clip)
-                     context (%make-render-context renderer :copy #'copy-text)
+                     context (%make-render-context renderer :copy #'copy-text
+                                                   :paste #'paste-text)
                      (cocoa-app-renderer *app*) renderer
                      (cocoa-app-context *app*) context)
                (message objc-bool application "setActivationPolicy:"

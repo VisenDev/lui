@@ -8,7 +8,7 @@
            #:widget-frost #:widget-terminal-border
            #:widget-terminal-text #:declare-panel #:declare-widget
            #:value-widget
-           #:scrollbar-thumb #:make-widget
+           #:scrollbar-thumb #:make-widget #:copy-widget
            #:widget-display-value #:widget-password-p
            #:widget-value #:widget-minimum #:widget-maximum #:widget-step
            #:widget-font-size #:widget-font-family #:widget-font-weight

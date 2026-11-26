@@ -28,11 +28,13 @@
            #:make-event #:begin-frame #:end-frame #:context-hover #:hovered-p
            #:context-previous-root #:context-activated
            #:context-focus-visible-p #:frame-time #:request-frame
-           #:context-next-frame #:parent-scroll-position
+           #:context-next-frame #:context-time #:parent-scroll-position
            #:scroll-position #:scroll-to
            #:pending-input-context #:context-overlay #:context-overlay-state
            #:context-tabs-handled-p #:context-text-mode-p
-           #:context-copy #:context-input-handler #:context-selection))
+           #:context-copy #:context-paste #:context-posted-events
+           #:context-menu-p #:context-text-menu #:*context-menu-p*
+           #:context-input-handler #:context-selection))
 
 (in-package #:%lui.frame)
 
@@ -68,6 +70,7 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
 
 (defvar *min-fps* 1)
 (defvar *max-fps* 240)
+(defvar *context-menu-p* t)
 
 (defstruct memo-entry (key nil :type list) (value nil :type t))
 
@@ -83,7 +86,9 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
 
 (defstruct context
   "Per-window frame state: completed tree, focus, events, editing, and scrolling.
-The backend supplies measurement, clipboard, and optional input callbacks."
+The backend supplies measurement, clipboard, and optional input callbacks.
+PASTE receives a one-argument text receiver and may complete asynchronously.
+INPUT-HANDLER returns unconsumed events; POSTED-EVENTS run next frame."
   (root nil :type (or null element))
   (text-mode-p nil :type boolean)
   popups
@@ -105,6 +110,10 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (viewport-height 0 :type real)
   page-height-p (page-top 0 :type real) requested-page-top
   (copy nil :type (or null function))
+  (paste nil :type (or null function))
+  (posted-events nil :type list)
+  (menu-p *context-menu-p* :type boolean)
+  (text-menu nil :type t)
   (input-handler nil :type (or null function))
   selection
   focus-input
@@ -781,12 +790,17 @@ clock, redraw deadline, declarations, and per-frame activation state."
   (setf (context-time context)
         (/ (get-internal-real-time) internal-time-units-per-second)
         (context-next-frame context) nil)
+  (when (context-posted-events context)
+    (setf events (concatenate '(vector event)
+                              (nreverse (context-posted-events context)) events)
+          (context-posted-events context) nil))
   (when (context-input-handler context)
     (if (and (= width (context-width context))
              (= height (context-viewport-height context)))
-        (funcall (context-input-handler context) context events)
+        (setf events (funcall (context-input-handler context) context events))
         ;; else
-        (setf (context-selection context) nil)))
+        (setf (context-selection context) nil
+              (context-text-menu context) nil)))
 
   ;; Discard transient input state before routing this batch of events.
   (setf (context-activation-order context) nil)

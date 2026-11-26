@@ -18,8 +18,8 @@
            #:keypad-subtract #:keypad-add #:keypad-enter #:keypad-equal
            #:shift-left #:shift-right #:shift-home #:shift-end #:word-left
            #:word-right #:shift-word-left #:shift-word-right #:select-all
-           #:copy #:kill-end #:kill-start #:kill-word #:kill-word-forward
-           #:yank #:transpose #:backward))
+           #:copy #:paste #:kill-end #:kill-start #:kill-word
+           #:kill-word-forward #:yank #:transpose #:backward))
 (in-package #:lui.key)
 
 ;; Keyboard names follow CLGFW; each constant evaluates to its own symbol.
@@ -277,6 +277,9 @@
 (cl:defconstant backward 'lui.key:backward
   "Reverse keyboard focus traversal.")
 
+(cl:defconstant paste 'lui.key:paste
+  "Paste text from the system clipboard.")
+
 (cl:deftype key ()
   "A keyboard key or semantic editor command, independent of the backend."
   '(cl:member
@@ -306,8 +309,8 @@
     lui.key:keypad-equal lui.key:shift-left lui.key:shift-right
     lui.key:shift-home lui.key:shift-end lui.key:word-left lui.key:word-right
     lui.key:shift-word-left lui.key:shift-word-right lui.key:select-all
-    lui.key:copy lui.key:kill-end lui.key:kill-start lui.key:kill-word
-    lui.key:kill-word-forward lui.key:yank lui.key:transpose lui.key:backward))
+    lui.key:copy lui.key:paste lui.key:kill-end lui.key:kill-start
+    lui.key:kill-word lui.key:kill-word-forward lui.key:yank lui.key:transpose lui.key:backward))
 
 ;; US-layout character tables; text input itself remains Unicode.
 (cl:declaim (cl:type cl:simple-string *characters* *shifted-characters*)
