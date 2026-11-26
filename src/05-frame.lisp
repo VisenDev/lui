@@ -88,7 +88,8 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
   "Per-window frame state: completed tree, focus, events, editing, and scrolling.
 The backend supplies measurement, clipboard, and optional input callbacks.
 PASTE receives a one-argument text receiver and may complete asynchronously.
-INPUT-HANDLER returns unconsumed events; POSTED-EVENTS run next frame."
+INPUT-HANDLER returns an unconsumed event or NIL. POSTED-EVENTS run after
+the current input event, or next frame when posted outside input routing."
   (root nil :type (or null element))
   (text-mode-p nil :type boolean)
   popups
@@ -779,21 +780,29 @@ ID types are unrestricted and may differ between vector elements."
 
 (fn (prepare-frame-input sequence)
     ((context context) (width real) (height real) (events sequence))
-  "Merge posted input and let the backend filter against valid geometry."
+  "Merge deferred input and invalidate pointer state when geometry changes."
   (when (context-posted-events context)
     (setf events (concatenate '(vector event)
                               (nreverse (context-posted-events context)) events)
           (context-posted-events context) nil))
-  (when (context-input-handler context)
-    (cond
-      ((and (= width (context-width context))
-            (= height (context-viewport-height context)))
-       (setf events (funcall (context-input-handler context) context events)))
-      (t
-       (setf (context-selection context) nil)
-       (when (context-popup-draw context)
-         (funcall (context-popup-draw context) nil)))))
+  (when (or (/= width (context-width context))
+            (/= height (context-viewport-height context)))
+    (setf (context-selection context) nil)
+    (when (context-popup-draw context)
+      (funcall (context-popup-draw context) nil)))
   events)
+
+(fn (route-frame-input (values))
+    ((context context) (event event) (resized boolean))
+  "Route one input and any synchronous clipboard delivery before the next."
+  (let ((routed (if (and (not resized) (context-input-handler context))
+                    (funcall (context-input-handler context) context event)
+                    ;; else
+                    event)))
+    (when routed (route-frame-event context routed resized)))
+  (dolist (posted (nreverse (shiftf (context-posted-events context) nil)))
+    (route-frame-event context posted resized))
+  (values))
 
 (fn (begin-frame (eql t)) ((context context) (width real) (height real)
                            (events sequence))
@@ -837,7 +846,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
     (unless resized (advance-scroll context (context-time context)))
     (loop :for event-index :below (length events)
           :for event := (elt events event-index) :do
-          (route-frame-event context event resized))
+          (route-frame-input context event resized))
     (unless resized (advance-scroll context (context-time context))))
   ;; Native selection still needs the focused input after a composite editor
   ;; consumes its events. Share the immutable event list with the observer.

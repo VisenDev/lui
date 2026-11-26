@@ -759,8 +759,8 @@ Fall back to its background role, or the current toolkit for an empty frame."
   "Paint the visible elements of a solved frame and its text selection."
   (unless (context-input-handler context)
     (setf (context-input-handler context)
-          (lambda (context events)
-            (selection-input renderer context events))))
+          (lambda (context event)
+            (selection-input renderer context event))))
   (let ((*context* context)
         (selection (finish-selection context))
         (surface (or viewport
@@ -1235,20 +1235,6 @@ Fall back to its background role, or the current toolkit for an empty frame."
                     (selection-endpoint context nodes node end)))))))
   (values))
 
-(fn (selection-input-needed-p boolean)
-    ((context context) (events sequence))
-  "Test whether input can start, extend, or copy a native text selection."
-  (or (not (null (context-popup-draw context)))
-      (and (context-selection context)
-           (text-selection-dragging-p
-            (context-selection context)))
-      (some (lambda (event)
-              (or (eq (event-kind event) :press)
-                  (and (eq (event-kind event) :key)
-                       (not (null (member (event-key event)
-                                          '(lui.key:copy lui.key:paste)))))))
-            events)))
-
 (fn (selection-event text-selection)
     ((renderer renderer) (context context) (nodes (vector element))
      (selection text-selection) (event event))
@@ -1282,23 +1268,22 @@ Fall back to its background role, or the current toolkit for an empty frame."
          (setf (text-selection-dragging-p selection) nil)))))
   selection)
 
-(fn (selection-input sequence)
-    ((renderer renderer) (context context) (events sequence))
-  "Route text and menu input in order, returning unconsumed control events."
-  (unless (and (plusp (length events))
-               (selection-input-needed-p context events))
-    (return-from selection-input events))
-  (let ((nodes (%selectable-nodes context))
-        (routed nil))
-    (loop :for event :across (coerce events '(vector event)) :do
-      (unless (text-menu-input renderer context event)
-        (unless (context-popup-draw context)
-          (setf (context-selection context)
-                (selection-event renderer context nodes
-                                 (or (context-selection context)
-                                     (%make-text-selection)) event)))
-        (push event routed)))
-    (nreverse routed)))
+(fn (selection-input (or null event))
+    ((renderer renderer) (context context) (event event))
+  "Apply native selection input before routing this event to its control."
+  (when (text-menu-input renderer context event)
+    (return-from selection-input nil))
+  (when (and (null (context-popup-draw context))
+             (or (and (context-selection context)
+                      (text-selection-dragging-p (context-selection context)))
+                 (eq (event-kind event) :press)
+                 (and (eq (event-kind event) :key)
+                      (eq (event-key event) lui.key:copy))))
+    (setf (context-selection context)
+          (selection-event renderer context (%selectable-nodes context)
+                           (or (context-selection context)
+                               (%make-text-selection)) event)))
+  event)
 
 (fn (paint-node-selection (values))
     ((renderer renderer) (node element) (text string) (start integer)
