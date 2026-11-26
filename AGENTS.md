@@ -706,15 +706,27 @@ errors retain their own condition types; do not wrap them indiscriminately.
 
 ### Pocket Studio DAW example
 
-`make daw-demo` builds a separate native demo (`lui/daw-demo`) with a four-bar
-piano roll, track mixer, project persistence and WAV/MP3 export. The model and
-small offline synth live in `examples/daw-model.lisp`; the public-API-only UI
-and transport lifecycle live in `examples/daw-demo.lisp`. Native MIDI uses
-Common Lisp CFFI bindings in `examples/daw-midi.lisp` and the RtMidi shared
-library; LUI_DAW_MIDI_LIBRARY can select a full library path. There is no
-Python runtime in this demo or its tests. FFmpeg/ffplay are optional runtime
-tools. CFFI belongs to the demo system; no core dependencies are added.
-Playback is a rendered snapshot; no live monitoring or synchronized
-overdubbing is promised. CLM is not integrated. `make test-daw` exercises model,
-UI activation, a test-only C ABI double, WAV timing/pitch and MP3 decoding.
-Do not treat that simulated MIDI test as evidence of hardware MIDI support.
+`make daw-demo` builds the separate native DAW (`lui/daw-demo`). Its files live
+under `examples/daw/`: `daw-model.lisp` owns notes, persistence and synthesis;
+`daw-state.lisp` owns selections, clipboard and bounded undo history;
+`daw-roll.lisp` paints and handles captured pointer/keyboard gestures through
+public LUI APIs; `daw-demo.lisp` owns the application and transport. Include this
+subdirectory in native executable prerequisites when changing build manifests.
+The graphical editor supports continuous blocks, right-click deletion,
+move/resize, marquee selection and musical snapping. Terminal editing uses a
+compact button grid. New/Open and file replacement have explicit confirmations.
+
+Native MIDI uses Common Lisp CFFI bindings in `daw-midi.lisp` and the RtMidi
+shared library; `LUI_DAW_MIDI_LIBRARY` can select a full library path. There is
+no Python runtime in this demo or its tests. The demo loads `lui/native` for
+public drawing APIs; no core dependencies are added. FFmpeg/ffplay are runtime
+tools for playback and MP3. Playback and record backing are rendered snapshots;
+cycle playback repeats a rendered range. Export excludes the metronome. The
+playhead/record backing timing is approximate, with no live monitoring or
+sample-synchronized overdubbing. CLM is not integrated.
+
+`make test-daw` covers native MIDI ABI doubles, real LUI pointer routing, capture
+cancellation, undo/redo, clipboard, project handling, WAV timing/pitch, MP3
+encoding/decoding and ffplay looping through SDL's silent output. Tests use
+Lisp and a test-only C library. Do not treat simulated input or silent playback
+as evidence of hardware MIDI support or audible device output.

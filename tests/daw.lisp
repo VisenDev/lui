@@ -89,7 +89,7 @@
       (let ((note (%lui.example.daw-demo:session-selected session)))
         (assert note)
         (assert (= 61 (note-pitch note)))
-        (assert (= 1/4 (note-duration note))))
+        (assert (= 1/2 (note-duration note))))
       (activate :delete-note)
       (assert (null (%lui.example.daw-demo:session-selected session)))
       (assert (null (note-at (aref (song-tracks

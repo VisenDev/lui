@@ -27,14 +27,14 @@ export ASDF_OUTPUT_TRANSLATIONS
 
 NATIVE_PLATFORMS := terminal x11 wayland win32 cocoa
 TEST_PLATFORMS := $(NATIVE_PLATFORMS) web web-ecl core native gl
-SOURCES := $(wildcard src/*.lisp examples/*.lisp) lui.asd \
+SOURCES := $(wildcard src/*.lisp examples/*.lisp examples/daw/*.lisp) lui.asd \
 	scripts/setup.lisp scripts/build.lisp
 SUFFIX := $(if $(filter win32,$(PLATFORM)),.exe,)
 DEMO := build/bin/demo-$(PLATFORM)$(SUFFIX)
 RETAINED_DEMO := build/bin/retained-demo-$(PLATFORM)$(SUFFIX)
 MANUAL_DEMO := build/bin/manual-demo-$(PLATFORM)$(SUFFIX)
 
-DOC_SOURCES := $(wildcard src/*.lisp examples/*.lisp) lui.asd
+DOC_SOURCES := $(wildcard src/*.lisp examples/*.lisp examples/daw/*.lisp) lui.asd
 DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
@@ -114,7 +114,9 @@ test-daw: build/daw-midi-test.so
 		SDL_AUDIODRIVER=dummy SDL_VIDEODRIVER=dummy $(SBCL) $(SBCL_FLAGS) --load scripts/setup.lisp \
 		--eval '(asdf:load-system "lui/daw-demo")' \
 		--load tests/support.lisp --load tests/daw.lisp \
-		--eval '(%lui.tests.daw:run-tests)'
+		--eval '(%lui.tests.daw:run-tests)' \
+		--load tests/daw-editor.lisp \
+		--eval '(%lui.tests.daw-editor:run-tests)'
 
 build/daw-midi-test.so: tests/daw-midi.c
 	@mkdir -p build
@@ -124,7 +126,7 @@ build/daw-midi-test.so: tests/daw-midi.c
 test-daw: test-daw-midi-abi
 test-daw-midi-abi: build/daw-midi-new-test.so
 	LUI_DAW_MIDI_LIBRARY="$(CURDIR)/build/daw-midi-new-test.so" \
-		$(SBCL) $(SBCL_FLAGS) --load scripts/setup.lisp \
+		SDL_AUDIODRIVER=dummy SDL_VIDEODRIVER=dummy $(SBCL) $(SBCL_FLAGS) --load scripts/setup.lisp \
 		--eval '(asdf:load-system "lui/daw-demo")' \
 		--load tests/support.lisp --load tests/daw.lisp \
 		--eval '(%lui.tests.daw:test-native-midi)'

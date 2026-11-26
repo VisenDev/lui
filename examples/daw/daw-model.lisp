@@ -6,7 +6,8 @@
            #:song #:make-song #:song-tracks #:song-tempo #:song-beats
            #:demo-song #:add-note #:remove-note #:note-at #:audible-p
            #:recorder #:make-recorder #:midi-event #:finish-recording
-           #:render-wav #:save-song #:load-song))
+           #:render-wav #:save-song #:load-song #:clone-song #:clone-track
+           #:clone-note))
 (in-package #:%lui.example.daw-model)
 
 (defstruct note
@@ -30,6 +31,26 @@
   (tempo 120 :type (integer 40 240))
   (beats 16 :type (integer 4 128)))
 
+(defun clone-note (note)
+  "Copy one editable note without sharing mutable state."
+  (copy-note note))
+
+(defun clone-track (track)
+  "Copy a track and its notes for duplication and undo snapshots."
+  (let ((copy (copy-track track))
+        (notes (make-array 0 :element-type 'note :adjustable t :fill-pointer 0)))
+    (loop :for note :across (track-notes track)
+          :do (vector-push-extend (clone-note note) notes))
+    (setf (track-notes copy) notes)
+    copy))
+
+(defun clone-song (song)
+  "Return an independent snapshot, preserving adjustable track storage."
+  (let ((copy (make-song :tempo (song-tempo song) :beats (song-beats song))))
+    (loop :for track :across (song-tracks song)
+          :do (vector-push-extend (clone-track track) (song-tracks copy)))
+    copy))
+
 (defun add-note (track pitch start duration &optional (velocity 100))
   "Insert a note in beat coordinates and return its stable identity."
   (assert (and (<= 0 start) (< 0 duration)))
@@ -50,7 +71,7 @@
              (and (= pitch (note-pitch note))
                   (<= (note-start note) beat)
                   (< beat (+ (note-start note) (note-duration note)))))
-           (track-notes track)))
+           (track-notes track) :from-end t))
 
 (defun audible-p (song track)
   "Mute takes precedence over solo; any solo silences other tracks."
@@ -74,6 +95,7 @@
   (track (make-track) :type track)
   (tempo 120 :type real)
   (beats 16 :type real)
+  (offset 0 :type real)
   (pending (make-hash-table :test #'equal) :type hash-table)
   (sustain (make-array 16 :element-type 'bit :initial-element 0)
            :type (simple-bit-vector 16)))
@@ -85,7 +107,8 @@
     (when entry
       (let* ((start (first entry))
              (end (min (recorder-beats recorder)
-                       (* seconds (/ (recorder-tempo recorder) 60))))
+                       (+ (recorder-offset recorder)
+                          (* seconds (/ (recorder-tempo recorder) 60)))))
              (onset (* 1/4 (round (* start 4))))
              (duration (max 1/4 (* 1/4 (round (* (- end onset) 4))))))
         (when (< onset (recorder-beats recorder))
@@ -120,7 +143,9 @@ SECONDS is monotonic time since record start, independent of UI frame rate."
       ((and (= kind #x90) (plusp data2))
        (close-key recorder key seconds)
        (setf (gethash key (recorder-pending recorder))
-             (list (* seconds (/ (recorder-tempo recorder) 60)) data2 nil)))
+             (list (+ (recorder-offset recorder)
+                      (* seconds (/ (recorder-tempo recorder) 60)))
+                   data2 nil)))
       ((or (= kind #x80) (and (= kind #x90) (zerop data2)))
        (when entry
          (if (= 1 (aref (recorder-sustain recorder) channel))
@@ -161,14 +186,16 @@ SECONDS is monotonic time since record start, independent of UI frame rate."
     (:organ (/ (+ (sin phase) (* 0.4 (sin (* 2 phase)))
                    (* 0.2 (sin (* 3 phase)))) 1.6))))
 
-(defun mix-note (samples note track tempo rate)
+(defun mix-note (samples note track tempo rate origin)
   "Mix one voice with attack/release ramps to avoid note-edge clicks."
   (declare (values))
-  (let* ((start (round (* rate (note-start note) (/ 60 tempo))))
+  (let* ((start (round (* rate (- (note-start note) origin) (/ 60 tempo))))
          (count (max 1 (round (* rate (note-duration note) (/ 60 tempo)))))
          (step (/ (* 2 pi 440 (expt 2 (/ (- (note-pitch note) 69) 12))) rate))
          (gain (* 0.22 (track-volume track) (/ (note-velocity note) 127))))
-    (dotimes (index (max 0 (min count (- (length samples) start))))
+    (loop :for index :from (max 0 (- start))
+          :below (min count (- (length samples) start))
+          :do
       (let ((envelope (min 1 (/ index (* rate 0.008))
                             (/ (- count index 1) (* rate 0.035)))))
         (incf (aref samples (+ start index))
@@ -176,18 +203,37 @@ SECONDS is monotonic time since record start, independent of UI frame rate."
                       'single-float)))))
   (values))
 
-(defun render-wav (song path &key (rate 44100))
+(defun mix-metronome (samples tempo rate start end)
+  "Add short downbeat/beat clicks to a transport render, never an export."
+  (declare (values))
+  (loop :for beat :from (ceiling start) :below end
+        :for offset := (round (* (- beat start) rate (/ 60 tempo)))
+        :for frequency := (if (zerop (mod beat 4)) 1760 1100)
+        :do (dotimes (index (min (round (* rate 0.025))
+                                 (- (length samples) offset)))
+              (incf (aref samples (+ offset index))
+                    (coerce (* 0.28 (exp (/ (- index) (* rate 0.004)))
+                               (sin (* 2 pi frequency (/ index rate))))
+                            'single-float))))
+  (values))
+
+(defun render-wav (song path &key (rate 44100) (start 0)
+                                 (end (song-beats song)) metronome)
   "Render the audible mix as mono PCM16 WAV, normalizing only to avoid clipping.
 This small offline synth is deliberately replaceable by a CLM renderer with
 this same SONG/PATH contract. Playback is a rendered snapshot, not live DSP."
-  (let* ((count (ceiling (* rate (song-beats song) (/ 60 (song-tempo song)))))
+  (assert (<= 0 start end (song-beats song)))
+  (let* ((count (ceiling (* rate (- end start) (/ 60 (song-tempo song)))))
          (samples (make-array count :element-type 'single-float
                                    :initial-element 0.0))
          (peak 1.0))
     (loop :for track :across (song-tracks song)
           :when (audible-p song track)
             :do (loop :for note :across (track-notes track)
-                      :do (mix-note samples note track (song-tempo song) rate)))
+                      :do (mix-note samples note track (song-tempo song)
+                                    rate start)))
+    (when metronome
+      (mix-metronome samples (song-tempo song) rate start end))
     (loop :for sample :across samples :do (setf peak (max peak (abs sample))))
     (ensure-directories-exist path)
     (with-open-file (stream path :direction :output :if-exists :supersede
@@ -256,6 +302,7 @@ this same SONG/PATH contract. Playback is a rendered snapshot, not live DSP."
                      (eq (first data) :lui-daw) (eql (second data) 1)
                      (typep (third data) '(integer 40 240))
                      (typep (fourth data) '(integer 4 128))
+                     (zerop (mod (fourth data) 4))
                      (listp (fifth data)) (<= 1 (length (fifth data)) 32)))
         (let ((song (make-song :tempo (third data) :beats (fourth data))))
           (dolist (track (fifth data))
