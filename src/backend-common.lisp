@@ -762,6 +762,7 @@ Fall back to its background role, or the current toolkit for an empty frame."
           (lambda (context events)
             (selection-input renderer context events))))
   (let ((*context* context)
+        (selection (finish-selection context))
         (surface (or viewport
                       (make-box :width (context-width context)
                                 :height (context-height context)))))
@@ -776,16 +777,18 @@ Fall back to its background role, or the current toolkit for an empty frame."
                         (and (< (box-y clip) (box-bottom viewport))
                              (< (box-y viewport) (box-bottom clip)))))
                   (not (and external-labels (gethash node external-labels))))
-         (paint-widget renderer node))))
-    (finish-selection renderer context)
+         (paint-widget renderer node)
+         (let ((range (when selection (gethash node selection))))
+           (when range
+             (paint-node-selection renderer node (selection-text node)
+                                   (car range) (cdr range)))))))
     ;; Draw container focus last so child backgrounds cannot cover it.
     (let ((node (gethash (context-focus context) (context-ids context))))
       (when (and node (element-clickable-p node)
                  (context-focus-visible-p context))
         (funcall (renderer-clip renderer) (element-clip node))
         (outline renderer (inset-box (element-box node) 1) 0
-                 (element-focus-color node) 1 2)))
-    (paint-text-menu renderer context)))
+                 (element-focus-color node) 1 2)))))
 
 (defstruct (text-selection (:constructor %make-text-selection))
   (anchor nil :type (or null cons))
@@ -806,15 +809,6 @@ Fall back to its background role, or the current toolkit for an empty frame."
   (start 0 :type integer)
   (end 0 :type integer))
 
-(defstruct text-menu
-  "Transient native clipboard menu, with its original text target and modal."
-  (box (make-box) :type box)
-  (widget (make-widget) :type widget)
-  (field nil :type object-id)
-  (modal nil :type object-id)
-  (pressed nil :type (or null integer))
-  (row 0 :type integer))
-
 (fn (request-paste (values)) ((context context) (id object-id))
   "Request clipboard text, retaining the destination across an async transfer."
   (when (and id (context-paste context))
@@ -834,149 +828,83 @@ Fall back to its background role, or the current toolkit for an empty frame."
   (values))
 
 (fn (text-menu-enabled-p boolean)
-    ((context context) (menu text-menu) (row integer))
+    ((context context) (field object-id) (row integer))
   "Enable Copy for a nonempty selection and Paste for an editable target."
   (let ((selection (context-selection context))
-        (state (gethash (text-menu-field menu) (context-state context))))
+        (state (gethash field (context-state context))))
     (not (null
           (if (zerop row)
               (and (context-copy context)
                    (or (and selection (text-selection-anchor selection)
                             (not (equal (text-selection-anchor selection)
                                         (text-selection-focus selection))))
-                       (and (text-menu-field menu) (typep state 'edit-state)
+                       (and field (typep state 'edit-state)
                             (/= (edit-state-anchor state)
                                 (edit-state-cursor state)))))
               ;; else
-              (and (text-menu-field menu) (context-paste context)))))))
+              (and field (context-paste context)))))))
+
+(fn (draw-text-menu boolean)
+    ((context context) (field object-id) (modal object-id))
+  "Declare ordinary clipboard menu items while their source remains valid."
+  (when (and (context-menu-p context)
+             (equal modal (when (context-modal context)
+                            (element-id (context-modal context))))
+             (or (null field) (gethash field (context-ids context))))
+    (when (lui:menu-item "Copy"
+                        :disabled-p (not (text-menu-enabled-p context field 0)))
+      (%copy-selection context (%selectable-nodes context)
+                       (or (context-selection context) (%make-text-selection))))
+    (when (lui:menu-item "Paste"
+                        :disabled-p (not (text-menu-enabled-p context field 1)))
+      (request-paste context field))
+    t))
 
 (fn (open-text-menu (values))
     ((renderer renderer) (context context) (event event))
-  "Open the default native menu without replacing an existing text selection."
-  (let* ((nodes (%selectable-nodes context))
-         (x (event-x event))
+  "Open a shared pointer menu without replacing an existing text selection."
+  (let* ((x (event-x event))
          (y (event-y event))
+         (nodes (%selectable-nodes context))
          (target (selection-start-target context nodes x y)))
-    (when (find target nodes)
+    (when target
       (let* ((widget (element-content target))
              (field (when (eq (widget-kind widget) :text-field)
                       (element-id target)))
-             (height (* 2 (+ 12 (line-height (renderer-font renderer)))))
-             (width (max 120 (+ 24 (text-width (renderer-font renderer)
-                                             "Paste")))))
+             (modal (when (context-modal context)
+                      (element-id (context-modal context)))))
         (when field
           (unless (equal field (context-focus context))
             (start-text-selection renderer context nodes x y 1))
           (setf (context-focus context) field)
-          (let ((selection (context-selection context)))
-            (when selection
-              (setf (text-selection-anchor selection) nil
-                    (text-selection-focus selection) nil))))
+          (when (context-selection context)
+            (setf (text-selection-anchor (context-selection context)) nil
+                  (text-selection-focus (context-selection context)) nil)))
         (when (context-selection context)
           (setf (text-selection-dragging-p (context-selection context)) nil))
-        (setf (context-active context) nil
-              (context-text-menu context)
-              (make-text-menu
-               :widget widget :field field
-               :modal (when (context-modal context)
-                        (element-id (context-modal context)))
-               :box (make-box :x (max 0 (min x (- (context-width context)
-                                                 width)))
-                              :y (max 0 (min y (- (context-height context)
-                                                 height)))
-                              :width width :height height))))))
+        (setf (context-active context) nil)
+        (lui:with-toolkit ((widget-style widget))
+          (lui:with-palette ((apply #'lui:make-palette (widget-palette widget)))
+            (lui:%open-pointer-menu
+             x y (lambda () (draw-text-menu context field modal))))))))
   (values))
-
-(fn (text-menu-action (values))
-    ((context context) (menu text-menu) (row integer))
-  "Perform one enabled clipboard action and dismiss its menu."
-  (when (text-menu-enabled-p context menu row)
-    (if (zerop row)
-        (%copy-selection context (%selectable-nodes context)
-                         (or (context-selection context)
-                             (%make-text-selection)))
-        ;; else
-        (request-paste context (text-menu-field menu))))
-  (setf (context-text-menu context) nil)
-  (values))
-
-(fn (route-text-menu boolean)
-    ((context context) (menu text-menu) (event event))
-  "Consume menu input, with release activation and keyboard dismissal."
-  (let* ((kind (event-kind event))
-         (box (text-menu-box menu))
-         (inside (%lui.frame:contains-p box (event-x event) (event-y event)))
-         (row (if (< (event-y event) (+ (box-y box) (/ (box-height box) 2)))
-                  0 1)))
-    (case kind
-      (:move (when inside (setf (text-menu-row menu) row)))
-      (:press
-       (if inside
-           (setf (text-menu-pressed menu) row (text-menu-row menu) row)
-           ;; else
-           (setf (context-text-menu context) nil)))
-      (:release
-       (when (and inside (eql row (text-menu-pressed menu))
-                  (eq (event-button event) :primary))
-         (text-menu-action context menu row)))
-      ((:key :activate)
-       (case (event-key event)
-         ((lui.key:up lui.key:down)
-          (setf (text-menu-row menu) (- 1 (text-menu-row menu))))
-         (lui.key:enter (text-menu-action context menu (text-menu-row menu)))
-         (otherwise (setf (context-text-menu context) nil))))
-      ((:cancel :scroll :tab) (setf (context-text-menu context) nil))
-      (otherwise nil))
-    t))
 
 (fn (text-menu-input boolean)
     ((renderer renderer) (context context) (event event))
-  "Filter native clipboard menu gestures before ordinary control routing."
+  "Intercept native clipboard shortcuts and open the shared pointer menu."
   #+(or jscl lui-ecl-web) (declare (ignore renderer context event))
   #+(or jscl lui-ecl-web) nil
   #-(or jscl lui-ecl-web)
   (cond
-    ((context-text-menu context)
-     (route-text-menu context (context-text-menu context) event))
+    ((context-popup-draw context) nil)
     ((and (context-menu-p context)
           (eq (event-kind event) :press)
           (eq (event-button event) :secondary))
      (open-text-menu renderer context event)
-     (not (null (context-text-menu context))))
+     (not (null (context-popup-draw context))))
     ((and (eq (event-kind event) :key)
           (eq (event-key event) lui.key:paste))
      (request-paste context (context-focus context)) t)))
-
-(fn (paint-text-menu (values)) ((renderer renderer) (context context))
-  "Paint the native clipboard menu with the target's toolkit and palette."
-  (let ((menu (context-text-menu context)))
-    (when (and menu
-               (or (not (context-menu-p context))
-                   (not (equal (text-menu-modal menu)
-                               (when (context-modal context)
-                                 (element-id (context-modal context)))))
-                   (and (text-menu-field menu)
-                        (not (gethash (text-menu-field menu)
-                                      (context-ids context))))))
-      (setf (context-text-menu context) nil menu nil))
-    (when menu
-      (dotimes (row 2)
-        (let* ((box (text-menu-box menu))
-               (height (/ (box-height box) 2))
-               (widget (copy-widget (text-menu-widget menu)))
-               (area (make-box :x (box-x box) :y (+ (box-y box) (* row height))
-                               :width (box-width box) :height height)))
-          (setf (widget-kind widget) :button
-                (widget-painter widget) nil
-                (widget-text widget) (if (zerop row) "Copy" "Paste")
-                (widget-disabled-p widget)
-                (not (text-menu-enabled-p context menu row)))
-          (paint-widget renderer
-                        (make-element :content widget :box area :clip area))
-          (when (= row (text-menu-row menu))
-            (outline renderer (inset-box area 1) 0
-                     (widget-color widget :border) 1 1))))))
-  (values))
 
 (fn (%selectable-nodes (values (vector element) (or null hash-table)))
     ((context context) &optional ((keys-p boolean) nil))
@@ -1107,7 +1035,8 @@ Fall back to its background role, or the current toolkit for an empty frame."
                 (min length (if (= index (car b)) (cdr b) length)))))))
 
 (fn (%copy-selection t) ((context context) (nodes (vector element))
-                        (selection text-selection))
+                        (selection text-selection) &optional
+                        ((id object-id) (context-focus context)))
   "Copy selected text to the registered clipboard callback."
   (let ((text
          (if (text-selection-anchor selection)
@@ -1123,8 +1052,7 @@ Fall back to its background role, or the current toolkit for an empty frame."
                                (setf separator t))))))
 
              ;; else
-             (let* ((id (context-focus context))
-                    (node (find id nodes :key #'element-id :test #'equal))
+             (let ((node (find id nodes :key #'element-id :test #'equal))
                     (state (gethash id (context-state context))))
                (when (and node (typep state 'edit-state))
                  (let ((text (selection-text node)))
@@ -1346,7 +1274,7 @@ Fall back to its background role, or the current toolkit for an empty frame."
 (fn (selection-input-needed-p boolean)
     ((context context) (events sequence))
   "Test whether input can start, extend, or copy a native text selection."
-  (or (not (null (context-text-menu context)))
+  (or (not (null (context-popup-draw context)))
       (and (context-selection context)
            (text-selection-dragging-p
             (context-selection context)))
@@ -1400,10 +1328,11 @@ Fall back to its background role, or the current toolkit for an empty frame."
         (routed nil))
     (loop :for event :across (coerce events '(vector event)) :do
       (unless (text-menu-input renderer context event)
-        (setf (context-selection context)
-              (selection-event renderer context nodes
-                               (or (context-selection context)
-                                   (%make-text-selection)) event))
+        (unless (context-popup-draw context)
+          (setf (context-selection context)
+                (selection-event renderer context nodes
+                                 (or (context-selection context)
+                                     (%make-text-selection)) event)))
         (push event routed)))
     (nreverse routed)))
 
@@ -1442,14 +1371,14 @@ Fall back to its background role, or the current toolkit for an empty frame."
             (incf offset (1+ (length line))))))
   (values))
 
-(fn (paint-selection (values)) ((renderer renderer) (context context))
-  "Paint selected text ranges using the same wrapping and geometry as text rendering."
+(fn (selection-ranges (or null hash-table)) ((context context))
+  "Validate selected endpoints and index ranges for normal widget paint order."
   (let ((selection (context-selection context)))
     (when (and selection (text-selection-anchor selection))
       (multiple-value-bind (nodes keys) (%selectable-nodes context t)
         (unless (= (length nodes) (text-selection-node-count selection))
           (setf (context-selection context) nil)
-          (return-from paint-selection (values)))
+          (return-from selection-ranges nil))
         (dolist (endpoint (list (list (text-selection-anchor selection)
                                       (text-selection-anchor-key selection)
                                       (text-selection-anchor-text selection))
@@ -1460,17 +1389,17 @@ Fall back to its background role, or the current toolkit for an empty frame."
             (unless (and node (equal (gethash node keys) (second endpoint))
                          (equal (selection-text node) (third endpoint)))
               (setf (context-selection context) nil)
-              (return-from paint-selection (values)))))
-        (loop :for node :across nodes :for i :from 0
-              :for text := (selection-text node)
-              :do (multiple-value-bind (start end)
-                      (selection-range selection i (length text))
-                    (when (and start (< start end))
-                      (paint-node-selection renderer node text start
-                                            end)))))))
-  (values))
+              (return-from selection-ranges nil))))
+        (let ((ranges (make-hash-table :test 'eq)))
+          (loop :for node :across nodes :for i :from 0
+                :do (multiple-value-bind (start end)
+                        (selection-range selection i
+                                         (length (selection-text node)))
+                      (when (and start (< start end))
+                        (setf (gethash node ranges) (cons start end)))))
+          ranges)))))
 
-(fn (finish-selection t) ((renderer renderer) (context context))
+(fn (finish-selection (or null hash-table)) ((context context))
   "Reconcile selection against the completed frame and synchronize editor selection."
   (let* ((selection (context-selection context))
          (input (context-focus-input context))
@@ -1493,11 +1422,12 @@ Fall back to its background role, or the current toolkit for an empty frame."
       (setf (text-selection-anchor selection) nil
             (text-selection-focus selection) nil
             (text-selection-dragging-p selection) nil))
-    (paint-selection renderer context)
-    (when (and selection (eq selection (context-selection context))
-               (shiftf (text-selection-pending-copy-p selection) nil))
-      (%copy-selection context (or nodes (%selectable-nodes context))
-                      selection))))
+    (prog1 (selection-ranges context)
+      (when (and selection (eq selection (context-selection context))
+                 (shiftf (text-selection-pending-copy-p selection) nil))
+        (%copy-selection context (or nodes (%selectable-nodes context))
+                         selection (or (car input)
+                                       (context-focus context)))))))
 
 (fn (%standard-geometry geometry) ((widget widget))
   "Return shared widget geometry for standard toolkit painting and measurement."

@@ -33,7 +33,7 @@
            #:pending-input-context #:context-overlay #:context-overlay-state
            #:context-tabs-handled-p #:context-text-mode-p
            #:context-copy #:context-paste #:context-posted-events
-           #:context-menu-p #:context-text-menu #:*context-menu-p*
+           #:context-menu-p #:context-popup-draw #:*context-menu-p*
            #:context-input-handler #:context-selection))
 
 (in-package #:%lui.frame)
@@ -113,7 +113,7 @@ INPUT-HANDLER returns unconsumed events; POSTED-EVENTS run next frame."
   (paste nil :type (or null function))
   (posted-events nil :type list)
   (menu-p *context-menu-p* :type boolean)
-  (text-menu nil :type t)
+  (popup-draw nil :type (or null function))
   (input-handler nil :type (or null function))
   selection
   focus-input
@@ -718,15 +718,15 @@ ID types are unrestricted and may differ between vector elements."
   (when (event-id event)
     (setf event (copy-event event)
       (event-id event) (widget-id (event-id event) context)))
-  (when (route-modal-event context event)
-    (return-from route-frame-event (values)))
   ;; Open popups may consume navigation before normal focus and activation.
-  (when (and (null (context-modal context))
-             (context-popup-input context))
+  (when (and (context-popup-input context)
+             (or (null (context-modal context)) (context-popup-draw context)))
     (let ((routed (funcall (context-popup-input context)
                            context event resized)))
       (unless routed (return-from route-frame-event (values)))
       (setf event routed)))
+  (when (route-modal-event context event)
+    (return-from route-frame-event (values)))
   (let ((target (or (and (member (event-kind event) '(:press :release))
                          (event-id event))
                     (unless resized
@@ -777,6 +777,24 @@ ID types are unrestricted and may differ between vector elements."
         (context-root context) (make-element :width (grow) :height (grow))
         (context-building-p context) t))
 
+(fn (prepare-frame-input sequence)
+    ((context context) (width real) (height real) (events sequence))
+  "Merge posted input and let the backend filter against valid geometry."
+  (when (context-posted-events context)
+    (setf events (concatenate '(vector event)
+                              (nreverse (context-posted-events context)) events)
+          (context-posted-events context) nil))
+  (when (context-input-handler context)
+    (cond
+      ((and (= width (context-width context))
+            (= height (context-viewport-height context)))
+       (setf events (funcall (context-input-handler context) context events)))
+      (t
+       (setf (context-selection context) nil)
+       (when (context-popup-draw context)
+         (funcall (context-popup-draw context) nil)))))
+  events)
+
 (fn (begin-frame (eql t)) ((context context) (width real) (height real)
                            (events sequence))
   "Begin rebuilding CONTEXT at WIDTH and HEIGHT after routing EVENTS.
@@ -790,17 +808,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
   (setf (context-time context)
         (/ (get-internal-real-time) internal-time-units-per-second)
         (context-next-frame context) nil)
-  (when (context-posted-events context)
-    (setf events (concatenate '(vector event)
-                              (nreverse (context-posted-events context)) events)
-          (context-posted-events context) nil))
-  (when (context-input-handler context)
-    (if (and (= width (context-width context))
-             (= height (context-viewport-height context)))
-        (setf events (funcall (context-input-handler context) context events))
-        ;; else
-        (setf (context-selection context) nil
-              (context-text-menu context) nil)))
+  (setf events (prepare-frame-input context width height events))
 
   ;; Discard transient input state before routing this batch of events.
   (setf (context-activation-order context) nil)
@@ -923,7 +931,14 @@ Subtract these from an absolute POSITION to opt into parent scrolling."
       (funcall (context-overlay context) (context-previous-root context))))
 
   (finish-modal context)
-
+  (when (context-popup-draw context)
+    (let ((*parent* (or (context-modal context) (context-root context)))
+          (popups (context-popups context)))
+      (setf (context-popups context) nil)
+      (funcall (context-popup-draw context) t)
+      (dolist (popup (nreverse (context-popups context)))
+        (append-child *parent* popup))
+      (setf (context-popups context) popups)))
   (values))
 
 (fn (end-frame element) ((context context))
@@ -1006,6 +1021,7 @@ An aborted drawing or layout invalidates geometry and clears frame state."
                 (context-building-p context) nil
                 (context-previous-root context) nil
                 (context-floating-path context) #()
+                (context-popup-draw context) nil
                 (context-modal context) nil
                 (context-modal-declared-p context) nil
                 (context-modal-focus context) nil

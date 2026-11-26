@@ -384,10 +384,20 @@ class X11Tests(unittest.TestCase):
    (setf *clipboard-text*
      (lui.motif:text-field :id :copy :value *clipboard-text*))
    (when (%lui.frame:previous-box :copy)
-     (let ((box (%lui.frame:previous-box :copy)))
+     (let ((box (%lui.frame:previous-box :copy))
+           (paste nil))
+       (when (%lui.frame:context-previous-root %lui.frame:*context*)
+         (%lui.layout:walk-elements
+          (%lui.frame:context-previous-root %lui.frame:*context*)
+          (lambda (node)
+            (let ((widget (%lui.layout:element-content node)))
+              (when (and (%lui.widgets:widget-p widget)
+                         (eq (%lui.widgets:widget-kind widget) :list-item)
+                         (string= (%lui.widgets:widget-text widget) "Paste"))
+                (setf paste (%lui.layout:element-clip node)))))))
        (with-open-file (stream STATE_PATH :direction :output
                                :if-exists :supersede)
-         (format stream "{~S:[~D,~D,~D,~D],~S:~S,~S:~A}"
+         (format stream "{~S:[~D,~D,~D,~D],~S:~S,~S:~A,~S:~A}"
                  "bounds" (round (%lui.layout:box-x box))
                  (round (%lui.layout:box-y box))
                  (round (%lui.layout:box-width box))
@@ -395,7 +405,14 @@ class X11Tests(unittest.TestCase):
                  "value" *clipboard-text*
                  "focused" (if (eq :copy
                                   (lui:widget-key (%lui.frame:context-focus %lui.frame:*context*)))
-                               "true" "false"))))))
+                               "true" "false")
+                 "paste" (if paste
+                             (format nil "[~D,~D,~D,~D]"
+                                     (round (%lui.layout:box-x paste))
+                                     (round (%lui.layout:box-y paste))
+                                     (round (%lui.layout:box-width paste))
+                                     (round (%lui.layout:box-height paste)))
+                             "null"))))))
  :title WINDOW_TITLE :width 400 :height 100)
 '''
         with self.application("clipboard", source) as (window, path):
@@ -434,10 +451,9 @@ class X11Tests(unittest.TestCase):
                 self.x.key(window, "a", state=5)
                 self.x.send(window, 4, 10, 10, code=3)
                 self.x.send(window, 5, 10, 10, code=3)
-                time.sleep(0.1)
+                menu = self.state(path, lambda state: state["paste"] is not None)
                 self.capture(window, "x11-clipboard-menu.png")
-                self.x.send(window, 4, 20, 55, code=1)
-                self.x.send(window, 5, 20, 55, code=1)
+                self.x.click(window, menu["paste"])
                 self.state(path, lambda state: state["value"] == "Native café 🦊")
                 self.x.lib.XSetSelectionOwner(self.x.display, clipboard, requestor, 0)
                 self.x.lib.XFlush(self.x.display)

@@ -399,7 +399,9 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 - Native text selection supports double-click words and triple-click paragraphs
   separated by newlines, with whole-unit drag extension. Blank-space label
   selection stays inside container content and honors clipping/occlusion.
-  Native Copy/Paste menus default on; `lui:run :context-menu-p nil` disables
+  Native Copy/Paste menus use the shared floating-menu state, anchored popup
+  layout, and menu-item controls, including their input routing and painting.
+  They default on; `lui:run :context-menu-p nil` disables
   them. Clipboard reads use callback delivery; keep async paste bound to its
   original, still-focused editor. Ctrl-V/Command-V uses the system clipboard;
   Ctrl-Y keeps the editor kill buffer.
