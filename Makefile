@@ -46,6 +46,7 @@ help:
 	@echo 'make docs-pages           Refresh docs/index.html from the standalone page'
 	@echo 'make demo                 Build and run the tabbed demo executable'
 	@echo 'make retained-demo        Run the retained data playground'
+	@echo 'make daw-demo             Run the piano-roll DAW (optional MIDI, MP3)'
 	@echo 'make manual-demo          Run the explicit-position-only native demo'
 	@echo 'make build                Save the demo executable in build/bin/'
 	@echo 'make pdf                  Build and open build/pdf-demo.pdf'
@@ -97,6 +98,40 @@ $(MANUAL_DEMO): $(SOURCES) | check-platform
 	  *) echo 'manual-demo needs a native PLATFORM (including terminal)' >&2; exit 2;; esac
 	@mkdir -p build/bin
 	LUI_DEMO=manual-demo LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build.lisp
+
+.PHONY: daw-demo test-daw
+daw-demo: build/bin/daw-demo-$(PLATFORM)$(SUFFIX)
+	$(RUNNER) "$<" $(RUN_ARGS)
+
+build/bin/daw-demo-$(PLATFORM)$(SUFFIX): $(SOURCES) | check-platform
+	@case ' $(NATIVE_PLATFORMS) ' in *' $(PLATFORM) '*) ;; \
+	  *) echo 'daw-demo needs a native PLATFORM (including terminal)' >&2; exit 2;; esac
+	@mkdir -p build/bin
+	LUI_DEMO=daw-demo LUI_OUTPUT="$@" $(SBCL) $(SBCL_FLAGS) --load scripts/build.lisp
+
+test-daw: build/daw-midi-test.so
+	LUI_DAW_MIDI_LIBRARY="$(CURDIR)/build/daw-midi-test.so" \
+		SDL_AUDIODRIVER=dummy SDL_VIDEODRIVER=dummy $(SBCL) $(SBCL_FLAGS) --load scripts/setup.lisp \
+		--eval '(asdf:load-system "lui/daw-demo")' \
+		--load tests/support.lisp --load tests/daw.lisp \
+		--eval '(%lui.tests.daw:run-tests)'
+
+build/daw-midi-test.so: tests/daw-midi.c
+	@mkdir -p build
+	$(CC) -shared -fPIC -Wall -Wextra -Werror -o "$@" "$<"
+
+.PHONY: test-daw-midi-abi
+test-daw: test-daw-midi-abi
+test-daw-midi-abi: build/daw-midi-new-test.so
+	LUI_DAW_MIDI_LIBRARY="$(CURDIR)/build/daw-midi-new-test.so" \
+		$(SBCL) $(SBCL_FLAGS) --load scripts/setup.lisp \
+		--eval '(asdf:load-system "lui/daw-demo")' \
+		--load tests/support.lisp --load tests/daw.lisp \
+		--eval '(%lui.tests.daw:test-native-midi)'
+
+build/daw-midi-new-test.so: tests/daw-midi.c
+	@mkdir -p build
+	$(CC) -shared -fPIC -DDAW_NEW_ABI -Wall -Wextra -Werror -o "$@" "$<"
 
 pdf pdf-demo: build/pdf-demo.pdf
 ifeq ($(OS),Windows_NT)

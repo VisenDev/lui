@@ -703,3 +703,18 @@ exposes `error-backend`; its `font-error` subtype adds `error-font-request`.
 specific conditions and configure missing capabilities before retrying. Cleanup
 still runs on unwinding. Invalid-argument assertions and application callback
 errors retain their own condition types; do not wrap them indiscriminately.
+
+### Pocket Studio DAW example
+
+`make daw-demo` builds a separate native demo (`lui/daw-demo`) with a four-bar
+piano roll, track mixer, project persistence and WAV/MP3 export. The model and
+small offline synth live in `examples/daw-model.lisp`; the public-API-only UI
+and transport lifecycle live in `examples/daw-demo.lisp`. Native MIDI uses
+Common Lisp CFFI bindings in `examples/daw-midi.lisp` and the RtMidi shared
+library; LUI_DAW_MIDI_LIBRARY can select a full library path. There is no
+Python runtime in this demo or its tests. FFmpeg/ffplay are optional runtime
+tools. CFFI belongs to the demo system; no core dependencies are added.
+Playback is a rendered snapshot; no live monitoring or synchronized
+overdubbing is promised. CLM is not integrated. `make test-daw` exercises model,
+UI activation, a test-only C ABI double, WAV timing/pitch and MP3 decoding.
+Do not treat that simulated MIDI test as evidence of hardware MIDI support.
