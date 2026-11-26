@@ -79,7 +79,7 @@
            #:searchable-combobox
            #:popup #:confirm
            #:menu-bar #:menu #:menu-item #:floating-expander
-           #:%*default-backend-function*))
+           #:%open-pointer-menu #:%*default-backend-function*))
 (in-package #:lui)
 
 (defvar *backends* (make-hash-table :test 'eq))
@@ -103,17 +103,21 @@
 (fn (run t)
     ((draw function) &key ((backend symbol) *backend*) ((title string) "LUI")
      ((width (or null real)) nil) ((height (or null real)) nil)
-     ((interactive boolean) t) ((min-fps real) 1) ((max-fps (or null real)) 240))
+     ((interactive boolean) t) ((context-menu-p boolean) t)
+     ((min-fps real) 1) ((max-fps (or null real)) 240))
   "Run the same immediate-mode DRAW function on any registered backend.
 Backend-specific window, DOM, input, frame, and lifetime management stay in LUI.
 WIDTH/HEIGHT are optional backend coordinates; omit them for sensible defaults.
 MIN-FPS sets idle redraws per second. MAX-FPS caps input and animation frames;
 NIL removes the active limit.
 Display/compositor scheduling can still constrain presentation.
+CONTEXT-MENU-P enables the native Copy/Paste menu; NIL disables it.
+Double-click selects words; triple-click selects newline-delimited paragraphs.
 INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
   (assert (< 0 min-fps))
   (assert (or (null max-fps) (<= min-fps max-fps)))
-  (let* ((%lui.frame:*min-fps* min-fps)
+  (let* ((%lui.frame:*context-menu-p* context-menu-p)
+         (%lui.frame:*min-fps* min-fps)
          (%lui.frame:*max-fps* max-fps)
          (name (or backend
                    (and %*default-backend-function*
@@ -605,7 +609,9 @@ No timer is retained after the spinner disappears from the frame."
             (context-hover *context*) nil
             (context-selection *context*) nil
             (context-floating-path *context*) #()))
-    (unless (modal-member-p *context* (context-focus *context*))
+    (unless (or (modal-member-p *context* (context-focus *context*))
+                (and (context-popup-draw *context*)
+                     (floating-owner *context* (context-focus *context*))))
       (setf (context-focus *context*)
             (list id (if cancel-label :cancel :confirm))
             (context-focus-visible-p *context*) t))
@@ -664,6 +670,7 @@ frame for the same error. Closing the window discards its pending messages."
   (id nil :type object-id)
   (parent nil :type object-id)
   (group nil :type object-id)
+  (return-focus nil :type object-id)
   (menu-p nil :type boolean)
   (hover-p nil :type boolean)
   (hover-open-p nil :type boolean)
@@ -758,7 +765,14 @@ frame for the same error. Closing the window discards its pending messages."
   "Close DEPTH and its descendants, optionally returning focus to its trigger."
   (let ((path (context-floating-path context)))
     (when (< depth (length path))
-      (when restore (setf (context-focus context) (aref path depth)))
+      (let ((state (floating-state-for context (aref path depth))))
+        (when restore
+          (setf (context-focus context)
+                (if state
+                    (floating-state-return-focus state)
+                    ;; else
+                    (aref path depth))))
+        (when (zerop depth) (setf (context-popup-draw context) nil)))
       (loop :for i :from depth :below (length path)
             :for state = (floating-state-for context (aref path i))
             :when state :do (setf (floating-state-focus-edge state) nil))
@@ -834,7 +848,12 @@ frame for the same error. Closing the window discards its pending messages."
   "Leave the menu chain without tabbing into its soon-to-be-removed popup nodes."
   (let* ((path (context-floating-path context))
          (root (aref path 0)))
-    (setf (context-focus context) root
+    (setf (context-focus context)
+          (let ((state (floating-state-for context root)))
+            (if state
+                (floating-state-return-focus state)
+                ;; else
+                root))
           (context-focus-visible-p context) t)
     (focus-next context backward
       (lambda (node)
@@ -938,7 +957,8 @@ frame for the same error. Closing the window discards its pending messages."
 (fn (floating-input (or null event))
     ((context context) (event event) (resized boolean))
   "Route floating-menu input before ordinary activation and focus processing."
-  (let ((*context* context))
+  (let ((*context* context)
+        (pointer-menu (context-popup-draw context)))
     (when (and (eq (event-kind event) :key)
                (floating-key-input context (event-key event)))
       (return-from floating-input nil))
@@ -948,11 +968,16 @@ frame for the same error. Closing the window discards its pending messages."
          (tab-from-floating context (eq (event-key event) lui.key:backward))
          (return-from floating-input nil))
         (:cancel (close-floating context 0))
+        (:scroll
+         (when pointer-menu
+           (close-floating context 0)
+           (return-from floating-input nil)))
         (:press
          (when (and (not resized)
                     (not (floating-hit-p context
                                           (event-x event) (event-y event))))
-           (close-floating context 0)))
+           (close-floating context 0)
+           (when pointer-menu (return-from floating-input nil))))
         (:move
          (unless resized (floating-pointer-move context event)))
         (otherwise nil))))
@@ -1024,6 +1049,42 @@ frame for the same error. Closing the window discards its pending messages."
        (discard-floating-popups *context*))))
   (values))
 
+(fn (%open-pointer-menu (values))
+    ((x real) (y real) (draw function))
+  "Open an anchored menu at X/Y. DRAW returns NIL to invalidate the menu."
+  (let* ((context *context*)
+         (id (gensym "POINTER-MENU"))
+         (toolkit (current-toolkit))
+         (palette (apply #'make-palette (nth-value 1 (toolkit-defaults))))
+         (state (make-floating-state
+                 :id id :group id :menu-p t
+                 :return-focus (context-focus context))))
+    (close-floating context 0 nil)
+    (setf (gethash id (context-state context)) state
+          (context-popup-input context) #'floating-input)
+    (open-floating context state :first)
+    ;; Earlier queued editing keys still belong to the original editor.
+    ;; FINISH-FLOATING-PANE moves focus after those events are applied.
+    (setf (context-focus context) (floating-state-return-focus state)
+          (context-popup-draw context)
+          (lambda (show)
+            (cond
+              ((not (floating-open-p context id))
+               (setf (context-popup-draw context) nil))
+              (show
+               (emit (%lui.layout:make-element
+                      :id id :interactive-p t :keyboard-focus-p nil
+                      :position :fixed :offset-x x :offset-y y
+                      :width (fixed 1) :height (fixed 1)))
+               (with-toolkit (toolkit)
+                 (with-palette (palette)
+                   (draw-floating-pane
+                    state nil
+                    (lambda ()
+                      (unless (funcall draw) (close-floating context 0)))))))
+              (t (close-floating context 0))))))
+  (values))
+
 (fn (floating-trigger t)
     ((state floating-state) (text string) (options list))
   "Draw a regular toolkit control with popup state and an accessible caption."
@@ -1053,7 +1114,7 @@ frame for the same error. Closing the window discards its pending messages."
     (return-from invoke-floating (values nil nil nil)))
   (let* ((id (call-site-id site options))
          (state (or (floating-state-for *context* id)
-                    (make-floating-state :id id)))
+                    (make-floating-state :id id :return-focus id)))
          (hover (hovered-p id))
          (before (floating-state-last-open-p state))
          (disabled (getf options :disabled-p)))

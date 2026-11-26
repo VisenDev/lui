@@ -229,6 +229,7 @@ benchmark targets. Scripts discover optional dependency checkouts under
 | Task | Command / notes |
 | --- | --- |
 | Core and native drawing | `make test-core test-native` |
+| Linux clipboard queues | `make test-native-clipboard` (X11 protocol mocks and Wayland pipes; no display server) |
 | Font lookup | `make test-fonts` (fresh process, Linux saved executable and simulated Darwin exclusion) |
 | Portable source runner | `sbcl --script tests/run.lisp`, `clisp -q -q tests/run.lisp`, `ecl -shell tests/run.lisp` |
 | JSCL source runner | `node /path/to/jscl/dist/jscl-node.js tests/run.lisp` |
@@ -396,6 +397,15 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
   model each frame. Radio controls take their own choice and a shared `:value`.
   Button clicks preserve keyboard focus; fields acquire editing focus on click.
   Tab groups wrap Left/Right, support Home/End, and skip disabled tabs.
+- Native text selection supports double-click words and triple-click paragraphs
+  separated by newlines, with whole-unit drag extension. Blank-space label
+  selection stays inside container content and honors clipping/occlusion.
+  Native Copy/Paste menus use the shared floating-menu state, anchored popup
+  layout, and menu-item controls, including their input routing and painting.
+  They default on; `lui:run :context-menu-p nil` disables
+  them. Clipboard reads use callback delivery; keep async paste bound to its
+  original, still-focused editor. Ctrl-V/Command-V uses the system clipboard;
+  Ctrl-Y keeps the editor kill buffer.
 - Combobox Up/Down selects suggestions; Enter accepts a highlighted suggestion.
   Enter without a highlight, Escape, and Tab preserve typed text. Suggestions
   are overlays; `:max-results` bounds their count.

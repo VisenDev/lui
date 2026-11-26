@@ -114,6 +114,17 @@
          (display :pointer) (window :ulong) (cursor :ulong))
 (binding ("XFreeCursor" free-cursor) :int (display :pointer) (cursor :ulong))
 
+(binding ("XConvertSelection" convert-selection) :int
+         (display :pointer) (selection :ulong) (target :ulong)
+         (property :ulong) (requestor :ulong) (time :ulong))
+(binding ("XDeleteProperty" delete-property) :int
+         (display :pointer) (window :ulong) (property :ulong))
+(binding ("XGetWindowProperty" get-property) :int
+         (display :pointer) (window :ulong) (property :ulong)
+         (offset :long) (length :long) (delete :int) (requested-type :ulong)
+         (actual-type :pointer) (format :pointer) (items :pointer)
+         (remaining :pointer) (data :pointer))
+
 (binding ("XSetSelectionOwner" set-selection-owner) :int
          (display :pointer) (selection :ulong) (owner :ulong) (time :ulong))
 (binding ("XChangeProperty" change-property) :int
@@ -124,6 +135,9 @@
          (event :pointer))
 (binding ("XMaxRequestSize" max-request-size) :long (display :pointer))
 
+(cffi:defcstruct property-notify
+    (type :int) (serial :ulong) (send :int) (display :pointer)
+    (window :ulong) (atom :ulong) (time :ulong) (state :int))
 (cffi:defcstruct selection-request
     (type :int) (serial :ulong) (send :int) (display :pointer)
     (owner :ulong) (requestor :ulong) (selection :ulong) (target :ulong)
@@ -199,6 +213,13 @@
 (defstruct x-window
   display context
   (window 0 :type integer) (colormap 0 :type integer)
+  (paste-receiver nil :type (or null function))
+  (pending-pastes (make-array 0 :element-type 'function)
+                  :type (vector function))
+  (paste-incremental-p nil :type boolean)
+  (paste-bytes (make-array 0 :element-type '(unsigned-byte 8)
+                            :adjustable t :fill-pointer 0)
+               :type (vector (unsigned-byte 8)))
   (clipboard 0 :type integer) (clipboard-text nil :type (or null string))
   (width 720 :type integer) (height 520 :type integer)
   (cursors (make-hash-table :test 'eq) :type hash-table)
@@ -210,6 +231,109 @@
   (set-selection-owner (x-window-display window) (x-window-clipboard window)
                        (x-window-window window) 0)
   (flush-display (x-window-display window)))
+
+(fn (paste-clipboard (values)) ((window x-window) (receive function))
+  "Request UTF-8 clipboard text asynchronously from the X selection owner."
+  (when (x-window-paste-receiver window)
+    (setf (x-window-pending-pastes window)
+          (concatenate '(vector function) (x-window-pending-pastes window)
+                       (vector receive)))
+    (return-from paste-clipboard (values)))
+  (setf (x-window-paste-receiver window) receive
+        (x-window-paste-incremental-p window) nil
+        (fill-pointer (x-window-paste-bytes window)) 0)
+  (convert-selection
+   (x-window-display window) (x-window-clipboard window)
+   (intern-atom (x-window-display window) "UTF8_STRING" 0)
+   (intern-atom (x-window-display window) "LUI_PASTE" 0)
+   (x-window-window window) 0)
+  (values))
+
+(fn (start-pending-paste (values)) ((window x-window))
+  "Start queued clipboard requests in order after the active transfer ends."
+  (loop :while (and (null (x-window-paste-receiver window))
+                    (plusp (length (x-window-pending-pastes window))))
+        :do (let ((receive (aref (x-window-pending-pastes window) 0)))
+              (setf (x-window-pending-pastes window)
+                    (subseq (x-window-pending-pastes window) 1))
+              (paste-clipboard window receive)))
+  (values))
+
+(fn (finish-paste (values)) ((window x-window))
+  "Decode a complete UTF-8 transfer once, including split multibyte characters."
+  (let ((receive (shiftf (x-window-paste-receiver window) nil))
+        (bytes (coerce (x-window-paste-bytes window)
+                       '(simple-array (unsigned-byte 8) (*)))))
+    (setf (x-window-paste-incremental-p window) nil
+          (fill-pointer (x-window-paste-bytes window)) 0)
+    (when receive
+      (handler-case
+          (cffi:with-pointer-to-vector-data (pointer bytes)
+            (funcall receive (cffi:foreign-string-to-lisp
+                              pointer :count (length bytes) :encoding :utf-8)))
+        (error () nil))))
+  (values))
+
+(fn (clipboard-chunk (values))
+    ((window x-window) (pointer cffi:foreign-pointer) (type integer)
+     (format integer) (count integer) (remaining integer))
+  "Accept direct text or an INCR chunk, bounding accumulated data to sixteen MiB."
+  (cond
+    ((= type (intern-atom (x-window-display window) "INCR" 0))
+     (setf (x-window-paste-incremental-p window) t))
+    ((and (= type (intern-atom (x-window-display window) "UTF8_STRING" 0))
+          (= format 8) (zerop remaining)
+          (<= (+ count (length (x-window-paste-bytes window))) #x1000000))
+     (dotimes (i count)
+       (vector-push-extend (cffi:mem-aref pointer :uint8 i)
+                           (x-window-paste-bytes window)))
+     (when (or (zerop count) (not (x-window-paste-incremental-p window)))
+       (finish-paste window)))
+    (t (setf (x-window-paste-receiver window) nil
+             (x-window-paste-incremental-p window) nil
+             (fill-pointer (x-window-paste-bytes window)) 0)))
+  (values))
+
+(fn (read-clipboard-property (values))
+    ((window x-window) (property integer))
+  "Read and delete a clipboard property to acknowledge direct or INCR delivery."
+  (cffi:with-foreign-objects ((type :ulong) (format :int) (items :ulong)
+                              (remaining :ulong) (data :pointer))
+    (when (zerop (get-property (x-window-display window)
+                              (x-window-window window) property
+                              0 #x400000 1 0 type format items remaining data))
+      (let ((pointer (cffi:mem-ref data :pointer)))
+        (unwind-protect
+             (clipboard-chunk window pointer (cffi:mem-ref type :ulong)
+                              (cffi:mem-ref format :int)
+                              (cffi:mem-ref items :ulong)
+                              (cffi:mem-ref remaining :ulong))
+          (unless (cffi:null-pointer-p pointer) (free-memory pointer))
+          (delete-property (x-window-display window)
+                           (x-window-window window) property)))))
+  (values))
+
+(fn (receive-clipboard (values))
+    ((window x-window) (event cffi:foreign-pointer))
+  "Start a matching selection reply or read its next incremental text chunk."
+  (let* ((incremental (= (cffi:mem-ref event :int) 28))
+         (property (if incremental
+                       (cffi:foreign-slot-value event '(:struct property-notify)
+                                                'atom)
+                       ;; else
+                       (cffi:foreign-slot-value event '(:struct selection-notify)
+                                                'property))))
+    (when (and (not incremental) (zerop property))
+      (setf (x-window-paste-receiver window) nil))
+    (when (and (x-window-paste-receiver window)
+               (= property (intern-atom (x-window-display window) "LUI_PASTE" 0))
+               (or (not incremental)
+                   (and (x-window-paste-incremental-p window)
+                        (zerop (cffi:foreign-slot-value
+                                event '(:struct property-notify) 'state)))))
+      (read-clipboard-property window property)))
+  (start-pending-paste window)
+  (values))
 
 (fn (notify-selection integer)
     (display (requestor integer) (selection integer) (target integer)
@@ -284,6 +408,10 @@
         ;; Notify the requestor even when the target or transfer was rejected.
         (notify-selection display requestor selection target result time)))))
 
+(fn (clipboard-key lui.key:key) ((code integer))
+  "Map the already validated clipboard shortcut to its semantic command."
+  (if (member code '(#x63 #x43)) lui.key:copy lui.key:paste))
+
 (fn (key-input (or null event)) (event &optional context)
   "Translate an X key event into LUI keyboard or text input."
   (cffi:with-foreign-objects ((buffer :char 64) (symbol :ulong))
@@ -313,8 +441,8 @@
                                                 :alt alt :shift shift))))
 
       ;; Clipboard and editor commands take precedence over ordinary key input.
-      (cond ((and control (not alt) (member code '(#x63 #x43)))
-             (make-event :kind :key :key lui.key:copy))
+      (cond ((and control (not alt) (member code '(#x63 #x43 #x76 #x56)))
+             (make-event :kind :key :key (clipboard-key code)))
             (command (make-event :kind :key :key command))
 
             ;; Tab, activation, and navigation stay separate from text insertion.
@@ -460,6 +588,7 @@
                        (x-window-height window) (max 1 height))))
               (29 (setf (x-window-clipboard-text window) nil))
               (30 (selection-request window event))
+              ((28 31) (receive-clipboard window event))
               (33
                (when (= (cffi:mem-ref
                          (cffi:foreign-slot-pointer
@@ -605,7 +734,8 @@
                  (intern-atom display "CLIPBOARD" 0))
            (store-name display (x-window-window window) title)
            (select-input display (x-window-window window)
-                         (logior 1 4 8 16 32 64 #x8000 #x20000 #x200000))
+                         (logior 1 4 8 16 32 64 #x8000 #x20000 #x200000
+                                 #x400000))
            (cffi:with-foreign-object (atom :ulong)
              (setf (cffi:mem-ref atom :ulong) delete)
              (set-protocols display (x-window-window window) atom 1))
@@ -615,6 +745,7 @@
            (let ((context
                   (%make-render-context
                    (gpu-renderer gpu)
+                   :paste (lambda (receive) (paste-clipboard window receive))
                    :copy (lambda (text) (copy-clipboard window text)))))
              (setf (x-window-context window) context)
              (draw-window window gpu context draw interactive delete)))

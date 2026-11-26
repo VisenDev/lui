@@ -47,9 +47,24 @@ class SelectionEvent(C.Structure):
                 ("property", C.c_ulong), ("time", C.c_ulong)]
 
 
+class SelectionRequest(C.Structure):
+    _fields_ = [("type", C.c_int), ("serial", C.c_ulong), ("send", C.c_int),
+                ("display", C.c_void_p), ("owner", C.c_ulong),
+                ("requestor", C.c_ulong), ("selection", C.c_ulong),
+                ("target", C.c_ulong), ("property", C.c_ulong),
+                ("time", C.c_ulong)]
+
+
+class PropertyEvent(C.Structure):
+    _fields_ = [("type", C.c_int), ("serial", C.c_ulong), ("send", C.c_int),
+                ("display", C.c_void_p), ("window", C.c_ulong),
+                ("atom", C.c_ulong), ("time", C.c_ulong), ("state", C.c_int)]
+
+
 class Event(C.Union):
     _fields_ = [("key", KeyEvent), ("client", ClientEvent),
-                ("selection", SelectionEvent),
+                ("selection", SelectionEvent), ("request", SelectionRequest),
+                ("property", PropertyEvent),
                 ("padding", C.c_long * 24)]
 
 
@@ -131,6 +146,9 @@ class X11:
             "XGetSelectionOwner": (C.c_ulong, [C.c_void_p, C.c_ulong]),
             "XSetSelectionOwner": (C.c_int, [C.c_void_p, C.c_ulong,
                 C.c_ulong, C.c_ulong]),
+            "XSelectInput": (C.c_int, [C.c_void_p, C.c_ulong, C.c_long]),
+            "XChangeProperty": (C.c_int, [C.c_void_p, C.c_ulong, C.c_ulong,
+                C.c_ulong, C.c_int, C.c_int, C.c_void_p, C.c_int]),
             "XConvertSelection": (C.c_int, [C.c_void_p, C.c_ulong,
                 C.c_ulong, C.c_ulong, C.c_ulong, C.c_ulong]),
             "XCheckTypedWindowEvent": (C.c_int, [C.c_void_p, C.c_ulong,
@@ -366,17 +384,35 @@ class X11Tests(unittest.TestCase):
    (setf *clipboard-text*
      (lui.motif:text-field :id :copy :value *clipboard-text*))
    (when (%lui.frame:previous-box :copy)
-     (let ((box (%lui.frame:previous-box :copy)))
+     (let ((box (%lui.frame:previous-box :copy))
+           (paste nil))
+       (when (%lui.frame:context-previous-root %lui.frame:*context*)
+         (%lui.layout:walk-elements
+          (%lui.frame:context-previous-root %lui.frame:*context*)
+          (lambda (node)
+            (let ((widget (%lui.layout:element-content node)))
+              (when (and (%lui.widgets:widget-p widget)
+                         (eq (%lui.widgets:widget-kind widget) :list-item)
+                         (string= (%lui.widgets:widget-text widget) "Paste"))
+                (setf paste (%lui.layout:element-clip node)))))))
        (with-open-file (stream STATE_PATH :direction :output
                                :if-exists :supersede)
-         (format stream "{~S:[~D,~D,~D,~D],~S:~A}"
+         (format stream "{~S:[~D,~D,~D,~D],~S:~S,~S:~A,~S:~A}"
                  "bounds" (round (%lui.layout:box-x box))
                  (round (%lui.layout:box-y box))
                  (round (%lui.layout:box-width box))
                  (round (%lui.layout:box-height box))
+                 "value" *clipboard-text*
                  "focused" (if (eq :copy
                                   (lui:widget-key (%lui.frame:context-focus %lui.frame:*context*)))
-                               "true" "false"))))))
+                               "true" "false")
+                 "paste" (if paste
+                             (format nil "[~D,~D,~D,~D]"
+                                     (round (%lui.layout:box-x paste))
+                                     (round (%lui.layout:box-y paste))
+                                     (round (%lui.layout:box-width paste))
+                                     (round (%lui.layout:box-height paste)))
+                             "null"))))))
  :title WINDOW_TITLE :width 400 :height 100)
 '''
         with self.application("clipboard", source) as (window, path):
@@ -402,23 +438,93 @@ class X11Tests(unittest.TestCase):
                 self.assertIn(self.x.lib.XInternAtom(
                     self.x.display, b"UTF8_STRING", 0), targets)
                 self.assertIsNone(self.x.selection(requestor, "image/png"))
+                # Replace the field, then paste our own UTF-8 selection through X.
+                self.x.key(window, "x")
+                self.state(path, lambda state: state["value"] == "x")
+                self.x.key(window, "a", state=5)
+                self.x.key(window, "v", state=4)
+                self.state(path, lambda state: state["value"] == "Native café 🦊")
+                # The default right-click menu uses the same clipboard path.
+                self.x.key(window, "a", state=5)
+                self.x.key(window, "x")
+                self.state(path, lambda state: state["value"] == "x")
+                self.x.key(window, "a", state=5)
+                self.x.send(window, 4, 10, 10, code=3)
+                self.x.send(window, 5, 10, 10, code=3)
+                menu = self.state(path, lambda state: state["paste"] is not None)
+                self.capture(window, "x11-clipboard-menu.png")
+                self.x.click(window, menu["paste"])
+                self.state(path, lambda state: state["value"] == "Native café 🦊")
                 self.x.lib.XSetSelectionOwner(self.x.display, clipboard, requestor, 0)
                 self.x.lib.XFlush(self.x.display)
                 wait_for(lambda: self.x.lib.XGetSelectionOwner(
                     self.x.display, clipboard) == requestor)
+                # Serve an independent owner's asynchronous UTF-8 reply.
+                self.x.key(window, "a", state=5)
+                self.x.key(window, "v", state=4)
+                event = Event()
+                wait_for(lambda: self.x.lib.XCheckTypedWindowEvent(
+                    self.x.display, requestor, 30, C.byref(event))
+                    and event.request.requestor == window)
+                request = event.request
+                payload = "External λ 日本".encode()
+                self.x.lib.XChangeProperty(self.x.display, request.requestor,
+                    request.property, request.target, 8, 0, payload, len(payload))
+                reply = Event()
+                reply.selection = SelectionEvent(type=31, display=self.x.display,
+                    requestor=request.requestor, selection=request.selection,
+                    target=request.target, property=request.property, time=request.time)
+                self.x.lib.XSendEvent(self.x.display, request.requestor,
+                                     0, 0, C.byref(reply))
+                self.x.lib.XFlush(self.x.display)
+                self.state(path, lambda state: state["value"] == "External λ 日本")
+                # INCR transfers may divide a UTF-8 character between chunks.
+                self.x.key(window, "a", state=5)
+                self.x.key(window, "v", state=4)
+                wait_for(lambda: self.x.lib.XCheckTypedWindowEvent(
+                    self.x.display, requestor, 30, C.byref(event))
+                    and event.request.requestor == window)
+                request = SelectionRequest.from_buffer_copy(event.request)
+                self.x.lib.XSelectInput(self.x.display, window, 1 << 22)
+                incremental = self.x.lib.XInternAtom(self.x.display, b"INCR", 0)
+                payload = "Incremental λ 🦊 日本".encode()
+                size = C.c_ulong(len(payload))
+                self.x.lib.XChangeProperty(self.x.display, window,
+                    request.property, incremental, 32, 0, C.byref(size), 1)
+                reply.selection = SelectionEvent(type=31, display=self.x.display,
+                    requestor=window, selection=request.selection,
+                    target=request.target, property=request.property, time=request.time)
+                self.x.lib.XSendEvent(self.x.display, window, 0, 0, C.byref(reply))
+                self.x.lib.XFlush(self.x.display)
+
+                def acknowledged():
+                    return (self.x.lib.XCheckTypedWindowEvent(
+                        self.x.display, window, 28, C.byref(event))
+                        and event.property.atom == request.property
+                        and event.property.state == 1)
+
+                wait_for(acknowledged)
+                for chunk in [payload[i:i+1] for i in range(len(payload))] + [b""]:
+                    self.x.lib.XChangeProperty(self.x.display, window,
+                        request.property, request.target, 8, 0, chunk, len(chunk))
+                    self.x.lib.XFlush(self.x.display)
+                    wait_for(acknowledged)
+                self.state(path, lambda state: state["value"] == "Incremental λ 🦊 日本")
             finally:
                 self.x.lib.XDestroyWindow(self.x.display, requestor)
 
     def test_divider_lost_release_and_focus_loss_stop_dragging(self):
         source = r'''
 (asdf:load-system "lui/debug")
-(let ((state (lui.debug:make-debugger-state :selected '(:id :target))) (first t))
+(let ((state (lui.debug:make-debugger-state)) (first t))
   (%lui.x11:run-x11
    (lambda ()
-     (when first
-       (setf first nil)
-       (lui.debug:set-debugger-enabled t :state state))
      (lui:button "Target" :id :target)
+     (when first
+       (setf first nil
+             (lui.debug:debugger-state-selected state)
+             (list :id (lui:widget-id :target)))
+       (lui.debug:set-debugger-enabled t :state state))
      (let ((rail (%lui.frame:previous-box '(:lui.debug :details-resize nil)))
            (pane (%lui.frame:previous-box '(:lui.debug :property-pane nil))))
        (when (and rail pane)

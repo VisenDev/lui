@@ -28,11 +28,13 @@
            #:make-event #:begin-frame #:end-frame #:context-hover #:hovered-p
            #:context-previous-root #:context-activated
            #:context-focus-visible-p #:frame-time #:request-frame
-           #:context-next-frame #:parent-scroll-position
+           #:context-next-frame #:context-time #:parent-scroll-position
            #:scroll-position #:scroll-to
            #:pending-input-context #:context-overlay #:context-overlay-state
            #:context-tabs-handled-p #:context-text-mode-p
-           #:context-copy #:context-input-handler #:context-selection))
+           #:context-copy #:context-paste #:context-posted-events
+           #:context-menu-p #:context-popup-draw #:*context-menu-p*
+           #:context-input-handler #:context-selection))
 
 (in-package #:%lui.frame)
 
@@ -68,6 +70,7 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
 
 (defvar *min-fps* 1)
 (defvar *max-fps* 240)
+(defvar *context-menu-p* t)
 
 (defstruct memo-entry (key nil :type list) (value nil :type t))
 
@@ -83,7 +86,10 @@ DRAGGING-P is resolved from capture and the supplied physical button state."
 
 (defstruct context
   "Per-window frame state: completed tree, focus, events, editing, and scrolling.
-The backend supplies measurement, clipboard, and optional input callbacks."
+The backend supplies measurement, clipboard, and optional input callbacks.
+PASTE receives a one-argument text receiver and may complete asynchronously.
+INPUT-HANDLER returns an unconsumed event or NIL. POSTED-EVENTS run after
+the current input event, or next frame when posted outside input routing."
   (root nil :type (or null element))
   (text-mode-p nil :type boolean)
   popups
@@ -105,6 +111,10 @@ The backend supplies measurement, clipboard, and optional input callbacks."
   (viewport-height 0 :type real)
   page-height-p (page-top 0 :type real) requested-page-top
   (copy nil :type (or null function))
+  (paste nil :type (or null function))
+  (posted-events nil :type list)
+  (menu-p *context-menu-p* :type boolean)
+  (popup-draw nil :type (or null function))
   (input-handler nil :type (or null function))
   selection
   focus-input
@@ -709,15 +719,15 @@ ID types are unrestricted and may differ between vector elements."
   (when (event-id event)
     (setf event (copy-event event)
       (event-id event) (widget-id (event-id event) context)))
-  (when (route-modal-event context event)
-    (return-from route-frame-event (values)))
   ;; Open popups may consume navigation before normal focus and activation.
-  (when (and (null (context-modal context))
-             (context-popup-input context))
+  (when (and (context-popup-input context)
+             (or (null (context-modal context)) (context-popup-draw context)))
     (let ((routed (funcall (context-popup-input context)
                            context event resized)))
       (unless routed (return-from route-frame-event (values)))
       (setf event routed)))
+  (when (route-modal-event context event)
+    (return-from route-frame-event (values)))
   (let ((target (or (and (member (event-kind event) '(:press :release))
                          (event-id event))
                     (unless resized
@@ -768,6 +778,32 @@ ID types are unrestricted and may differ between vector elements."
         (context-root context) (make-element :width (grow) :height (grow))
         (context-building-p context) t))
 
+(fn (prepare-frame-input sequence)
+    ((context context) (width real) (height real) (events sequence))
+  "Merge deferred input and invalidate pointer state when geometry changes."
+  (when (context-posted-events context)
+    (setf events (concatenate '(vector event)
+                              (nreverse (context-posted-events context)) events)
+          (context-posted-events context) nil))
+  (when (or (/= width (context-width context))
+            (/= height (context-viewport-height context)))
+    (setf (context-selection context) nil)
+    (when (context-popup-draw context)
+      (funcall (context-popup-draw context) nil)))
+  events)
+
+(fn (route-frame-input (values))
+    ((context context) (event event) (resized boolean))
+  "Route one input and any synchronous clipboard delivery before the next."
+  (let ((routed (if (and (not resized) (context-input-handler context))
+                    (funcall (context-input-handler context) context event)
+                    ;; else
+                    event)))
+    (when routed (route-frame-event context routed resized)))
+  (dolist (posted (nreverse (shiftf (context-posted-events context) nil)))
+    (route-frame-event context posted resized))
+  (values))
+
 (fn (begin-frame (eql t)) ((context context) (width real) (height real)
                            (events sequence))
   "Begin rebuilding CONTEXT at WIDTH and HEIGHT after routing EVENTS.
@@ -781,12 +817,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
   (setf (context-time context)
         (/ (get-internal-real-time) internal-time-units-per-second)
         (context-next-frame context) nil)
-  (when (context-input-handler context)
-    (if (and (= width (context-width context))
-             (= height (context-viewport-height context)))
-        (funcall (context-input-handler context) context events)
-        ;; else
-        (setf (context-selection context) nil)))
+  (setf events (prepare-frame-input context width height events))
 
   ;; Discard transient input state before routing this batch of events.
   (setf (context-activation-order context) nil)
@@ -815,7 +846,7 @@ clock, redraw deadline, declarations, and per-frame activation state."
     (unless resized (advance-scroll context (context-time context)))
     (loop :for event-index :below (length events)
           :for event := (elt events event-index) :do
-          (route-frame-event context event resized))
+          (route-frame-input context event resized))
     (unless resized (advance-scroll context (context-time context))))
   ;; Native selection still needs the focused input after a composite editor
   ;; consumes its events. Share the immutable event list with the observer.
@@ -909,7 +940,14 @@ Subtract these from an absolute POSITION to opt into parent scrolling."
       (funcall (context-overlay context) (context-previous-root context))))
 
   (finish-modal context)
-
+  (when (context-popup-draw context)
+    (let ((*parent* (or (context-modal context) (context-root context)))
+          (popups (context-popups context)))
+      (setf (context-popups context) nil)
+      (funcall (context-popup-draw context) t)
+      (dolist (popup (nreverse (context-popups context)))
+        (append-child *parent* popup))
+      (setf (context-popups context) popups)))
   (values))
 
 (fn (end-frame element) ((context context))
@@ -992,6 +1030,7 @@ An aborted drawing or layout invalidates geometry and clears frame state."
                 (context-building-p context) nil
                 (context-previous-root context) nil
                 (context-floating-path context) #()
+                (context-popup-draw context) nil
                 (context-modal context) nil
                 (context-modal-declared-p context) nil
                 (context-modal-focus context) nil

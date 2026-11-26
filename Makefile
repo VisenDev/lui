@@ -39,7 +39,7 @@ DOC_DATA := build/docs-data.lisp
 DOC_BIN := build/bin/docs-$(PLATFORM)$(SUFFIX)
 
 .PHONY: retained-demo manual-demo docs docs-html docs-pages test-docs test-terminal-parity help check-platform build demo pdf pdf-demo test test-platform \
-	test-core test-native test-fonts test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform benchmark-retained benchmark-wayland benchmark-wayland-uncapped
+	test-core test-native test-native-clipboard test-fonts test-macos test-executables web-build web-demo terminal-demo loc benchmark benchmark-platform benchmark-retained benchmark-wayland benchmark-wayland-uncapped
 help:
 	@echo 'make docs                 Build and open the native documentation browser'
 	@echo 'make docs-html            Build standalone build/docs.html with ECL/wasm'
@@ -202,6 +202,9 @@ test-native:
 	@echo '[native] RUN'
 	LUI_TEST=native $(SBCL) $(SBCL_FLAGS) --load scripts/test.lisp
 	@echo '[native] PASS'
+
+test-native-clipboard:
+	LUI_TEST=native-clipboard $(SBCL) $(SBCL_FLAGS) --load scripts/test.lisp
 
 test-fonts:
 	$(SBCL) --script tests/font-search.lisp

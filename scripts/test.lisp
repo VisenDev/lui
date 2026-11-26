@@ -11,6 +11,7 @@
      (load "src/backend-host.lisp")
      (load "tests/host.lisp"))
     ((string= test "native") (asdf:test-system "lui/native/tests"))
+    ((string= test "native-clipboard") (load "tests/native-clipboard.lisp"))
     ((string= test "terminal") (asdf:test-system "lui/terminal"))
     ((member test '("wayland" "win32" "cocoa" "gl") :test #'string=)
      #+darwin

@@ -28,6 +28,7 @@
 (api ("EmptyClipboard" empty-clipboard) :int)
 (api ("SetClipboardData" set-clipboard-data) :pointer
      (format :uint) (memory :pointer))
+(api ("GetClipboardData" get-clipboard-data) :pointer (format :uint))
 (api ("GlobalAlloc" global-alloc) :pointer (flags :uint) (bytes :size))
 (api ("GlobalLock" global-lock) :pointer (memory :pointer))
 (api ("GlobalUnlock" global-unlock) :int (memory :pointer))
@@ -55,6 +56,22 @@
                           (setf memory (cffi:null-pointer))))
                    (close-clipboard)))))
         (unless (cffi:null-pointer-p memory) (global-free memory))))))
+
+(fn (paste-text (values))
+    ((window cffi:foreign-pointer) (receive function))
+  "Read Unicode clipboard text while retaining and unlocking its global handle."
+  (unless (zerop (open-clipboard window))
+    (unwind-protect
+         (let ((memory (get-clipboard-data 13)))
+           (unless (cffi:null-pointer-p memory)
+             (let ((pointer (global-lock memory)))
+               (unless (cffi:null-pointer-p pointer)
+                 (unwind-protect
+                      (funcall receive (cffi:foreign-string-to-lisp
+                                        pointer :encoding :utf-16le))
+                   (global-unlock memory))))))
+      (close-clipboard)))
+  (values))
 
 (api ("GetModuleHandleW" module-handle) :pointer (name :pointer))
 (api ("RegisterClassW" register-class) :ushort (class :pointer))
@@ -242,7 +259,9 @@
          (command (when (and text-p (not (and control alt)))
                     (%lui.widgets:readline-key name :control control
                                               :alt alt :shift shift))))
-    (cond ((and control (not alt) (= code 67))
+    (cond ((and control (not alt) (= code 86))
+           (make-event :kind :key :key lui.key:paste))
+          ((and control (not alt) (= code 67))
            (make-event :kind :key :key lui.key:copy))
           (command (make-event :kind :key :key command))
           ((and (not alt) (= code 9))
@@ -743,7 +762,11 @@ compact tent-like blur rather than a Gaussian kernel; it also works in Wine."
                          :backdrop-effect (lambda (box radius blur)
                                   (blur-backdrop window box radius blur))))
          (context
-          (%make-render-context renderer :copy
+          (%make-render-context renderer
+                               :paste (lambda (receive)
+                                        (paste-text (win-window-handle window)
+                                                    receive))
+                               :copy
                                (lambda (text)
                                  (copy-text
                                   (win-window-handle window) text)))))
