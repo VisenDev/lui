@@ -81,7 +81,8 @@
            #:searchable-combobox
            #:popup #:confirm
            #:menu-bar #:menu #:menu-item #:floating-expander
-           #:%open-pointer-menu #:%*default-backend-function*))
+           #:default-context-menu #:%context-menu-at-p
+           #:%*default-backend-function*))
 (in-package #:lui)
 
 (defvar *backends* (make-hash-table :test 'eq))
@@ -114,7 +115,7 @@ WIDTH/HEIGHT are optional backend coordinates; omit them for sensible defaults.
 MIN-FPS sets idle redraws per second. MAX-FPS caps input and animation frames;
 NIL removes the active limit.
 Display/compositor scheduling can still constrain presentation.
-CONTEXT-MENU-P enables the native Copy/Paste menu; NIL disables it.
+CONTEXT-MENU-P enables widget context menus; NIL disables them for this window.
 ON-CLOSE is a zero-argument callback: NIL vetoes a window close, non-NIL
 allows it. Native callbacks run after queued input at a frame boundary,
 with the window context active. Browser tab guards run during beforeunload.
@@ -147,7 +148,7 @@ INTERACTIVE NIL renders one frame (useful for tests and terminal snapshots)."
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *widget-option-groups*
-    '((placement id width height padding position offset-x offset-y)
+    '((placement id width height padding position offset-x offset-y context-menu)
       (flow align cross-align clip-p scroll-p scrollbar-p scrollbar-width)
       (focus interactive-p keyboard-focus-p pointer-focus-p)
       (activation clickable-p disabled-p accessible-name)
@@ -1106,6 +1107,136 @@ frame for the same error. Closing the window discards its pending messages."
                       (unless (funcall draw) (close-floating context 0)))))))
               (t (close-floating context 0))))))
   (values))
+
+(defvar *default-context-menu* nil
+  "Default menu drawer bound while a widget's context menu is declared.")
+
+(fn (default-context-menu (values)) ()
+  "Declare the owning widget's standard menu inside a :CONTEXT-MENU callback.
+Text widgets supply Copy/Paste when supported. Other widgets may have no default.
+Callbacks use ordinary MENU and MENU-ITEM controls and run on each open frame."
+  (when *default-context-menu* (funcall *default-context-menu*))
+  (values))
+
+(fn (context-menu-path list)
+    ((node %lui.layout:element) (x real) (y real))
+  "Find the topmost deepest hit and its ancestors, including passive widgets."
+  ;; Children may paint outside an unclipped parent's own box.
+  (let ((children (%lui.layout:element-children node)))
+    (loop :for i :downfrom (1- (length children)) :to 0
+          :for path := (context-menu-path (aref children i) x y)
+          :when path :do (return-from context-menu-path
+                          (append path (list node)))))
+  (when (contains-p (%lui.layout:element-clip node) x y) (list node)))
+
+(fn (context-menu-focus-path list)
+    ((node %lui.layout:element) (id object-id))
+  "Resolve keyboard invocation from the focused owner, not a child at its center."
+  (when (equal id (%lui.layout:element-id node))
+    (return-from context-menu-focus-path (list node)))
+  (loop :for child :across (%lui.layout:element-children node)
+        :for path := (context-menu-focus-path child id)
+        :when path :return (append path (list node))))
+
+(fn (enabled-menu-path list) ((path list))
+  "Stop ancestor fallback at disabled widgets without disabling their children."
+  (loop :for node :in path :until (%lui.layout:element-disabled-p node)
+        :collect node))
+
+(fn (context-menu-owner (values (or null %lui.layout:element)
+                               (or null function)))
+    ((context context) (event event) (path list))
+  "Resolve nearest explicit menu, suppression, then the widget default provider."
+  (setf path (enabled-menu-path path))
+  (dolist (node path)
+    (let ((menu (%lui.layout:element-context-menu node)))
+      (unless (eq menu :default)
+        (return-from context-menu-owner
+          (values (when menu node)
+                  (when (and menu (context-default-menu context))
+                    (funcall (context-default-menu context) node event)))))))
+  (when (context-default-menu context)
+    (dolist (node path)
+      (let ((draw (funcall (context-default-menu context) node event)))
+        (when draw (return-from context-menu-owner (values node draw))))))
+  (values nil nil))
+
+(fn (%context-menu-at-p boolean) ((context context) (x real) (y real))
+  "Let browsers suppress their menu without applying input ahead of queued events."
+  (let* ((root (or (context-modal context) (context-root context)))
+         (path (when root (enabled-menu-path (context-menu-path root x y)))))
+    (when (context-menu-p context)
+      (dolist (node path)
+        (let ((menu (%lui.layout:element-context-menu node)))
+          (unless (eq menu :default)
+            (return-from %context-menu-at-p (functionp menu)))))))
+  nil)
+
+(fn (draw-context-menu boolean)
+    ((context context) (id object-id) (modal object-id)
+     (default (or null function)))
+  "Refresh the owner callback and dismiss a removed, disabled or suppressed owner."
+  (let ((node (gethash id (context-ids context))))
+    (when (and (context-menu-p context) node
+               (not (%lui.layout:element-disabled-p node))
+               (context-menu-focus-path
+                (or (context-modal context) (context-root context)) id)
+               (%lui.layout:element-context-menu node)
+               (or default (functionp (%lui.layout:element-context-menu node)))
+               (equal modal (when (context-modal context)
+                              (%lui.layout:element-id (context-modal context)))))
+      (let ((*default-context-menu* default)
+            (draw (%lui.layout:element-context-menu node)))
+        (if (eq draw :default)
+            (default-context-menu)
+            ;; else
+            (funcall draw)))
+      t)))
+
+(fn (context-menu-key-p boolean) ((event event))
+  "Recognize standard keyboard context-menu invocation."
+  (and (eq (event-kind event) :key)
+       (or (eq (event-key event) lui.key:kb-menu)
+           (event-shortcut-p event lui.key:f10 :shift t))))
+
+(fn (%context-menu-input boolean) ((context context) (event event))
+  "Open a menu through shared routing rather than widget-specific mouse handlers."
+  (when (and (context-menu-p context) (not (context-popup-draw context))
+             (or (context-menu-key-p event)
+                 (and (eq (event-kind event) :press)
+                      (eq (event-button event) :secondary))))
+    (let* ((focus (when (context-menu-key-p event)
+                    (gethash (context-focus context) (context-ids context))))
+           (box (when focus (%lui.layout:element-box focus)))
+           (x (if box (+ (box-x box) (/ (box-width box) 2)) (event-x event)))
+           (y (if box (+ (box-y box) (/ (box-height box) 2)) (event-y event)))
+           (root (or (context-modal context) (context-root context)))
+           (path (when root
+                   (if focus
+                       (context-menu-focus-path root (context-focus context))
+                       ;; else
+                       (context-menu-path root x y)))))
+      (when (and (context-menu-key-p event) (null focus))
+        (return-from %context-menu-input nil))
+      (multiple-value-bind (owner default)
+          (context-menu-owner context event path)
+        (when owner
+          (let ((*context* context)
+                (id (%lui.layout:element-id owner))
+                (widget (%lui.layout:element-content owner))
+                (modal (when (context-modal context)
+                         (%lui.layout:element-id (context-modal context)))))
+            (setf (context-active context) nil)
+            (with-toolkit ((if (widget-p widget) (widget-style widget)
+                              (current-toolkit)))
+              (with-palette ((if (widget-p widget)
+                                 (apply #'make-palette (widget-palette widget))
+                                 (make-palette)))
+                (%open-pointer-menu
+                 x y (lambda () (draw-context-menu context id modal default)))))
+            t))))))
+
+(setf *context-menu-input* #'%context-menu-input)
 
 (fn (floating-trigger t)
     ((state floating-state) (text string) (options list))

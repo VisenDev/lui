@@ -228,6 +228,7 @@ An optional terminal-label callback overrides the standard kind-based label."
      ((maximum real) 1) ((step real) 0.01f0) ((font-size (or real units)) 16)
      ((font-family symbol) :sans-serif) ((font-weight symbol) :normal)
      ((opacity real) 0.85f0) ((accent string) "#258bff")
+     ((context-menu (or function (member nil :default))) :default)
      ((disabled-p boolean) nil) ((painter (or null function)) nil)
      ((terminal-label (or null function)) nil)
      ((terminal-border (or null (string 6))) nil)
@@ -270,7 +271,8 @@ Most applications should use the public LUI controls."
 
     ;; Attach measurement and input policies to the frame-local element.
     (emit (make-element
-           :id id :content widget :disabled-p (not (null disabled-p))
+           :id id :content widget :context-menu context-menu
+           :disabled-p (not (null disabled-p))
            :width (resolve-sizing width) :height (resolve-sizing height)
            :padding (resolve-units padding)
            :position position

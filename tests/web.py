@@ -719,6 +719,55 @@ class WebTests(unittest.TestCase):
         finally:
             page.close()
 
+    def test_widget_context_menu(self):
+        self.click_widget(text="Menus", kind="tab")
+        self.page.evaluate("""window.addEventListener("contextmenu", event => {
+            window.menuPrevented = event.defaultPrevented;
+        });""")
+        target = self.widget(id=":DEMO-CONTEXT-TARGET")
+        self.page.mouse.click(*self.point(target), button="right")
+        self.frames()
+        self.assertTrue(self.page.evaluate("window.menuPrevented"))
+        self.page.screenshot(path=str(ROOT / "build/widget-context-menu.png"))
+        self.click_widget(text="Reset message", kind="list-item")
+        self.widget(text="Reset from context menu", kind="label")
+        self.page.mouse.click(*self.point(target), button="right")
+        self.frames()
+        self.page.keyboard.press("Escape")
+        self.frames()
+        self.assertFalse(any(n.get("text") == "Reset message" and
+                             n.get("kind") == "list-item" for n in self.nodes()))
+
+    def test_keyboard_context_menu(self):
+        host = self.fixture("""
+          (lui:button "Keyboard target" :id :keyboard-target
+            :context-menu (lambda () (lui:menu-item "Keyboard action")))
+        """)
+        self.page.locator(host + " canvas").focus()
+        self.page.keyboard.press("Tab")
+        self.frames()
+        self.page.keyboard.press("Shift+F10")
+        self.frames()
+        self.widget(text="Keyboard action", kind="list-item", host=host)
+        self.page.keyboard.press("Escape")
+        self.frames()
+        self.assertFalse(any(n["text"] == "Keyboard action" for n in self.nodes(host)))
+
+    def test_unhandled_secondary_press_reaches_widget(self):
+        host = self.fixture("""
+          (multiple-value-bind (activated changed id)
+              (lui:button "Raw secondary input" :id :raw :context-menu nil)
+            (declare (ignore activated changed))
+            (loop :for event :across (lui:events-for id)
+                  :when (and (eq (lui:event-kind event) :press)
+                             (eq (lui:event-button event) :secondary))
+                    :do (incf *web-test-clicks*)))
+        """)
+        self.page.mouse.click(*self.point(self.widget(id=":RAW", host=host), host),
+                              button="right")
+        self.frames()
+        self.assertEqual(self.number("*web-test-clicks*"), 1)
+
     def test_canvas_right_click_allows_browser_context_menu(self):
         self.page.evaluate("""window.addEventListener("contextmenu", event => {
             window.menuEvent = [event.target.tagName, event.defaultPrevented];

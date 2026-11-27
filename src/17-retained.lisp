@@ -2,7 +2,7 @@
   (:nicknames #:luir)
   (:use #:cl #:%lui.fn)
   (:export
-   #:draw #:visible-p #:children #:node #:node-p #:node-id #:node-width
+   #:node-context-menu #:draw #:visible-p #:children #:node #:node-p #:node-id #:node-width
    #:node-height #:node-padding #:node-position #:node-offset-x
    #:node-offset-y #:label #:make-label #:label-p #:label-id #:label-width
    #:label-height #:label-padding #:label-position #:label-offset-x
@@ -199,6 +199,7 @@ Use MAKE-LABEL, MAKE-BUTTON, MAKE-TEXT-FIELD or another widget constructor.
 Stored objects keep identity across mutation and sibling reordering.
 ID keys allow rebuilding."
   (id nil :type lui:object-id)
+  (context-menu :default :type (or function (member nil :default)))
   (visible-p t :type boolean)
   (width nil :type (or null real lui:units lui:sizing))
   (height nil :type (or null real lui:units lui:sizing))
@@ -278,7 +279,7 @@ Use a node for one child, CL:VECTOR for multiple children, or #() to clear."
 
 (defstruct (label (:include styled-node)
              (:constructor make-label
-                 (text &key id (visible-p t)
+                 (text &key id (visible-p t) (context-menu :default)
                   width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
@@ -290,7 +291,7 @@ Use a node for one child, CL:VECTOR for multiple children, or #() to clear."
 
 (defstruct (button (:include styled-node)
              (:constructor make-button
-                 (text &key id (visible-p t)
+                 (text &key id (visible-p t) (context-menu :default)
                   width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
@@ -304,7 +305,7 @@ Use a node for one child, CL:VECTOR for multiple children, or #() to clear."
 
 (defstruct (checkbox (:include value-node)
              (:constructor make-checkbox
-                 (text &key id (visible-p t)
+                 (text &key id (visible-p t) (context-menu :default)
                   width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
@@ -320,7 +321,7 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (radio (:include value-node)
              (:constructor make-radio
-                 (choice text &key id (visible-p t)
+                 (choice text &key id (visible-p t) (context-menu :default)
                   width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
@@ -338,7 +339,7 @@ See DRAW for mutation, identity and callback rules."
 (defstruct (slider (:include value-node
                        (value 0) (observed-value 0))
              (:constructor make-slider
-                 (&key id (visible-p t)
+                 (&key id (visible-p t) (context-menu :default)
                   width height padding position offset-x offset-y
                   foreground background palette radius frost font-size
                   font-family font-weight opacity accent painter
@@ -358,7 +359,7 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (text-field (:include value-node (value "") (observed-value ""))
              (:constructor make-text-field
-                 (&key id (visible-p t)
+                 (&key id (visible-p t) (context-menu :default)
                   width height padding position offset-x offset-y
                   foreground background palette radius frost font-size
                   font-family font-weight opacity accent painter
@@ -376,7 +377,7 @@ DRAW updates VALUE automatically before callbacks; see DRAW for ownership rules.
 
 (defstruct (date-picker (:include value-node)
              (:constructor make-date-picker
-                 (&key id (visible-p t)
+                 (&key id (visible-p t) (context-menu :default)
                   width height padding position offset-x offset-y
                   foreground background palette radius frost font-size
                   font-family font-weight opacity accent painter
@@ -391,7 +392,7 @@ See DRAW for mutation, identity and callback rules.")
 (defstruct (searchable-combobox (:include value-node
                        (value "") (observed-value ""))
              (:constructor make-searchable-combobox
-                 (choices &key id (visible-p t)
+                 (choices &key id (visible-p t) (context-menu :default)
                   width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
@@ -411,7 +412,7 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (gauge (:include styled-node)
              (:constructor make-gauge
-                 (fraction &key id (visible-p t)
+                 (fraction &key id (visible-p t) (context-menu :default)
                   width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
@@ -438,7 +439,7 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (cell (:include styled-node)
              (:constructor make-cell
-                 (text &key id (visible-p t)
+                 (text &key id (visible-p t) (context-menu :default)
                   width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
@@ -453,7 +454,7 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (list-item (:include styled-node)
              (:constructor make-list-item
-                 (text &key id (visible-p t)
+                 (text &key id (visible-p t) (context-menu :default)
                   width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
@@ -468,7 +469,7 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (tab (:include styled-node)
              (:constructor make-tab
-                 (text &key id (visible-p t)
+                 (text &key id (visible-p t) (context-menu :default)
                   width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
@@ -483,7 +484,7 @@ See DRAW for mutation, identity and callback rules."
 
 (defstruct (canvas (:include styled-node)
              (:constructor make-canvas
-                 (commands &key id (visible-p t)
+                 (commands &key id (visible-p t) (context-menu :default)
                   width height padding position offset-x
                   offset-y foreground background palette radius frost
                   font-size font-family font-weight opacity accent painter
@@ -568,7 +569,7 @@ Edit children with (SETF TABLE-CELL-CHILDREN); see DRAW for identity rules."
 
 (defmacro collect-options (node prefix groups &rest names)
   "Read only this widget type's option slots, omitting NIL defaults."
-  `(let ((options nil))
+  `(let ((options (list :context-menu (node-context-menu ,node))))
      ,@(loop :for name :in (append
                            (loop :for group :in groups
                                  :append (cdr (assoc group *option-groups*)))

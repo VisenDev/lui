@@ -17,7 +17,7 @@
            #:element-gap #:element-align
            #:element-cross-align #:element-pointer-focus-p
            #:element-interactive-p #:element-keyboard-focus-p
-           #:element-clickable-p #:element-disabled-p #:element-focus-color
+           #:element-context-menu #:element-clickable-p #:element-disabled-p #:element-focus-color
            #:element-accessible-name
            #:append-child #:solve #:walk-elements
            #:do-children
@@ -170,6 +170,7 @@ Offsets use surface coordinates for :FIXED and parent coordinates otherwise."
   (measure nil :type (or null function))
   (focus-color "#0078d4" :type string)
   (accessible-name nil :type (or null string))
+  (context-menu :default :type (or function (member nil :default)))
   (clickable-p nil :type boolean)
   (disabled-p nil :type boolean)
   (interactive-p nil :type boolean)

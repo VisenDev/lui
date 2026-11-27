@@ -142,7 +142,15 @@
          :children
          (cl:vector
           (lui.retained:make-button "Count" :id :count
-                             :on-activate 'increment)
+                             :on-activate 'increment
+                             :context-menu
+                             (lambda ()
+                               (when (lui:menu-item "Increment counter")
+                                 (increment))
+                               (when (lui:menu-item "Reset counter")
+                                 (setf *clicks* 0
+                                       (lui.retained:label-text *counter*)
+                                       "Clicks: 0"))))
           *counter*))))
       (lui.retained:make-panel :id :data :width (lui:grow)
        :padding (lui:units 2)

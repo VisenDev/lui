@@ -166,6 +166,15 @@
   (lui:label "Manual widgets can overlap. Use a layout container to reserve space.")
   (positioning-scene g))
 
+(defun context-actions (g)
+  "Declare a dynamic menu shared by a passive label and its container."
+  (when (lui:menu-item "Reset message")
+    (setf (gallery-menu-action g) "Reset from context menu"))
+  (lui:menu "More" ()
+    (when (lui:menu-item "Say hello")
+      (setf (gallery-menu-action g) "Hello from context menu")))
+  (values))
+
 (defun floating-controls (g)
   "Demonstrate nested action menus and arbitrary floating content."
   (lui:menu-bar (:id :demo-menu-bar)
@@ -184,7 +193,17 @@
         (setf (gallery-menu-action g) "Choose a menu action")))
     (when (lui:menu-item "Customers" :id :demo-customers)
       (setf (gallery-menu-action g) "Customers selected")))
-  (lui:label (gallery-menu-action g))
+  (lui:label (gallery-menu-action g)
+             :context-menu (lambda () (context-actions g)))
+  (lui:button "Right-click for actions" :id :demo-context-target
+              :context-menu (lambda () (context-actions g)))
+  (setf (gallery-name g)
+        (lui:text-field :value (gallery-name g)
+                        :context-menu
+                        (lambda ()
+                          (lui:default-context-menu)
+                          (when (lui:menu-item "Reset name")
+                            (setf (gallery-name g) "Common Lisp")))))
   (lui:floating-expander "Settings" (:id :demo-settings)
     (lui:label "Floating content can contain ordinary controls.")
     (setf (gallery-enabled g)

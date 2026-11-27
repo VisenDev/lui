@@ -203,7 +203,8 @@
             '(("focus" . handle-browser-focus)
               ("pointerleave" . handle-browser-pointerleave)))
     (attach (input-session-host session)
-            '(("pointerdown" . handle-browser-pointerdown)
+            '(("contextmenu" . handle-browser-contextmenu)
+              ("pointerdown" . handle-browser-pointerdown)
               ("pointermove" . handle-browser-pointermove)
               ("pointerup" . handle-browser-pointerup)
               ("pointercancel" . handle-browser-cancel)
@@ -229,9 +230,23 @@
   (unless (input-session-page-scroll-p session)
     (input-focus-without-scroll (input-session-sink session))))
 
+(fn (handle-browser-contextmenu t) ((session input-session) event)
+  "Replace the browser menu only when a widget supplies a LUI context menu."
+  (let ((input (input-position-event session event :press :button :secondary)))
+    (when (lui:%context-menu-at-p (input-session-context session)
+                                  (event-x input) (event-y input))
+      (input-stop event)
+      (input-send session input)))
+  t)
+
 (fn (handle-browser-pointerdown t)
     ((session input-session) event)
   "Handle the browser pointerdown event for this input session."
+  (when (= 2 (oget event "button"))
+    (let ((input (input-position-event session event :press)))
+      (when (lui:%context-menu-at-p (input-session-context session)
+                                    (event-x input) (event-y input))
+        (return-from handle-browser-pointerdown t))))
   (when (and (input-current-p session event)
              (or (eq (oget event "target") (input-session-canvas
                                             session))
@@ -455,6 +470,8 @@
                     ("PageDown" . lui.key:page-down)
                     ("Backspace" . lui.key:backspace)
                     ("Delete" . lui.key:delete)
+                    ("ContextMenu" . lui.key:kb-menu)
+                    ("F10" . lui.key:f10)
                     ("Escape" . lui.key:escape))
                   :test #'string=))))
 

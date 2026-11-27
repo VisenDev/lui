@@ -786,6 +786,7 @@
   "Exercise word/paragraph clicks, blank-space drags, and clipboard menus."
   (let* ((copied nil)
          (value "Editable words")
+         (menu :default)
          (clicked 0)
          (width 400)
          (painted nil)
@@ -806,7 +807,8 @@
                (with-frame (context width 240 :events events)
                  (lui:column (:width (lui:grow) :height (lui:fixed 110))
                    (lui:label (format nil "Alpha beta~%Second section")))
-                 (setf value (lui:text-field :id :gesture-field :value value))
+                 (setf value (lui:text-field :id :gesture-field :value value
+                                            :context-menu menu))
                  (when (lui:button "Behind menu" :id :behind) (incf clicked)))
                (setf painted nil)
                (%paint-frame renderer context))
@@ -916,6 +918,20 @@
         ;; Escape closes the menu; opting out leaves it closed on right-click.
         (frame (make-event :kind :press :button :secondary :x x :y y))
         (frame (make-event :kind :key :key lui.key:escape))
+        (assert (null (context-popup-draw context)))
+        ;; Custom providers can include the same default text actions.
+        (setf menu (lambda ()
+                     (lui:default-context-menu)
+                     (lui:menu-item "Extra action")))
+        (frame)
+        (frame (make-event :kind :press :button :secondary :x x :y y))
+        (assert (menu-node "Copy"))
+        (assert (menu-node "Paste"))
+        (assert (menu-node "Extra action"))
+        (frame (make-event :kind :key :key lui.key:escape))
+        (setf menu nil)
+        (frame)
+        (frame (make-event :kind :press :button :secondary :x x :y y))
         (assert (null (context-popup-draw context)))
         (setf (context-menu-p context) nil)
         (frame (make-event :kind :press :button :secondary :x x :y y))

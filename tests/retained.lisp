@@ -804,8 +804,44 @@
     (check table-row)
     (check table-cell)))
 
+(defun test-retained-context-menu ()
+  "Retained constructors expose menus, refresh callbacks, and preserve suppression."
+  (let* ((context (%lui.tests.support:make-test-context))
+         (count 0)
+         (button (lui.retained:make-button
+                  "Context target" :id :target
+                  :context-menu
+                  (lambda ()
+                    (when (lui:menu-item "Count action") (incf count)))))
+         (tree (lui.retained:make-panel :children (vector button))))
+    (labels ((open-menu ()
+               (let ((box (%lui.layout:element-box
+                           (element-with-value context "Context target"))))
+                 (frame context tree
+                        (list (%lui.frame:make-event
+                               :kind :press :button :secondary
+                               :x (+ 1 (lui:box-x box))
+                               :y (+ 0.5 (lui:box-y box))))))))
+      (frame context tree)
+      (open-menu)
+      (assert (%lui.frame:context-popup-draw context))
+      (frame context tree (list (%lui.frame:make-event
+                                :kind :activate :key lui.key:enter)))
+      (assert (= 1 count))
+      (setf (lui.retained:node-context-menu button)
+            (lambda () (lui:menu-item "Replacement")))
+      (frame context tree)
+      (open-menu)
+      (assert (%lui.tests.support:visible-text-p context "Replacement"))
+      (setf (lui.retained:node-context-menu button) nil)
+      (frame context tree)
+      (assert (null (%lui.frame:context-popup-draw context)))
+      (open-menu)
+      (assert (null (%lui.frame:context-popup-draw context))))))
+
 (defun run-tests ()
   (test-container-activation)
+  (test-retained-context-menu)
   (test-node-slots)
   (test-widget-constructors)
   (test-common-children)

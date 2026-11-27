@@ -761,6 +761,8 @@ Fall back to its background role, or the current toolkit for an empty frame."
     (setf (context-input-handler context)
           (lambda (context event)
             (selection-input renderer context event))))
+  (setf (context-default-menu context)
+        (lambda (node event) (text-menu-provider renderer context node event)))
   (let ((*context* context)
         (selection (finish-selection context))
         (surface (or viewport
@@ -846,52 +848,41 @@ Fall back to its background role, or the current toolkit for an empty frame."
       (request-paste context field))
     t))
 
-(fn (open-text-menu (values))
-    ((renderer renderer) (context context) (event event))
-  "Open a shared pointer menu without replacing an existing text selection."
-  (let* ((x (event-x event))
-         (y (event-y event))
-         (nodes (%selectable-nodes context))
-         (target (selection-start-target context nodes x y)))
-    (when target
-      (let* ((widget (element-content target))
-             (field (when (eq (widget-kind widget) :text-field)
-                      (element-id target)))
-             (modal (when (context-modal context)
-                      (element-id (context-modal context)))))
+(fn (text-menu-provider (or null function))
+    ((renderer renderer) (context context) (target element) (event event))
+  "Provide standard text actions to the generic widget context-menu router."
+  #+(or jscl lui-ecl-web) (declare (ignore renderer context target event))
+  #+(or jscl lui-ecl-web) nil
+  #-(or jscl lui-ecl-web)
+  (let ((widget (element-content target)))
+    (when (and (widget-p widget)
+               (member (widget-kind widget) '(:label :text-field)))
+      (let ((field (when (eq (widget-kind widget) :text-field)
+                     (element-id target)))
+            (modal (when (context-modal context)
+                     (element-id (context-modal context)))))
         (when field
           (unless (equal field (context-focus context))
-            (start-text-selection renderer context nodes x y 1))
+            (start-text-selection renderer context (%selectable-nodes context)
+                                  (event-x event) (event-y event) 1))
           (setf (context-focus context) field)
           (when (context-selection context)
             (setf (text-selection-anchor (context-selection context)) nil
                   (text-selection-focus (context-selection context)) nil)))
         (when (context-selection context)
           (setf (text-selection-dragging-p (context-selection context)) nil))
-        (setf (context-active context) nil)
-        (lui:with-toolkit ((widget-style widget))
-          (lui:with-palette ((apply #'lui:make-palette (widget-palette widget)))
-            (lui:%open-pointer-menu
-             x y (lambda () (draw-text-menu context field modal))))))))
-  (values))
+        (lambda () (draw-text-menu context field modal))))))
 
-(fn (text-menu-input boolean)
-    ((renderer renderer) (context context) (event event))
-  "Intercept native clipboard shortcuts and open the shared pointer menu."
-  #+(or jscl lui-ecl-web) (declare (ignore renderer context event))
+(fn (clipboard-input boolean) ((context context) (event event))
+  "Intercept native Paste shortcuts without owning context-menu routing."
+  #+(or jscl lui-ecl-web) (declare (ignore context event))
   #+(or jscl lui-ecl-web) nil
   #-(or jscl lui-ecl-web)
-  (cond
-    ((context-popup-draw context) nil)
-    ((and (context-menu-p context)
-          (eq (event-kind event) :press)
-          (eq (event-button event) :secondary))
-     (open-text-menu renderer context event)
-     (not (null (context-popup-draw context))))
-    ((and (eq (event-kind event) :key)
-          (eq (event-key event) lui.key:paste)
-          (%lui.widgets:text-field-focused-p context))
-     (request-paste context (context-focus context)) t)))
+  (when (and (null (context-popup-draw context))
+             (eq (event-kind event) :key)
+             (eq (event-key event) lui.key:paste)
+             (%lui.widgets:text-field-focused-p context))
+    (request-paste context (context-focus context)) t))
 
 (fn (%selectable-nodes (values (vector element) (or null hash-table)))
     ((context context) &optional ((keys-p boolean) nil))
@@ -1277,7 +1268,7 @@ Fall back to its background role, or the current toolkit for an empty frame."
 (fn (selection-input (or null event))
     ((renderer renderer) (context context) (event event))
   "Apply native selection input before routing this event to its control."
-  (when (text-menu-input renderer context event)
+  (when (clipboard-input context event)
     (return-from selection-input nil))
   (when (and (null (context-popup-draw context))
              (or (and (context-selection context)

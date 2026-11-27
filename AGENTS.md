@@ -400,10 +400,16 @@ and falls back to AppKit drawing; test the actual path rather than assuming GL.
 - Native text selection supports double-click words and triple-click paragraphs
   separated by newlines, with whole-unit drag extension. Blank-space label
   selection stays inside container content and honors clipping/occlusion.
-  Native Copy/Paste menus use the shared floating-menu state, anchored popup
-  layout, and menu-item controls, including their input routing and painting.
-  They default on; `lui:run :context-menu-p nil` disables
-  them. Clipboard reads use callback delivery; keep async paste bound to its
+  All widgets and containers accept `:context-menu`: a zero-argument menu
+  drawer, `:default` for inherited/default behavior, or NIL to suppress it.
+  Retained constructors accept the same option; `node-context-menu` mutates it.
+  Generic frame routing owns right-click and Menu/Shift+F10 invocation.
+  Native Copy/Paste menus are default providers, with no separate right-click
+  handler. `lui:default-context-menu` includes standard actions in custom menus.
+  Browser custom menus replace the browser menu only on configured targets;
+  ordinary browser text selection and native menus remain available elsewhere.
+  `lui:run :context-menu-p nil` disables LUI context menus for that window.
+  Clipboard reads use callback delivery; keep async paste bound to its
   original, still-focused editor. Ctrl-V/Command-V uses the system clipboard;
   Ctrl-Y keeps the editor kill buffer.
 - Combobox Up/Down selects suggestions; Enter accepts a highlighted suggestion.

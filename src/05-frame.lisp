@@ -33,6 +33,7 @@
            #:pending-input-context #:context-overlay #:context-overlay-state
            #:context-tabs-handled-p #:context-text-mode-p
            #:context-copy #:context-paste #:context-posted-events
+           #:*context-menu-input* #:context-default-menu
            #:context-menu-p #:context-popup-draw #:*context-menu-p*
            #:context-input-handler #:context-selection
            #:*event-modifiers* #:modifier-mask #:modified-character-key
@@ -81,6 +82,8 @@ MODIFIERS records keyboard Shift, Control, Alt and Super/Command in bits 0-3."
 (defvar *min-fps* 1)
 (defvar *max-fps* 240)
 (defvar *context-menu-p* t)
+(defvar *context-menu-input* nil
+  "Shared context-menu event router installed by the application facade.")
 
 (defstruct memo-entry (key nil :type list) (value nil :type t))
 
@@ -124,6 +127,7 @@ the current input event, or next frame when posted outside input routing."
   (paste nil :type (or null function))
   (posted-events nil :type list)
   (menu-p *context-menu-p* :type boolean)
+  (default-menu nil :type (or null function))
   (on-close *on-close* :type (or null function))
   (close-requested-p nil :type boolean)
   (popup-draw nil :type (or null function))
@@ -872,6 +876,9 @@ ID types are unrestricted and may differ between vector elements."
 (fn (route-frame-input (values))
     ((context context) (event event) (resized boolean))
   "Route one input and any synchronous clipboard delivery before the next."
+  (when (and (not resized) *context-menu-input*
+             (funcall *context-menu-input* context event))
+    (return-from route-frame-input (values)))
   (let ((routed (if (and (not resized) (context-input-handler context))
                     (funcall (context-input-handler context) context event)
                     ;; else
