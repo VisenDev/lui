@@ -754,6 +754,12 @@ Click a lane to select its track and reveal that bar in the piano roll; while
 playing, navigation does not seek. Activity labels follow scheduled notes,
 respect mute/solo and gain, and are not measured audio meters. Mute and solo
 are locked during playback because the backing mix is a rendered snapshot.
+DAW toolbar groups stack at text-unit breakpoints using stable panel identities,
+so resizing does not discard editor focus. The page scrolls vertically in short
+windows; project paths and help text wrap. Track captions are shortened while
+their full names remain in the inspector and accessibility labels. Native-font
+layout tests cover 320–1800 pixel widths, long names, scrolling to export actions,
+and small-window close-dialog buttons.
 
 macOS (SBCL/Cocoa) and Windows (Win32) are intended native targets, but the
 complete DAW has only been validated on Linux. Put ffplay and ffmpeg on PATH
