@@ -41,6 +41,7 @@
   (when (editable-p session)
     (cancel-gesture session)
     (%lui.example.daw-state:select-track session index)
+    (setf (%lui.example.daw-state:session-editor-p session) t)
     (let ((beat (max 0 (min beat (- (song-beats (session-song session))
                                    (session-snap session))))))
       (setf (session-page session) (floor beat 4))

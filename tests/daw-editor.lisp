@@ -247,14 +247,16 @@
       (assert (every #'zerop (pcm-values "build/daw-silent.wav"))))))
 
 (defun test-cycle-playback ()
-  "Run multiple real ffplay cycles, then resume from a different cursor."
+  "Run multiple real SDL cycles, then resume from a different cursor."
   (let ((session (make-editor-session :song (make-song :beats 4 :tempo 240)
                                :cycle-p t :cycle-start 0 :cycle-end 1)))
     (unwind-protect
          (progn
            (%lui.example.daw-demo:play-song session)
-           (sleep 0.6)
-           (assert (uiop:process-alive-p
+           (dotimes (i 24)
+             (sleep 0.03)
+             (%lui.example.daw-demo:update-transport session))
+           (assert (%lui.example.daw-audio:active-p
                     (%lui.example.daw-demo:session-player session)))
            (assert (<= 0 (%lui.example.daw-demo:transport-position session) 1))
            (%lui.example.daw-demo:stop-player session)
@@ -262,8 +264,8 @@
            (%lui.example.daw-demo:play-song session)
            (assert (= 2 (session-play-start session)))
            (assert (= 4 (session-play-end session)))
-           (assert (= 22050 (length (pcm-values
-                           (%lui.example.daw-demo:session-scratch session))))))
+           (assert (= 44100 (%lui.example.daw-audio:player-frames
+                            (%lui.example.daw-demo:session-player session)))))
       (%lui.example.daw-demo:close-session session))))
 
 (defun test-save-shortcut ()

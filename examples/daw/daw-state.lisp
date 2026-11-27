@@ -15,7 +15,7 @@
     #:session-metronome-p #:session-snap #:session-view-bars #:session-tool
     #:session-undo #:session-redo #:session-dirty-p #:session-gesture
     #:session-pending #:session-pending-path #:session-close-after-save-p
-    #:session-file-input
+    #:session-file-input #:session-effects-p #:session-editor-p #:session-pending-track
     #:session-devices #:session-device-index
     #:gesture #:make-gesture #:gesture-kind #:gesture-beat #:gesture-pitch
     #:gesture-end-beat #:gesture-end-pitch #:gesture-originals
@@ -62,8 +62,7 @@
            :type (vector string))
   (device-index 0 :type fixnum)
   (status "Draw notes; drag to move; drag the right edge to resize." :type string)
-  ;; UIOP process handles are opaque; their class is not a portable export.
-  (player nil :type t)
+  (player nil :type (or null %lui.example.daw-audio:player))
   (midi nil :type (or null %lui.example.daw-midi:input))
   (recorder nil :type (or null %lui.example.daw-model:recorder))
   (started 0 :type integer)
@@ -77,6 +76,9 @@
   (cycle-start 0 :type real)
   (cycle-end 8 :type real)
   (metronome-p nil :type boolean)
+  (effects-p nil :type boolean)
+  (editor-p t :type boolean)
+  (pending-track nil :type (or null track))
   (undo (make-array 0 :element-type 'song :adjustable t :fill-pointer 0)
         :type (vector song))
   (redo (make-array 0 :element-type 'song :adjustable t :fill-pointer 0)
@@ -85,7 +87,7 @@
   (gesture nil :type (or null gesture))
   (pending-path nil :type (or null pathname))
   (close-after-save-p nil :type boolean)
-  (pending nil :type (member nil :new :load :save :save-as :wav :mp3 :close)))
+  (pending nil :type (member nil :new :load :save :save-as :wav :mp3 :close :remove-track)))
 
 (defun current-track (session)
   "Return the track selected for editing and recording."
@@ -96,7 +98,7 @@
   (not (null (session-midi session))))
 
 (defun playing-p (session)
-  "Return whether a playback process is owned by this window."
+  "Return whether this window owns an active audio player."
   (not (null (session-player session))))
 
 (defun editable-p (session)

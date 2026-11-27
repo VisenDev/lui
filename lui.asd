@@ -81,9 +81,9 @@
   :depends-on ("lui/native" "file-select")
   :serial t
   :components ((:module "examples/daw" :serial t
-                :components ((:file "daw-model") (:file "daw-midi")
+                :components ((:file "daw-model") (:file "daw-audio") (:file "daw-midi")
                              (:file "daw-files")
-                             (:file "daw-state") (:file "daw-roll")
+                             (:file "daw-state") (:file "daw-drums") (:file "daw-roll")
                              (:file "daw-demo")))))
 
 (defsystem "lui/tests"

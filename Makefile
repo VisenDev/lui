@@ -118,7 +118,9 @@ test-daw: build/daw-midi-test.so
 		--load tests/daw-editor.lisp \
 		--eval '(%lui.tests.daw-editor:run-tests)' \
 		--load tests/daw-files.lisp \
-		--eval '(%lui.tests.daw-files:run-tests)'
+		--eval '(%lui.tests.daw-files:run-tests)' \
+		--load tests/daw-audio.lisp \
+		--eval '(%lui.tests.daw-audio:run-tests)'
 
 build/daw-midi-test.so: tests/daw-midi.c
 	@mkdir -p build

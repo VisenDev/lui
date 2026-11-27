@@ -752,8 +752,11 @@ The graphical arrangement shows full-song note lanes on a shared time scale,
 with the selected editor range shaded and the playhead repeated across tracks.
 Click a lane to select its track and reveal that bar in the piano roll; while
 playing, navigation does not seek. Activity labels follow scheduled notes,
-respect mute/solo and gain, and are not measured audio meters. Mute and solo
-are locked during playback because the backing mix is a rendered snapshot.
+respect mute/solo and gain, and are not measured audio meters. Track volume,
+master volume, mute/solo and track effects update during playback.
+The editor's top-right × closes it for a taller track list; clicking a lane
+reopens it. Track deletion requires confirmation and remains undoable.
+Tempo is explicitly labeled separately from the bar/beat position.
 DAW toolbar groups stack at text-unit breakpoints using stable panel identities,
 so resizing does not discard editor focus. The page scrolls vertically in short
 windows; project paths and help text wrap. Track captions are shortened while
@@ -771,8 +774,10 @@ Editing tests use an explicit short fixture; composition tests and startup
 layout checks exercise the actual default song.
 
 macOS (SBCL/Cocoa) and Windows (Win32) are intended native targets, but the
-complete DAW has only been validated on Linux. Put ffplay and ffmpeg on PATH
-for playback and MP3 export, respectively. MIDI additionally needs an
+complete DAW has only been validated on Linux. Playback needs an SDL2 shared
+library (SDL2.dll on Windows, libSDL2.dylib/framework on macOS);
+`LUI_DAW_AUDIO_LIBRARY` can select its full path. Put ffmpeg on PATH for MP3
+export. MIDI additionally needs an
 architecture-matched RtMidi shared library (dylib on macOS, rtmidi.dll on
 Windows). Editing, project persistence and Lisp WAV rendering do not need
 those external audio tools. A successful portable test does not establish
@@ -781,15 +786,23 @@ working audio devices, MIDI hardware or window behavior on either platform.
 Native MIDI uses Common Lisp CFFI bindings in `daw-midi.lisp` and the RtMidi
 shared library; `LUI_DAW_MIDI_LIBRARY` can select a full library path. There is
 no Python runtime in this demo or its tests. The demo loads `lui/native` for
-public drawing APIs; no core dependencies are added. FFmpeg/ffplay are runtime
-tools for playback and MP3. Playback and record backing are rendered snapshots;
-cycle playback repeats a rendered range. Export excludes the metronome. The
-playhead/record backing timing is approximate, with no live monitoring or
-sample-synchronized overdubbing. CLM is not integrated.
+public drawing APIs; no core dependencies are added. `daw-audio.lisp` queues
+float samples through SDL2, with dry notes synthesized on Play and live Lisp
+mixing/effects. The queue targets about 93 ms, plus device and UI latency;
+long UI stalls can underrun. Cycle can be disabled live to continue through
+the song without replacing the device. Export excludes the metronome and
+uses the same distortion, low-pass cutoff/resonance, reverb and gains.
+The playhead/record backing timing is approximate, with no live monitoring or
+sample-synchronized overdubbing. CLM is not integrated. `daw-drums.lisp`
+provides four synthesized voices and a 16-step pattern editor with a basic
+beat preset. Project format 2 stores master gain and effects and reads format 1
+with neutral defaults. Browser integration is a later task: native SDL2,
+RtMidi and filesystem/export access need browser audio, MIDI and file adapters.
 
 `make test-daw` covers native MIDI ABI doubles, real LUI pointer routing, capture
 cancellation, undo/redo, clipboard, project handling, WAV timing/pitch, MP3
-encoding/decoding and ffplay looping through SDL's silent output. Tests use
+encoding/decoding, live mixing/effects and cycle exit through SDL's silent
+output, drum editing, editor dismissal and confirmed track deletion. Tests use
 Lisp and a test-only C library. Do not treat simulated input or silent playback
 as evidence of hardware MIDI support or audible device output.
 `make test-native` also checks the production Win32 key translator without

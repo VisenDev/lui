@@ -6,7 +6,7 @@
     #:note-pitch #:note-start #:note-duration #:note-velocity
     #:add-note #:note-at #:make-recorder #:midi-event #:finish-recording
     #:render-wav #:save-song #:load-song)
-  (:export #:run-tests #:test-native-midi #:make-editor-session #:editor-song))
+  (:export #:run-tests #:test-native-midi #:make-editor-session #:editor-song #:read-pcm))
 (in-package #:%lui.tests.daw)
 
 (defun editor-song ()
@@ -102,7 +102,7 @@
                              :kind :activate :id (find-key context key))))
                (frame)))
       (frame)
-      (assert (%lui.tests.support:visible-text-p context "EDITOR: Keys"))
+      (assert (%lui.tests.support:visible-text-p context "PIANO ROLL"))
       (activate '(61 0))
       (let ((note (%lui.example.daw-demo:session-selected session)))
         (assert note)
@@ -209,22 +209,22 @@
     (render-wav song "build/daw-muted.wav")))
 
 (defun test-playback ()
-  "Exercise ffplay ownership and UI state with SDL's silent test audio sink."
+  "Exercise SDL ownership and UI state with SDL's silent test audio sink."
   (let ((session (make-editor-session))
         (context (%lui.tests.support:make-test-context))
-        (path nil))
+        (player nil))
     (unwind-protect
          (progn
            (%lui.example.daw-demo:play-song session)
-           (setf path (%lui.example.daw-demo:session-scratch session))
+           (setf player (%lui.example.daw-demo:session-player session))
            (sleep 0.2)
-           (assert (uiop:process-alive-p
+           (assert (%lui.example.daw-audio:active-p
                     (%lui.example.daw-demo:session-player session)))
            (lui:with-frame (context 110 65)
              (%lui.example.daw-demo:draw session)))
       (%lui.example.daw-demo:close-session session))
     (assert (null (%lui.example.daw-demo:session-player session)))
-    (assert (not (probe-file path)))))
+    (assert (not (%lui.example.daw-audio:active-p player)))))
 
 (defun read-pcm (path &optional (skip 0))
   "Read little-endian signed PCM16 without using the demo's writer."

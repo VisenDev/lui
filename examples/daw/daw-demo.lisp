@@ -32,7 +32,8 @@
     #:stop-recording #:drain-midi #:session-midi #:session-recorder
     #:session-path #:export-song #:play-song #:session-player #:session-scratch
     #:transport-position #:stop-player #:request-file-action
-    #:request-session-close #:resolve-close #:resolve-file-confirmation))
+    #:request-session-close #:resolve-close #:resolve-file-confirmation
+    #:update-transport #:request-track-removal #:resolve-track-removal))
 (in-package #:%lui.example.daw-demo)
 
 (defun elapsed (session)
@@ -63,24 +64,17 @@
   (values))
 
 (defun transport-position (session)
-  "Estimate the playhead from the frozen render range and monotonic time."
+  "Read consumed audio frames, with device-buffer latency still approximate."
   (if (playing-p session)
-      (let* ((start (session-play-start session))
-             (length (- (session-play-end session) start))
-             (beats (* (elapsed session) (/ (song-tempo (session-song session)) 60))))
-        (+ start (if (and (session-play-loop-p session) (plusp length))
-                     (mod beats length) (min length beats))))
-      ;; else
+      (%lui.example.daw-audio:position-beat (session-player session))
       (session-playhead session)))
 
 (defun stop-player (session)
-  "Pause at the current playhead and reap this window's playback process."
+  "Pause at the consumed position and release the native audio device."
   (declare (values))
   (when (session-player session)
     (setf (session-playhead session) (transport-position session))
-    (when (uiop:process-alive-p (session-player session))
-      (uiop:terminate-process (session-player session)))
-    (uiop:wait-process (session-player session))
+    (%lui.example.daw-audio:close-player (session-player session))
     (setf (session-player session) nil))
   (values))
 
@@ -94,21 +88,16 @@
          (start (if loop-p (session-cycle-start session)
                     (session-playhead session))))
     (when (>= start end) (setf start 0))
-    (render-wav (session-song session) (scratch-path session)
-                :start start :end end :metronome (session-metronome-p session))
     (launch-playback session start end loop-p)
-    (setf (session-status session) "Playing. Edits are heard on the next Play."))
+    (setf (session-status session) "Playing. Volume and effects are live; note edits apply on the next Play."))
   (values))
 
 (defun launch-playback (session start end loop-p)
-  "Launch an already rendered range and establish the shared transport clock."
+  "Open a native stem mixer and establish the shared transport clock."
   (declare (values))
   (setf (session-player session)
-        (uiop:launch-program
-         (append (list "ffplay" "-nodisp" "-autoexit" "-loglevel" "error")
-                 (when loop-p (list "-loop" "0"))
-                 (list (namestring (scratch-path session))))
-         :output nil :error-output nil)
+        (%lui.example.daw-audio:open-player
+         (session-song session) start end loop-p (session-metronome-p session))
         (session-play-start session) start (session-play-end session) end
         (session-play-loop-p session) loop-p
         (session-playhead session) start
@@ -138,12 +127,13 @@
   (stop-player session)
   (when (>= (session-playhead session) (song-beats (session-song session)))
     (setf (session-playhead session) 0))
-  ;; Render before opening input so synthesis time cannot shift a take.
-  (render-wav (session-song session) (scratch-path session)
-              :start (session-playhead session)
-              :metronome (session-metronome-p session))
-  (let ((input (%lui.example.daw-midi:open-input
-                (parse-integer (session-port session)))))
+  ;; Prepare audio before opening MIDI; synthesis must not shift event timing.
+  (launch-playback session (session-playhead session)
+                   (song-beats (session-song session)) nil)
+  (let ((input (handler-case
+                   (%lui.example.daw-midi:open-input
+                    (parse-integer (session-port session)))
+                 (error (condition) (stop-player session) (error condition)))))
     (checkpoint session)
     (setf (session-midi session) input
           (session-recorder session)
@@ -154,13 +144,7 @@
           (session-last-time session) 0
           (session-play-start session) (session-playhead session)
           (session-started session) (get-internal-real-time)
-          (session-status session) "Recording over backing mix; new notes are not monitored.")
-    (handler-case
-        (launch-playback session (session-playhead session)
-                         (song-beats (session-song session)) nil)
-      (error (condition)
-        (stop-recording session)
-        (error condition))))
+          (session-status session) "Recording over backing mix; new notes are not monitored."))
   (values))
 
 (defun drain-midi (session)
@@ -199,12 +183,16 @@
   (declare (values))
   (when (playing-p session)
     (setf (session-playhead session) (transport-position session))
-    (unless (uiop:process-alive-p (session-player session))
-      (let ((code (uiop:wait-process (session-player session))))
-        (setf (session-player session) nil
-              (session-status session)
-              (if (zerop code) "Playback finished."
-                  "Playback failed; check ffplay and the audio output device.")))))
+    (handler-case
+        (unless (%lui.example.daw-audio:pump (session-player session)
+                                             (session-song session))
+          (stop-player session)
+          (setf (session-status session) "Playback finished."))
+      (error (condition)
+        (when (recording-p session)
+          (ignore-errors (stop-recording session)))
+        (stop-player session)
+        (error condition))))
   (when (recording-p session)
     (handler-case
         (progn
@@ -241,10 +229,63 @@
   `(let ((stacked (< (lui:frame-width)
                      (lui:resolve-units (lui:units ,minimum)))))
      (lui:panel (:direction (if stacked :column :row)
-                            :width (lui:grow) :padding 0 :gap (lui:units 0.5)
+                            :width (if stacked (lui:grow) (lui:fit))
+                  :padding 0 :gap (lui:units 1)
                             :cross-align (if stacked :start :center)
                             :painter #'paint-toolbar)
        ,@body)))
+
+(defun cycle-control (session)
+  "Allow cycle exit during playback without stopping or replacing the device."
+  (declare (values))
+  (let* ((old (session-cycle-p session))
+         (new (lui:checkbox "Cycle" :id :cycle :value old
+                             :disabled-p (recording-p session))))
+    (unless (eql old new)
+      (setf (session-cycle-p session) new)
+      (when (playing-p session)
+        (%lui.example.daw-audio:set-cycle
+         (session-player session) new (session-cycle-start session)
+         (session-cycle-end session))
+        (setf (session-play-loop-p session) new
+              (session-play-end session)
+              (if new (session-cycle-end session) (song-beats (session-song session)))))))
+  (values))
+
+(defun request-track-removal (session track)
+  "Capture the intended track and ask before deleting any notes."
+  (declare (values))
+  (when (and (editable-p session)
+             (> (length (song-tracks (session-song session))) 1))
+    (cancel-gesture session)
+    (setf (%lui.example.daw-state:session-pending-track session) track
+          (session-pending session) :remove-track))
+  (values))
+
+(defun resolve-track-removal (session answer)
+  "Cancel safely or delete the captured track as one undoable edit."
+  (declare (values))
+  (let* ((track (%lui.example.daw-state:session-pending-track session))
+         (tracks (song-tracks (session-song session))))
+    (when (and (eq answer :confirm) (find track tracks) (> (length tracks) 1))
+      (checkpoint session)
+      (setf (song-tracks (session-song session)) (delete track tracks))
+      (select-track session (min (session-track session)
+                                 (1- (length (song-tracks (session-song session)))))))
+    (setf (session-pending session) nil
+          (%lui.example.daw-state:session-pending-track session) nil))
+  (values))
+
+(defun track-removal-confirmation (session)
+  "Require an explicit decision before removing a track and all its notes."
+  (declare (values))
+  (let ((answer (lui:confirm
+                 (format nil "Delete track ~S and all its notes?"
+                         (track-name (%lui.example.daw-state:session-pending-track session)))
+                 :title "Delete track" :confirm-label "Delete track"
+                 :cancel-label "Cancel")))
+    (when answer (resolve-track-removal session answer)))
+  (values))
 
 (defun transport (session)
   "Expose pause/resume, stop, rewind, tempo, cycle and metronome together."
@@ -269,16 +310,16 @@
         (lui:label (format nil "Bar ~D / Beat ~,2F"
                            (1+ (floor (session-playhead session) 4))
                            (1+ (mod (session-playhead session) 4))))
-        (lui:label "BPM")
+        (lui:vr)
+        (lui:label "Tempo")
         (let* ((old (song-tempo (session-song session)))
                (value (round (lui:slider :value old :minimum 40 :maximum 240
                                          :step 1 :width (lui:units 10) :disabled-p busy))))
           (unless (= old value) (checkpoint session)
                   (setf (song-tempo (session-song session)) value))
-          (lui:label (write-to-string value)))
-        (setf (session-cycle-p session)
-              (lui:checkbox "Cycle" :value (session-cycle-p session) :disabled-p busy)
-              (session-metronome-p session)
+          (lui:label (format nil "~D BPM" value)))
+        (cycle-control session)
+      (setf (session-metronome-p session)
               (lui:checkbox "Click" :value (session-metronome-p session)
                             :disabled-p busy)))))
   (values))
@@ -352,7 +393,7 @@
       (select-track session index))
     (lui:row (:width (lui:grow) :gap (lui:units 1)
                :cross-align :center)
-      (let* ((busy (or (recording-p session) (playing-p session)))
+      (let* ((busy (recording-p session))
              (muted (lui:checkbox "M" :value (track-muted-p track)
                                   :accessible-name "Mute track"
                                   :disabled-p busy))
@@ -399,6 +440,13 @@
            (make-track :name (format nil "Track ~D" (1+ (length tracks)))) tracks)
           (select-track session (1- (length tracks)))))
       (responsive-bar (65)
+        (when (lui:button "+ Drums" :id :add-drums
+                          :disabled-p (or disabled (>= (length tracks) 32)))
+          (checkpoint session)
+          (vector-push-extend (make-track :name "Drums" :wave :drums :volume 0.7)
+                              tracks)
+          (select-track session (1- (length tracks)))
+          (setf (%lui.example.daw-state:session-editor-p session) t))
         (when (lui:button "Duplicate track" :disabled-p
                           (or disabled (>= (length tracks) 32)))
           (checkpoint session)
@@ -408,9 +456,7 @@
             (select-track session (1- (length tracks)))))
         (when (lui:button "Remove track" :disabled-p
                           (or disabled (= (length tracks) 1)))
-          (checkpoint session)
-          (setf (song-tracks (session-song session)) (delete track tracks))
-          (select-track session 0))
+          (request-track-removal session track))
         (lui:label "Bars")
         (let ((bars (round (lui:slider :value (/ (song-beats (session-song session)) 4)
                                        :minimum 1 :maximum 32 :step 1 :width (lui:units 12)
@@ -418,12 +464,14 @@
           (change-bars session bars)
           (lui:label (write-to-string (/ (song-beats (session-song session)) 4))))))
     (lui:panel (:height (if (lui:text-mode-p) (lui:units 8)
-                            (+ 4 (* 72 (min 4 (length tracks)))))
+                            (if (%lui.example.daw-state:session-editor-p session)
+                                (+ 4 (* 72 (min 4 (length tracks))))
+                                (max 216 (- (lui:frame-height) 280))))
                         :id :track-list :width (lui:grow) :scroll-p t :padding 2 :gap 0)
       (loop :for item :across (song-tracks (session-song session))
             :for index :from 0 :do (track-strip session item index)))
     (setf track (current-track session))
-    (responsive-bar (75)
+    (responsive-bar (140)
       (lui:row (:gap (lui:units 0.5) :cross-align :center)
         (lui:label "Name")
         (let ((name (lui:text-field :id :track-name
@@ -432,17 +480,66 @@
           (unless (string= name (track-name track))
             (checkpoint session) (setf (track-name track) name))))
       (lui:row (:gap (lui:units 0.5) :cross-align :center)
-        (lui:label "Level")
-        (let ((volume (lui:slider :value (track-volume track) :minimum 0 :maximum 1
-                                  :step 0.05 :width (lui:units 14)
+        (lui:label (format nil "Track volume ~D%" (round (* 100 (track-volume track)))))
+        (let ((volume (lui:slider :id :track-volume :value (track-volume track) :minimum 0 :maximum 1
+                                  :step 0.01 :width (lui:units 12)
                                   :disabled-p disabled)))
           (unless (= volume (track-volume track))
             (checkpoint session) (setf (track-volume track) volume))))
+      (lui:row (:gap (lui:units 0.5) :cross-align :center)
+        (lui:label (format nil "Master volume ~D%"
+                           (round (* 100 (%lui.example.daw-model:song-master-volume
+                                           (session-song session))))))
+        (let* ((song (session-song session))
+               (old (%lui.example.daw-model:song-master-volume song))
+               (volume (lui:slider :id :master-volume :value old
+                                   :minimum 0 :maximum 1 :step 0.01
+                                   :width (lui:units 12) :disabled-p disabled)))
+          (unless (= old volume)
+            (checkpoint session)
+            (setf (%lui.example.daw-model:song-master-volume song) volume))))
+      (multiple-value-bind (visible changed)
+          (lui:checkbox "Effects" :id :show-effects
+                        :value (%lui.example.daw-state:session-effects-p session))
+        (setf (%lui.example.daw-state:session-effects-p session) visible)
+        (when (and visible changed)
+          (setf (%lui.example.daw-state:session-editor-p session) t)))
       (when (lui:button (format nil "Sound: ~A" (string-capitalize (track-wave track)))
-                        :disabled-p disabled)
+                        :disabled-p (or disabled (eq (track-wave track) :drums)))
         (checkpoint session)
         (setf (track-wave track) (ecase (track-wave track)
-                                   (:sine :triangle) (:triangle :organ) (:organ :sine))))))
+                                   (:sine :triangle) (:triangle :organ) (:organ :sine) (:drums :drums))))))
+  (values))
+
+(defun effect-controls (session)
+  "Expose per-track distortion, low-pass cutoff/resonance and reverb live."
+  (declare (values))
+  (let ((track (current-track session))
+        (disabled (not (editable-p session))))
+    (responsive-bar (130)
+      (dolist (kind '(:distortion :cutoff :resonance :reverb))
+        (lui:column (:id (list :effect kind) :width (lui:grow) :gap 2)
+          (let* ((old (ecase kind
+                        (:distortion (%lui.example.daw-model:track-distortion track))
+                        (:cutoff (%lui.example.daw-model:track-cutoff track))
+                        (:resonance (%lui.example.daw-model:track-resonance track))
+                        (:reverb (%lui.example.daw-model:track-reverb track))))
+                 (cutoff (eq kind :cutoff))
+                 (value (if cutoff (/ (log (/ old 40)) (log 500)) old)))
+            (lui:label (if cutoff (format nil "Cutoff ~D Hz" (round old))
+                           (format nil "~A ~D%" (string-capitalize kind)
+                                   (round (* old 100)))))
+            (multiple-value-bind (new changed)
+                (lui:slider :id kind :value value :minimum 0 :maximum 1
+                             :step 0.01 :width (lui:units 18) :disabled-p disabled)
+              (when (and changed (/= new value))
+                (checkpoint session)
+                (ecase kind
+                  (:distortion (setf (%lui.example.daw-model:track-distortion track) new))
+                  (:cutoff (setf (%lui.example.daw-model:track-cutoff track)
+                                 (min 20000 (* 40 (expt 500 new)))))
+                  (:resonance (setf (%lui.example.daw-model:track-resonance track) new))
+                  (:reverb (setf (%lui.example.daw-model:track-reverb track) new))))))))))
   (values))
 
 (defun roll-toolbar (session)
@@ -450,9 +547,7 @@
   (declare (values))
   (responsive-bar (150)
     (responsive-bar (65)
-      (lui:label (format nil "EDITOR: ~A"
-                         (compact-name (track-name (current-track session))))
-                 :width (lui:units 18))
+      (lui:label "PIANO ROLL")
       (dolist (tool '(:draw :select :erase))
         (when (lui:button (format nil "~A~A" (if (eq tool (session-tool session)) "> " "")
                                   (string-capitalize tool))
@@ -670,7 +765,7 @@
                           (or (playing-p session) (recording-p session)))
           (request-file-action session action)))))
   (when (and (session-pending session)
-             (not (eq (session-pending session) :close)))
+             (member (session-pending session) '(:new :load :save :save-as :wav :mp3)))
     (let ((result (lui:confirm
                    (if (member (session-pending session) '(:new :load))
                        "Discard unsaved changes to this project?"
@@ -729,7 +824,7 @@
       (lui:label (session-status session) :width (lui:grow)))
     (when details
       (lui:label
-       "Click a track lane to select its track and time. Gold line: playhead."
+       "Click a track lane to open its editor. × closes it. Gold line: playhead."
        :width (lui:grow))
       (lui:label
        "Draw notes in empty space. Drag to move; drag the edge to resize. Right-click deletes."
@@ -754,10 +849,23 @@
                     :padding (lui:units 1) :gap (lui:units 0.5))
           (transport session)
           (track-controls session)
-          (history-controls session)
-          (roll-toolbar session)
-          (when (%lui.example.daw-roll:draw session) (toggle-play session))
-          (note-editor session)
+          (when (%lui.example.daw-state:session-editor-p session)
+          (lui:row (:width (lui:grow) :gap 4 :cross-align :start)
+            (history-controls session)
+            (lui:spacer :width (lui:grow))
+            (when (lui:button "×" :id :close-editor
+                              :accessible-name "Close note editor" :width 32)
+              (%lui.example.daw-state:cancel-gesture session)
+              (setf (%lui.example.daw-state:session-editor-p session) nil)))
+          (if (%lui.example.daw-drums:drum-track-p session)
+              (%lui.example.daw-drums:draw session)
+              ;; else
+              (progn
+                (roll-toolbar session)
+                (when (%lui.example.daw-roll:draw session) (toggle-play session))
+                (note-editor session)))
+          (when (%lui.example.daw-state:session-effects-p session)
+            (effect-controls session)))
           (file-controls session)
           (session-footer session))))
     (when save-p
@@ -765,15 +873,18 @@
       (lui:request-frame)))
   (when (eq (session-pending session) :close)
     (close-confirmation session))
+  (when (eq (session-pending session) :remove-track)
+    (track-removal-confirmation session))
   (when (plusp (length (lui:activated-ids))) (lui:request-frame))
   (when (or (playing-p session) (recording-p session)) (lui:request-frame 0.03))
   (values))
 
 (defun main (&key (interactive t))
-  "Run with make daw-demo. Native Lisp MIDI uses RtMidi; audio uses ffplay.
+  "Run with make daw-demo. Native Lisp MIDI uses RtMidi; playback uses SDL2 audio.
 The editor supports drag/marquee/resize, right-click deletion, undo/redo,
 quantization, track duplication, variable song lengths and cycle playback.
-Audio is rendered on Play; the playhead is approximate, not sample synchronized.
+Notes are synthesized on Play; gains and effects update during playback.
+The playhead is approximate, not sample synchronized.
 Recording plays the backing mix and optional click, without live monitoring."
   (let ((session (make-session)))
     (unwind-protect
