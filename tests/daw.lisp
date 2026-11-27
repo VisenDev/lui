@@ -6,8 +6,26 @@
     #:note-pitch #:note-start #:note-duration #:note-velocity
     #:add-note #:note-at #:make-recorder #:midi-event #:finish-recording
     #:render-wav #:save-song #:load-song)
-  (:export #:run-tests #:test-native-midi))
+  (:export #:run-tests #:test-native-midi #:make-editor-session #:editor-song))
 (in-package #:%lui.tests.daw)
+
+(defun editor-song ()
+  "Create a four-bar sketch with independently editable instruments."
+  (let ((song (make-song)))
+    (dolist (spec '(("Keys" :sine 60) ("Bass" :triangle 36)
+                    ("Organ" :organ 67)))
+      (let ((track (make-track :name (first spec) :wave (second spec))))
+        (dotimes (bar 4)
+          (add-note track (+ (third spec) (aref #(0 5 7 0) bar))
+                    (* bar 4) (if (= (third spec) 36) 2 1) 90))
+        (vector-push-extend track (song-tracks song))))
+    song))
+
+(defun make-editor-session (&rest options)
+  "Use a small explicit editing fixture independently of the showcase music."
+  (apply #'%lui.example.daw-state:make-session
+         (if (member :song options) options
+             (append options (list :song (editor-song))))))
 
 (defun test-midi ()
   "Exercise channels, velocity-zero off, sustain, retrigger and stop cleanup."
@@ -39,7 +57,7 @@
 
 (defun test-model ()
   "Check mixer precedence, project roundtrip, and disabled reader evaluation."
-  (let* ((song (demo-song))
+  (let* ((song (editor-song))
          (tracks (song-tracks song))
          (first (aref tracks 0))
          (second (aref tracks 1)))
@@ -74,7 +92,7 @@
 
 (defun test-ui ()
   "Create/select/delete through piano-roll controls and add a mixer track."
-  (let ((session (%lui.example.daw-demo:make-session))
+  (let ((session (make-editor-session))
         (context (%lui.tests.support:make-test-context)))
     (labels ((frame (&optional events)
                (lui:with-frame (context 110 65 :events events)
@@ -100,7 +118,7 @@
 
 (defun test-midi-close-failure ()
   "A failed final read must release MIDI and preserve Save/Discard/Cancel."
-  (let* ((session (%lui.example.daw-demo:make-session))
+  (let* ((session (make-editor-session))
          (context (%lui.tests.support:make-test-context))
          (%lui.frame:*context* context))
     (setf (%lui.frame:context-on-close context)
@@ -143,7 +161,7 @@
             (%lui.example.daw-midi:midi-error () t)))
   (assert (zerop (cffi:foreign-funcall "lui_test_live_inputs" :int)))
   (test-midi-close-failure)
-  (let ((session (%lui.example.daw-demo:make-session)))
+  (let ((session (make-editor-session)))
     (unwind-protect
          (progn
            (%lui.example.daw-demo:start-recording session)
@@ -161,7 +179,7 @@
              (assert (= 1/2 (note-duration (aref notes 4))))))
       (%lui.example.daw-demo:close-session session)))
   (assert (zerop (cffi:foreign-funcall "lui_test_live_inputs" :int)))
-  (let ((session (%lui.example.daw-demo:make-session))
+  (let ((session (make-editor-session))
         (context (%lui.tests.support:make-test-context)))
     (unwind-protect
          (progn
@@ -182,7 +200,7 @@
     (vector-push-extend track (song-tracks song))
     (add-note track 69 1 1 100)
     (render-wav song "build/daw-test.wav")
-    (let ((session (%lui.example.daw-demo:make-session
+    (let ((session (make-editor-session
                      :song song :path "build/daw-test")))
       (unwind-protect
            (%lui.example.daw-demo:export-song session "mp3")
@@ -192,7 +210,7 @@
 
 (defun test-playback ()
   "Exercise ffplay ownership and UI state with SDL's silent test audio sink."
-  (let ((session (%lui.example.daw-demo:make-session))
+  (let ((session (make-editor-session))
         (context (%lui.tests.support:make-test-context))
         (path nil))
     (unwind-protect
@@ -245,10 +263,47 @@
     (assert (> (reduce #'max decoded :key #'abs) 1000)))
   (format t "WAV timing, 440 Hz pitch, mute and actual MP3 decode passed.~%"))
 
+(defun test-showcase-song ()
+  "Check the real startup composition, cadence, variation and file roundtrip."
+  (let* ((song (demo-song))
+         (tracks (song-tracks song))
+         (bass (aref tracks 1))
+         (melody (aref tracks 2)))
+    (assert (= 64 (%lui.example.daw-model:song-beats song)))
+    (assert (= 108 (song-tempo song)))
+    (assert (= 3 (length tracks)))
+    (loop :for track :across tracks
+          :do (assert (plusp (length (track-notes track))))
+              (loop :for note :across (track-notes track)
+                    :do (assert (<= 0 (note-start note)))
+                        (assert (plusp (note-duration note)))
+                        (assert (<= (+ (note-start note) (note-duration note)) 64))))
+    (loop :for root :across #(43 48 41 46 39 48 38 43)
+          :for bar :from 0
+          :do (assert (note-at bass root (* 4 bar)))
+              (assert (note-at bass root (+ 32 (* 4 bar)))))
+    (assert (> (count-if (lambda (note) (>= (note-start note) 32))
+                         (track-notes melody))
+               (count-if (lambda (note) (< (note-start note) 32))
+                         (track-notes melody))))
+    (assert (= 4 (note-duration (note-at melody 67 60))))
+    (save-song song "build/daw-showcase.lisp")
+    (let ((copy (load-song "build/daw-showcase.lisp")))
+      (assert (= 64 (%lui.example.daw-model:song-beats copy)))
+      (loop :for original :across tracks :for loaded :across (song-tracks copy)
+            :do (assert (= (length (track-notes original))
+                           (length (track-notes loaded))))
+                (loop :for a :across (track-notes original)
+                      :for b :across (track-notes loaded)
+                      :do (dolist (reader (list #'note-pitch #'note-start
+                                               #'note-duration #'note-velocity))
+                            (assert (= (funcall reader a) (funcall reader b)))))))))
+
 (defun run-tests ()
   "Run DAW model, recording, public UI, persistence and audio integration checks."
   (test-midi)
   (test-model)
+  (test-showcase-song)
   (test-ui)
   (test-native-midi)
   (test-render)

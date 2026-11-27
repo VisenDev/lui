@@ -1,12 +1,13 @@
 (defpackage #:%lui.tests.daw-files
   (:use #:cl)
   (:import-from #:%lui.example.daw-state
-    #:make-session #:session-song #:session-path #:session-dirty-p
+    #:session-song #:session-path #:session-dirty-p
     #:session-pending #:session-pending-path #:session-close-after-save-p
     #:session-status)
   (:import-from #:%lui.example.daw-demo
     #:request-file-action #:resolve-file-confirmation #:resolve-close)
   (:import-from #:%lui.example.daw-files #:*picker*)
+  (:import-from #:%lui.tests.daw #:make-editor-session)
   (:export #:run-tests))
 (in-package #:%lui.tests.daw-files)
 
@@ -18,7 +19,7 @@
 
 (defun test-save (directory)
   "First save, repeat save, cancellation and failed Save As preserve state."
-  (let* ((session (make-session :dirty-p t))
+  (let* ((session (make-editor-session :dirty-p t))
          (path (merge-pathnames "project with spaces.lisp" directory)))
     (choose session :save nil)
     (assert (string= "" (session-path session)))
@@ -47,7 +48,7 @@
 (defun test-overwrite-and-open (directory)
   "Canceled overwrites and Open dialogs retain the active model and path."
   (let* ((path (merge-pathnames "project with spaces.lisp" directory))
-         (session (make-session :dirty-p t))
+         (session (make-editor-session :dirty-p t))
          (song (session-song session)))
     (choose session :save-as path)
     (assert (eq :save-as (session-pending session)))
@@ -68,7 +69,7 @@
     (assert (not (session-dirty-p session)))
     (choose session :new nil)
     (assert (string= "" (session-path session))))
-  (let ((session (make-session :dirty-p t))
+  (let ((session (make-editor-session :dirty-p t))
         (path (merge-pathnames "invalid.lisp" directory)))
     (with-open-file (stream path :direction :output :if-exists :supersede)
       (write-line "invalid" stream))
@@ -81,7 +82,7 @@
 
 (defun test-export (directory)
   "Export to a separate destination without changing the project identity."
-  (let* ((session (make-session :path "original.lisp" :dirty-p t))
+  (let* ((session (make-editor-session :path "original.lisp" :dirty-p t))
          (path (merge-pathnames "mix.wav" directory)))
     (choose session :wav nil)
     (assert (not (probe-file path)))
@@ -97,7 +98,7 @@
   "Canceled first-save pickers veto closing; confirmed saves allow it."
   (let* ((context (%lui.tests.support:make-test-context))
          (%lui.frame:*context* context)
-         (session (make-session :dirty-p t :pending :close))
+         (session (make-editor-session :dirty-p t :pending :close))
          (path (merge-pathnames "close-save.lisp" directory)))
     (let ((*picker* (lambda (&rest arguments)
                      (declare (ignore arguments)) nil)))
@@ -114,7 +115,7 @@
 
 (defun test-picker-arguments (directory)
   "Supply extension filters and append missing extensions before writing."
-  (let* ((session (make-session))
+  (let* ((session (make-editor-session))
          (path (merge-pathnames "extensionless" directory))
          (*picker* (lambda (open-p title default type)
                      (assert (not open-p))
@@ -135,7 +136,7 @@
   "An overwrite decision during close still allows canceling or retrying."
   (let* ((context (%lui.tests.support:make-test-context))
          (%lui.frame:*context* context)
-         (session (make-session :dirty-p t :pending :close))
+         (session (make-editor-session :dirty-p t :pending :close))
          (path (merge-pathnames "project with spaces.lisp" directory))
          (*picker* (lambda (&rest arguments)
                      (declare (ignore arguments)) path)))

@@ -1,7 +1,7 @@
 (defpackage #:%lui.tests.daw-editor
   (:use #:cl)
   (:import-from #:%lui.example.daw-state
-    #:make-session #:session-song #:session-selected #:session-selection
+    #:session-song #:session-selected #:session-selection
     #:session-page #:session-octave #:session-view-bars #:session-tool
     #:session-playhead #:session-cycle-p #:session-cycle-start #:session-cycle-end
     #:session-play-start #:session-play-end #:session-play-loop-p
@@ -14,6 +14,7 @@
     #:note #:make-note #:track-notes #:note-at #:note-start #:note-duration
     #:note-pitch #:note-velocity #:song-beats #:make-track #:make-recorder
     #:midi-event #:finish-recording #:render-wav #:make-song #:song-tracks)
+  (:import-from #:%lui.tests.daw #:make-editor-session)
   (:export #:run-tests))
 (in-package #:%lui.tests.daw-editor)
 
@@ -42,7 +43,7 @@
 
 (defun test-pointer-editing ()
   "Exercise real LUI capture: add, right-click delete, move, resize and cancel."
-  (let ((session (make-session))
+  (let ((session (make-editor-session))
         (context (%lui.tests.support:make-test-context)))
     (setf (%lui.frame:context-text-mode-p context) nil)
     (labels ((frame (&optional events)
@@ -119,7 +120,7 @@
 
 (defun test-resize-at-song-end ()
   "A coarse grid cannot stretch a selected note beyond the saved song range."
-  (let* ((session (make-session))
+  (let* ((session (make-editor-session))
          (context (%lui.tests.support:make-test-context))
          (last (%lui.example.daw-model:add-note (current-track session)
                                                61 127/8 1/8))
@@ -152,7 +153,7 @@
 
 (defun test-idle-note-inspector ()
   "Opening an inspector on an off-grid note must not quantize or dirty it."
-  (let* ((session (make-session))
+  (let* ((session (make-editor-session))
          (context (%lui.tests.support:make-test-context))
          (note (%lui.example.daw-model:add-note (current-track session)
                                                62 2 3/2)))
@@ -168,7 +169,7 @@
 
 (defun test-history-and-clipboard ()
   "Copies are independent, undo is bounded, and redo is invalidated by edits."
-  (let ((session (make-session)))
+  (let ((session (make-editor-session)))
     (let ((note (edit-note session 70 2)))
       (copy-selected session)
       (setf (session-playhead session) 8)
@@ -191,7 +192,7 @@
 
 (defun test-bounds-and-projects ()
   "Keep quantized notes in bounds and never silently truncate a shorter song."
-  (let ((session (make-session)))
+  (let ((session (make-editor-session)))
     (change-bars session 2)
     (assert (= 16 (song-beats (session-song session))))
     (assert (search "later notes" (session-status session)))
@@ -233,7 +234,7 @@
 
 (defun test-render-range ()
   "Seek preserves sustained notes; cycle ranges and metronome affect only playback."
-  (let ((session (make-session)))
+  (let ((session (make-editor-session)))
     (render-wav (session-song session) "build/daw-range.wav" :start 1/2 :end 1)
     (let ((samples (pcm-values "build/daw-range.wav")))
       (assert (= 11025 (length samples)))
@@ -247,7 +248,7 @@
 
 (defun test-cycle-playback ()
   "Run multiple real ffplay cycles, then resume from a different cursor."
-  (let ((session (make-session :song (make-song :beats 4 :tempo 240)
+  (let ((session (make-editor-session :song (make-song :beats 4 :tempo 240)
                                :cycle-p t :cycle-start 0 :cycle-end 1)))
     (unwind-protect
          (progn
@@ -267,7 +268,7 @@
 
 (defun test-save-shortcut ()
   "Save after applying text edits queued in the same frame as Control-S."
-  (let* ((session (make-session))
+  (let* ((session (make-editor-session))
          (context (%lui.tests.support:make-test-context))
          (%lui.frame:*context* context)
          (base (format nil "build/daw-shortcut-~D" (get-internal-real-time)))
@@ -296,7 +297,7 @@
 
 (defun test-close-confirmation ()
   "Cancel and failed saves retain edits; Save and Discard retry the guard."
-  (let* ((session (make-session))
+  (let* ((session (make-editor-session))
          (context (%lui.tests.support:make-test-context))
          (%lui.frame:*context* context))
     (setf (%lui.frame:context-on-close context)
@@ -332,7 +333,7 @@
 (defun test-arrangement-confirmations ()
   "Keep graphical lanes disabled while any project confirmation is pending."
   (dolist (action '(:new :load :save :save-as :wav :mp3 :close))
-    (let ((session (make-session :pending action))
+    (let ((session (make-editor-session :pending action))
           (context (%lui.tests.support:make-test-context))
           (lanes 0))
       (setf (%lui.frame:context-text-mode-p context) nil)
@@ -351,7 +352,7 @@
 
 (defun test-arrangement ()
   "Navigate full-song lanes and verify activity respects note ends and mix."
-  (let* ((session (make-session))
+  (let* ((session (make-editor-session))
          (context (%lui.tests.support:make-test-context))
          (tracks (song-tracks (session-song session)))
          (track (aref tracks 1)))
@@ -388,7 +389,7 @@
 
 (defun test-track-layout ()
   "Keep header controls inside aligned lanes across common window widths."
-  (let ((session (make-session))
+  (let ((session (make-editor-session))
         (context (%lui.tests.support:make-test-context)))
     (setf (%lui.frame:context-text-mode-p context) nil)
     (dolist (width '(800 1200 1800))
@@ -420,7 +421,7 @@
                    :measure (lambda (widget width)
                               (lui.draw:%measure-widget renderer widget width))))
          (%lui.frame:*context* context)
-         (session (make-session))
+         (session (%lui.example.daw-state:make-session))
          (lui:*unit* 8)
          (focus nil))
     ;; Default startup must fit without scrolling, using real native metrics.

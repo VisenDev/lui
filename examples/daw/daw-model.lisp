@@ -79,16 +79,57 @@
        (or (track-solo-p track)
            (not (some #'track-solo-p (song-tracks song))))))
 
+(defun passacaglia-bar (arpeggio bass melody bar root chord tune)
+  "Arrange one ground-bass variation with articulated notes and a final cadence."
+  (declare (values))
+  (let ((start (* bar 4))
+        (final (= bar 15))
+        (variation (>= bar 8)))
+    (add-note bass root start (if final 4 7/4) 100)
+    (unless final
+      (add-note bass (+ root 7) (+ start 2) 3/4 74)
+      (add-note bass (+ root 12) (+ start 3) 3/4 82))
+    (dotimes (step (if final 4 8))
+      (let* ((pattern (if variation #(3 2 1 2 0 2 1 3)
+                         #(0 2 1 3 2 1 2 3)))
+             (pitch (aref chord (aref pattern step))))
+        (add-note arpeggio pitch (+ start (/ step 2)) 7/16
+                  (+ (if variation 80 68) (if (evenp step) 10 0)))))
+    (if final
+        (progn
+          (loop :for pitch :across chord
+                :do (add-note arpeggio pitch (+ start 2) 2 76))
+          (add-note melody 67 start 4 88))
+        ;; else
+        (dotimes (step (if variation 4 2))
+          (add-note melody (aref tune (if variation step (* step 2)))
+                    (+ start (if variation step (* step 2)))
+                    (if variation 7/8 7/4)
+                    (+ (if variation 87 75) (if (zerop step) 8 0))))))
+  (values))
+
 (defun demo-song ()
-  "Create a four-bar sketch with independently editable instruments."
-  (let ((song (make-song)))
-    (dolist (spec '(("Keys" :sine 60) ("Bass" :triangle 36)
-                    ("Organ" :organ 67)))
-      (let ((track (make-track :name (first spec) :wave (second spec))))
-        (dotimes (bar 4)
-          (add-note track (+ (third spec) (aref #(0 5 7 0) bar))
-                    (* bar 4) (if (= (third spec) 36) 2 1) 90))
-        (vector-push-extend track (song-tracks song))))
+  "Create a 16-bar, 108 BPM passacaglia-inspired showcase in G minor.
+Original broken-chord and melodic variations over Gm-Cm-F-Bb-Eb-Cm-D-Gm,
+inspired by Handel's HWV 432 Passacaglia; not a transcription of a recording.
+Three independently editable voices build over two cycles and resolve on G."
+  (let ((song (make-song :tempo 108 :beats 64))
+        (arpeggio (make-track :name "Broken Chords" :wave :triangle :volume 0.52))
+        (bass (make-track :name "Ground Bass" :wave :sine :volume 0.70))
+        (melody (make-track :name "Upper Voice" :wave :organ :volume 0.38))
+        (roots #(43 48 41 46 39 48 38 43))
+        (chords #(#(55 58 62 67) #(55 60 63 67) #(53 57 60 65)
+                  #(53 58 62 65) #(55 58 63 67) #(55 60 63 67)
+                  #(54 57 62 66) #(55 58 62 67)))
+        (tunes #(#(74 70 69 67) #(75 74 72 67) #(72 69 65 69)
+                 #(74 72 70 65) #(75 74 70 67) #(72 75 74 72)
+                 #(69 72 69 66) #(67 69 70 74))))
+    (dotimes (bar 16)
+      (let ((chord (mod bar 8)))
+        (passacaglia-bar arpeggio bass melody bar (aref roots chord)
+                         (aref chords chord) (aref tunes chord))))
+    (dolist (track (list arpeggio bass melody))
+      (vector-push-extend track (song-tracks song)))
     song))
 
 (defstruct recorder

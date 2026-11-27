@@ -764,6 +764,11 @@ The DAW opens at 1200×880 logical pixels. The initial three-track project fits
 without page scrolling with native font metrics. MIDI setup and instructions
 are available through the collapsed-by-default MIDI & Help toggle; expanding
 it or using a smaller window retains normal vertical scrolling.
+The startup song is a 16-bar, 108 BPM G-minor passacaglia-inspired arrangement
+with broken chords, ground bass and an upper voice. It uses original variations
+inspired by Handel's HWV 432, with a denser second cycle and a final cadence.
+Editing tests use an explicit short fixture; composition tests and startup
+layout checks exercise the actual default song.
 
 macOS (SBCL/Cocoa) and Windows (Win32) are intended native targets, but the
 complete DAW has only been validated on Linux. Put ffplay and ffmpeg on PATH
