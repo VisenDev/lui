@@ -760,6 +760,10 @@ windows; project paths and help text wrap. Track captions are shortened while
 their full names remain in the inspector and accessibility labels. Native-font
 layout tests cover 320–1800 pixel widths, long names, scrolling to export actions,
 and small-window close-dialog buttons.
+The DAW opens at 1200×880 logical pixels. The initial three-track project fits
+without page scrolling with native font metrics. MIDI setup and instructions
+are available through the collapsed-by-default MIDI & Help toggle; expanding
+it or using a smaller window retains normal vertical scrolling.
 
 macOS (SBCL/Cocoa) and Windows (Win32) are intended native targets, but the
 complete DAW has only been validated on Linux. Put ffplay and ffmpeg on PATH

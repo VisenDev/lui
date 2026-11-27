@@ -423,6 +423,24 @@
          (session (make-session))
          (lui:*unit* 8)
          (focus nil))
+    ;; Default startup must fit without scrolling, using real native metrics.
+    (lui:with-frame (context 1200 880)
+      (%lui.example.daw-demo:draw session))
+    (lui:with-frame (context 1200 880)
+      (lui:scroll-to :daw-page 0 100000)
+      (%lui.example.daw-demo:draw session))
+    (lui:with-frame (context 1200 880)
+      (%lui.example.daw-demo:draw session))
+    (assert (zerop (nth-value 1 (lui:scroll-position :daw-page))))
+    (dotimes (toggle 2)
+      (lui:with-frame
+          (context 1200 880 :events
+                   (list (%lui.frame:make-event
+                          :kind :activate
+                          :id (lui:widget-id :daw-details context))))
+        (%lui.example.daw-demo:draw session))
+      (assert (eql (zerop toggle)
+                   (%lui.tests.support:has-text-p context "Refresh devices"))))
     (setf (%lui.example.daw-model:track-name (current-track session))
           "A very long instrument name with many descriptive words"
           (%lui.example.daw-state:session-path session)

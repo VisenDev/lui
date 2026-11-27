@@ -85,7 +85,7 @@
 (defun draw-lane (session track index)
   "Show all bars of a track; clicking reveals that time in the piano roll."
   (declare (values))
-  (lui:canvas nil :id :arrangement-lane :width (lui:grow) :height 80
+  (lui:canvas nil :id :arrangement-lane :width (lui:grow) :height 72
               :font-size 11
               :disabled-p (not (editable-p session))
               :accessible-name

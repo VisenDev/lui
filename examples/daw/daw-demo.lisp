@@ -418,7 +418,7 @@
           (change-bars session bars)
           (lui:label (write-to-string (/ (song-beats (session-song session)) 4))))))
     (lui:panel (:height (if (lui:text-mode-p) (lui:units 8)
-                            (+ 4 (* 80 (min 4 (length tracks)))))
+                            (+ 4 (* 72 (min 4 (length tracks)))))
                         :id :track-list :width (lui:grow) :scroll-p t :padding 2 :gap 0)
       (loop :for item :across (song-tracks (session-song session))
             :for index :from 0 :do (track-strip session item index)))
@@ -651,9 +651,10 @@
   "Show project location, unsaved state, and explicit save/export actions."
   (declare (values))
   (lui:column (:width (lui:grow) :gap (lui:units 0.5))
-    (lui:label (if (session-dirty-p session) "UNSAVED" "PROJECT"))
-    (lui:label (if (plusp (length (session-path session)))
-                   (session-path session) "Untitled project")
+    (lui:label (format nil "~A — ~A"
+                       (if (session-dirty-p session) "UNSAVED" "PROJECT")
+                       (if (plusp (length (session-path session)))
+                           (session-path session) "Untitled project"))
                :width (lui:grow))
     (when (eq lui:*backend* :terminal)
       (setf (session-file-input session)
@@ -719,6 +720,29 @@
        (loop :for event :across (lui:events-for (lui:focused-widget))
              :thereis (lui:event-shortcut-p event lui.key:s :primary t))))
 
+(defun session-footer (session)
+  "Keep status visible and reveal optional MIDI setup and instructions on demand."
+  (declare (values))
+  (let ((details nil))
+    (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
+      (setf details (lui:checkbox "MIDI & Help" :id :daw-details))
+      (lui:label (session-status session) :width (lui:grow)))
+    (when details
+      (lui:label
+       "Click a track lane to select its track and time. Gold line: playhead."
+       :width (lui:grow))
+      (lui:label
+       "Draw notes in empty space. Drag to move; drag the edge to resize. Right-click deletes."
+       :width (lui:grow))
+      (lui:label
+       "Roll: Space, Delete, arrows, Q. Ctrl/Cmd+A/C/V/D; Z undo, Shift+Z redo."
+       :width (lui:grow))
+      (lui:label
+       "Ctrl/Cmd+S saves. Closing asks about unsaved changes."
+       :width (lui:grow))
+      (midi-controls session)))
+  (values))
+
 (defun draw (session)
   "Draw an arrangement overview and direct-manipulation piano-roll editor."
   (declare (values))
@@ -730,19 +754,12 @@
                     :padding (lui:units 1) :gap (lui:units 0.5))
           (transport session)
           (track-controls session)
-          (lui:label "Click any track lane to select a track and time. Gold line: playhead." :width (lui:grow))
           (history-controls session)
           (roll-toolbar session)
           (when (%lui.example.daw-roll:draw session) (toggle-play session))
           (note-editor session)
-          (lui:label
-           "Draw: click empty space. Drag notes to move; right edge to resize; right-click deletes." :width (lui:grow))
-          (lui:label
-           "Roll: Space, Delete, arrows, Q. Ctrl/Cmd+A/C/V/D; Z undo, Shift+Z redo." :width (lui:grow))
-          (lui:label "Project: Ctrl/Cmd+S saves. Closing asks about unsaved changes." :width (lui:grow))
-          (midi-controls session)
           (file-controls session)
-          (lui:label (session-status session) :width (lui:grow)))))
+          (session-footer session))))
     (when save-p
       (request-file-action session :save)
       (lui:request-frame)))
@@ -764,5 +781,5 @@ Recording plays the backing mix and optional click, without live monitoring."
                   :interactive interactive :max-fps 30
                   :on-close (lambda () (request-session-close session))
                   :width (unless (eq lui:*backend* :terminal) 1200)
-                  :height (unless (eq lui:*backend* :terminal) 1000))
+                  :height (unless (eq lui:*backend* :terminal) 880))
       (close-session session))))
