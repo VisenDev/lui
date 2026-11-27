@@ -59,7 +59,8 @@
            :type (vector string))
   (device-index 0 :type fixnum)
   (status "Draw notes; drag to move; drag the right edge to resize." :type string)
-  (player nil :type (or null uiop/launch-program:process-info))
+  ;; UIOP process handles are opaque; their class is not a portable export.
+  (player nil :type t)
   (midi nil :type (or null %lui.example.daw-midi:input))
   (recorder nil :type (or null %lui.example.daw-model:recorder))
   (started 0 :type integer)
