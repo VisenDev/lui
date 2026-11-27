@@ -294,6 +294,86 @@
     (%lui.example.daw-state:undo-edit session)
     (assert (= 3 (length (song-tracks (%lui.example.daw-state:session-song session)))))))
 
+(defun control-box (context key)
+  "Find actual control geometry without bypassing pointer hit testing."
+  (let ((box nil))
+    (%lui.layout:walk-elements
+     (%lui.frame:context-root context)
+     (lambda (node)
+       (when (equal key (lui:widget-key (%lui.layout:element-id node)))
+         (setf box (%lui.layout:element-box node)))))
+    (assert box)
+    box))
+
+(defun test-bar-pointer-navigation ()
+  "Both editors change once on release and show the new bar in that frame."
+  (dolist (wave '(:drums :sine))
+    (let* ((session (%lui.example.daw-state:make-session))
+           (context (%lui.tests.support:make-test-context))
+           (caption (if (eq wave :drums) "Drums / Bar" "Bar")))
+      (setf (%lui.frame:context-text-mode-p context) nil
+            (%lui.example.daw-model:track-wave
+             (%lui.example.daw-state:current-track session)) wave
+            (%lui.example.daw-state:session-page session) 8)
+      (labels ((frame (&optional events)
+                 (lui:with-frame (context 1200 1400 :events events)
+                   (%lui.example.daw-demo:draw session)))
+               (check (page)
+                 (assert (= page (%lui.example.daw-state:session-page session)))
+                 (assert (%lui.tests.support:visible-text-p
+                          context (format nil "~A ~D" caption (1+ page)))))
+               (pointer (key kind &optional outside)
+                 (let ((box (control-box context key)))
+                   (frame (list (%lui.frame:make-event
+                                 :kind kind :button :primary
+                                 :buttons (if (eq kind :release) 0 1)
+                                 :x (if outside -10
+                                        (+ (lui:box-x box) (/ (lui:box-width box) 2)))
+                                 :y (+ (lui:box-y box) (/ (lui:box-height box) 2))))))))
+        (frame)
+        (pointer :next-bar :press)
+        (check 8)
+        (frame)
+        (check 8)
+        (pointer :next-bar :release)
+        (check 9)
+        (frame)
+        (check 9)
+        (pointer :previous-bar :press)
+        (check 9)
+        (pointer :previous-bar :release)
+        (check 8)
+        ;; A stray second release and a canceled click must do nothing.
+        (pointer :previous-bar :release)
+        (check 8)
+        (pointer :previous-bar :press)
+        (pointer :previous-bar :release t)
+        (check 8)
+        (setf (%lui.example.daw-state:session-page session) 0)
+        (frame)
+        (pointer :previous-bar :press)
+        (pointer :previous-bar :release)
+        (check 0)))))
+
+(defun test-drum-spacing ()
+  "Wrapped step rows retain equal horizontal and vertical inter-control gaps."
+  (let ((session (%lui.example.daw-state:make-session))
+        (context (%lui.tests.support:make-test-context))
+        (lui:*unit* 8))
+    (setf (%lui.frame:context-text-mode-p context) nil)
+    (lui:with-frame (context 640 1000)
+      (lui:column (:width (lui:grow) :gap (lui:units 0.5f0))
+        (%lui.example.daw-drums:draw session)))
+    (let* ((first (control-box context '(:drum 36 0)))
+           (second (control-box context '(:drum 36 1)))
+           (below (control-box context '(:drum 36 8)))
+           (horizontal (- (lui:box-x second)
+                          (+ (lui:box-x first) (lui:box-width first))))
+           (vertical (- (lui:box-y below)
+                        (+ (lui:box-y first) (lui:box-height first)))))
+      (assert (plusp horizontal))
+      (assert (= horizontal vertical)))))
+
 (defun run-tests ()
   "Exercise live mixer controls, DSP, persistence and drum sequencing."
   (test-live-gains)
@@ -305,4 +385,6 @@
   (test-drum-layout)
   (test-live-cycle-exit)
   (test-editor-close-and-removal)
+  (test-bar-pointer-navigation)
+  (test-drum-spacing)
   (format t "Live gain, DSP, export, versioned projects and drum steps passed.~%"))

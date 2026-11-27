@@ -153,9 +153,13 @@
 
 (defun run-tests ()
   "Exercise the DAW file workflow without opening desktop dialogs."
-  (let ((directory (merge-pathnames
-                    (format nil "build/daw-files-~D/" (get-internal-real-time))
-                    (uiop:getcwd))))
+  (let ((directory
+          (loop :for index :from 0
+                :for path := (merge-pathnames
+                              (format nil "build/daw-files-~D-~D/"
+                                      (get-universal-time) index)
+                              (uiop:getcwd))
+                :unless (probe-file path) :return path)))
     (ensure-directories-exist directory)
     (test-save directory)
     (test-overwrite-and-open directory)

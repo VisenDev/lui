@@ -763,6 +763,10 @@ windows; project paths and help text wrap. Track captions are shortened while
 their full names remain in the inspector and accessibility labels. Native-font
 layout tests cover 320–1800 pixel widths, long names, scrolling to export actions,
 and small-window close-dialog buttons.
+Control gaps use half a text unit in both directions, including wrapped drum
+steps; the page inset is one text unit and arrangement lanes remain contiguous.
+Piano and drum bar arrows share release-only navigation, with both arrows before
+the position label so the label reflects the change in the activation frame.
 The DAW opens at 1200×880 logical pixels. The initial three-track project fits
 without page scrolling with native font metrics. MIDI setup and instructions
 are available through the collapsed-by-default MIDI & Help toggle; expanding

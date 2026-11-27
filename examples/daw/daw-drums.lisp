@@ -6,7 +6,8 @@
   (:import-from #:%lui.example.daw-state
     #:session-song #:session-page #:session-playhead #:current-track
     #:editable-p #:checkpoint #:clear-selection #:playing-p)
-  (:export #:draw #:drum-track-p #:toggle-step #:basic-beat #:clear-bar))
+  (:export #:draw #:bar-navigation #:drum-track-p #:toggle-step
+           #:basic-beat #:clear-bar))
 (in-package #:%lui.example.daw-drums)
 
 (defun drum-track-p (session)
@@ -75,7 +76,7 @@
   (let ((columns (if (< (lui:frame-width) (lui:resolve-units (lui:units 85))) 8 16)))
     (lui:label caption)
     (dotimes (part (/ 16 columns))
-      (lui:row (:id (list pitch part) :width (lui:grow) :gap 2)
+      (lui:row (:id (list pitch part) :width (lui:grow) :gap (lui:units 0.5f0))
         (dotimes (column columns)
           (let* ((step (+ (* part columns) column))
                  (beat (+ (* 4 (session-page session)) (/ step 4)))
@@ -95,17 +96,28 @@
               (toggle-step session pitch step)))))))
   (values))
 
+(defun bar-navigation (session caption)
+  "Apply release activations before displaying the resulting editor position."
+  (declare (values))
+  (lui:row (:gap (lui:units 0.5f0) :cross-align :center)
+    (when (lui:button "<" :id :previous-bar
+                      :accessible-name "Previous bar"
+                      :disabled-p (zerop (session-page session)))
+      (decf (session-page session)))
+    (when (lui:button ">" :id :next-bar
+                      :accessible-name "Next bar" :disabled-p
+                      (>= (* 4 (1+ (session-page session)))
+                          (song-beats (session-song session))))
+      (incf (session-page session)))
+    ;; Keep both arrow targets stationary when the bar gains a digit.
+    (lui:label (format nil "~A ~D" caption (1+ (session-page session)))
+               :id :bar-position))
+  (values))
+
 (defun draw (session)
   "Edit one bar of kick, snare and closed/open hi-hats in sixteenth-note steps."
   (declare (values))
-  (lui:row (:gap (lui:units 0.5f0) :cross-align :center)
-    (when (lui:button "<" :disabled-p (zerop (session-page session)))
-      (decf (session-page session)))
-    (lui:label (format nil "Drums / Bar ~D" (1+ (session-page session))))
-    (when (lui:button ">" :disabled-p
-                      (>= (* 4 (1+ (session-page session)))
-                          (song-beats (session-song session))))
-      (incf (session-page session))))
+  (bar-navigation session "Drums / Bar")
   (lui:row (:gap (lui:units 0.5f0))
     (when (lui:button "Basic beat" :id :basic-beat
                       :disabled-p (not (editable-p session)))

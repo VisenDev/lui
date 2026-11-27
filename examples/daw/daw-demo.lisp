@@ -230,7 +230,7 @@
                      (lui:resolve-units (lui:units ,minimum)))))
      (lui:panel (:direction (if stacked :column :row)
                             :width (if stacked (lui:grow) (lui:fit))
-                  :padding 0 :gap (lui:units 1)
+                  :padding 0 :gap (lui:units 0.5f0)
                             :cross-align (if stacked :start :center)
                             :painter #'paint-toolbar)
        ,@body)))
@@ -383,7 +383,7 @@
   "Group selection, mix controls and activity in a consistent track header."
   (declare (values))
   (lui:column (:id :track-header :width (lui:units 26)
-               :padding 4 :gap 4)
+               :padding 4 :gap (lui:units 0.5f0))
     (when (lui:button (compact-name (track-name track)) :id :select-track
                       :accessible-name (track-name track)
                       :width (lui:grow)
@@ -391,7 +391,7 @@
                                       "#36586b" "#343e4b")
                       :disabled-p (recording-p session))
       (select-track session index))
-    (lui:row (:width (lui:grow) :gap (lui:units 1)
+    (lui:row (:width (lui:grow) :gap (lui:units 0.5f0)
                :cross-align :center)
       (let* ((busy (recording-p session))
              (muted (lui:checkbox "M" :value (track-muted-p track)
@@ -518,7 +518,7 @@
         (disabled (not (editable-p session))))
     (responsive-bar (130)
       (dolist (kind '(:distortion :cutoff :resonance :reverb))
-        (lui:column (:id (list :effect kind) :width (lui:grow) :gap 2)
+        (lui:column (:id (list :effect kind) :width (lui:grow) :gap (lui:units 0.5f0))
           (let* ((old (ecase kind
                         (:distortion (%lui.example.daw-model:track-distortion track))
                         (:cutoff (%lui.example.daw-model:track-cutoff track))
@@ -560,14 +560,7 @@
       (when (lui:button (format nil "View: ~D bars" (session-view-bars session)))
         (setf (session-view-bars session)
               (case (session-view-bars session) (1 2) (2 4) (t 1))))
-      (when (lui:button "<" :accessible-name "Previous bar"
-                        :disabled-p (zerop (session-page session)))
-        (decf (session-page session)))
-      (lui:label (format nil "Bar ~D" (1+ (session-page session))))
-      (when (lui:button ">" :accessible-name "Next bar"
-                        :disabled-p (>= (* 4 (1+ (session-page session)))
-                                        (song-beats (session-song session))))
-        (incf (session-page session))))
+      (%lui.example.daw-drums:bar-navigation session "Bar"))
     (responsive-bar (65)
       (when (lui:button "Oct -" :disabled-p (= -1 (session-octave session)))
         (decf (session-octave session)))
@@ -819,7 +812,7 @@
   "Keep status visible and reveal optional MIDI setup and instructions on demand."
   (declare (values))
   (let ((details nil))
-    (lui:row (:width (lui:grow) :gap (lui:units 1) :cross-align :center)
+    (lui:row (:width (lui:grow) :gap (lui:units 0.5f0) :cross-align :center)
       (setf details (lui:checkbox "MIDI & Help" :id :daw-details))
       (lui:label (session-status session) :width (lui:grow)))
     (when details
@@ -850,7 +843,7 @@
           (transport session)
           (track-controls session)
           (when (%lui.example.daw-state:session-editor-p session)
-          (lui:row (:width (lui:grow) :gap 4 :cross-align :start)
+          (lui:row (:width (lui:grow) :gap (lui:units 0.5f0) :cross-align :start)
             (history-controls session)
             (lui:spacer :width (lui:grow))
             (when (lui:button "×" :id :close-editor
