@@ -732,6 +732,20 @@ transport and offers Save/Discard/Cancel. Save failures keep the project open.
 MIDI shutdown errors are reported without bypassing that confirmation.
 Coarser grids must not mutate idle inspector values or resize notes past the
 song end. Sliders clamp supplied values but snap only after slider input.
+The graphical arrangement shows full-song note lanes on a shared time scale,
+with the selected editor range shaded and the playhead repeated across tracks.
+Click a lane to select its track and reveal that bar in the piano roll; while
+playing, navigation does not seek. Activity labels follow scheduled notes,
+respect mute/solo and gain, and are not measured audio meters. Mute and solo
+are locked during playback because the backing mix is a rendered snapshot.
+
+macOS (SBCL/Cocoa) and Windows (Win32) are intended native targets, but the
+complete DAW has only been validated on Linux. Put ffplay and ffmpeg on PATH
+for playback and MP3 export, respectively. MIDI additionally needs an
+architecture-matched RtMidi shared library (dylib on macOS, rtmidi.dll on
+Windows). Editing, project persistence and Lisp WAV rendering do not need
+those external audio tools. A successful portable test does not establish
+working audio devices, MIDI hardware or window behavior on either platform.
 
 Native MIDI uses Common Lisp CFFI bindings in `daw-midi.lisp` and the RtMidi
 shared library; `LUI_DAW_MIDI_LIBRARY` can select a full library path. There is

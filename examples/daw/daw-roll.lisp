@@ -16,12 +16,97 @@
     #:gesture-end-beat #:gesture-end-pitch #:gesture-originals
     #:gesture-notes #:gesture-changed-p #:commit-gesture #:cancel-gesture
     #:gesture-frame-width #:gesture-frame-height)
-  (:export #:draw #:pitch-name #:roll-point #:note-bounds #:handle-event))
+  (:export #:draw #:pitch-name #:roll-point #:note-bounds #:handle-event
+           #:draw-lane #:track-active-p #:navigate-lane))
 (in-package #:%lui.example.daw-roll)
 
 (defconstant +keyboard-width+ 58)
 (defconstant +ruler-height+ 26)
 (defconstant +rows+ 24)
+
+(defun track-active-p (session track)
+  "Report scheduled note activity, respecting mute, solo and track gain."
+  (and (%lui.example.daw-model:audible-p (session-song session) track)
+       (plusp (%lui.example.daw-model:track-volume track))
+       (some (lambda (note)
+               (and (plusp (note-velocity note))
+                    (<= (note-start note) (session-playhead session))
+                    (< (session-playhead session)
+                       (+ (note-start note) (note-duration note)))))
+             (track-notes track))))
+
+(defun navigate-lane (session index beat)
+  "Reveal a track and time in the editor without seeking running playback."
+  (declare (values))
+  (unless (or (%lui.example.daw-state:recording-p session)
+              (%lui.example.daw-state:session-pending session))
+    (cancel-gesture session)
+    (%lui.example.daw-state:select-track session index)
+    (let ((beat (max 0 (min beat (- (song-beats (session-song session))
+                                   (session-snap session))))))
+      (setf (session-page session) (floor beat 4))
+      (unless (playing-p session)
+        (setf (session-playhead session) (snap-beat session beat)))))
+  (values))
+
+(defun paint-lane (session track index renderer box)
+  "Paint the complete song with note previews and a common time scale."
+  (declare (values))
+  (let* ((x (lui:box-x box))
+         (y (lui:box-y box))
+         (height (lui:box-height box))
+         (scale (/ (lui:box-width box) (song-beats (session-song session))))
+         (selected (= index (%lui.example.daw-state:session-track session)))
+         (audible (%lui.example.daw-model:audible-p (session-song session) track))
+         (color (aref #("#58c49c" "#69a9e9" "#c58ae6" "#e5aa62")
+                      (mod index 4))))
+    (rectangle renderer x y (lui:box-width box) height
+               (if selected "#263e4d" "#1c2531"))
+    (when selected
+      (rectangle renderer (+ x (* 4 (session-page session) scale)) y
+                 (* (min (* 4 (session-view-bars session))
+                         (- (song-beats (session-song session))
+                            (* 4 (session-page session)))) scale)
+                 height "#83b8ef" 0.15))
+    (loop :for beat :from 0 :below (song-beats (session-song session)) :by 4
+          :for at := (+ x (* beat scale))
+          :do (rectangle renderer at y 1 height "#485767")
+              (lui.draw:paint-text renderer (write-to-string (1+ (/ beat 4)))
+                                   (+ at 4) (+ y 13) "#aab6c4"))
+    (loop :for note :across (track-notes track)
+          :do (rectangle renderer (+ x (* (note-start note) scale))
+                         (+ y 19 (* (- 127 (note-pitch note))
+                                    (/ (- height 25) 128)))
+                         (max 2 (* (note-duration note) scale)) 4
+                         (if audible color "#637080")))
+    (rectangle renderer (+ x (* (session-playhead session) scale)) y
+               2 height "#f2d58b"))
+  (values))
+
+(defun draw-lane (session track index)
+  "Show all bars of a track; clicking reveals that time in the piano roll."
+  (declare (values))
+  (lui:canvas nil :id :arrangement-lane :width (lui:grow) :height 64
+              :font-size 11
+              :disabled-p (or (%lui.example.daw-state:recording-p session)
+                              (%lui.example.daw-state:session-pending session))
+              :accessible-name
+              (format nil "~A: full song; click to edit"
+                      (%lui.example.daw-model:track-name track))
+              :painter (lambda (renderer node)
+                         (paint-lane session track index renderer
+                                     (lui:element-box node))))
+  (let ((box (lui:previous-box :arrangement-lane)))
+    (when box
+      (loop :for event :across (lui:events-for :arrangement-lane)
+            :when (and (eq (lui:event-kind event) :press)
+                       (eq (lui:event-button event) :primary))
+              :do (navigate-lane
+                   session index
+                   (* (song-beats (session-song session))
+                      (/ (- (lui:event-x event) (lui:box-x box))
+                         (max 1 (lui:box-width box))))))))
+  (values))
 
 (defun pitch-name (pitch)
   "Name MIDI pitches with middle C as C4."
@@ -118,7 +203,8 @@
           :do (let ((selected (find note (session-selection session))))
                 (lui.draw:shape renderer bounds 3
                                 (if selected "#f5b85d" "#56bda0") 1)
-                (when (> (lui:box-width bounds) 38)
+                (when (and (> (lui:box-width bounds) 38)
+                           (>= (lui:box-height bounds) 16))
                   (lui.draw:paint-text
                    renderer (pitch-name (note-pitch note))
                    (+ (lui:box-x bounds) 4) (+ (lui:box-y bounds) 15) "#112c2b"))
@@ -367,7 +453,7 @@
       (progn (draw-terminal session) nil)
       ;; else
       (progn
-        (lui:canvas nil :id :piano-roll :width (lui:grow) :height 506
+        (lui:canvas nil :id :piano-roll :width (lui:grow) :height 330
                     :font-size 12 :disabled-p (not (editable-p session))
                     :accessible-name "Piano roll: draw, move, resize or erase notes"
                     :painter (lambda (renderer node)

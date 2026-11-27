@@ -329,9 +329,47 @@
     (%lui.example.daw-demo:resolve-close session :alternate)
     (assert (%lui.frame:accept-close-p context))))
 
+(defun test-arrangement ()
+  "Navigate full-song lanes and verify activity respects note ends and mix."
+  (let* ((session (make-session))
+         (context (%lui.tests.support:make-test-context))
+         (tracks (song-tracks (session-song session)))
+         (track (aref tracks 1)))
+    (setf (%lui.frame:context-text-mode-p context) nil)
+    (labels ((frame (&optional events)
+               (lui:with-frame (context 1200 1200 :events events)
+                 (%lui.example.daw-demo:draw session))))
+      (frame)
+      ;; The last lane belongs to Organ. A physical click near the end of
+      ;; the whole-song overview must reveal bar four, beyond the old view.
+      (let ((box (widget-box context :arrangement-lane)))
+        (frame (list (%lui.frame:make-event
+                      :kind :press :button :primary :buttons 1
+                      :x (+ (lui:box-x box) (* 0.8 (lui:box-width box)))
+                      :y (+ (lui:box-y box) 30))))))
+    (assert (= 2 (%lui.example.daw-state:session-track session)))
+    (assert (= 3 (session-page session)))
+    (assert (<= 12 (session-playhead session) 16))
+    (assert (not (session-dirty-p session)))
+    (setf (session-playhead session) 0)
+    (assert (%lui.example.daw-roll:track-active-p session track))
+    (setf (session-playhead session) 2)
+    (assert (not (%lui.example.daw-roll:track-active-p session track)))
+    (setf (session-playhead session) 0
+          (%lui.example.daw-model:track-muted-p track) t)
+    (assert (not (%lui.example.daw-roll:track-active-p session track)))
+    (setf (%lui.example.daw-model:track-muted-p track) nil
+          (%lui.example.daw-model:track-solo-p (aref tracks 0)) t)
+    (assert (not (%lui.example.daw-roll:track-active-p session track)))
+    (setf (%lui.example.daw-model:track-solo-p track) t)
+    (assert (%lui.example.daw-roll:track-active-p session track))
+    (setf (%lui.example.daw-model:track-volume track) 0)
+    (assert (not (%lui.example.daw-roll:track-active-p session track)))))
+
 (defun run-tests ()
   "Run direct-manipulation, history, project and transport-range regressions."
   (test-pointer-editing)
+  (test-arrangement)
   (test-resize-at-song-end)
   (test-idle-note-inspector)
   (test-history-and-clipboard)

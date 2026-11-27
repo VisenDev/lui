@@ -84,7 +84,7 @@
                              :kind :activate :id (find-key context key))))
                (frame)))
       (frame)
-      (assert (%lui.tests.support:visible-text-p context "PIANO ROLL"))
+      (assert (%lui.tests.support:visible-text-p context "EDITOR: Keys"))
       (activate '(61 0))
       (let ((note (%lui.example.daw-demo:session-selected session)))
         (assert note)
