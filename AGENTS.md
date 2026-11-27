@@ -762,6 +762,8 @@ respect mute/solo and gain, and are not measured audio meters. Track volume,
 master volume, mute/solo and track effects update during playback.
 The editor's top-right × closes it for a taller track list; clicking a lane
 reopens it. Track deletion requires confirmation and remains undoable.
+Right-click a track header for Open editor, Duplicate, Mute/Unmute,
+Solo/Unsolo, and confirmed Remove actions targeting that track.
 Tempo is explicitly labeled separately from the bar/beat position.
 DAW toolbar groups stack at text-unit breakpoints using stable panel identities,
 so resizing does not discard editor focus. The page scrolls vertically in short

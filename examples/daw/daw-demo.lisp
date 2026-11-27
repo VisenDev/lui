@@ -379,11 +379,53 @@
       (concatenate 'string (subseq name 0 19) "…")
       name))
 
+(defun duplicate-track (session track)
+  "Copy the requested track as one undoable edit and select its copy."
+  (declare (values))
+  (let ((tracks (song-tracks (session-song session))))
+    (when (and (editable-p session) (find track tracks) (< (length tracks) 32))
+      (checkpoint session)
+      (let ((copy (clone-track track)))
+        (setf (track-name copy)
+              (concatenate 'string (track-name track) " copy"))
+        (vector-push-extend copy tracks)
+        (select-track session (1- (length tracks))))))
+  (values))
+
+(defun track-context-menu (session track)
+  "Offer actions for the clicked track, independent of the current selection."
+  (declare (values))
+  (let* ((tracks (song-tracks (session-song session)))
+         (index (position track tracks))
+         (disabled (or (null index) (not (editable-p session)))))
+    (when (lui:menu-item "Open editor" :id :track-menu-edit
+                         :disabled-p disabled)
+      (select-track session index)
+      (setf (%lui.example.daw-state:session-editor-p session) t))
+    (when (lui:menu-item "Duplicate track" :id :track-menu-duplicate
+                         :disabled-p (or disabled (>= (length tracks) 32)))
+      (duplicate-track session track))
+    (lui:hr)
+    (when (lui:menu-item (if (track-muted-p track) "Unmute track" "Mute track")
+                         :id :track-menu-mute :disabled-p disabled)
+      (checkpoint session)
+      (setf (track-muted-p track) (not (track-muted-p track))))
+    (when (lui:menu-item (if (track-solo-p track) "Unsolo track" "Solo track")
+                         :id :track-menu-solo :disabled-p disabled)
+      (checkpoint session)
+      (setf (track-solo-p track) (not (track-solo-p track))))
+    (lui:hr)
+    (when (lui:menu-item "Remove track…" :id :track-menu-remove
+                         :disabled-p (or disabled (= (length tracks) 1)))
+      (request-track-removal session track)))
+  (values))
+
 (defun track-header (session track index)
   "Group selection, mix controls and activity in a consistent track header."
   (declare (values))
   (lui:column (:id :track-header :width (lui:units 26)
-               :padding 4 :gap (lui:units 0.5f0))
+               :padding 4 :gap (lui:units 0.5f0)
+               :context-menu (lambda () (track-context-menu session track)))
     (when (lui:button (compact-name (track-name track)) :id :select-track
                       :accessible-name (track-name track)
                       :width (lui:grow)
@@ -449,11 +491,7 @@
           (setf (%lui.example.daw-state:session-editor-p session) t))
         (when (lui:button "Duplicate track" :disabled-p
                           (or disabled (>= (length tracks) 32)))
-          (checkpoint session)
-          (let ((copy (clone-track track)))
-            (setf (track-name copy) (concatenate 'string (track-name track) " copy"))
-            (vector-push-extend copy tracks)
-            (select-track session (1- (length tracks)))))
+          (duplicate-track session track))
         (when (lui:button "Remove track" :disabled-p
                           (or disabled (= (length tracks) 1)))
           (request-track-removal session track))

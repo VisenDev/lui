@@ -495,9 +495,69 @@
                             (+ (lui:box-y clip) (lui:box-height clip)))))))))
       (lui.font:close-font font))))
 
+(defun test-track-context-menu ()
+  "Route header right-clicks to the clicked track and retain delete confirmation."
+  (let* ((session (make-editor-session))
+         (context (%lui.tests.support:make-test-context))
+         (track (aref (song-tracks (session-song session)) 1)))
+    (setf (%lui.frame:context-text-mode-p context) nil)
+    (labels ((frame (&optional events)
+               (lui:with-frame (context 1200 1200 :events events)
+                 (%lui.example.daw-demo:draw session)))
+             (open-menu ()
+               (frame)
+               (let ((box nil))
+                 ;; Resolve the second header directly in declaration order.
+                 (let ((headers nil))
+                   (%lui.layout:walk-elements
+                    (%lui.frame:context-root context)
+                    (lambda (node)
+                      (when (equal :select-track
+                                   (lui:widget-key (%lui.layout:element-id node)))
+                        (push (%lui.layout:element-box node) headers))))
+                   (setf box (second (nreverse headers))))
+                 (frame (list (%lui.frame:make-event
+                               :kind :press :button :secondary :buttons 2
+                               :x (+ 2 (lui:box-x box))
+                               :y (+ 2 (lui:box-y box)))))))
+             (activate (key)
+               (let* ((box (widget-box context key))
+                      (x (+ (lui:box-x box) (/ (lui:box-width box) 2)))
+                      (y (+ (lui:box-y box) (/ (lui:box-height box) 2))))
+                 (frame (list (%lui.frame:make-event
+                               :kind :press :button :primary :buttons 1
+                               :x x :y y)))
+                 (frame (list (%lui.frame:make-event
+                               :kind :release :button :primary :buttons 0
+                               :x x :y y))))))
+      (open-menu)
+      (assert (%lui.tests.support:has-text-p context "Remove track…"))
+      (activate :track-menu-mute)
+      (assert (%lui.example.daw-model:track-muted-p track))
+      (assert (not (%lui.example.daw-model:track-muted-p (current-track session))))
+      (open-menu)
+      (activate :track-menu-solo)
+      (assert (%lui.example.daw-model:track-solo-p track))
+      (open-menu)
+      (activate :track-menu-remove)
+      (assert (eq :remove-track (session-pending session)))
+      (assert (eq track (%lui.example.daw-state:session-pending-track session)))
+      (%lui.example.daw-demo:resolve-track-removal session :cancel)
+      (assert (find track (song-tracks (session-song session))))
+      (open-menu)
+      (activate :track-menu-duplicate)
+      (assert (search " copy" (%lui.example.daw-model:track-name
+                               (current-track session))))
+      (setf (%lui.example.daw-state:session-editor-p session) nil)
+      (open-menu)
+      (activate :track-menu-edit)
+      (assert (eq track (current-track session)))
+      (assert (%lui.example.daw-state:session-editor-p session)))))
+
 (defun run-tests ()
   "Run direct-manipulation, history, project and transport-range regressions."
   (test-pointer-editing)
+  (test-track-context-menu)
   (test-arrangement)
   (test-track-layout)
   (test-responsive-layout)
