@@ -331,7 +331,7 @@
 
 (defun test-arrangement-confirmations ()
   "Keep graphical lanes disabled while any project confirmation is pending."
-  (dolist (action '(:new :load :save :wav :mp3 :close))
+  (dolist (action '(:new :load :save :save-as :wav :mp3 :close))
     (let ((session (make-session :pending action))
           (context (%lui.tests.support:make-test-context))
           (lanes 0))

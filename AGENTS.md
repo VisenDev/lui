@@ -723,6 +723,22 @@ under `examples/daw/`: `daw-model.lisp` owns notes, persistence and synthesis;
 `daw-roll.lisp` paints and handles captured pointer/keyboard gestures through
 public LUI APIs; `daw-demo.lisp` owns the application and transport. Include this
 subdirectory in native executable prerequisites when changing build manifests.
+`file-select` is a dependency of `lui/daw-demo` only, never `lui`, `lui/native`
+or `lui/core`. Install it with `(ql:quickload "file-select")` before building
+the DAW if it is missing. `daw-files.lisp` owns file selection: Windows/Linux
+use file-select; macOS uses the system `osascript` native Open/Save panels to
+avoid file-select's application-global Cocoa changes and Save-panel selector
+issues. This adapter does not alter LUI's Cocoa bindings or startup safeguards.
+Linux requires a supported desktop helper such as Zenity or KDialog. Terminal
+mode retains an explicit destination field instead of opening desktop dialogs.
+Graphical Open, first Save, Save As and exports select paths through dialogs.
+Ordinary Save uses the established project path without a replacement prompt.
+Save As and Open commit the new path only after successful I/O; exports never
+change the project path. Picker cancellation preserves the model and dirty
+state. Existing destinations require replacement confirmation. A canceled or
+failed save during close keeps the window open. New resets to an untitled
+project. Headless dialog workflow regressions live in `tests/daw-files.lisp`;
+they do not establish actual desktop picker behavior on macOS or Windows.
 The graphical editor supports continuous blocks, right-click deletion,
 move/resize, marquee selection and musical snapping. Terminal editing uses a
 compact button grid. New/Open and file replacement have explicit confirmations.

@@ -14,7 +14,9 @@
     #:session-cycle-p #:session-cycle-start #:session-cycle-end
     #:session-metronome-p #:session-snap #:session-view-bars #:session-tool
     #:session-undo #:session-redo #:session-dirty-p #:session-gesture
-    #:session-pending #:session-devices #:session-device-index
+    #:session-pending #:session-pending-path #:session-close-after-save-p
+    #:session-file-input
+    #:session-devices #:session-device-index
     #:gesture #:make-gesture #:gesture-kind #:gesture-beat #:gesture-pitch
     #:gesture-end-beat #:gesture-end-pitch #:gesture-originals
     #:gesture-snapshot #:gesture-notes #:gesture-changed-p
@@ -53,7 +55,8 @@
   (tool :draw :type (member :draw :select :erase))
   (duration 1/2 :type real)
   (velocity 100 :type (integer 1 127))
-  (path "build/daw-project" :type string)
+  (path "" :type string)
+  (file-input "build/daw-project" :type string)
   (port "0" :type string)
   (devices (make-array 0 :element-type 'string :initial-element "")
            :type (vector string))
@@ -80,7 +83,9 @@
         :type (vector song))
   (dirty-p nil :type boolean)
   (gesture nil :type (or null gesture))
-  (pending nil :type (member nil :new :load :save :wav :mp3 :close)))
+  (pending-path nil :type (or null pathname))
+  (close-after-save-p nil :type boolean)
+  (pending nil :type (member nil :new :load :save :save-as :wav :mp3 :close)))
 
 (defun current-track (session)
   "Return the track selected for editing and recording."

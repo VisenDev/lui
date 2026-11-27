@@ -78,10 +78,11 @@
 
 (defsystem "lui/daw-demo"
   :description "Native piano-roll sequencer with optional MIDI and MP3 export"
-  :depends-on ("lui/native")
+  :depends-on ("lui/native" "file-select")
   :serial t
   :components ((:module "examples/daw" :serial t
                 :components ((:file "daw-model") (:file "daw-midi")
+                             (:file "daw-files")
                              (:file "daw-state") (:file "daw-roll")
                              (:file "daw-demo")))))
 

@@ -9,7 +9,9 @@
     #:session-cycle-p #:session-cycle-start #:session-cycle-end
     #:session-metronome-p #:session-snap #:session-view-bars #:session-tool
     #:session-undo #:session-redo #:session-dirty-p #:session-gesture
-    #:session-pending #:session-devices #:session-device-index
+    #:session-pending #:session-pending-path #:session-close-after-save-p
+    #:session-file-input
+    #:session-devices #:session-device-index
     #:gesture #:make-gesture #:gesture-kind #:gesture-beat #:gesture-pitch
     #:gesture-end-beat #:gesture-end-pitch #:gesture-originals
     #:gesture-snapshot #:gesture-notes #:gesture-changed-p
@@ -30,7 +32,7 @@
     #:stop-recording #:drain-midi #:session-midi #:session-recorder
     #:session-path #:export-song #:play-song #:session-player #:session-scratch
     #:transport-position #:stop-player #:request-file-action
-    #:request-session-close #:resolve-close))
+    #:request-session-close #:resolve-close #:resolve-file-confirmation))
 (in-package #:%lui.example.daw-demo)
 
 (defun elapsed (session)
@@ -40,7 +42,11 @@
 
 (defun output-path (session type)
   "Choose a project/export extension without shell interpolation."
-  (make-pathname :type type :defaults (pathname (session-path session))))
+  (make-pathname :type type
+                 :defaults (if (plusp (length (session-path session)))
+                               (pathname (session-path session))
+                               (merge-pathnames "Untitled.lisp"
+                                                (user-homedir-pathname)))))
 
 (defun scratch-path (session)
   "Allocate one private temporary WAV per window."
@@ -109,22 +115,21 @@
         (session-started session) (get-internal-real-time))
   (values))
 
-(defun export-song (session type)
+(defun export-song (session type &optional (path (output-path session type)))
   "Export the full mix, excluding transport metronome and cycle settings."
   (declare (values))
-  (let ((path (output-path session type)))
-    (if (string= type "wav")
-        (render-wav (session-song session) path)
-        ;; else
-        (progn
-          (render-wav (session-song session) (scratch-path session))
-          (ensure-directories-exist path)
-          (uiop:run-program
-           (list "ffmpeg" "-nostdin" "-v" "error" "-y" "-i"
-                 (namestring (scratch-path session)) "-codec:a" "libmp3lame"
-                 "-q:a" "2" (namestring path))
-           :output nil :error-output :string)))
-    (setf (session-status session) (format nil "Exported ~A" path)))
+  (if (string= type "wav")
+      (render-wav (session-song session) path)
+      ;; else
+      (progn
+        (render-wav (session-song session) (scratch-path session))
+        (ensure-directories-exist path)
+        (uiop:run-program
+         (list "ffmpeg" "-nostdin" "-v" "error" "-y" "-i"
+               (namestring (scratch-path session)) "-codec:a" "libmp3lame"
+               "-q:a" "2" (namestring path))
+         :output nil :error-output :string)))
+  (setf (session-status session) (format nil "Exported ~A" path))
   (values))
 
 (defun start-recording (session)
@@ -465,35 +470,89 @@
         (lui:label (format nil "Start ~,2F" (note-start note))))))
   (values))
 
-(defun perform-file-action (session action)
-  "Execute a confirmed action and update project state only after success."
+(defun perform-file-action (session action &optional path)
+  "Execute an action, committing the selected path only after successful I/O."
   (declare (values))
   (ecase action
     (:new (reset-session-song session (make-song))
           (vector-push-extend (make-track :name "Keys")
                               (song-tracks (session-song session)))
-          (setf (session-status session) "New project."))
-    (:load (let ((song (load-song (output-path session "lisp"))))
+          (setf (session-path session) ""
+                (session-status session) "New project."))
+    (:load (let ((song (load-song path)))
              (reset-session-song session song)
-             (setf (session-status session) "Project loaded.")))
-    (:save (save-song (session-song session) (output-path session "lisp"))
-           (setf (session-dirty-p session) nil
-                 (session-status session) "Project saved."))
-    (:wav (export-song session "wav"))
-    (:mp3 (export-song session "mp3")))
+             (setf (session-path session) (namestring path)
+                   (session-status session) "Project loaded.")))
+    ((:save :save-as)
+     (let ((path (or path
+                    (let ((current (pathname (session-path session))))
+                      (if (pathname-type current) current
+                          (output-path session "lisp"))))))
+       (save-song (session-song session) path)
+       (setf (session-path session) (namestring path)
+             (session-dirty-p session) nil
+             (session-status session) "Project saved.")))
+    (:wav (export-song session "wav" path))
+    (:mp3 (export-song session "mp3" path)))
+  (when (and (member action '(:save :save-as))
+             (session-close-after-save-p session))
+    (setf (session-close-after-save-p session) nil)
+    (lui:request-close))
+  (values))
+
+(defun select-file-action (session action)
+  "Select an independent Open, Save As or export destination."
+  (let* ((type (case action (:wav "wav") (:mp3 "mp3") (t "lisp")))
+         (title (ecase action (:load "Open project")
+                  (:save-as "Save project as") (:wav "Export WAV")
+                  (:mp3 "Export MP3"))))
+    (if (eq lui:*backend* :terminal)
+        (make-pathname :type type
+                       :defaults (pathname (session-file-input session)))
+        ;; else
+        (%lui.example.daw-files:choose-file
+         (eq action :load) title (output-path session type) type))))
+
+(defun prepare-file-action (session action)
+  "Choose a path and defer destructive changes until explicitly confirmed."
+  (declare (values))
+  (let ((path (unless (eq action :new) (select-file-action session action))))
+    (cond
+      ((and (not (eq action :new)) (null path))
+       (setf (session-close-after-save-p session) nil))
+      ((if (member action '(:new :load))
+           (session-dirty-p session)
+           (probe-file path))
+       (setf (session-pending session) action
+             (session-pending-path session) path))
+      (t (perform-file-action session action path))))
   (values))
 
 (defun request-file-action (session action)
-  "Confirm destructive replacement, keeping ordinary first saves immediate."
+  "Save an established project directly; choose paths for all other I/O."
   (declare (values))
-  (let ((confirm (if (member action '(:new :load))
-                     (session-dirty-p session)
-                     ;; else
-                     (probe-file (output-path session
-                                  (case action (:save "lisp") (:wav "wav")
-                                        (:mp3 "mp3")))))))
-    (if confirm (setf (session-pending session) action)
-        (run-action session (lambda () (perform-file-action session action)))))
+  (run-action session
+    (lambda ()
+      (if (and (eq action :save) (plusp (length (session-path session))))
+          (perform-file-action session :save)
+          ;; else
+          (prepare-file-action session (if (eq action :save) :save-as action)))))
+  (values))
+
+(defun resolve-file-confirmation (session answer)
+  "Apply or cancel a selected file operation without losing its destination."
+  (declare (values))
+  (let ((action (session-pending session))
+        (path (session-pending-path session)))
+    (setf (session-pending session) nil (session-pending-path session) nil)
+    (if (eq answer :confirm)
+        (run-action session
+          (lambda () (perform-file-action session action path)))
+        ;; else
+        (setf (session-close-after-save-p session) nil)))
+  (when (session-close-after-save-p session)
+    (setf (session-close-after-save-p session) nil
+          (session-pending session) :close))
   (values))
 
 (defun request-session-close (session)
@@ -512,16 +571,19 @@
   "Keep the project open on cancellation or save failure; close after success."
   (declare (values))
   (case answer
-    (:cancel (setf (session-pending session) nil))
+    (:cancel (setf (session-pending session) nil
+                   (session-close-after-save-p session) nil))
     (:alternate
-     (setf (session-dirty-p session) nil (session-pending session) nil)
+     (setf (session-dirty-p session) nil (session-pending session) nil
+           (session-close-after-save-p session) nil)
      (lui:request-close))
     (:confirm
-     (run-action session
-       (lambda ()
-         (perform-file-action session :save)
-         (setf (session-pending session) nil)
-         (lui:request-close)))))
+     (setf (session-pending session) nil
+           (session-close-after-save-p session) t)
+     (request-file-action session :save)
+     (when (and (session-close-after-save-p session)
+                (null (session-pending session)))
+       (setf (session-pending session) :close))))
   (values))
 
 (defun close-confirmation (session)
@@ -540,12 +602,18 @@
   (declare (values))
   (lui:row (:gap (lui:units 0.5))
     (lui:label (if (session-dirty-p session) "UNSAVED" "PROJECT"))
-    (setf (session-path session)
-          (lui:text-field :id :project-path
-                          :value (session-path session) :width (lui:units 30)))
-    (dolist (action '(:new :load :save :wav :mp3))
-      (when (lui:button (ecase action (:new "New") (:load "Open")
-                         (:save "Save") (:wav "Export WAV") (:mp3 "Export MP3"))
+    (lui:label (if (plusp (length (session-path session)))
+                   (session-path session) "Untitled project")
+               :width (lui:grow))
+    (when (eq lui:*backend* :terminal)
+      (setf (session-file-input session)
+            (lui:text-field :id :file-destination
+                            :value (session-file-input session)
+                            :width (lui:units 30))))
+    (dolist (action '(:new :load :save :save-as :wav :mp3))
+      (when (lui:button (ecase action (:new "New") (:load "Open…")
+                         (:save "Save") (:save-as "Save As…")
+                         (:wav "Export WAV…") (:mp3 "Export MP3…"))
                         :id action :disabled-p
                         (or (playing-p session) (recording-p session)))
         (request-file-action session action))))
@@ -554,13 +622,11 @@
     (let ((result (lui:confirm
                    (if (member (session-pending session) '(:new :load))
                        "Discard unsaved changes to this project?"
-                       "Replace the existing file at this project path?")
+                       (format nil "Replace the existing file?~%~A"
+                               (session-pending-path session)))
                    :confirm-label "Continue" :cancel-label "Cancel")))
       (when result
-        (let ((action (session-pending session)))
-          (setf (session-pending session) nil)
-          (when (eq result :confirm)
-            (run-action session (lambda () (perform-file-action session action))))))))
+        (resolve-file-confirmation session result))))
   (values))
 
 (defun midi-controls (session)
