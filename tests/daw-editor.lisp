@@ -329,6 +329,26 @@
     (%lui.example.daw-demo:resolve-close session :alternate)
     (assert (%lui.frame:accept-close-p context))))
 
+(defun test-arrangement-confirmations ()
+  "Keep graphical lanes disabled while any project confirmation is pending."
+  (dolist (action '(:new :load :save :wav :mp3 :close))
+    (let ((session (make-session :pending action))
+          (context (%lui.tests.support:make-test-context))
+          (lanes 0))
+      (setf (%lui.frame:context-text-mode-p context) nil)
+      (lui:with-frame (context 1200 1200)
+        (%lui.example.daw-demo:draw session))
+      (%lui.layout:walk-elements
+       (%lui.frame:context-root context)
+       (lambda (node)
+         (when (eq :arrangement-lane
+                   (lui:widget-key (%lui.layout:element-id node)))
+           (incf lanes)
+           (assert (%lui.widgets:widget-disabled-p
+                    (%lui.layout:element-content node))))))
+      (assert (= lanes (length (song-tracks (session-song session)))))
+      (assert (eq action (session-pending session))))))
+
 (defun test-arrangement ()
   "Navigate full-song lanes and verify activity respects note ends and mix."
   (let* ((session (make-session))
@@ -370,6 +390,7 @@
   "Run direct-manipulation, history, project and transport-range regressions."
   (test-pointer-editing)
   (test-arrangement)
+  (test-arrangement-confirmations)
   (test-resize-at-song-end)
   (test-idle-note-inspector)
   (test-history-and-clipboard)

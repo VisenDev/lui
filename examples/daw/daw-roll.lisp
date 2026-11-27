@@ -38,8 +38,7 @@
 (defun navigate-lane (session index beat)
   "Reveal a track and time in the editor without seeking running playback."
   (declare (values))
-  (unless (or (%lui.example.daw-state:recording-p session)
-              (%lui.example.daw-state:session-pending session))
+  (when (editable-p session)
     (cancel-gesture session)
     (%lui.example.daw-state:select-track session index)
     (let ((beat (max 0 (min beat (- (song-beats (session-song session))
@@ -88,8 +87,7 @@
   (declare (values))
   (lui:canvas nil :id :arrangement-lane :width (lui:grow) :height 64
               :font-size 11
-              :disabled-p (or (%lui.example.daw-state:recording-p session)
-                              (%lui.example.daw-state:session-pending session))
+              :disabled-p (not (editable-p session))
               :accessible-name
               (format nil "~A: full song; click to edit"
                       (%lui.example.daw-model:track-name track))
