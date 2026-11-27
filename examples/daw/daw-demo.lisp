@@ -271,7 +271,7 @@
   (declare (values))
   (let ((disabled (not (editable-p session)))
         (empty (zerop (length (session-selection session)))))
-    (lui:row (:gap (lui:units 0.5))
+    (lui:row (:gap (lui:units 0.5) :cross-align :center)
       (when (lui:button "Undo" :id :undo :disabled-p
                         (or disabled (playing-p session)
                             (zerop (length (session-undo session)))))
@@ -314,35 +314,48 @@
         (%lui.example.daw-roll:navigate-lane session index (* 4 bar)))))
   (values))
 
-(defun track-strip (session track index)
-  "Keep track controls aligned with a full-song note lane."
+(defun track-header (session track index)
+  "Group selection, mix controls and activity in a consistent track header."
   (declare (values))
-  (lui:with-key track
-    (lui:row (:width (lui:grow) :gap (lui:units 0.5))
-      (when (lui:button (format nil "~A ~A"
-                                (if (= index (session-track session)) ">" " ")
-                                (track-name track))
-                        :width (lui:units 18) :disabled-p (recording-p session))
-        (select-track session index))
-      (lui:label
-       (if (and (or (playing-p session) (recording-p session))
-                (%lui.example.daw-roll:track-active-p session track))
-           "Playing" "")
-       :width (lui:units 7) :foreground "#58c49c")
-      (let ((muted (lui:checkbox "M" :value (track-muted-p track)
-                                :disabled-p (or (recording-p session)
-                                                (playing-p session))))
-            (solo (lui:checkbox "S" :value (track-solo-p track)
-                               :disabled-p (or (recording-p session)
-                                               (playing-p session)))))
+  (lui:column (:id :track-header :width (lui:units 26)
+               :padding 4 :gap 4)
+    (when (lui:button (track-name track) :id :select-track
+                      :width (lui:grow)
+                      :background (if (= index (session-track session))
+                                      "#36586b" "#343e4b")
+                      :disabled-p (recording-p session))
+      (select-track session index))
+    (lui:row (:width (lui:grow) :gap (lui:units 1)
+               :cross-align :center)
+      (let* ((busy (or (recording-p session) (playing-p session)))
+             (muted (lui:checkbox "M" :value (track-muted-p track)
+                                  :accessible-name "Mute track"
+                                  :disabled-p busy))
+             (solo (lui:checkbox "S" :value (track-solo-p track)
+                                 :accessible-name "Solo track"
+                                 :disabled-p busy)))
         (unless (and (eql muted (track-muted-p track))
                      (eql solo (track-solo-p track)))
           (checkpoint session)
           (setf (track-muted-p track) muted (track-solo-p track) solo)))
-      (if (not (lui:text-mode-p))
-          (%lui.example.daw-roll:draw-lane session track index)
+      (lui:label
+       (if (and (or (playing-p session) (recording-p session))
+                (%lui.example.daw-roll:track-active-p session track))
+           "Playing" "")
+       :width (lui:units 7) :foreground "#58c49c")))
+  (values))
+
+(defun track-strip (session track index)
+  "Align each grouped header with its full-song lane."
+  (declare (values))
+  (lui:with-key track
+    (lui:row (:id :track-strip :width (lui:grow) :gap 0
+               :cross-align :center)
+      (track-header session track index)
+      (if (lui:text-mode-p)
+          (terminal-track-bars session track index)
           ;; else
-          (terminal-track-bars session track index))))
+          (%lui.example.daw-roll:draw-lane session track index))))
   (values))
 
 (defun track-controls (session)
@@ -351,7 +364,7 @@
   (let* ((track (current-track session))
          (tracks (song-tracks (session-song session)))
          (disabled (not (editable-p session))))
-    (lui:row (:gap (lui:units 0.5))
+    (lui:row (:gap (lui:units 0.5) :cross-align :center)
       (lui:label "ARRANGEMENT — full song")
       (when (lui:button "+ Track" :id :add-track
                         :disabled-p (or disabled (>= (length tracks) 32)))
@@ -377,12 +390,13 @@
                               :disabled-p (or disabled (playing-p session))))))
         (change-bars session bars)
         (lui:label (write-to-string (/ (song-beats (session-song session)) 4)))))
-    (lui:panel (:height (if (lui:text-mode-p) (lui:units 4) 216)
-                :width (lui:grow) :scroll-p t :padding 0 :gap 0)
+    (lui:panel (:height (if (lui:text-mode-p) (lui:units 8)
+                            (+ 4 (* 80 (min 4 (length tracks)))))
+                :id :track-list :width (lui:grow) :scroll-p t :padding 2 :gap 0)
       (loop :for item :across (song-tracks (session-song session))
             :for index :from 0 :do (track-strip session item index)))
     (setf track (current-track session))
-    (lui:row (:gap (lui:units 1))
+    (lui:row (:gap (lui:units 1) :cross-align :center)
       (lui:label "Name")
       (let ((name (lui:text-field :id :track-name
                                   :value (track-name track) :width (lui:units 20)
@@ -405,7 +419,7 @@
 (defun roll-toolbar (session)
   "Provide explicit tools, musical grid sizes, zoom, and view navigation."
   (declare (values))
-  (lui:row (:gap (lui:units 0.5))
+  (lui:row (:gap (lui:units 0.5) :cross-align :center)
     (lui:label (format nil "EDITOR: ~A" (track-name (current-track session))))
     (dolist (tool '(:draw :select :erase))
       (when (lui:button (format nil "~A~A" (if (eq tool (session-tool session)) "> " "")
@@ -444,7 +458,7 @@
   (declare (values))
   (let ((note (session-selected session))
         (disabled (not (editable-p session))))
-    (lui:row (:gap (lui:units 1))
+    (lui:row (:gap (lui:units 1) :cross-align :center)
       (lui:label (if note "NOTE" "NEW NOTE"))
       (lui:label "Length")
       (let ((duration (lui:slider :value (if note (note-duration note)
@@ -600,7 +614,7 @@
 (defun file-controls (session)
   "Show project location, unsaved state, and explicit save/export actions."
   (declare (values))
-  (lui:row (:gap (lui:units 0.5))
+  (lui:row (:gap (lui:units 0.5) :cross-align :center)
     (lui:label (if (session-dirty-p session) "UNSAVED" "PROJECT"))
     (lui:label (if (plusp (length (session-path session)))
                    (session-path session) "Untitled project")
@@ -632,7 +646,7 @@
 (defun midi-controls (session)
   "List native input devices by name and select one without guessing indices."
   (declare (values))
-  (lui:row (:gap (lui:units 0.5))
+  (lui:row (:gap (lui:units 0.5) :cross-align :center)
     (lui:label "MIDI")
     (when (lui:button "Refresh devices" :disabled-p (recording-p session))
       (run-action session

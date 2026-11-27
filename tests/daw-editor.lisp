@@ -386,10 +386,37 @@
     (setf (%lui.example.daw-model:track-volume track) 0)
     (assert (not (%lui.example.daw-roll:track-active-p session track)))))
 
+(defun test-track-layout ()
+  "Keep header controls inside aligned lanes across common window widths."
+  (let ((session (make-session))
+        (context (%lui.tests.support:make-test-context)))
+    (setf (%lui.frame:context-text-mode-p context) nil)
+    (dolist (width '(800 1200 1800))
+      (lui:with-frame (context width 1200)
+        (%lui.example.daw-demo:draw session))
+      (let ((headers nil)
+            (lanes nil))
+        (%lui.layout:walk-elements
+         (%lui.frame:context-root context)
+         (lambda (node)
+           (case (lui:widget-key (%lui.layout:element-id node))
+             (:track-header (push (%lui.layout:element-box node) headers))
+             (:arrangement-lane
+              (push (%lui.layout:element-box node) lanes)))))
+        (assert (= 3 (length headers) (length lanes)))
+        (loop :for header :in headers :for lane :in lanes
+              :do (assert (plusp (lui:box-width lane)))
+                  (assert (<= (+ (lui:box-x header) (lui:box-width header))
+                              (lui:box-x lane)))
+                  (assert (<= (lui:box-y lane) (lui:box-y header)))
+                  (assert (<= (+ (lui:box-y header) (lui:box-height header))
+                              (+ (lui:box-y lane) (lui:box-height lane)))))))))
+
 (defun run-tests ()
   "Run direct-manipulation, history, project and transport-range regressions."
   (test-pointer-editing)
   (test-arrangement)
+  (test-track-layout)
   (test-arrangement-confirmations)
   (test-resize-at-song-end)
   (test-idle-note-inspector)
