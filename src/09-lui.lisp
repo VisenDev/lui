@@ -81,7 +81,7 @@
            #:searchable-combobox
            #:popup #:confirm
            #:menu-bar #:menu #:menu-item #:floating-expander
-           #:default-context-menu #:%context-menu-at-p
+           #:default-context-menu #:%context-menu-at-p #:%context-menu-focus-p
            #:%*default-backend-function*))
 (in-package #:lui)
 
@@ -1161,16 +1161,27 @@ Callbacks use ordinary MENU and MENU-ITEM controls and run on each open frame."
         (when draw (return-from context-menu-owner (values node draw))))))
   (values nil nil))
 
-(fn (%context-menu-at-p boolean) ((context context) (x real) (y real))
-  "Let browsers suppress their menu without applying input ahead of queued events."
-  (let* ((root (or (context-modal context) (context-root context)))
-         (path (when root (enabled-menu-path (context-menu-path root x y)))))
-    (when (context-menu-p context)
-      (dolist (node path)
-        (let ((menu (%lui.layout:element-context-menu node)))
-          (unless (eq menu :default)
-            (return-from %context-menu-at-p (functionp menu)))))))
+(fn (configured-context-menu-p boolean) ((context context) (path list))
+  "Inspect explicit menu policy without invoking a default provider."
+  (when (context-menu-p context)
+    (dolist (node (enabled-menu-path path))
+      (let ((menu (%lui.layout:element-context-menu node)))
+        (unless (eq menu :default)
+          (return-from configured-context-menu-p (functionp menu))))))
   nil)
+
+(fn (%context-menu-at-p boolean) ((context context) (x real) (y real))
+  "Let browsers suppress their menu without applying queued input early."
+  (let ((root (or (context-modal context) (context-root context))))
+    (configured-context-menu-p
+     context (when root (context-menu-path root x y)))))
+
+(fn (%context-menu-focus-p boolean) ((context context))
+  "Preserve browser keyboard menus unless the focused target has a LUI menu."
+  (let ((root (or (context-modal context) (context-root context)))
+        (focus (context-focus context)))
+    (configured-context-menu-p
+     context (when (and root focus) (context-menu-focus-path root focus)))))
 
 (fn (draw-context-menu boolean)
     ((context context) (id object-id) (modal object-id)
@@ -1226,7 +1237,7 @@ Callbacks use ordinary MENU and MENU-ITEM controls and run on each open frame."
                 (widget (%lui.layout:element-content owner))
                 (modal (when (context-modal context)
                          (%lui.layout:element-id (context-modal context)))))
-            (setf (context-active context) nil)
+            (cancel-pointer-capture context)
             (with-toolkit ((if (widget-p widget) (widget-style widget)
                               (current-toolkit)))
               (with-palette ((if (widget-p widget)

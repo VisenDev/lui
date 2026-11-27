@@ -33,7 +33,7 @@
            #:pending-input-context #:context-overlay #:context-overlay-state
            #:context-tabs-handled-p #:context-text-mode-p
            #:context-copy #:context-paste #:context-posted-events
-           #:*context-menu-input* #:context-default-menu
+           #:*context-menu-input* #:context-default-menu #:cancel-pointer-capture
            #:context-menu-p #:context-popup-draw #:*context-menu-p*
            #:context-input-handler #:context-selection
            #:*event-modifiers* #:modifier-mask #:modified-character-key
@@ -743,6 +743,17 @@ ID types are unrestricted and may differ between vector elements."
       (setf (context-focus context) target)))
   (values))
 
+(fn (cancel-pointer-capture (values)) ((context context))
+  "Notify the captured widget before abandoning its active pointer gesture."
+  (when (context-active context)
+    (let ((id (context-active context)))
+      (push (make-event :kind :cancel :id id :buttons 0)
+            (gethash id (context-events context))))
+    (setf (context-active context) nil
+          (context-last-click context) nil
+          (context-scroll-motion context) nil))
+  (values))
+
 (fn (update-pointer-capture object-id)
     ((context context) (event event) (captured object-id))
   "Cancel stale capture and mark whether EVENT belongs to an active drag."
@@ -752,12 +763,8 @@ ID types are unrestricted and may differ between vector elements."
                  (and (eq (event-kind event) :move)
                       (pointer-cancel-p event))))
     ;; A replacement press or a known unpressed motion ends the old drag.
-    (push (make-event :kind :cancel :id captured :buttons 0)
-          (gethash captured (context-events context)))
-    (setf (context-active context) nil
-          (context-last-click context) nil
-          (context-scroll-motion context) nil
-          captured nil))
+    (cancel-pointer-capture context)
+    (setf captured nil))
   (when (eq (event-kind event) :cancel)
     (setf (context-active context) nil (context-hover context) nil
           (context-last-click context) nil

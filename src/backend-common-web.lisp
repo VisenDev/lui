@@ -470,8 +470,6 @@
                     ("PageDown" . lui.key:page-down)
                     ("Backspace" . lui.key:backspace)
                     ("Delete" . lui.key:delete)
-                    ("ContextMenu" . lui.key:kb-menu)
-                    ("F10" . lui.key:f10)
                     ("Escape" . lui.key:escape))
                   :test #'string=))))
 
@@ -481,17 +479,32 @@
   (input-stop event)
   (input-send session (make-event :kind :key :key key)))
 
+(fn (browser-menu-key boolean)
+    ((session input-session) (event t) (key string) (context context))
+  "Handle menu keys while preserving browser actions on unconfigured targets."
+  (let ((translated (cond ((string= key "ContextMenu") lui.key:kb-menu)
+                          ((string= key "F10") lui.key:f10))))
+    (when translated
+      (when (and (or (eq translated lui.key:kb-menu)
+                     (= *event-modifiers* 1))
+                 (lui:%context-menu-focus-p context))
+        (send-browser-key session event translated))
+      t)))
+
+(fn (browser-key-target-p boolean) ((session input-session) (event t))
+  "Accept input from this canvas/editor outside composition sessions."
+  (and (or (eq (oget event "target") (input-session-canvas session))
+           (eq (oget event "target") (input-session-sink session)))
+       (not (input-session-composing session))
+       (not (input-flag event "isComposing"))
+       (not (eql 229 (oget event "keyCode")))))
+
 (fn (handle-browser-keydown t)
     ((session input-session) event)
   "Handle the browser keydown event for this input session."
 
   ;; Leave composition and keys from other DOM elements to the browser.
-  (unless (or (not (or (eq (oget event "target")
-                           (input-session-canvas session))
-                       (eq (oget event "target") (input-session-sink
-                                                  session))))
-              (input-session-composing session) (input-flag event "isComposing")
-              (eql 229 (oget event "keyCode")))
+  (when (browser-key-target-p session event)
     (let* ((key (clstring
                  (oget event "key")))
            (control (input-flag event "ctrlKey"))
@@ -508,6 +521,9 @@
                        (modified-character-key key *event-modifiers*))))
       (setf (input-session-modifiers session) *event-modifiers*)
       (cond
+        ;; Unconfigured targets retain the browser's keyboard context menu.
+        ((browser-menu-key session event key input))
+
         ;; Clipboard shortcuts must reach browser clipboard events.
         ((and editing (or control meta) (not alt)
               (member (string-downcase key) '("c" "v" "x")

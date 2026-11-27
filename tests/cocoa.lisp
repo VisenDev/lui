@@ -225,6 +225,11 @@
     (assert (%lui.cocoa::cocoa-focus-event nil))))
 
 (fn test-key-input ()
+  (assert (eq lui.key:kb-menu
+              (event-key (%lui.cocoa::cocoa-key-input 110 0 ""))))
+  (assert (lui:event-shortcut-p
+           (%lui.cocoa::cocoa-key-input 109 #x20000 "")
+           lui.key:f10 :shift t))
   (assert (eq lui.key:backward
               (event-key (%lui.cocoa::cocoa-key-input 48 #x20000 ""))))
   (assert (eq :activate

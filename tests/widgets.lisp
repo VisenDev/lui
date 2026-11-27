@@ -988,6 +988,53 @@
       (assert (visible-text-p context "Parent action"))
       (assert (not (visible-text-p context "Child action"))))))
 
+(defun test-context-menu-capture-cancellation ()
+  "Menu invocation cancels a captured gesture once, including batched presses."
+  (dolist (keyboard '(nil t))
+    (dolist (batched '(nil t))
+      (let ((context (make-test-context))
+            (dragging nil)
+            (cancellations 0)
+            (seen nil))
+        (labels ((frame (&rest events)
+                   (with-frame (context 100 60 :events events)
+                     (lui:canvas nil :id :drag :width 30 :height 10
+                                 :context-menu
+                                 (lambda () (lui:menu-item "Drag action")))
+                     (setf seen nil)
+                     (loop :for event :across
+                           (lui:events-for (lui:widget-id :drag))
+                           :do (push (event-kind event) seen)
+                           (case (event-kind event)
+                             (:press (setf dragging t))
+                             (:cancel
+                              (incf cancellations)
+                              (setf dragging nil)))))))
+          (frame)
+          (setf (context-focus context) (lui:widget-id :drag context))
+          (let ((press (make-event :kind :press :button :primary
+                                  :buttons 1 :x 1 :y 1))
+                (open (if keyboard
+                          (make-event :kind :key :key lui.key:f10 :modifiers 1)
+                          ;; else
+                          (make-event :kind :press :button :secondary
+                                      :buttons 3 :x 1 :y 1))))
+            (if batched
+                (frame press open)
+                ;; else
+                (progn
+                  (frame press)
+                  (assert dragging)
+                  (frame open))))
+          (assert (equal seen (if batched '(:cancel :press) '(:cancel))))
+          (assert (= 1 cancellations))
+          (assert (not dragging))
+          (assert (null (context-active context)))
+          (assert (context-popup-draw context))
+          (frame (make-event :kind :key :key lui.key:escape))
+          (frame (make-event :kind :move :buttons 0 :x 1 :y 1))
+          (assert (= 1 cancellations)))))))
+
 (defun run-tests ()
   (test-dialog-overflow)
   (test-dialogs)
@@ -995,6 +1042,7 @@
   (test-floating-placement)
   (test-context-menus)
   (test-context-menu-placement)
+  (test-context-menu-capture-cancellation)
   (test-floating-menus)
   (test-spinner)
   (test-spacing-controls)

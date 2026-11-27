@@ -36,6 +36,11 @@
          (with-frame (context 400 200)
         (lui.glass:button "Button" :id :button))
       (setf (context-focus context) (lui:widget-id :button context))
+         (assert (eq lui.key:kb-menu
+                     (event-key (translated-key display #xff67 0 context))))
+         (assert (lui:event-shortcut-p
+                  (translated-key display #xffc7 1 context)
+                  lui.key:f10 :shift t))
          (assert (eq lui.key:backward
                      (event-key (translated-key display #xff09 1 context))))
          (assert (eq :activate

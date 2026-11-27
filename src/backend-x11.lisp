@@ -432,7 +432,9 @@
                               (#xff50 . lui.key:home) (#xff57 . lui.key:end)
                               (#xff08 . lui.key:backspace) (#xffff .
                                                             lui.key:delete)
-                              (#xff1b . lui.key:escape)))))
+                              (#xff1b . lui.key:escape)
+                              (#xff67 . lui.key:kb-menu)
+                              (#xffc7 . lui.key:f10)))))
            (name (key-name code))
            (shortcut (modified-character-key name *event-modifiers*))
            (clipboard (clipboard-shortcut-key name *event-modifiers*))

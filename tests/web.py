@@ -768,6 +768,41 @@ class WebTests(unittest.TestCase):
         self.frames()
         self.assertEqual(self.number("*web-test-clicks*"), 1)
 
+    def test_keyboard_context_menu_browser_fallback(self):
+        host = self.fixture("""
+          (lui:text-field :id :menu-field :value "Editable text"
+            :context-menu (case *web-test-clicks*
+              (0 :default) (1 nil)
+              (otherwise (lambda () (lui:menu-item "Custom action")))))
+        """)
+        self.page.evaluate("""window.addEventListener("keydown", event => {
+            window.contextKeyPrevented = event.defaultPrevented;
+        });""")
+        for mode, enabled, handled in [(0, True, False), (1, True, False),
+                                       (2, False, False), (2, True, True)]:
+            with self.subTest(mode=mode, enabled=enabled):
+                self.lisp(f'''(setf *web-test-clicks* {mode}
+                  (%lui.frame:context-menu-p
+                    (lui.web::web-app-context *web-test-app*))
+                  {"t" if enabled else "nil"})
+                  (lui.web:refresh *web-test-app*)''')
+                self.frames()
+                for key in ["Shift+F10", "ContextMenu"]:
+                    self.click_widget(id=":MENU-FIELD", host=host)
+                    self.page.keyboard.press(key)
+                    self.frames()
+                    self.assertEqual(self.page.evaluate(
+                        "window.contextKeyPrevented"), handled)
+                    self.assertEqual(any(n["text"] == "Custom action"
+                                         for n in self.nodes(host)), handled)
+                    self.page.keyboard.press("Escape")
+                    self.frames()
+
+        # Plain F10 is not a context-menu shortcut, even on configured targets.
+        self.click_widget(id=":MENU-FIELD", host=host)
+        self.page.keyboard.press("F10")
+        self.assertFalse(self.page.evaluate("window.contextKeyPrevented"))
+
     def test_canvas_right_click_allows_browser_context_menu(self):
         self.page.evaluate("""window.addEventListener("contextmenu", event => {
             window.menuEvent = [event.target.tagName, event.defaultPrevented];

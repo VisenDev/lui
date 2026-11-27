@@ -916,7 +916,9 @@ Free all interface allocations on return or error; proxies must not outlive it."
                           (#xff50 . lui.key:home) (#xff57 . lui.key:end)
                           (#xff08 . lui.key:backspace) (#xffff .
                                                         lui.key:delete)
-                          (#xff1b . lui.key:escape))))))
+                          (#xff1b . lui.key:escape)
+                          (#xff67 . lui.key:kb-menu)
+                          (#xffc7 . lui.key:f10))))))
 
       ;; Shared editor commands and activation take precedence over text.
       (cond ((and (member symbol '(#x63 #x43 #x76 #x56))
