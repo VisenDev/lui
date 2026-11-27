@@ -847,7 +847,7 @@
             (history-controls session)
             (lui:spacer :width (lui:grow))
             (when (lui:button "×" :id :close-editor
-                              :accessible-name "Close note editor" :width 32)
+                              :accessible-name "Close note editor")
               (%lui.example.daw-state:cancel-gesture session)
               (setf (%lui.example.daw-state:session-editor-p session) nil)))
           (if (%lui.example.daw-drums:drum-track-p session)

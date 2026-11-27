@@ -222,6 +222,19 @@
               (%lui.frame:context-root context)
               (lambda (node)
                 (let ((box (%lui.layout:element-box node)))
+                  (when (eq :close-editor
+                            (lui:widget-key (%lui.layout:element-id node)))
+                    (let* ((widget (%lui.layout:element-content node))
+                           (area (lui.draw:text-box widget box))
+                           (font (lui.draw:widget-font renderer widget)))
+                      ;; A forced width smaller than the padded glyph makes
+                      ;; centered painting clamp to the left text inset.
+                      (assert (>= (lui:box-width area)
+                                  (lui.font:text-width font "×")))
+                      (assert (= (+ (lui:box-x area)
+                                    (/ (lui:box-width area) 2))
+                                 (+ (lui:box-x box)
+                                    (/ (lui:box-width box) 2))))))
                   (assert (<= (+ (lui:box-x box) (lui:box-width box))
                               (+ width 0.01))))))))
       (lui.font:close-font font))))
